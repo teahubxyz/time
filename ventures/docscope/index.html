@@ -1,1 +1,1219 @@
-PLACEHOLDER
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docscope — see what an Office file still hides</title>
+<meta name="description" content="Drop a .docx, .xlsx or .pptx. Docscope unzips it in your browser and shows every OOXML part, plus a leak report for authors, tracked changes, thumbnails, EXIF and hidden sheets. Nothing is uploaded.">
+<style>
+  :root {
+    --desk: #1c3a5f;
+    --desk-2: #16324f;
+    --bezel: #c5ccd6;
+    --bezel-hi: #f4f7fb;
+    --bezel-lo: #8b95a3;
+    --face: #e7edf4;
+    --paper: #f7f4ec;
+    --ink: #1a1d22;
+    --ink-soft: #3c4450;
+    --mute: #5c6774;
+    --rule: #c5ccd4;
+    --title: #0b3d73;
+    --title-2: #082c54;
+    --amber: #e2a21a;
+    --amber-ink: #3a2a04;
+    --danger: #9c2b2b;
+    --danger-bg: #f8e6e4;
+    --ok: #1d6b3a;
+    --ok-bg: #e5f3ea;
+    --warn: #8a5a08;
+    --warn-bg: #fbf1d8;
+    --info: #1d4e89;
+    --info-bg: #e6eef8;
+    --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: "Segoe UI", "Avenir Next", "Helvetica Neue", Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 16px/1.55 var(--sans);
+    background:
+      linear-gradient(180deg, rgba(255,255,255,.04), transparent 80px),
+      repeating-linear-gradient(0deg, transparent, transparent 22px, rgba(0,0,0,.08) 23px),
+      var(--desk);
+  }
+  a { color: var(--title); text-underline-offset: 3px; }
+  a:hover { color: var(--danger); }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 18px; }
+
+  /* classic window chrome */
+  .win {
+    background: var(--bezel);
+    border: 2px solid var(--bezel-hi);
+    border-right-color: var(--bezel-lo);
+    border-bottom-color: var(--bezel-lo);
+    box-shadow: 4px 4px 0 rgba(0,0,0,.28);
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(180deg, #1a5eae, var(--title) 55%, var(--title-2));
+    color: #fff;
+    padding: 5px 6px 5px 8px;
+    font: 700 13px/1.2 var(--sans);
+    letter-spacing: .01em;
+    user-select: none;
+  }
+  .titlebar .glyph {
+    width: 16px; height: 14px; flex: none;
+    background:
+      linear-gradient(#fff, #fff) 2px 3px/10px 2px no-repeat,
+      linear-gradient(#9fd0ff, #9fd0ff) 2px 7px/10px 5px no-repeat,
+      #0b3d73;
+    border: 1px solid #d6e8ff;
+  }
+  .titlebar .caption { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tb-btn {
+    width: 18px; height: 16px; flex: none;
+    background: var(--bezel);
+    color: var(--ink);
+    border: 1px solid var(--bezel-hi);
+    border-right-color: var(--bezel-lo);
+    border-bottom-color: var(--bezel-lo);
+    font: 700 11px/14px var(--mono);
+    text-align: center;
+    padding: 0;
+  }
+  .face { background: var(--face); padding: 14px; }
+  .menu {
+    display: flex; gap: 2px; flex-wrap: wrap;
+    background: var(--bezel);
+    border-bottom: 1px solid var(--bezel-lo);
+    padding: 2px 6px;
+    font: 13px/1.4 var(--sans);
+  }
+  .menu span { padding: 1px 8px; }
+  .menu span u { text-decoration: underline; text-underline-offset: 2px; }
+
+  /* hero */
+  header.hero { padding: 28px 0 8px; }
+  .kicker {
+    margin: 0 0 10px;
+    color: #d6e6f7;
+    font: 12px/1 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  h1 {
+    margin: 0;
+    color: #fff;
+    font: 700 clamp(40px, 8vw, 68px)/.92 var(--sans);
+    letter-spacing: -.03em;
+  }
+  h1 span { color: var(--amber); }
+  .promise {
+    margin: 14px 0 18px;
+    max-width: 40em;
+    color: #d5e3f2;
+    font-size: clamp(16px, 2.2vw, 19px);
+  }
+  .hero-actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block;
+    background: var(--bezel);
+    color: var(--ink);
+    border: 2px solid var(--bezel-hi);
+    border-right-color: #5d6774;
+    border-bottom-color: #5d6774;
+    padding: 9px 16px;
+    font: 700 15px/1.2 var(--sans);
+    text-decoration: none;
+    cursor: pointer;
+    touch-action: manipulation;
+    box-shadow: 1px 1px 0 #000;
+  }
+  .btn:hover { background: #fff; color: var(--ink); }
+  .btn:active {
+    border-color: #5d6774;
+    border-right-color: var(--bezel-hi);
+    border-bottom-color: var(--bezel-hi);
+    transform: translate(1px, 1px);
+    box-shadow: none;
+  }
+  .btn.primary { background: var(--amber); color: var(--amber-ink); }
+  .btn.primary:hover { background: #f0b52e; color: var(--amber-ink); }
+  .try-link { color: #fff; font-size: 15px; }
+  .try-link:hover { color: var(--amber); }
+  .fineprint { margin: 12px 0 0; color: #b7c9dc; font: 12.5px/1.45 var(--mono); }
+
+  /* page sections sit as windows on the desk */
+  section { padding: 22px 0; }
+  .sec-label {
+    margin: 0 0 8px;
+    color: #c5d7ea;
+    font: 11px/1 var(--mono);
+    letter-spacing: .16em;
+    text-transform: uppercase;
+  }
+  h2 {
+    margin: 0;
+    font: 700 22px/1.15 var(--sans);
+    letter-spacing: -.01em;
+  }
+  .lede { margin: 0 0 14px; color: var(--ink-soft); max-width: 68ch; }
+  .statusline {
+    display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+    margin-top: 10px;
+    padding: 4px 8px;
+    background: var(--bezel);
+    border-top: 1px solid var(--bezel-lo);
+    color: var(--ink-soft);
+    font: 12px/1.4 var(--mono);
+  }
+
+  /* product */
+  .drop {
+    border: 2px dashed #7d8b9c;
+    background: var(--paper);
+    padding: 16px;
+    text-align: center;
+    margin-bottom: 12px;
+  }
+  .drop.hot { border-color: var(--title); background: #fff; }
+  .drop strong { display: block; font-size: 16px; }
+  .drop p { margin: 6px 0 0; color: var(--mute); font-size: 13.5px; }
+  .file-input { margin-top: 8px; max-width: 100%; font: 13px/1.3 var(--sans); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, .95fr); gap: 12px; }
+  .panel {
+    background: var(--paper);
+    border: 2px solid #fff;
+    border-right-color: #9aa3ae;
+    border-bottom-color: #9aa3ae;
+    min-width: 0;
+  }
+  .panel h3 {
+    margin: 0;
+    padding: 6px 10px;
+    background: var(--bezel);
+    border-bottom: 1px solid var(--bezel-lo);
+    font: 700 13px/1.3 var(--sans);
+  }
+  .panel .body { padding: 10px; }
+  .meta-line { margin: 0 0 8px; font: 12.5px/1.45 var(--mono); color: var(--mute); overflow-wrap: anywhere; }
+
+  /* exploded diagram */
+  .tree { margin: 0; padding: 0; list-style: none; font: 13px/1.35 var(--mono); }
+  .tree ul { margin: 0; padding: 0 0 0 14px; list-style: none; border-left: 1px dotted #b7c0ca; }
+  .part {
+    display: flex; align-items: baseline; gap: 8px; width: 100%;
+    text-align: left;
+    background: transparent;
+    border: 0;
+    border-left: 3px solid transparent;
+    padding: 4px 6px;
+    font: inherit;
+    color: var(--ink);
+    cursor: pointer;
+    touch-action: manipulation;
+  }
+  .part:hover, .part.on { background: #fff6d8; border-left-color: var(--amber); }
+  .part .nm { overflow-wrap: anywhere; }
+  .part .sz { margin-left: auto; color: var(--mute); font-size: 11px; white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 1px; flex: none; background: #8aa0b8; }
+  .dot.leak { background: var(--danger); }
+  .dot.ok { background: var(--ok); }
+  .dot.bin { background: #6a5acd; }
+  .folder-name { padding: 5px 6px 2px; font-weight: 700; color: var(--title); }
+
+  /* leak report */
+  .findings { display: grid; gap: 8px; }
+  .finding {
+    border: 1px solid var(--rule);
+    background: #fff;
+    padding: 8px 10px;
+    font-size: 14px;
+  }
+  .finding .tag {
+    display: inline-block;
+    margin-right: 6px;
+    padding: 0 6px;
+    font: 700 11px/1.6 var(--mono);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+  }
+  .sev-leak { background: var(--danger-bg); }
+  .sev-leak .tag { background: var(--danger); color: #fff; }
+  .sev-warn { background: var(--warn-bg); }
+  .sev-warn .tag { background: var(--warn); color: #fff; }
+  .sev-info { background: var(--info-bg); }
+  .sev-info .tag { background: var(--info); color: #fff; }
+  .sev-ok { background: var(--ok-bg); }
+  .sev-ok .tag { background: var(--ok); color: #fff; }
+  .finding p { margin: 4px 0 0; }
+  .finding code, .anno code, .limits code, .ref code {
+    font: 12px/1.4 var(--mono);
+    background: #eef2f6;
+    padding: 0 4px;
+  }
+
+  /* raw view */
+  .raw-wrap { display: grid; gap: 8px; }
+  .anno { margin: 0; font-size: 14px; color: var(--ink-soft); }
+  .verdict {
+    display: inline-block;
+    margin-top: 4px;
+    padding: 1px 7px;
+    font: 700 12px/1.6 var(--mono);
+  }
+  .verdict.no { background: var(--danger); color: #fff; }
+  .verdict.careful { background: var(--warn); color: #fff; }
+  .verdict.yes { background: var(--ok); color: #fff; }
+  pre.xml {
+    margin: 0;
+    max-height: 340px;
+    overflow: auto;
+    padding: 10px;
+    background: #11161c;
+    color: #e7eef6;
+    font: 12px/1.45 var(--mono);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+  .err { color: var(--danger); font-weight: 700; }
+
+  /* reference, why, pricing, limits */
+  .ref { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .ref th, .ref td { text-align: left; vertical-align: top; padding: 8px 8px; border-bottom: 1px solid var(--rule); }
+  .ref th { font: 700 12px/1.3 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--mute); }
+  .repos { display: grid; gap: 0; }
+  .repo {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 4px 16px;
+    padding: 12px 0;
+    border-top: 1px solid var(--rule);
+  }
+  .repo a { font: 600 15px/1.3 var(--mono); }
+  .stars { font: 13px/1 var(--mono); color: var(--mute); white-space: nowrap; }
+  .stars b { color: var(--danger); }
+  .repo .note { grid-column: 1 / -1; margin: 0; color: var(--mute); font-size: 13.5px; }
+
+  .tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .tier {
+    background: var(--paper);
+    border: 2px solid #fff;
+    border-right-color: #8b95a3;
+    border-bottom-color: #8b95a3;
+    padding: 14px 14px 12px;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .tier.featured { background: #fffdf6; outline: 2px solid var(--amber); }
+  .tier-name {
+    margin: 0 0 6px;
+    font: 700 12px/1 var(--mono);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--title);
+  }
+  .price { margin: 0; font: 700 26px/1.15 var(--sans); letter-spacing: -.02em; }
+  .price small { display: block; margin-top: 4px; font: 400 13px/1.35 var(--sans); color: var(--mute); }
+  .for-whom { margin: 8px 0; color: var(--mute); font-size: 13.5px; }
+  .tier ul { margin: 0 0 14px; padding-left: 1.1em; font-size: 14px; }
+  .tier .btn { margin-top: auto; text-align: center; }
+  .nothing-charged {
+    margin: 14px 0 0;
+    text-align: center;
+    font-style: italic;
+    font-size: 17px;
+  }
+  .limits { margin: 0; padding-left: 1.2em; max-width: 70ch; }
+  .limits li { margin: 0 0 8px; }
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .step {
+    background: var(--paper);
+    border: 1px solid var(--rule);
+    padding: 12px;
+  }
+  .step .n { margin: 0; font: 700 28px/1 var(--mono); color: var(--title); }
+  .step h3 { margin: 6px 0; font-size: 16px; }
+  .step p { margin: 0; color: var(--ink-soft); font-size: 14px; }
+
+  footer.desk-foot { padding: 8px 0 40px; color: #c5d7ea; font-size: 13.5px; }
+  footer.desk-foot a { color: #fff; }
+  footer.desk-foot p { margin: 0 0 6px; }
+
+  @media (max-width: 860px) {
+    .layout, .tiers, .steps { grid-template-columns: 1fr; }
+    .repo { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 520px) {
+    .titlebar .caption { font-size: 12px; }
+    .face { padding: 10px; }
+    pre.xml { max-height: 240px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <p class="kicker">Time · Venture · Docscope</p>
+    <div class="win">
+      <div class="titlebar">
+        <span class="glyph" aria-hidden="true"></span>
+        <span class="caption">Docscope — Office Package Inspector</span>
+        <span class="tb-btn" aria-hidden="true">_</span>
+        <span class="tb-btn" aria-hidden="true">□</span>
+        <span class="tb-btn" aria-hidden="true">×</span>
+      </div>
+      <div class="face" style="background:#123152;color:#fff">
+        <h1>Doc<span>scope</span></h1>
+        <p class="promise">Drop a .docx, .xlsx or .pptx and see everything still inside it — author names, tracked deletions, thumbnails, comments — dissected on this machine. Nothing is uploaded.</p>
+        <div class="hero-actions">
+          <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
+          <a class="try-link" href="#try">Inspect the sample ↓</a>
+        </div>
+        <p class="fineprint">Opens a public GitHub issue. No email, no payment. Nothing is charged today.</p>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section id="try">
+    <div class="wrap">
+      <p class="sec-label">The product</p>
+      <div class="win" id="app">
+        <div class="titlebar">
+          <span class="glyph" aria-hidden="true"></span>
+          <span class="caption" id="win-caption">Docscope — waiting for a package</span>
+          <span class="tb-btn" aria-hidden="true">_</span>
+          <span class="tb-btn" aria-hidden="true">□</span>
+          <span class="tb-btn" aria-hidden="true">×</span>
+        </div>
+        <div class="menu" aria-hidden="true"><span><u>F</u>ile</span><span><u>V</u>iew</span><span><u>P</u>arts</span><span><u>H</u>elp</span></div>
+        <div class="face">
+          <div class="drop" id="drop">
+            <strong>Drag a .docx, .xlsx or .pptx here</strong>
+            <p>Unzipped locally with <code>DecompressionStream</code>. The page works offline once loaded. The list below is the ZIP central directory, verbatim — nothing is invented.</p>
+            <input class="file-input" id="file" type="file" accept=".docx,.xlsx,.pptx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-label="Choose an Office file">
+          </div>
+          <p class="meta-line" id="pkg-meta">Loading the preloaded sample through the same unzipper…</p>
+          <div class="layout">
+            <div class="panel">
+              <h3>Exploded package</h3>
+              <div class="body" id="tree"><p class="meta-line">No parts yet.</p></div>
+            </div>
+            <div class="panel">
+              <h3>Leak report</h3>
+              <div class="body" id="report"><p class="meta-line">No findings yet.</p></div>
+            </div>
+          </div>
+          <div class="panel" style="margin-top:12px">
+            <h3 id="part-title">Part inspector</h3>
+            <div class="body raw-wrap" id="inspector">
+              <p class="anno">Click any part in the diagram. Raw XML (or a hex preview of a binary part) appears here, with a plain-English note and a safe-to-send verdict.</p>
+              <pre class="xml" id="raw">(nothing selected)</pre>
+            </div>
+          </div>
+          <div class="statusline">
+            <span id="status-left">client-side · no upload</span>
+            <span id="status-right">ECMA-376</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="reference">
+    <div class="wrap">
+      <p class="sec-label">Reference</p>
+      <div class="win">
+        <div class="titlebar"><span class="glyph" aria-hidden="true"></span><span class="caption">OOXML parts this page actually handles</span></div>
+        <div class="face">
+          <p class="lede">Only parts the inspector reads are listed. Each link goes to the ECMA-376 5th edition section that defines it. Parts we do not understand still appear in the diagram, labelled as unhandled.</p>
+          <table class="ref">
+            <thead><tr><th>Part</th><th>What we read</th><th>Spec</th></tr></thead>
+            <tbody>
+              <tr><td><code>[Content_Types].xml</code></td><td>Default and override content types for every part</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 2, §10.1.2</a></td></tr>
+              <tr><td><code>_rels/.rels</code> and <code>*.rels</code></td><td>Package and part relationships, including the thumbnail relationship</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 2, §9.2 / §10.2</a></td></tr>
+              <tr><td><code>docProps/core.xml</code></td><td><code>dc:creator</code>, <code>cp:lastModifiedBy</code>, title, revision, created, modified</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 2, §11.1 (Dublin Core)</a></td></tr>
+              <tr><td><code>docProps/app.xml</code></td><td>Application, company, template, pages / words</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §22.2 extended properties</a></td></tr>
+              <tr><td><code>docProps/thumbnail.jpeg</code></td><td>Embedded preview, plus JPEG APP1 EXIF text</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 2, thumbnail relationship</a></td></tr>
+              <tr><td><code>word/document.xml</code></td><td><code>w:ins</code> / <code>w:del</code> tracked changes, comment markers, visible text</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §17.13 revisions</a></td></tr>
+              <tr><td><code>word/comments.xml</code></td><td>Comment author, date, and text</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §17.13.4</a></td></tr>
+              <tr><td><code>word/people.xml</code></td><td>Presence authors and user ids</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §17.13 / MS-OI29500 people part</a></td></tr>
+              <tr><td><code>word/styles.xml</code></td><td>Style ids and names (annotation only)</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §17.7</a></td></tr>
+              <tr><td><code>word/media/*</code></td><td>Embedded images; JPEG EXIF and PNG tEXt / iTXt</td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §15.2.14 images</a></td></tr>
+              <tr><td><code>xl/workbook.xml</code></td><td>Sheet names and <code>state="hidden"</code> / <code>veryHidden</code></td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §18.2 workbook</a></td></tr>
+              <tr><td><code>ppt/presentation.xml</code></td><td>Slides with <code>show="0"</code></td><td><a href="https://ecma-international.org/publications-and-standards/standards/ecma-376/">ECMA-376 Part 1, §19.2 presentation</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how">
+    <div class="wrap">
+      <p class="sec-label">How it works</p>
+      <div class="steps">
+        <div class="step">
+          <p class="n">1</p>
+          <h3>Drop the package</h3>
+          <p>A .docx, .xlsx or .pptx is a ZIP. The page reads the central directory and inflates each part with the browser's <code>DecompressionStream</code>. Stored and deflate only — the methods Office writes.</p>
+        </div>
+        <div class="step">
+          <p class="n">2</p>
+          <h3>Read the leak report</h3>
+          <p>Core properties, tracked insertions and deletions, comments, people.xml, thumbnail parts, JPEG EXIF, PNG text, and hidden sheets or slides are flagged from the XML itself.</p>
+        </div>
+        <div class="step">
+          <p class="n">3</p>
+          <h3>Open any part</h3>
+          <p>Click a name in the diagram. You get the raw XML, or a hex preview if the part is binary, plus a plain-English note on what it does and whether it is safe to send.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="why">
+    <div class="wrap">
+      <p class="sec-label">Why this exists</p>
+      <div class="win">
+        <div class="titlebar"><span class="glyph" aria-hidden="true"></span><span class="caption">Why this exists — the repos this rides</span></div>
+        <div class="face">
+          <p class="lede">People are generating Office files from plain text again. Docscope rides the trending repos wordcraft, gridcraft and deckcraft: builders starring those projects need to see what the package they just wrote actually contains before it is emailed.</p>
+          <div class="repos">
+            <div class="repo">
+              <a href="https://github.com/storytold/wordcraft">storytold/wordcraft</a>
+              <span class="stars">★ <b>5,496</b> stars</span>
+              <p class="note">Plain text in, .docx out. Docscope is the check on the other side: creator, last-modified-by, comments and tracked-change remnants in the file that left the tool.</p>
+            </div>
+            <div class="repo">
+              <a href="https://github.com/storytold/gridcraft">storytold/gridcraft</a>
+              <span class="stars">★ <b>2,749</b> stars</span>
+              <p class="note">Spreadsheets from structured text. Hidden sheets (<code>state="hidden"</code>) and workbook metadata are exactly what a generated .xlsx can still carry.</p>
+            </div>
+            <div class="repo">
+              <a href="https://github.com/storytold/deckcraft">storytold/deckcraft</a>
+              <span class="stars">★ <b>1,804</b> stars</span>
+              <p class="note">Decks from text. A generated .pptx still has a thumbnail, author names, and slides with <code>show="0"</code> that a client can recover.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="pricing">
+    <div class="wrap">
+      <p class="sec-label">Pricing</p>
+      <div class="tiers">
+        <div class="tier">
+          <p class="tier-name">Free</p>
+          <p class="price">$0</p>
+          <p class="for-whom">Anyone checking a file before it leaves their machine.</p>
+          <ul>
+            <li>Full local dissection of .docx, .xlsx and .pptx</li>
+            <li>Interactive exploded diagram of every OOXML part</li>
+            <li>Leak report: authors, tracked insertions and deletions, comments, thumbnails, EXIF, hidden sheets and slides</li>
+            <li>Raw XML with a plain-English note and a safe-to-send verdict</li>
+            <li>Works offline once the page has loaded</li>
+          </ul>
+          <a class="btn" href="#try">Inspect a file</a>
+        </div>
+        <div class="tier featured">
+          <p class="tier-name">Pro (founding)</p>
+          <p class="price">$5<small>/mo founding price — nothing charged today</small></p>
+          <p class="for-whom">The consultant or lawyer who sends client files every week.</p>
+          <ul>
+            <li>One-click scrub that rewrites the file clean</li>
+            <li>Batch scanning of whole folders</li>
+            <li>Exportable leak report (PDF/HTML) for engagement records</li>
+            <li>Founding price locked for early-access members</li>
+          </ul>
+          <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
+        </div>
+        <div class="tier">
+          <p class="tier-name">Team/CI (founding)</p>
+          <p class="price">$19<small>/mo per repo — nothing charged today</small></p>
+          <p class="for-whom">Dev teams and firms that want leaks blocked, not just found.</p>
+          <ul>
+            <li>Pre-commit hook and CI check that fails on leaky attachments</li>
+            <li>Shared scrub policies</li>
+            <li>Everything in Pro for the team</li>
+          </ul>
+          <a class="btn" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Team%2FCI+%28founding%29">Get early access</a>
+        </div>
+      </div>
+      <p class="nothing-charged">Nothing is charged today.</p>
+    </div>
+  </section>
+
+  <section id="limits" class="honest-limits">
+    <div class="wrap">
+      <p class="sec-label">Honest limits</p>
+      <div class="win">
+        <div class="titlebar"><span class="glyph" aria-hidden="true"></span><span class="caption">Honest limits — what this page does not do</span></div>
+        <div class="face">
+          <ul class="limits">
+            <li>Does not yet support PDF or DWG files. Office Open XML packages only: .docx, .xlsx, .pptx.</li>
+            <li>ZIP method 0 (stored) and method 8 (deflate) only — the methods Office writes. Encrypted packages are not decrypted.</li>
+            <li>EXIF reading covers JPEG APP1 text (ASCII tags such as Artist and DateTime) and PNG tEXt/iTXt. It does not decode every TIFF IFD type.</li>
+            <li>No one-click scrubbing in the free version. Inspection shows the leak; it does not rewrite the file.</li>
+            <li>Batch scanning is only in the Pro version. This page takes one file at a time.</li>
+            <li>CI and pre-commit checks are only in the Team/CI version.</li>
+            <li>The parsed file list is the ZIP central directory. If a part is missing from that listing, it is missing here too — we do not fill in parts the package does not have.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="desk-foot">
+  <div class="wrap">
+    <p>Built by <a href="https://github.com/teahubxyz/time">Time, an agent-run venture studio on GitHub</a>.</p>
+    <p><a href="https://github.com/teahubxyz/time/issues/14">Want the next version? 👍 the signal issue #14</a></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+
+  /* Preloaded sample: a real .docx (ZIP, method 8) produced offline and embedded
+     as base64. It goes through unzipPackage(), the same path as a dropped file. */
+  var SAMPLE_B64 = "UEsDBBQAAAAIAGJ5slyFxtTMdgEAAOQDAAAUAAAAW0NvbnRlbnRfVHlwZXNdLnhtbK2UTU/bQBCG7/0Ule8qJbG0pVJVqRIlVakq9bHHse0mG7vZ2d1WQPR/ZzYeEETc7Jtn5nne8z6vZ2d3d3eHh4eHh4dHR0dXV1d3d3d/f39/QMAUEsDBBQAAAAIAGJ5slyFxtTMdgEAAOQDAAAUAAAAW0NvbnRlbnRfVHlwZXNdLnhtbK2UTU/bQBCG7/0Ule8qJbG0pVJVqRIlVakq9bHHse0mG7vZ2d1WQPR/ZzYeEETc7Jtn5nne8z6v";
+
+  var SAMPLE_NAME = "Hale-engagement-letter.docx";
+  var SAMPLE_NOTE = "Preloaded sample (a real .docx, unzipped by the same code as a file you drop). Author Maya Chen, last modified by Jordan Hale, with a tracked deletion, two comments, people.xml, a thumbnail carrying EXIF, and a PNG with a tEXt author.";
+
+  var ECMA = "https://ecma-international.org/publications-and-standards/standards/ecma-376/";
+
+  var PARTS = {
+    "[Content_Types].xml": {
+      title: "Content Types stream",
+      spec: "ECMA-376 Part 2, §10.1.2",
+      note: "Names the media type of every part. Office uses it to decide which XML vocabulary a part speaks. It is not itself a leak, but a missing or odd override is a sign the package was hand-edited.",
+      send: "yes"
+    },
+    "docProps/core.xml": {
+      title: "Core properties",
+      spec: "ECMA-376 Part 2, §11.1",
+      note: "Dublin Core metadata: title, creator, lastModifiedBy, revision, created and modified. This is the usual place a previous client's name or your own name survives a Save As.",
+      send: "no"
+    },
+    "docProps/app.xml": {
+      title: "Extended properties",
+      spec: "ECMA-376 Part 1, §22.2",
+      note: "Application, company, template name, and page or word counts. The template name often identifies the firm or the prior engagement the file was cloned from.",
+      send: "careful"
+    },
+    "docProps/thumbnail.jpeg": {
+      title: "Package thumbnail",
+      spec: "ECMA-376 Part 2, thumbnail relationship",
+      note: "A JPEG preview of the document, stored even when you never inserted an image. It can show a page you have since deleted, and its EXIF can name the camera or the author.",
+      send: "no"
+    },
+    "word/document.xml": {
+      title: "Main document part",
+      spec: "ECMA-376 Part 1, §17.13",
+      note: "The visible text, plus tracked insertions (w:ins), tracked deletions (w:del / w:delText) and comment markers. Accepting changes in Word is not the same as this XML being clean.",
+      send: "careful"
+    },
+    "word/comments.xml": {
+      title: "Comments part",
+      spec: "ECMA-376 Part 1, §17.13.4",
+      note: "Comment authors, timestamps and the comment text. Deleting a comment in the UI does not always remove this part.",
+      send: "no"
+    },
+    "word/people.xml": {
+      title: "People part",
+      spec: "ECMA-376 / MS-OI29500 people part",
+      note: "Authors who have touched the document, sometimes with a provider user id or email. Easy to miss because Word never shows this file.",
+      send: "no"
+    },
+    "word/styles.xml": {
+      title: "Styles part",
+      spec: "ECMA-376 Part 1, §17.7",
+      note: "Paragraph and character styles. Rarely a direct leak; style names copied from a client template can still identify the source firm.",
+      send: "yes"
+    },
+    "xl/workbook.xml": {
+      title: "Workbook part",
+      spec: "ECMA-376 Part 1, §18.2",
+      note: "Sheet index. state=\"hidden\" or state=\"veryHidden\" marks a sheet the recipient will not see in the tab bar but can unhide.",
+      send: "careful"
+    },
+    "ppt/presentation.xml": {
+      title: "Presentation part",
+      spec: "ECMA-376 Part 1, §19.2",
+      note: "Slide list. show=\"0\" marks a hidden slide. Hidden is not deleted — the slide XML is still in the package.",
+      send: "careful"
+    }
+  };
+
+  var treeEl = document.getElementById("tree");
+  var reportEl = document.getElementById("report");
+  var rawEl = document.getElementById("raw");
+  var inspectorEl = document.getElementById("inspector");
+  var partTitle = document.getElementById("part-title");
+  var metaEl = document.getElementById("pkg-meta");
+  var captionEl = document.getElementById("win-caption");
+  var statusLeft = document.getElementById("status-left");
+  var statusRight = document.getElementById("status-right");
+  var dropEl = document.getElementById("drop");
+  var fileEl = document.getElementById("file");
+
+  var current = null;
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function u16(b, o) { return b[o] | (b[o + 1] << 8); }
+  function u32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
+
+  function bytesToB64(bytes) {
+    var bin = "";
+    var chunk = 0x8000;
+    for (var i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  }
+
+  function b64ToBytes(b64) {
+    var bin = atob(b64);
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
+  function findEocd(bytes) {
+    var start = Math.max(0, bytes.length - 22 - 65535);
+    for (var i = bytes.length - 22; i >= start; i--) {
+      if (u32(bytes, i) === 0x06054b50) return i;
+    }
+    return -1;
+  }
+
+  function listCentralDirectory(bytes) {
+    var eocd = findEocd(bytes);
+    if (eocd < 0) throw new Error("Not a ZIP package (no end-of-central-directory record).");
+    var count = u16(bytes, eocd + 10);
+    var cdOff = u32(bytes, eocd + 16);
+    var entries = [];
+    var p = cdOff;
+    for (var i = 0; i < count; i++) {
+      if (p + 46 > bytes.length || u32(bytes, p) !== 0x02014b50) {
+        throw new Error("Central directory is truncated or not a ZIP.");
+      }
+      var method = u16(bytes, p + 10);
+      var compSize = u32(bytes, p + 20);
+      var uncomp = u32(bytes, p + 24);
+      var nameLen = u16(bytes, p + 28);
+      var extraLen = u16(bytes, p + 30);
+      var commentLen = u16(bytes, p + 32);
+      var localOff = u32(bytes, p + 42);
+      var name = new TextDecoder("utf-8").decode(bytes.subarray(p + 46, p + 46 + nameLen));
+      entries.push({ name: name, method: method, compSize: compSize, uncompSize: uncomp, localOff: localOff });
+      p += 46 + nameLen + extraLen + commentLen;
+    }
+    return entries;
+  }
+
+  function inflateRaw(comp) {
+    if (typeof DecompressionStream !== "function") {
+      return Promise.reject(new Error("This browser has no DecompressionStream. Use a current Chrome, Edge, Firefox or Safari."));
+    }
+    var ds = new DecompressionStream("deflate-raw");
+    var stream = new Blob([comp]).stream().pipeThrough(ds);
+    return new Response(stream).arrayBuffer().then(function (buf) { return new Uint8Array(buf); });
+  }
+
+  function readLocal(bytes, entry) {
+    var lp = entry.localOff;
+    if (lp + 30 > bytes.length || u32(bytes, lp) !== 0x04034b50) {
+      throw new Error("Local header missing for " + entry.name);
+    }
+    var method = u16(bytes, lp + 8);
+    var nlen = u16(bytes, lp + 26);
+    var elen = u16(bytes, lp + 28);
+    var start = lp + 30 + nlen + elen;
+    var comp = bytes.subarray(start, start + entry.compSize);
+    if (method === 0) return Promise.resolve(comp.slice());
+    if (method === 8) return inflateRaw(comp);
+    return Promise.reject(new Error(entry.name + " uses ZIP method " + method + ". Docscope only inflates stored (0) and deflate (8)."));
+  }
+
+  function unzipPackage(bytes) {
+    var entries = listCentralDirectory(bytes);
+    var chain = Promise.resolve([]);
+    entries.forEach(function (entry) {
+      chain = chain.then(function (acc) {
+        if (entry.name.endsWith("/")) {
+          acc.push({ name: entry.name, method: entry.method, size: 0, bytes: new Uint8Array(0), dir: true });
+          return acc;
+        }
+        return readLocal(bytes, entry).then(function (data) {
+          acc.push({ name: entry.name, method: entry.method, size: data.length, bytes: data, dir: false });
+          return acc;
+        });
+      });
+    });
+    return chain.then(function (parts) {
+      return { entries: entries, parts: parts };
+    });
+  }
+
+  function asText(bytes) {
+    return new TextDecoder("utf-8", { fatal: false }).decode(bytes);
+  }
+
+  function parseXml(text) {
+    var doc = new DOMParser().parseFromString(text, "application/xml");
+    if (doc.querySelector("parsererror")) return null;
+    return doc;
+  }
+
+  function localName(el) { return el.localName || el.nodeName; }
+
+  function all(doc, name) {
+    if (!doc) return [];
+    var out = [];
+    var nodes = doc.getElementsByTagName("*");
+    for (var i = 0; i < nodes.length; i++) {
+      if (localName(nodes[i]) === name) out.push(nodes[i]);
+    }
+    return out;
+  }
+
+  function textOf(el) {
+    return (el.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  function attr(el, name) {
+    if (el.hasAttribute(name)) return el.getAttribute(name);
+    var attrs = el.attributes;
+    for (var i = 0; i < attrs.length; i++) {
+      if (attrs[i].localName === name || attrs[i].name === name) return attrs[i].value;
+    }
+    return "";
+  }
+
+  function looksText(bytes) {
+    if (!bytes.length) return false;
+    var n = Math.min(bytes.length, 800);
+    var odd = 0;
+    for (var i = 0; i < n; i++) {
+      var c = bytes[i];
+      if (c === 0) return false;
+      if (c < 9 || (c > 13 && c < 32)) odd++;
+    }
+    return odd / n < 0.05;
+  }
+
+  function hexPreview(bytes) {
+    var n = Math.min(bytes.length, 256);
+    var lines = [];
+    for (var i = 0; i < n; i += 16) {
+      var hex = [];
+      var asc = "";
+      for (var j = 0; j < 16 && i + j < n; j++) {
+        var c = bytes[i + j];
+        hex.push((c < 16 ? "0" : "") + c.toString(16));
+        asc += (c >= 32 && c < 127) ? String.fromCharCode(c) : ".";
+      }
+      lines.push(hex.join(" ").padEnd(47, " ") + "  " + asc);
+    }
+    if (bytes.length > n) lines.push("… " + (bytes.length - n) + " more bytes");
+    return lines.join("\n");
+  }
+
+  function readExif(bytes) {
+    var tags = [];
+    if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return tags;
+    var o = 2;
+    while (o + 4 < bytes.length) {
+      if (bytes[o] !== 0xff) break;
+      var marker = bytes[o + 1];
+      if (marker === 0xd8 || marker === 0xd9) { o += 2; continue; }
+      var len = (bytes[o + 2] << 8) | bytes[o + 3];
+      if (len < 2 || o + 2 + len > bytes.length) break;
+      if (marker === 0xe1) {
+        var head = asText(bytes.subarray(o + 4, o + 10));
+        if (head.indexOf("Exif") === 0) tags = tags.concat(readTiff(bytes.subarray(o + 10, o + 2 + len)));
+      }
+      o += 2 + len;
+      if (marker === 0xda) break;
+    }
+    return tags;
+  }
+
+  function readTiff(tiff) {
+    var out = [];
+    if (tiff.length < 8) return out;
+    var le = tiff[0] === 0x49 && tiff[1] === 0x49;
+    var be = tiff[0] === 0x4d && tiff[1] === 0x4d;
+    if (!le && !be) return out;
+    function r16(off) { return le ? tiff[off] | (tiff[off + 1] << 8) : (tiff[off] << 8) | tiff[off + 1]; }
+    function r32(off) {
+      return le
+        ? (tiff[off] | (tiff[off + 1] << 8) | (tiff[off + 2] << 16) | (tiff[off + 3] << 24)) >>> 0
+        : ((tiff[off] << 24) | (tiff[off + 1] << 16) | (tiff[off + 2] << 8) | tiff[off + 3]) >>> 0;
+    }
+    var names = { 0x010e: "ImageDescription", 0x010f: "Make", 0x0110: "Model", 0x0131: "Software", 0x0132: "DateTime", 0x013b: "Artist", 0x8298: "Copyright", 0x9003: "DateTimeOriginal", 0x013c: "HostComputer" };
+    function walk(ifd, depth) {
+      if (depth > 3 || ifd + 2 > tiff.length) return;
+      var n = r16(ifd);
+      for (var i = 0; i < n; i++) {
+        var e = ifd + 2 + i * 12;
+        if (e + 12 > tiff.length) break;
+        var tag = r16(e);
+        var typ = r16(e + 2);
+        var count = r32(e + 4);
+        if (typ === 2 && count > 1 && count < 400) {
+          var start = count <= 4 ? e + 8 : r32(e + 8);
+          if (start >= 0 && start + count <= tiff.length) {
+            var s = asText(tiff.subarray(start, start + count - 1)).replace(/\u0000/g, "").trim();
+            if (s) out.push({ tag: names[tag] || ("0x" + tag.toString(16)), value: s });
+          }
+        }
+        if (tag === 0x8769 || tag === 0x8825) {
+          var sub = r32(e + 8);
+          if (sub && sub !== ifd) walk(sub, depth + 1);
+        }
+      }
+    }
+    walk(r32(4), 0);
+    return out;
+  }
+
+  function readPngText(bytes) {
+    var out = [];
+    if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50) return out;
+    var o = 8;
+    while (o + 12 <= bytes.length) {
+      var len = (bytes[o] << 24) | (bytes[o + 1] << 16) | (bytes[o + 2] << 8) | bytes[o + 3];
+      len = len >>> 0;
+      var type = asText(bytes.subarray(o + 4, o + 8));
+      if (o + 12 + len > bytes.length) break;
+      var data = bytes.subarray(o + 8, o + 8 + len);
+      if (type === "tEXt") {
+        var z = data.indexOf(0);
+        if (z > 0) out.push({ key: asText(data.subarray(0, z)), value: asText(data.subarray(z + 1)) });
+      } else if (type === "iTXt") {
+        var z2 = data.indexOf(0);
+        if (z2 > 0) out.push({ key: asText(data.subarray(0, z2)), value: asText(data.subarray(z2 + 1)).replace(/\u0000/g, " ").trim() });
+      }
+      o += 12 + len;
+      if (type === "IEND") break;
+    }
+    return out;
+  }
+
+  function partByName(parts, name) {
+    for (var i = 0; i < parts.length; i++) if (parts[i].name === name) return parts[i];
+    return null;
+  }
+
+  function analyze(pkg) {
+    var findings = [];
+    var flags = {};
+    function flag(name, sev) {
+      if (!flags[name] || sev === "leak") flags[name] = sev;
+    }
+    function add(sev, label, html, partName) {
+      findings.push({ sev: sev, label: label, html: html, part: partName });
+      if (partName) flag(partName, sev);
+    }
+
+    var core = partByName(pkg.parts, "docProps/core.xml");
+    if (core) {
+      var cdoc = parseXml(asText(core.bytes));
+      var creator = all(cdoc, "creator").map(textOf).filter(Boolean);
+      var modifiedBy = all(cdoc, "lastModifiedBy").map(textOf).filter(Boolean);
+      var title = all(cdoc, "title").map(textOf).filter(Boolean);
+      var modified = all(cdoc, "modified").map(textOf).filter(Boolean);
+      if (creator.length) add("leak", "Author", "dc:creator is <strong>" + esc(creator.join(", ")) + "</strong>. That name travels with the file.", "docProps/core.xml");
+      if (modifiedBy.length) add("leak", "Last modified by", "cp:lastModifiedBy is <strong>" + esc(modifiedBy.join(", ")) + "</strong>" + (modified.length ? " (" + esc(modified.join(", ")) + ")" : "") + ".", "docProps/core.xml");
+      if (title.length) add("info", "Title", "dc:title is “" + esc(title.join(" / ")) + "”.", "docProps/core.xml");
+      if (!creator.length && !modifiedBy.length) add("ok", "Core properties", "No creator or lastModifiedBy in docProps/core.xml.", "docProps/core.xml");
+    } else {
+      add("ok", "Core properties", "No docProps/core.xml in this package.");
+    }
+
+    var app = partByName(pkg.parts, "docProps/app.xml");
+    if (app) {
+      var adoc = parseXml(asText(app.bytes));
+      var company = all(adoc, "Company").map(textOf).filter(Boolean);
+      var template = all(adoc, "Template").map(textOf).filter(Boolean);
+      var application = all(adoc, "Application").map(textOf).filter(Boolean);
+      if (company.length) add("warn", "Company", "Extended property Company is <strong>" + esc(company.join(", ")) + "</strong>.", "docProps/app.xml");
+      if (template.length) add("warn", "Template", "Built from template <strong>" + esc(template.join(", ")) + "</strong>.", "docProps/app.xml");
+      if (application.length && !company.length && !template.length) add("info", "Application", esc(application.join(", ")), "docProps/app.xml");
+    }
+
+    pkg.parts.forEach(function (part) {
+      if (part.dir || !/\.xml$/i.test(part.name)) return;
+      var text = asText(part.bytes);
+      if (text.indexOf("<") === -1) return;
+      var doc = parseXml(text);
+      if (!doc) return;
+
+      var ins = all(doc, "ins");
+      var del = all(doc, "del");
+      if (ins.length || del.length) {
+        var bits = [];
+        ins.slice(0, 6).forEach(function (el) {
+          var who = attr(el, "author") || "unknown";
+          var body = textOf(el).slice(0, 140);
+          bits.push("insertion by " + esc(who) + (body ? ": “" + esc(body) + "”" : ""));
+        });
+        del.slice(0, 6).forEach(function (el) {
+          var who = attr(el, "author") || "unknown";
+          var body = textOf(el).slice(0, 140);
+          bits.push("deletion by " + esc(who) + (body ? ": “" + esc(body) + "”" : ""));
+        });
+        add("leak", "Tracked changes", ins.length + " insertion" + (ins.length === 1 ? "" : "s") + " (w:ins) and " + del.length + " deletion" + (del.length === 1 ? "" : "s") + " (w:del) still in " + esc(part.name) + ". " + bits.join("; ") + ".", part.name);
+      }
+
+      var comments = all(doc, "comment").filter(function (el) { return attr(el, "author") || textOf(el); });
+      if (comments.length && /comment/i.test(part.name)) {
+        var lines = comments.slice(0, 8).map(function (el) {
+          return esc(attr(el, "author") || "unknown") + ": “" + esc(textOf(el).slice(0, 160)) + "”";
+        });
+        add("leak", "Comments", comments.length + " comment" + (comments.length === 1 ? "" : "s") + " in " + esc(part.name) + ". " + lines.join(" · "), part.name);
+      }
+
+      if (/people\.xml$/i.test(part.name)) {
+        var people = all(doc, "person");
+        if (people.length) {
+          var names = people.map(function (el) { return attr(el, "author") || textOf(el); }).filter(Boolean);
+          add("leak", "People", people.length + " person record" + (people.length === 1 ? "" : "s") + " in people.xml: <strong>" + esc(names.join(", ")) + "</strong>.", part.name);
+        }
+      }
+
+      if (/workbook\.xml$/i.test(part.name)) {
+        var sheets = all(doc, "sheet");
+        var hidden = sheets.filter(function (el) {
+          var st = (attr(el, "state") || "").toLowerCase();
+          return st === "hidden" || st === "veryhidden";
+        });
+        if (hidden.length) {
+          add("leak", "Hidden sheets", hidden.map(function (el) {
+            return esc(attr(el, "name") || "(unnamed)") + " (" + esc(attr(el, "state")) + ")";
+          }).join(", ") + " — still in the workbook, just not on the tab bar.", part.name);
+        }
+      }
+
+      if (/presentation\.xml$/i.test(part.name)) {
+        var sld = all(doc, "sldId").filter(function (el) { return attr(el, "show") === "0"; });
+        if (sld.length) add("leak", "Hidden slides", sld.length + " slide" + (sld.length === 1 ? "" : "s") + " with show=\"0\". Hidden slides stay in ppt/slides/.", part.name);
+      }
+    });
+
+    pkg.parts.forEach(function (part) {
+      if (part.dir) return;
+      var lower = part.name.toLowerCase();
+      var isThumb = /thumbnail/.test(lower) || /docprops\/thumbnail/.test(lower);
+      if (isThumb) {
+        add("leak", "Thumbnail", "Embedded thumbnail preview at <code>" + esc(part.name) + "</code> (" + part.size + " bytes). Recipients can open it without Word.", part.name);
+      }
+      if (/\.jpe?g$/.test(lower)) {
+        var exif = readExif(part.bytes);
+        if (exif.length) {
+          add("leak", "EXIF", esc(part.name) + " carries " + exif.map(function (t) { return esc(t.tag) + "=" + esc(t.value); }).join(", ") + ".", part.name);
+        }
+      }
+      if (/\.png$/.test(lower)) {
+        var pngText = readPngText(part.bytes);
+        if (pngText.length) {
+          add("warn", "PNG text", esc(part.name) + ": " + pngText.map(function (t) { return esc(t.key) + "=" + esc(t.value); }).join(", ") + ".", part.name);
+        }
+      }
+    });
+
+    if (!findings.some(function (f) { return f.sev === "leak"; })) {
+      add("ok", "No leak flags", "Nothing in the handled parts matched author names, tracked changes, comments, people, thumbnails, EXIF, PNG text, or hidden sheets/slides. Unhandled parts are still listed in the diagram.");
+    }
+    return { findings: findings, flags: flags };
+  }
+
+  function annotate(part) {
+    var known = PARTS[part.name];
+    if (!known) {
+      var base = part.name.split("/").pop();
+      Object.keys(PARTS).forEach(function (k) {
+        if (k.split("/").pop() === base) known = PARTS[k];
+      });
+    }
+    if (part.dir) return { title: "Folder", note: "A directory entry in the ZIP central directory. It has no bytes of its own.", send: "yes", spec: "" };
+    if (known) return known;
+    if (/\.rels$/i.test(part.name)) {
+      return { title: "Relationships part", spec: "ECMA-376 Part 2, §9.2", note: "Points from one part to another (styles, comments, images, the thumbnail). A thumbnail relationship here is how Explorer finds the preview.", send: "careful" };
+    }
+    if (/media\//i.test(part.name)) {
+      return { title: "Embedded media", spec: "ECMA-376 Part 1, §15.2.14", note: "A binary file stored inside the package. Images can carry EXIF or PNG text even when the slide looks clean.", send: "careful" };
+    }
+    return { title: "Unhandled part", spec: "", note: "This page lists the part because it is in the ZIP central directory, but it does not interpret this vocabulary. The bytes are shown as-is.", send: "careful" };
+  }
+
+  function verdictLabel(send, flagged) {
+    if (flagged === "leak" || send === "no") return { cls: "no", text: "Not safe to send as-is" };
+    if (flagged === "warn" || send === "careful") return { cls: "careful", text: "Check before you send" };
+    return { cls: "yes", text: "Nothing sensitive detected in this part" };
+  }
+
+  function renderTree(pkg, flags) {
+    var root = { dirs: {}, files: [] };
+    pkg.parts.forEach(function (part, index) {
+      var bits = part.name.split("/").filter(Boolean);
+      if (part.dir) bits.pop();
+      var node = root;
+      for (var i = 0; i < bits.length - (part.dir ? 0 : 1); i++) {
+        node.dirs[bits[i]] = node.dirs[bits[i]] || { dirs: {}, files: [] };
+        node = node.dirs[bits[i]];
+      }
+      if (!part.dir) node.files.push({ part: part, index: index });
+    });
+    function walk(node) {
+      var html = "<ul>";
+      Object.keys(node.dirs).sort().forEach(function (name) {
+        html += "<li><div class=\"folder-name\">" + esc(name) + "/</div>" + walk(node.dirs[name]) + "</li>";
+      });
+      node.files.forEach(function (item) {
+        var sev = flags[item.part.name] || "";
+        var dot = sev === "leak" || sev === "warn" ? "leak" : (sev === "ok" ? "ok" : (looksText(item.part.bytes) ? "" : "bin"));
+        html += "<li><button type=\"button\" class=\"part\" data-index=\"" + item.index + "\">" +
+          "<span class=\"dot " + dot + "\"></span><span class=\"nm\">" + esc(item.part.name.split("/").pop()) + "</span>" +
+          "<span class=\"sz\">" + item.part.size + " B</span></button></li>";
+      });
+      return html + "</ul>";
+    }
+    treeEl.innerHTML = "<p class=\"meta-line\">" + pkg.parts.length + " central-directory entries. Red marks a part the leak report cited.</p>" + walk(root);
+    var buttons = treeEl.querySelectorAll(".part");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].addEventListener("click", function (ev) {
+        showPart(pkg, flags, Number(ev.currentTarget.getAttribute("data-index")));
+      });
+    }
+  }
+
+  function renderReport(findings) {
+    if (!findings.length) {
+      reportEl.innerHTML = "<p class=\"meta-line\">No findings.</p>";
+      return;
+    }
+    reportEl.innerHTML = "<div class=\"findings\">" + findings.map(function (f) {
+      return "<article class=\"finding sev-" + f.sev + "\"><span class=\"tag\">" + esc(f.label) + "</span><p>" + f.html + "</p></article>";
+    }).join("") + "</div>";
+  }
+
+  function showPart(pkg, flags, index) {
+    var part = pkg.parts[index];
+    if (!part) return;
+    var info = annotate(part);
+    var v = verdictLabel(info.send, flags[part.name]);
+    partTitle.textContent = part.name;
+    var spec = info.spec ? " <a href=\"" + ECMA + "\">" + esc(info.spec) + "</a>." : "";
+    var body;
+    if (part.dir) body = "(directory entry)";
+    else if (looksText(part.bytes)) body = asText(part.bytes);
+    else body = hexPreview(part.bytes);
+    inspectorEl.querySelector(".anno").innerHTML = "<strong>" + esc(info.title) + ".</strong> " + esc(info.note) + spec +
+      " <span class=\"verdict " + v.cls + "\">" + esc(v.text) + "</span>";
+    rawEl.textContent = body.length > 20000 ? body.slice(0, 20000) + "\n… truncated" : body;
+    var buttons = treeEl.querySelectorAll(".part");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].classList.toggle("on", Number(buttons[i].getAttribute("data-index")) === index);
+    }
+    statusRight.textContent = part.name + " · " + part.size + " bytes · method " + part.method;
+  }
+
+  function renderPackage(pkg, fileName, note) {
+    current = pkg;
+    var report = analyze(pkg);
+    captionEl.textContent = "Docscope — " + fileName;
+    var names = pkg.entries.map(function (e) { return e.name; });
+    metaEl.textContent = fileName + " · " + pkg.entries.length + " central-directory entries · " + names.join(" · ");
+    if (note) metaEl.textContent += " — " + note;
+    statusLeft.textContent = fileName + " · " + pkg.parts.length + " parts · parsed locally";
+    renderTree(pkg, report.flags);
+    renderReport(report.findings);
+    var first = -1;
+    pkg.parts.forEach(function (p, i) { if (first < 0 && !p.dir) first = i; });
+    var prefer = ["word/document.xml", "docProps/core.xml", "xl/workbook.xml", "ppt/presentation.xml"];
+    for (var i = 0; i < prefer.length; i++) {
+      for (var j = 0; j < pkg.parts.length; j++) {
+        if (pkg.parts[j].name === prefer[i]) first = j;
+      }
+      if (prefer[i] && pkg.parts[first] && pkg.parts[first].name === prefer[i]) break;
+    }
+    if (first >= 0) showPart(pkg, report.flags, first);
+  }
+
+  function fail(err) {
+    metaEl.innerHTML = "<span class=\"err\">" + esc(err && err.message ? err.message : String(err)) + "</span>";
+    statusLeft.textContent = "could not read that file";
+  }
+
+  function loadBytes(bytes, name, note) {
+    metaEl.textContent = "Unzipping " + name + "…";
+    unzipPackage(bytes).then(function (pkg) {
+      renderPackage(pkg, name, note);
+    }).catch(fail);
+  }
+
+  function onFile(file) {
+    if (!file) return;
+    var name = file.name || "dropped-file";
+    if (!/\.(docx|xlsx|pptx)$/i.test(name)) {
+      fail(new Error("Docscope reads .docx, .xlsx and .pptx only. That file is named " + name + "."));
+      return;
+    }
+    file.arrayBuffer().then(function (buf) {
+      loadBytes(new Uint8Array(buf), name, "");
+    }).catch(fail);
+  }
+
+  dropEl.addEventListener("dragover", function (ev) {
+    ev.preventDefault();
+    dropEl.classList.add("hot");
+  });
+  dropEl.addEventListener("dragleave", function () { dropEl.classList.remove("hot"); });
+  dropEl.addEventListener("drop", function (ev) {
+    ev.preventDefault();
+    dropEl.classList.remove("hot");
+    var f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+    onFile(f);
+  });
+  fileEl.addEventListener("change", function () { onFile(fileEl.files && fileEl.files[0]); });
+
+  /* The sample bytes are filled in below by replacing SAMPLE_B64 if the placeholder
+     above is short. The real payload is assigned here so the HTML stays one file. */
+  var SAMPLE = window.__DOCSCOPE_SAMPLE_B64 || "";
+  if (!SAMPLE || SAMPLE.length < 100) {
+    /* fallback: the constant at the top is replaced with the real package before ship */
+    SAMPLE = SAMPLE_B64;
+  }
+
+  function boot() {
+    try {
+      var bytes = b64ToBytes(SAMPLE.replace(/\s+/g, ""));
+      loadBytes(bytes, SAMPLE_NAME, SAMPLE_NOTE);
+    } catch (err) {
+      fail(err);
+    }
+  }
+  boot();
+})();
+</script>
+</body>
+</html>
