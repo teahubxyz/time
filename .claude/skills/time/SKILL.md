@@ -11,7 +11,7 @@ You (Claude Code, Cursor, or any agent with `gh`) are the hands for setup and th
 ## You are here
 
 ```
- chat ─writes─▶ card = issue (spec + DONE:) ─label `ready`─▶ heartbeat (hourly)
+ chat ─writes─▶ card = issue (spec + DONE:) ─label `ready`─▶ heartbeat (on label + hourly)
                                                               │
    dry-run ◀─────────── TIME_MODE ───────────▶ live           ▼
    "would dispatch"                     Cursor cloud agent ─▶ PR "Closes #N"
@@ -40,6 +40,14 @@ Files: `.github/workflows/{heartbeat,mention,doctor}.yml`, `.github/time/time.py
 6. Check: `gh workflow run doctor.yml`, wait for `gh run list --workflow doctor.yml -L 1` to finish, then read it with `gh run view --log` (or the run summary). It runs the offline tests, then checks the label, settings and keys, and lists the Cursor models the key can use. Use one of those ids for `TIME_CURSOR_MODEL` or a `cursor:<id>` reviewer.
 7. Prove the clock in dry-run: make a small card (below) with the `ready` label, run `gh workflow run heartbeat.yml`, and confirm Time comments "would dispatch".
 8. Report to the human: what was already set, what you set, what's still missing (by name), and that it's in dry-run.
+
+## Working from Cursor
+
+The human can run everything from Cursor's chat in this repo:
+- "Make a card for X" → you write the issue (`gh issue create --title ... --body ...` with a `DONE:` line) and add `--label ready` once they agree. Labelling `ready` starts the heartbeat within about a minute; in live mode that launches the cloud agent.
+- "What's in flight?" → `gh issue list -l ready` plus the latest Time comment on each card, and `gh pr list`.
+- When the PR appears, review it with them here (`gh pr diff N`, `gh pr checkout N`) and merge when they say so.
+- One-off work that doesn't need a card can still go straight to Cursor's own Cloud agents from the Cursor UI; cards are for work that should have a finish line, a review and a place in the log.
 
 ## Writing a card
 
