@@ -28,7 +28,7 @@ jobs:
         (startsWith(github.event.comment.body, '**Approve') || startsWith(github.event.comment.body, 'Approve') ||
          startsWith(github.event.comment.body, '**Object') || startsWith(github.event.comment.body, 'Object'))))
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v5
         with:
