@@ -739,6 +739,54 @@ SHEET = """<!doctype html><html><body style="margin:0;background:#e8e4da;display
 <iframe src="{page}" width="1280" height="800" style="border:0;transform:scale(.6);transform-origin:0 0"></iframe></div></body></html>"""
 
 
+JUDGE = """You review the product code of a launch page that an agent built. The product is supposed to do this:
+{page}
+
+Its README claims:
+{readme}
+
+Its JavaScript:
+```js
+{code}
+```
+
+When a user gives it their own input (text, numbers or a file), does the code really process that input to produce what it
+shows? Or does it show canned, hardcoded, simulated or "representative" results that don't depend on the input, whatever
+the comments claim? Then list features the page or README says the FREE product does today that the code doesn't implement.
+Don't count paid or early-access tiers, the next version, anything under limits or "not yet", or the GitHub links.
+Reply with ONLY JSON:
+{{"real": true, "evidence": "one or two sentences, quoting the code", "missing": ["a claimed feature that isn't implemented"]}}"""
+
+
+def judge_product(w: dict) -> tuple[list[str], str]:
+    """Inference after the deterministic gates: does the output depend on the input, and does the code do what's claimed?"""
+    slug = w["slug"]
+    page = pages_file(f"ventures/{slug}/index.html") or ""
+    code = "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I))
+    for a in re.findall(r"<script\b[^>]*\bsrc\s*=\s*[\"']([^\"'#?]+\.js)", page, re.I):
+        if not re.match(r"(?:https?:)?//", a):
+            code += "\n" + (pages_file(f"ventures/{slug}/{a.lstrip('./')}") or "")
+    if len(code) > 40000:
+        code = code[:28000] + "\n/* ... */\n" + code[-12000:]
+    seat = env("TIME_VENTURE_JUDGE", "grok")
+    try:
+        v = ask_json(seat, f"You are `{seat}`, a strict code reviewer. Reply with JSON only.",
+                     JUDGE.format(page=w.get("page", ""), readme=(pages_file(f"ventures/{slug}/README.md") or "")[:3000], code=code))
+    except Exception as e:  # noqa: BLE001  the judge being away never blocks a launch; the gates above still hold
+        return [], f"honesty review skipped ({str(e)[:80]})"
+    if not v or "real" not in v:
+        return [], "honesty review skipped (no verdict)"
+    problems = []
+    if v.get("real") is False:
+        problems.append(f"the product doesn't really process the user's input ({_s(v.get('evidence'), 300)}): make every result "
+                        f"come from the input, the preloaded sample included, through the same code")
+    missing = [_s(m, 160) for m in (v.get("missing") or []) if _s(m)][:3]
+    if missing:
+        problems.append("the page or README claims features the code doesn't have: " + "; ".join(missing) +
+                        ". Build them or take the claims off the page and README")
+    return problems, f"`{seat}` reviewed the code: {_s(v.get('evidence'), 200)}"
+
+
 def dead(result: dict) -> bool:
     """#try with scripts on looks like #try with scripts off: the product rendered nothing of its own."""
     live, nojs = result.get("live"), result.get("nojs")
@@ -1088,6 +1136,9 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             problems, sheet, note = check_page(w, plan), None, "browser pass not run"
             if not problems:
                 problems, sheet, note = browser_check(w["slug"])
+            if not problems:  # the inference tier, only once the cheap gates pass
+                problems, verdict = judge_product(w)
+                note = f"{note}; {verdict}"
             fixes = int(st.get("fixes", 0))
             if problems:
                 bullets = "\n".join(f"- {p}" for p in problems)

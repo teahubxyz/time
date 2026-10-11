@@ -405,6 +405,10 @@ def seat_brain(seat, model, effort, system, user):
         return json.dumps({"ranking": ["mdecks", f"deck-{seat}"], "reason": "specific person"})
     if "Write the launch plan" in user:
         return "Here is my plan:\n" + json.dumps({**GOOD, "positioning": f"{GOOD['positioning']} ({seat})"})
+    if "You review the product code" in user:
+        fake = "createRealisticParsedParts" in user
+        return json.dumps({"real": not fake, "evidence": "createRealisticParsedParts returns fixed parts" if fake else "render() uses the textarea",
+                           "missing": []})
     if "You write launch posts for" in user:
         assert "What the product does, from its README" in user and "never invent" in user.lower()
         return json.dumps({"launch_channels": [{"channel": "Show HN", "draft": "Show HN: MDecks, built by an agent-run studio"}]})
@@ -696,3 +700,18 @@ vt._build_on_pages = spy
 vtick()
 assert specs == ["venice:grok 4.7"] and "(grok-4-7)" in W.text(c28), (specs, W.text(c28)[-200:])
 print("ALL OK 20")
+
+# 29 the honesty review: canned output that dodges the phrase check is still caught by the reviewing seat
+W = VWorld()
+vt.tm.http, vt.tm.think = W.http, seat_brain
+good = page_from(vt.build_body(w16, plan16))
+W.files["ventures/mdecks/README.md"] = "x" * 300
+W.files["ventures/mdecks/index.html"] = good
+assert vt.judge_product(w16)[0] == []
+W.files["ventures/mdecks/index.html"] = good.replace("<script>", "<script>function createRealisticParsedParts(f){return {a:1}}\n")
+probs, note = vt.judge_product(w16)
+assert probs and "doesn't really process" in probs[0] and "createRealisticParsedParts" in probs[0], probs
+vt.tm.think = lambda *a: (_ for _ in ()).throw(RuntimeError("POST x -> 429: overloaded"))
+assert vt.judge_product(w16)[0] == [] and "skipped" in vt.judge_product(w16)[1]
+vt.tm.think = seat_brain
+print("ALL OK 21")
