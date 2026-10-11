@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Time · an agent factory that lives in your GitHub repo</title>
+<meta name="description" content="Label an issue, get a merged PR. Time is a GitHub-native agent factory: issues are the ledger, GitHub Actions is the clock, and AI seats plan, build, review and merge.">
+<style>
+:root{
+  --navy:#0c2340; --navy2:#0f2b4f; --line:#8fd3ff; --line2:rgba(143,211,255,.55); --faint:rgba(143,211,255,.16);
+  --paper:#eaf6ff; --mute:#9cb6cf; --amber:#ffc857; --red:#ff7a6b; --green:#8ee6a8;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  --sans:"Avenir Next","Avenir","Segoe UI","Helvetica Neue",Arial,sans-serif;
+  --cond:"Avenir Next Condensed","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif;
+}
+*{box-sizing:border-box}
+html{background:var(--navy)}
+body{margin:0;color:var(--paper);font:16px/1.6 var(--sans);
+  background:
+    linear-gradient(var(--faint) 1px,transparent 1px) 0 0/24px 24px,
+    linear-gradient(90deg,var(--faint) 1px,transparent 1px) 0 0/24px 24px,
+    linear-gradient(rgba(143,211,255,.07) 1px,transparent 1px) 0 0/120px 120px,
+    linear-gradient(90deg,rgba(143,211,255,.07) 1px,transparent 1px) 0 0/120px 120px,
+    var(--navy)}
+a{color:var(--line);text-underline-offset:3px}
+a:hover{color:#fff}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+.label{font:600 11px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--line)}
+.sheet{border:1.5px solid var(--line2);position:relative}
+.sheet::before,.sheet::after{content:"";position:absolute;width:14px;height:14px;border:1.5px solid var(--line)}
+.sheet::before{top:-6px;left:-6px;border-right:0;border-bottom:0}
+.sheet::after{bottom:-6px;right:-6px;border-left:0;border-top:0}
+
+/* title block */
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 0;border-bottom:1.5px solid var(--line2)}
+.mark{display:flex;align-items:center;gap:10px;font:700 15px/1 var(--mono);letter-spacing:.08em;color:var(--paper);text-decoration:none}
+.mark svg{flex:none}
+.top nav{display:flex;gap:18px;font:13px/1 var(--mono)}
+.top nav a{color:var(--mute);text-decoration:none}.top nav a:hover{color:var(--paper)}
+
+/* hero */
+.hero{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,.85fr);gap:40px;padding:56px 0 40px;align-items:center}
+h1{font:700 clamp(38px,5.6vw,66px)/.95 var(--cond);letter-spacing:-.01em;margin:14px 0 18px;text-transform:uppercase}
+h1 em{font-style:normal;color:var(--amber)}
+.lede{font-size:clamp(16px,2vw,19px);max-width:36em;color:#cfe6f8;margin:0 0 26px}
+.cta{display:inline-flex;align-items:center;gap:10px;background:var(--amber);color:#1a1300;font:700 16px/1 var(--sans);
+  padding:16px 22px;border-radius:2px;text-decoration:none;box-shadow:4px 4px 0 var(--line)}
+.cta:hover{color:#1a1300;transform:translate(-1px,-1px);box-shadow:5px 5px 0 var(--line)}
+.ctas{display:flex;flex-wrap:wrap;align-items:center;gap:22px}
+.quiet{font:14px/1.4 var(--mono);color:var(--line)}
+.fine{font:12px/1.5 var(--mono);color:var(--mute);margin-top:16px}
+.callout{padding:18px 18px 16px;background:rgba(12,35,64,.82)}
+.callout pre{margin:10px 0 0;font:13px/1.65 var(--mono);color:var(--paper);white-space:pre-wrap;overflow-wrap:anywhere}
+.callout .c{color:var(--mute)}.callout .g{color:var(--green)}.callout .a{color:var(--amber)}
+
+/* sections */
+section{padding:44px 0;border-top:1.5px solid var(--line2)}
+h2{font:700 clamp(28px,4.4vw,46px)/1 var(--cond);text-transform:uppercase;margin:8px 0 14px;letter-spacing:.005em}
+.sub{color:#cfe6f8;max-width:44em;margin:0 0 24px}
+.diagram{padding:12px;background:rgba(12,35,64,.7)}
+.diagram svg{display:block;width:100%;height:auto}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;margin-top:12px;font:12px/1.4 var(--mono);color:var(--mute)}
+.legend b{color:var(--paper);font-weight:600}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:22px}
+.cell{padding:18px;background:rgba(12,35,64,.78)}
+.cell h3{font:700 20px/1.1 var(--cond);text-transform:uppercase;margin:6px 0 8px}
+.cell p{margin:0;color:#cfe6f8;font-size:15px}
+.receipts{list-style:none;padding:0;margin:0;display:grid;gap:10px}
+.receipts li{display:grid;grid-template-columns:7.5em minmax(0,1fr);gap:14px;padding:12px 14px;background:rgba(12,35,64,.78);border-left:3px solid var(--green)}
+.receipts .k{font:600 12px/1.6 var(--mono);color:var(--green);text-transform:uppercase;letter-spacing:.08em}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0;display:grid;gap:16px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:3.2em minmax(0,1fr);gap:14px;align-items:start}
+.steps li::before{content:counter(s,decimal-leading-zero);font:700 30px/1 var(--cond);color:var(--amber)}
+code,.code{font:13px/1.6 var(--mono);background:rgba(143,211,255,.1);padding:1px 6px;border-radius:2px;overflow-wrap:anywhere}
+.limits{columns:2;column-gap:36px;padding-left:18px;margin:0}
+.limits li{break-inside:avoid;margin:0 0 10px;color:#cfe6f8}
+.ventures{display:grid;gap:10px}
+.venture{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;padding:14px;background:rgba(12,35,64,.78);text-decoration:none;color:var(--paper)}
+.venture:hover{background:var(--navy2);color:#fff}
+.venture b{font:700 20px/1.1 var(--cond);text-transform:uppercase}
+.venture span{display:block;color:var(--mute);font-size:14px}
+.tag{align-self:center;font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;border:1.5px solid var(--line);padding:5px 8px;color:var(--line)}
+footer{padding:30px 0 60px;border-top:1.5px solid var(--line2);font:12px/1.7 var(--mono);color:var(--mute)}
+@media (max-width:860px){
+  .hero{grid-template-columns:1fr;padding-top:36px}
+  .grid3{grid-template-columns:1fr}
+  .limits{columns:1}
+}
+@media (max-width:520px){
+  .top nav{display:none}
+  .receipts li{grid-template-columns:1fr;gap:4px}
+  .cta{padding:15px 18px}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="mark" href="./" aria-label="Time home">
+      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11.5" fill="none" stroke="#8fd3ff" stroke-width="1.5"/><path d="M13 5v8l5 3" fill="none" stroke="#ffc857" stroke-width="2" stroke-linecap="round"/></svg>
+      TIME
+    </a>
+    <nav><a href="#loop">The loop</a><a href="#proof">Proof</a><a href="#start">Start</a><a href="ventures/">Ventures</a><a href="https://github.com/teahubxyz/time">GitHub</a></nav>
+  </header>
+
+  <div class="hero">
+    <div>
+      <div class="label">Drawing 01 · a GitHub-native agent factory</div>
+      <h1>Label an issue.<br><em>Get a merged PR.</em></h1>
+      <p class="lede">Time lives in your repository. Issues are the ledger, GitHub Actions is the clock, and AI seats plan the work,
+        write the code and review it; Time merges what passes. A human steps in only where it matters: objections, red checks, and the paths you protect.</p>
+      <div class="ctas">
+        <a class="cta" href="https://github.com/teahubxyz/time/generate" target="_blank" rel="noopener">Use this template →</a>
+        <a class="quiet" href="#proof">See it work ↓</a>
+      </div>
+      <p class="fine">Free and open on GitHub. You bring a Venice API key for the seats; runners are GitHub's.</p>
+    </div>
+    <div class="callout sheet" aria-label="What a card looks like">
+      <div class="label">Fig. 1 · card #7, as it ran</div>
+      <pre><span class="c"># written by the planner from spec #5</span>
+Add a `## Status` section at the end
+of README.md that links to CHANGELOG.md
+
+Part of #5 (step 2/2). Depends on #6.
+<span class="a">DONE:</span> README.md links to CHANGELOG.md
+
+<span class="c"># the thread</span>
+<span class="g">⏱️</span> #6 merged: queued → ready
+<span class="g">⏱️</span> qwen is working on this now
+<span class="g">⏱️</span> qwen opened PR #10 (13 steps)
+<span class="g">✔</span>  grok: Approve
+<span class="g">⏱️</span> approved and green, merged PR #10</pre>
+    </div>
+  </div>
+</div>
+
+<section id="loop">
+  <div class="wrap">
+    <div class="label">Drawing 02 · the loop</div>
+    <h2>One spec in, merged cards out</h2>
+    <p class="sub">Write a spec as an issue and label it <code>spec</code>. Time splits it into cards with dependencies, runs them one at a time,
+      and pulls the next card the moment one merges. Every step is a comment on the card, so the ledger is the issue thread itself.</p>
+    <div class="diagram sheet">
+      <svg viewBox="0 0 1060 300" role="img" aria-label="Spec issue, planner, cards, worker opens a PR, reviewer approves, checks pass, auto-merge, next card; objections, red checks and protected paths go to a human.">
+        <defs><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#8fd3ff"/></marker>
+        <marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" fill="#ff7a6b"/></marker></defs>
+        <g font-family="ui-monospace,Menlo,Consolas,monospace" font-size="13" fill="#eaf6ff">
+          <g stroke="#8fd3ff" stroke-width="1.5" fill="rgba(12,35,64,.9)">
+            <rect x="10" y="60" width="120" height="64"/><rect x="170" y="60" width="120" height="64"/><rect x="330" y="60" width="130" height="64"/>
+            <rect x="500" y="60" width="130" height="64"/><rect x="670" y="60" width="120" height="64"/><rect x="830" y="60" width="120" height="64"/>
+          </g>
+          <text x="70" y="88" text-anchor="middle">spec issue</text><text x="70" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">label: spec</text>
+          <text x="230" y="88" text-anchor="middle">planner</text><text x="230" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">cards + deps</text>
+          <text x="395" y="88" text-anchor="middle">worker</text><text x="395" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">a seat with hands</text>
+          <text x="565" y="88" text-anchor="middle">PR</text><text x="565" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">"Closes #N"</text>
+          <text x="730" y="88" text-anchor="middle">reviewer</text><text x="730" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">Approve/Object</text>
+          <text x="890" y="88" text-anchor="middle">auto-merge</text><text x="890" y="108" text-anchor="middle" fill="#9cb6cf" font-size="11">checks green</text>
+          <g stroke="#8fd3ff" stroke-width="1.5" fill="none" marker-end="url(#ar)">
+            <path d="M130 92H166"/><path d="M290 92H326"/><path d="M460 92H496"/><path d="M630 92H666"/><path d="M790 92H826"/>
+            <path d="M950 92H1000V200H395V128"/>
+          </g>
+          <text x="410" y="222" fill="#ffc857" font-size="12">merged → the next card starts</text>
+          <g stroke="#ff7a6b" stroke-width="1.5" fill="none" stroke-dasharray="5 4" marker-end="url(#am)"><path d="M730 124V262H776"/></g>
+          <rect x="780" y="244" width="166" height="36" fill="rgba(255,122,107,.12)" stroke="#ff7a6b" stroke-width="1.5"/>
+          <text x="863" y="267" text-anchor="middle" fill="#ff7a6b">needs-human</text>
+          <text x="722" y="262" text-anchor="end" fill="#9cb6cf" font-size="11">objection · red checks · protected paths</text>
+          <g stroke="#8fd3ff" stroke-width="1" fill="none"><path d="M10 40H950"/><path d="M10 34v12M950 34v12"/></g>
+          <text x="480" y="30" text-anchor="middle" fill="#8fd3ff" font-size="11">one Actions run per beat · every beat is a comment on the card</text>
+        </g>
+      </svg>
+      <div class="legend"><span><b>Clock</b> GitHub Actions: hourly, and right away on labels and reviews</span><span><b>Brains</b> Venice seats: Kimi, Grok, Qwen, DeepSeek, GLM, Gemini</span><span><b>Ledger</b> the issue thread</span></div>
+    </div>
+    <div class="grid3" style="margin-top:22px">
+      <div class="cell sheet"><div class="label">Seats</div><h3>@mention a model</h3><p>Write <code>@grok</code>, <code>@kimi high</code> or <code>@qwen max</code> in any issue or PR and that seat answers in the thread. Only you and your collaborators can summon them.</p></div>
+      <div class="cell sheet"><div class="label">Hands</div><h3>The worker codes</h3><p>A seat edits the repo on its own branch, runs the tests on a runner, and opens the PR itself. Workflow files and secrets stay out of its reach.</p></div>
+      <div class="cell sheet"><div class="label">Updates</div><h3>One engine, many repos</h3><p>Every copy gets a weekly pull request with the latest engine from teahubxyz/time, the way a CMS updates itself, so projects don't drift.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="proof">
+  <div class="wrap">
+    <div class="label">Drawing 03 · receipts</div>
+    <h2>Proof, not promises</h2>
+    <p class="sub">This repo's own history, nothing staged and nothing smoothed over. Click through: every step is a public comment.</p>
+    <ul class="receipts">
+      <li><span class="k">Spec</span><span><a href="https://github.com/teahubxyz/time/issues/5">#5</a> was labelled <code>spec</code>; the planner split it into cards <a href="https://github.com/teahubxyz/time/issues/6">#6</a> and <a href="https://github.com/teahubxyz/time/issues/7">#7</a>, the second waiting on the first.</span></li>
+      <li><span class="k">First card</span><span>#6 hit four setup problems on its way (a model without tool calling, Actions not yet allowed to open PRs, no CI check, a missing permission). Each was fixed in the engine or the settings, and the card was retried with <code>/time retry</code>. Then Qwen opened <a href="https://github.com/teahubxyz/time/pull/9">PR #9</a>, Grok approved it, and Time merged it.</span></li>
+      <li><span class="k">Second card</span><span>#7 was promoted the moment #9 merged. Qwen opened <a href="https://github.com/teahubxyz/time/pull/10">PR #10</a> a minute later, Grok approved, and Time merged it and closed the card. No human comment, label or click on the card or its PR.</span></li>
+      <li><span class="k">Ventures</span><span>The same machinery runs a small venture studio: it reads what's trending on GitHub, the seats pitch and vote, write a launch plan, build the page and measure signups. <a href="ventures/">See the ventures →</a></span></li>
+    </ul>
+  </div>
+</section>
+
+<section id="start">
+  <div class="wrap">
+    <div class="label">Drawing 04 · start</div>
+    <h2>Running in four steps</h2>
+    <ol class="steps">
+      <li><div><b>Use the template.</b> <a href="https://github.com/teahubxyz/time/generate" target="_blank" rel="noopener">Create your copy</a> of teahubxyz/time; it's yours, public or private.</div></li>
+      <li><div><b>Give the seats a key.</b> <span class="code">gh secret set VENICE_API_KEY</span></div></li>
+      <li><div><b>Turn it on.</b> <span class="code">gh variable set TIME_MODE --body live</span>, <span class="code">TIME_WORKER --body "venice:qwen coder"</span>, <span class="code">TIME_REVIEW --body venice:grok</span>, and <span class="code">TIME_AUTOMERGE --body on</span> when you're ready to let it merge.</div></li>
+      <li><div><b>Write a spec.</b> Open an issue that lists the cards, each with a <code>DONE:</code> line, and label it <code>spec</code>. Watch the thread.</div></li>
+    </ol>
+    <p class="fine">Or open your copy in Claude Code and say "set up Time": the setup skill in <code>.claude/skills/time</code> walks through it, and the Doctor workflow checks labels, settings and keys.</p>
+  </div>
+</section>
+
+<section id="limits">
+  <div class="wrap">
+    <div class="label">Drawing 05 · tolerances</div>
+    <h2>Honest limits</h2>
+    <ul class="limits">
+      <li>The seats are as good as the models behind them. Small, well-scoped cards with a clear <code>DONE:</code> line work best.</li>
+      <li>You pay Venice for the seats. GitHub's runners are free for public repos and metered for private ones.</li>
+      <li>GitHub won't let Actions edit workflow files, so changes there (and anything under paths you protect) wait for a human.</li>
+      <li>Dry-run is the default and there is a daily cap; turning on auto-merge is your call, per repo.</li>
+      <li>On a public repo, only you and your collaborators can trigger seats or count as a reviewer. Never attach a self-hosted runner to a public repo.</li>
+      <li>It's young software: the engine changes weekly, and the update pull request tells you what changed.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="ventures">
+  <div class="wrap">
+    <div class="label">Drawing 06 · output</div>
+    <h2>Latest ventures</h2>
+    <p class="sub">Built and launched by the venture loop on this repo; each one decides its own future after seven days of signups.</p>
+    <div class="ventures" id="vlist"><a class="venture" href="ventures/"><div><b>The studio index</b><span>Every venture, its status and its signups.</span></div><span class="tag">open</span></a></div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">Time · <a href="https://github.com/teahubxyz/time">github.com/teahubxyz/time</a> · this page is static and loads nothing from other sites; the venture list below the fold is read from this site's own ventures.json.</div>
+</footer>
+
+<script>
+(function(){
+  var box=document.getElementById("vlist");
+  fetch("ventures/ventures.json",{cache:"no-store"}).then(function(r){return r.ok?r.json():null}).then(function(d){
+    if(!d||!d.ventures||!d.ventures.length)return;
+    var vs=d.ventures.slice().sort(function(a,b){return (b.planned||"").localeCompare(a.planned||"")||(b.card||0)-(a.card||0)}).slice(0,4);
+    box.innerHTML="";
+    vs.forEach(function(v){
+      var a=document.createElement("a");a.className="venture";a.href="ventures/"+encodeURIComponent(v.slug)+"/";
+      var d1=document.createElement("div"),b=document.createElement("b"),s=document.createElement("span"),t=document.createElement("span");
+      b.textContent=v.name||v.slug;s.textContent=(v.one_liner||"")+(v.signups?" · "+v.signups+" signups":"");
+      t.className="tag";t.textContent=v.status||"building";
+      d1.appendChild(b);d1.appendChild(s);a.appendChild(d1);a.appendChild(t);box.appendChild(a);
+    });
+    var all=document.createElement("a");all.className="venture";all.href="ventures/";
+    all.innerHTML='<div><b>All ventures</b><span>The studio index, with status and signups.</span></div><span class="tag">index</span>';
+    box.appendChild(all);
+  }).catch(function(){});
+})();
+</script>
+</body>
+</html>
