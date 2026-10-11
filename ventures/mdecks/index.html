@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MDecks — plain text in, clean slides out</title>
+<meta name="description" content="Type markdown-ish slides, watch a clean navigable deck render live, copy it as one self-contained HTML file. Free, runs entirely in your browser.">
+<style>
+  :root {
+    --paper: #f4f1e8;
+    --paper-2: #ede9dd;
+    --ink: #1c1a16;
+    --ink-soft: #4a463d;
+    --mute: #6d675b;
+    --rule: #c9c1ae;
+    --accent: #b8400f;
+    --accent-dark: #93320a;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 16px;
+    line-height: 1.6;
+  }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 0 22px; }
+  a { color: var(--ink); text-decoration-color: var(--accent); text-underline-offset: 3px; }
+  a:hover { color: var(--accent); }
+
+  /* ---------- masthead / hero ---------- */
+  .topline {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 14px 0 10px;
+    border-bottom: 1px solid var(--rule);
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--mute);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  header.hero { border-bottom: 3px double var(--ink); padding: clamp(26px, 6vh, 64px) 0 clamp(22px, 4vh, 40px); }
+  .kicker {
+    margin: 0 0 10px;
+    font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .22em; text-transform: uppercase; color: var(--accent);
+  }
+  h1.nameplate {
+    margin: 0;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(52px, 15vw, 128px);
+    line-height: .88;
+    letter-spacing: -.035em;
+  }
+  h1.nameplate em { font-style: italic; color: var(--accent); }
+  .promise {
+    margin: 14px 0 20px;
+    font-size: clamp(17px, 2.6vw, 22px);
+    line-height: 1.45;
+    max-width: 34em;
+    color: var(--ink-soft);
+  }
+  .hero-actions { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .btn {
+    display: inline-block;
+    background: var(--ink); color: var(--paper);
+    border: 1.5px solid var(--ink);
+    padding: 12px 26px;
+    font: 600 16px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .04em;
+    text-decoration: none; cursor: pointer;
+    touch-action: manipulation;
+  }
+  .btn:hover { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+  .try-link { font-size: 15px; }
+  .fineprint {
+    margin: 12px 0 0;
+    font-size: 12.5px; color: var(--mute);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  /* ---------- section furniture ---------- */
+  section { padding: clamp(34px, 7vh, 72px) 0; border-bottom: 1px solid var(--rule); }
+  .sec-head {
+    display: flex; align-items: baseline; gap: 14px;
+    margin: 0 0 26px;
+    border-bottom: 1px solid var(--ink);
+    padding-bottom: 10px;
+  }
+  .sec-head .no {
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: var(--accent); letter-spacing: .1em;
+  }
+  h2.sec-title {
+    margin: 0;
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-weight: 700;
+    font-size: clamp(24px, 4.6vw, 38px);
+    letter-spacing: -.015em;
+    line-height: 1.05;
+  }
+
+  /* ---------- the working product ---------- */
+  .studio { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 22px; }
+  .pane-label {
+    font: 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .18em; text-transform: uppercase; color: var(--mute);
+    margin: 0 0 8px;
+  }
+  textarea#src {
+    width: 100%;
+    min-height: 320px;
+    resize: vertical;
+    background: var(--paper-2);
+    color: var(--ink);
+    border: 1px solid var(--ink);
+    padding: 14px;
+    font: 14px/1.6 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    outline: none;
+  }
+  textarea#src:focus { border-color: var(--accent); box-shadow: 3px 3px 0 var(--rule); }
+  .syntax-hint { margin: 8px 0 0; font-size: 13px; color: var(--mute); line-height: 1.6; }
+  .syntax-hint code, .export-note code {
+    background: var(--paper-2); border: 1px solid var(--rule);
+    padding: 0 5px; font-size: 12px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+  .nav-btn {
+    background: transparent; color: var(--ink);
+    border: 1.5px solid var(--ink);
+    padding: 8px 14px;
+    font: 600 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    cursor: pointer; touch-action: manipulation;
+  }
+  .nav-btn:hover:not(:disabled) { background: var(--ink); color: var(--paper); }
+  .nav-btn:disabled { opacity: .35; cursor: default; }
+  #copy { margin-left: 2px; }
+  .btn.copy-btn {
+    padding: 9px 16px; font-size: 13px;
+  }
+  .counter {
+    margin-left: auto;
+    font: 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--mute);
+  }
+  .progress {
+    height: 4px; background: var(--rule); margin-bottom: 12px;
+  }
+  .progress > div {
+    height: 100%; width: 0; background: var(--accent);
+    transition: width 160ms ease;
+  }
+  .slide-wrap {
+    border: 1px solid var(--ink);
+    background: var(--paper-2);
+    box-shadow: 5px 5px 0 var(--rule);
+    min-height: 320px;
+    max-height: 460px;
+    overflow-y: auto;
+    touch-action: pan-y;
+  }
+  .slide { padding: clamp(20px, 4.5vw, 44px); min-height: 320px; display: flex; flex-direction: column; justify-content: center; }
+  .slide h1 {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: clamp(1.5rem, 3.6vw, 2.4rem);
+    line-height: 1.12; letter-spacing: -.015em;
+    margin: 0 0 .45em;
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: .3em;
+  }
+  .slide h2 {
+    font-size: clamp(1.05rem, 2.2vw, 1.35rem);
+    color: var(--accent);
+    font-weight: 400; font-style: italic;
+    margin: 0 0 .7em;
+  }
+  .slide ul { margin: 0; padding-left: 1.2em; font-size: clamp(.98rem, 1.9vw, 1.15rem); line-height: 1.75; }
+  .slide p { font-size: clamp(.98rem, 1.9vw, 1.15rem); line-height: 1.7; margin: .25em 0; }
+  .slide .empty { color: var(--mute); font-style: italic; }
+  .slide code {
+    background: var(--paper); border: 1px solid var(--rule);
+    padding: 0 5px; font-size: .88em;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  .export-note { margin: 10px 0 0; font-size: 12.5px; color: var(--mute); }
+
+  /* ---------- how it works ---------- */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+  .step { padding: 4px 26px; border-left: 1px solid var(--rule); }
+  .step:first-child { border-left: none; padding-left: 0; }
+  .step .n {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 44px; line-height: 1; color: var(--accent); font-style: italic;
+    margin: 0 0 8px;
+  }
+  .step h3 { margin: 0 0 6px; font-size: 18px; }
+  .step p { margin: 0; font-size: 14.5px; color: var(--ink-soft); }
+
+  /* ---------- why this exists ---------- */
+  .why-lede { margin: 0 0 20px; max-width: 58ch; color: var(--ink-soft); }
+  .repo { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 6px 18px; padding: 14px 0; border-top: 1px solid var(--rule); align-items: baseline; }
+  .repo a.repo-name {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 15.5px; font-weight: 600;
+  }
+  .stars {
+    font: 13px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-variant-numeric: tabular-nums;
+    color: var(--mute); white-space: nowrap;
+  }
+  .stars b { color: var(--accent); }
+  .repo .note { grid-column: 1 / -1; margin: 0; font-size: 13.5px; color: var(--mute); }
+
+  /* ---------- pricing ---------- */
+  .tiers { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .tier {
+    border: 1.5px solid var(--ink);
+    background: var(--paper);
+    padding: 26px 26px 22px;
+    display: flex; flex-direction: column;
+    box-shadow: 5px 5px 0 var(--rule);
+  }
+  .tier.featured { background: var(--ink); color: var(--paper); box-shadow: 5px 5px 0 var(--accent); }
+  .tier .tier-name {
+    font: 12px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    letter-spacing: .2em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 10px;
+  }
+  .tier .price {
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, serif;
+    font-size: 34px; font-weight: 700; line-height: 1.1; letter-spacing: -.02em;
+    margin: 0 0 4px;
+  }
+  .tier .price small { font-size: 14px; font-weight: 400; font-style: italic; }
+  .tier .for-whom { font-size: 13.5px; margin: 0 0 14px; color: var(--mute); }
+  .tier.featured .for-whom { color: #cdc5b3; }
+  .tier ul { margin: 0 0 20px; padding-left: 1.15em; font-size: 14.5px; line-height: 1.65; }
+  .tier .btn { margin-top: auto; text-align: center; }
+  .tier.featured .btn { background: var(--accent); border-color: var(--accent); }
+  .tier.featured .btn:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+  .nothing-charged {
+    margin: 22px 0 0;
+    text-align: center; font-style: italic; font-size: 17px;
+  }
+
+  /* ---------- limits ---------- */
+  .limits { max-width: 66ch; margin: 0; padding-left: 1.3em; font-size: 15.5px; line-height: 1.8; color: var(--ink-soft); }
+  .limits li::marker { color: var(--accent); }
+
+  /* ---------- footer ---------- */
+  footer { padding: 30px 0 56px; }
+  footer .rule-top { border-top: 3px double var(--ink); padding-top: 20px; }
+  footer p { margin: 0 0 6px; font-size: 14px; color: var(--mute); }
+
+  @media (max-width: 860px) {
+    .studio { grid-template-columns: 1fr; }
+    textarea#src { min-height: 200px; }
+  }
+  @media (max-width: 640px) {
+    .steps { grid-template-columns: 1fr; gap: 20px; }
+    .step { border-left: none; border-top: 1px solid var(--rule); padding: 16px 0 0; }
+    .step:first-child { border-top: none; padding-top: 4px; }
+    .tiers { grid-template-columns: 1fr; }
+    .repo { grid-template-columns: 1fr; }
+    .hero-actions { gap: 14px; }
+    .topline .right { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="topline">
+      <span>Time · Venture No. 001</span>
+      <span class="right">Est. this week · printed in your browser</span>
+    </div>
+    <p class="kicker">The plain-text press</p>
+    <h1 class="nameplate">M<em>Decks</em></h1>
+    <p class="promise">Type slides in plain text. Get a clean, navigable deck — right here, right now.</p>
+    <div class="hero-actions">
+      <a class="btn" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+MDecks&amp;venture=mdecks&amp;plan=Pro" target="_blank" rel="noopener">Get early access</a>
+      <a class="try-link" href="#try">Try it free</a>
+    </div>
+    <p class="fineprint">Opens a public GitHub issue. No email, no payment; we reply there.</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- 2 · the working product -->
+  <section id="try">
+    <div class="wrap">
+      <div class="sec-head"><span class="no">§1</span><h2 class="sec-title">The composing room — try it now</h2></div>
+      <div class="studio">
+        <div>
+          <p class="pane-label">You type</p>
+          <textarea id="src" spellcheck="false" aria-label="Slide source text"></textarea>
+          <p class="syntax-hint">
+            <code># Title</code> · <code>## Subtitle</code> · <code>- bullet</code> ·
+            <code>---</code> alone starts a new slide · inline <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>.
+          </p>
+        </div>
+        <div>
+          <p class="pane-label">It typesets</p>
+          <div class="toolbar">
+            <button id="prev" class="nav-btn" aria-label="Previous slide">&larr; Prev</button>
+            <button id="next" class="nav-btn" aria-label="Next slide">Next &rarr;</button>
+            <button id="copy" class="btn copy-btn">Copy deck as HTML</button>
+            <span class="counter" id="counter">1 / 1</span>
+          </div>
+          <div class="progress" role="progressbar" aria-label="Deck progress"><div id="bar"></div></div>
+          <div class="slide-wrap" id="wrap"><article class="slide" id="slide"></article></div>
+          <p class="export-note">Arrow keys or swipe to navigate. The copied file is one self-contained deck: open it in any browser, present with <code>&larr;</code> / <code>&rarr;</code>. Nothing is saved or sent anywhere.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3 · how it works -->
+  <section id="how">
+    <div class="wrap">
+      <div class="sec-head"><span class="no">§2</span><h2 class="sec-title">How it works</h2></div>
+      <div class="steps">
+        <div class="step">
+          <p class="n">1.</p>
+          <h3>Type your slides</h3>
+          <p>Markdown-ish text in the box: headings, bullets, paragraphs, <code>---</code> between slides. The syntax is the stuff you already type.</p>
+        </div>
+        <div class="step">
+          <p class="n">2.</p>
+          <h3>Watch it set live</h3>
+          <p>Every keystroke re-typesets the deck on the right. Navigate with arrow keys or swipe; the progress bar keeps your place.</p>
+        </div>
+        <div class="step">
+          <p class="n">3.</p>
+          <h3>Take the file with you</h3>
+          <p>One button copies the deck as a single self-contained HTML file. Open it anywhere, present it offline, email it, done.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · why this exists -->
+  <section id="why">
+    <div class="wrap">
+      <div class="sec-head"><span class="no">§3</span><h2 class="sec-title">Why this exists</h2></div>
+      <p class="why-lede">Plain-text-in, document-out tools are having a week. MDecks rides these repos, trending on GitHub this week:</p>
+      <div class="repo">
+        <a class="repo-name" href="https://github.com/storytold/wordcraft" target="_blank" rel="noopener">storytold/wordcraft</a>
+        <span class="stars">★ <b>5,496</b> stars</span>
+        <p class="note">Proof that people want prose in, polished output out — no canvas-dragging required.</p>
+      </div>
+      <div class="repo">
+        <a class="repo-name" href="https://github.com/storytold/gridcraft" target="_blank" rel="noopener">storytold/gridcraft</a>
+        <span class="stars">★ <b>2,749</b> stars</span>
+        <p class="note">Structured text becoming layout: the same bet MDecks makes for slides.</p>
+      </div>
+      <div class="repo">
+        <a class="repo-name" href="https://github.com/storytold/cadcraft" target="_blank" rel="noopener">storytold/cadcraft</a>
+        <span class="stars">★ <b>2,552</b> stars</span>
+        <p class="note">Even geometry is going plain-text. Your weekly status deck can too.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5 · pricing -->
+  <section id="pricing">
+    <div class="wrap">
+      <div class="sec-head"><span class="no">§4</span><h2 class="sec-title">Pricing</h2></div>
+      <div class="tiers">
+        <div class="tier">
+          <p class="tier-name">Free</p>
+          <p class="price">$0</p>
+          <p class="for-whom">For anyone who needs a quick deck right now.</p>
+          <ul>
+            <li>Full plain-text editor</li>
+            <li>Live navigable preview with arrow keys and progress bar</li>
+            <li>One-click copy of the deck as self-contained HTML</li>
+            <li>Runs entirely in the browser; nothing is saved or sent.</li>
+          </ul>
+          <a class="btn" href="#try">Use it free</a>
+        </div>
+        <div class="tier featured">
+          <p class="tier-name">Pro</p>
+          <p class="price">$5<small>/mo founding price (locked in for early-access members; nothing is charged today)</small></p>
+          <p class="for-whom">For people who make a deck every week and want it saved and polished.</p>
+          <ul>
+            <li>Saved decks, themes, speaker notes</li>
+            <li>PDF export, shareable links</li>
+            <li>Plain text in, always.</li>
+          </ul>
+          <a class="btn" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+MDecks&amp;venture=mdecks&amp;plan=Pro" target="_blank" rel="noopener">Join early access</a>
+        </div>
+      </div>
+      <p class="nothing-charged">Nothing is charged today.</p>
+    </div>
+  </section>
+
+  <!-- 6 · honest limits -->
+  <section id="limits">
+    <div class="wrap">
+      <div class="sec-head"><span class="no">§5</span><h2 class="sec-title">Honest limits</h2></div>
+      <ul class="limits">
+        <li>Nothing is saved — close the tab and your text is gone. Copy the HTML or paste your source somewhere safe.</li>
+        <li>One layout, one typeface, no themes. The deck looks like this page, not like your brand.</li>
+        <li>No images, tables, or nested lists yet — headings, bullets, paragraphs, and inline emphasis only.</li>
+        <li>No speaker notes, no presenter view, no PDF export. That is the Pro idea, if enough people ask for it.</li>
+        <li>The copy button needs a modern browser with clipboard access; on very old browsers it may silently fail.</li>
+      </ul>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap rule-top">
+    <p>Built by <a href="https://github.com/teahubxyz/time" target="_blank" rel="noopener">Time, an agent-run venture studio on GitHub</a>.</p>
+    <p><a href="https://github.com/teahubxyz/time/issues/13" target="_blank" rel="noopener">Want the next version? 👍 the signal issue</a></p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  "use strict";
+  var src = document.getElementById("src");
+  var slideEl = document.getElementById("slide");
+  var counterEl = document.getElementById("counter");
+  var barEl = document.getElementById("bar");
+  var wrap = document.getElementById("wrap");
+  var prevBtn = document.getElementById("prev");
+  var nextBtn = document.getElementById("next");
+  var copyBtn = document.getElementById("copy");
+
+  var SAMPLE = [
+    "# Sprint 14 demo",
+    "## Platform team · Friday status",
+    "",
+    "- What shipped, what slipped, what is next",
+    "- Typed in plain text; typeset by MDecks",
+    "",
+    "---",
+    "# Shipped this sprint",
+    "",
+    "- Migrated the billing service off the legacy queue",
+    "- Cut p99 API latency from **840ms** to **310ms**",
+    "- Shipped the new audit log behind a flag",
+    "",
+    "---",
+    "# What slipped",
+    "",
+    "The SSO rollout moved to next sprint.",
+    "",
+    "- Blocked on the identity provider's sandbox",
+    "- Mitigation: contract tests already written",
+    "",
+    "---",
+    "# Next sprint",
+    "",
+    "- Finish SSO rollout",
+    "- Start the `events v2` schema",
+    "- *One* stretch goal, chosen Monday",
+    "",
+    "---",
+    "# That's the update",
+    "## Questions?",
+    "",
+    "This deck was copied out of MDecks as one HTML file — arrow keys to present."
+  ].join("\n");
+
+  function esc(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function inline(s) {
+    var out = esc(s);
+    out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+    return out;
+  }
+
+  // Split raw text into slides on lines that are only "---".
+  function splitSlides(text) {
+    var lines = text.split(/\r?\n/);
+    var slides = [[]];
+    for (var i = 0; i < lines.length; i++) {
+      if (/^\s*---+\s*$/.test(lines[i])) {
+        slides.push([]);
+      } else {
+        slides[slides.length - 1].push(lines[i]);
+      }
+    }
+    return slides;
+  }
+
+  // Render one slide's lines to HTML.
+  function renderSlide(lines) {
+    var html = "";
+    var inList = false;
+    var hasContent = false;
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (t === "") {
+        if (inList) { html += "</ul>"; inList = false; }
+        continue;
+      }
+      hasContent = true;
+      if (t.indexOf("## ") === 0) {
+        if (inList) { html += "</ul>"; inList = false; }
+        html += "<h2>" + inline(t.slice(3)) + "</h2>";
+      } else if (t.indexOf("# ") === 0) {
+        if (inList) { html += "</ul>"; inList = false; }
+        html += "<h1>" + inline(t.slice(2)) + "</h1>";
+      } else if (t.indexOf("- ") === 0 || t.indexOf("* ") === 0) {
+        if (!inList) { html += "<ul>"; inList = true; }
+        html += "<li>" + inline(t.slice(2)) + "</li>";
+      } else {
+        if (inList) { html += "</ul>"; inList = false; }
+        html += "<p>" + inline(t) + "</p>";
+      }
+    }
+    if (inList) html += "</ul>";
+    if (!hasContent) html = '<p class="empty">(empty slide)</p>';
+    return html;
+  }
+
+  var slides = [];
+  var current = 0;
+
+  function parse() {
+    slides = splitSlides(src.value);
+    if (slides.length === 0) slides = [[]];
+    if (current >= slides.length) current = slides.length - 1;
+    if (current < 0) current = 0;
+    render();
+  }
+
+  function render() {
+    slideEl.innerHTML = renderSlide(slides[current]);
+    counterEl.textContent = (current + 1) + " / " + slides.length;
+    var pct = slides.length <= 1 ? 100 : (current / (slides.length - 1)) * 100;
+    barEl.style.width = pct + "%";
+    prevBtn.disabled = current === 0;
+    nextBtn.disabled = current === slides.length - 1;
+  }
+
+  function go(delta) {
+    var next = current + delta;
+    if (next < 0 || next > slides.length - 1) return;
+    current = next;
+    render();
+  }
+
+  src.addEventListener("input", parse);
+  prevBtn.addEventListener("click", function () { go(-1); });
+  nextBtn.addEventListener("click", function () { go(1); });
+
+  document.addEventListener("keydown", function (e) {
+    if (e.target === src) return; // don't steal keys while typing
+    if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); go(1); }
+    else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(-1); }
+    else if (e.key === "Home") { current = 0; render(); }
+    else if (e.key === "End") { current = slides.length - 1; render(); }
+  });
+
+  // Swipe navigation.
+  var touchX = null;
+  wrap.addEventListener("touchstart", function (e) { touchX = e.touches[0].clientX; }, { passive: true });
+  wrap.addEventListener("touchend", function (e) {
+    if (touchX === null) return;
+    var dx = e.changedTouches[0].clientX - touchX;
+    if (Math.abs(dx) > 40) go(dx < 0 ? 1 : -1);
+    touchX = null;
+  }, { passive: true });
+
+  // Build the self-contained export deck (same editorial look as this page).
+  function buildExport() {
+    var slidesHtml = slides.map(function (s) {
+      return '<section class="s">' + renderSlide(s) + "</section>";
+    }).join("\n");
+    return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n" +
+      "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
+      "<title>Deck — set with MDecks</title>\n<style>\n" +
+      "*{box-sizing:border-box}html,body{height:100%;margin:0}" +
+      "body{font-family:Georgia,'Times New Roman',serif;background:#f4f1e8;color:#1c1a16;display:flex;flex-direction:column}" +
+      ".bar{height:4px;background:#c9c1ae}.bar>div{height:100%;width:0;background:#b8400f;transition:width .16s ease}" +
+      "main{flex:1;overflow-y:auto}" +
+      ".s{display:none;padding:clamp(24px,6vw,72px);min-height:100%;flex-direction:column;justify-content:center;max-width:1000px;margin:0 auto}" +
+      ".s.on{display:flex}" +
+      "h1{font-family:'Iowan Old Style','Palatino Linotype',Palatino,Georgia,serif;font-size:clamp(1.9rem,5vw,3.4rem);margin:0 0 .45em;line-height:1.1;letter-spacing:-.02em;border-bottom:1px solid #c9c1ae;padding-bottom:.3em}" +
+      "h2{font-size:clamp(1.2rem,3vw,1.8rem);color:#b8400f;font-weight:400;font-style:italic;margin:0 0 .7em}" +
+      "ul{margin:0;padding-left:1.2em;font-size:clamp(1.05rem,2.4vw,1.45rem);line-height:1.75}" +
+      "p{font-size:clamp(1.05rem,2.4vw,1.45rem);line-height:1.7;margin:.25em 0}" +
+      "code{background:#ede9dd;border:1px solid #c9c1ae;padding:0 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85em}" +
+      ".empty{color:#6d675b;font-style:italic}" +
+      ".n{position:fixed;bottom:12px;right:16px;color:#6d675b;font:13px ui-monospace,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}" +
+      "\n</style>\n</head>\n<body>\n<div class=\"bar\"><div id=\"b\"></div></div>\n<main>\n" +
+      slidesHtml +
+      "\n</main>\n<div class=\"n\" id=\"n\"></div>\n<script>\n" +
+      "var s=document.querySelectorAll('.s'),i=0,n=document.getElementById('n'),b=document.getElementById('b');\n" +
+      "function show(){for(var k=0;k<s.length;k++)s[k].classList.toggle('on',k===i);n.textContent=(i+1)+' / '+s.length;b.style.width=(s.length<=1?100:i/(s.length-1)*100)+'%';}\n" +
+      "function go(d){var j=i+d;if(j<0||j>s.length-1)return;i=j;show();}\n" +
+      "document.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();go(1);}else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(-1);}else if(e.key==='Home'){i=0;show();}else if(e.key==='End'){i=s.length-1;show();}});\n" +
+      "var x=null;document.addEventListener('touchstart',function(e){x=e.touches[0].clientX;},{passive:true});" +
+      "document.addEventListener('touchend',function(e){if(x===null)return;var d=e.changedTouches[0].clientX-x;if(Math.abs(d)>40)go(d<0?1:-1);x=null;},{passive:true});\n" +
+      "show();\n<\/script>\n</body>\n</html>";
+  }
+
+  copyBtn.addEventListener("click", function () {
+    var html = buildExport();
+    var done = function () {
+      var old = copyBtn.textContent;
+      copyBtn.textContent = "Copied!";
+      setTimeout(function () { copyBtn.textContent = old; }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(html).then(done, function () { fallbackCopy(html, done); });
+    } else {
+      fallbackCopy(html, done);
+    }
+  });
+
+  function fallbackCopy(text, done) {
+    var ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    try { document.execCommand("copy"); done(); } catch (e) { /* give up quietly */ }
+    document.body.removeChild(ta);
+  }
+
+  src.value = SAMPLE;
+  parse();
+})();
+</script>
+</body>
+</html>
