@@ -273,7 +273,7 @@ answers = {"qwen": '{"slug": "Star Checker!", "title": "Star checker", "one_line
 vt.tm.think = lambda seat, model, effort, system, user: answers.get(seat, "not json")
 ps = vt.pitch(repos, ["qwen", "kimi", "grok"])
 assert [p["slug"] for p in ps] == ["star-checker", "other"] and ps[0]["by"] == "qwen"
-votes = {"grok": '{"ranking": ["other", "star-checker"], "reason": "r"}', "kimi": '{"ranking": ["star-checker"], "reason": "r"}',
+votes = {"grok": '{"ranking": ["other", "other", "star-checker"], "reason": "r"}', "kimi": '{"ranking": ["star-checker"], "reason": "r"}',
          "qwen": '{"ranking": ["other"], "reason": "r"}'}
 vt.tm.think = lambda seat, model, effort, system, user: votes[seat]
 w, meta = vt.board(ps, ["grok", "kimi", "qwen"])

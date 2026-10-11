@@ -108,9 +108,12 @@ def board(pitches: list[dict], seats: list[str]) -> tuple[str | None, dict]:
         if not v:
             continue
         votes[s] = v
-        for pts, slug in zip((3, 2, 1), v.get("ranking", [])):
-            if slug in score:
-                score[slug] += pts
+        seen: list[str] = []
+        for slug in v.get("ranking", []):  # a seat listing the same slug thrice gets one vote for it
+            if slug in score and slug not in seen:
+                seen.append(slug)
+        for pts, slug in zip((3, 2, 1), seen):
+            score[slug] += pts
     if not any(score.values()):
         return None, votes
     return max(score, key=lambda k: (score[k], -[p["slug"] for p in pitches].index(k))), {"votes": votes, "score": score}
