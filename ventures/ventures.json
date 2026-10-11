@@ -14,6 +14,21 @@
    "planned": "2026-10-11",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "docscope",
+   "name": "Docscope",
+   "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside — author names, tracked deletions, embedded thumbnails, leftover comments — dissected live in your browser, nothing uploaded.",
+   "for_whom": "Consultants, lawyers, journalists and developers who email Office files and want to know exactly what metadata and draft remnants they're about to leak (or need to parse).",
+   "url": "https://teahubxyz.github.io/time/ventures/docscope/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29",
+   "signal": 14,
+   "card": 12,
+   "design": "retro OS: a classic desktop-window metaphor (title bars, bevels, pixel accents) used with restraint",
+   "version": 1,
+   "planned": "2026-10-11",
+   "status": "building",
+   "signups": 0
   }
  ]
 }
