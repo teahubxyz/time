@@ -1,0 +1,14 @@
+{
+  "grok":     {"family": "grok",     "default": "grok-4-3",               "label": "xAI Grok via Venice",
+               "aliases": {"multi": "grok-4-20-multi-agent", "build": "grok-build-0-1"}},
+  "kimi":     {"family": "kimi",     "default": "kimi-k3",                "label": "Moonshot Kimi via Venice",
+               "aliases": {"fast": "kimi-k3-fast-api", "code": "kimi-k2-7-code"}},
+  "qwen":     {"family": "qwen",     "default": "qwen-3-8-2-4t-a95b",     "label": "Alibaba Qwen via Venice",
+               "aliases": {"max": "qwen-3-8-max", "flash": "qwen-3-8-flash", "coder": "qwen3-coder-480b-a35b-instruct-turbo"}},
+  "deepseek": {"family": "deepseek", "default": "deepseek-v4-pro-0813",   "label": "DeepSeek via Venice",
+               "aliases": {"pro": "deepseek-v4-pro-0813", "flash": "deepseek-v4-1-flash"}},
+  "glm":      {"family": "glm",      "default": "z-ai-glm-5-3",           "label": "Zhipu GLM via Venice",
+               "aliases": {"flash": "z-ai-glm-5-3-flash"}},
+  "gemini":   {"family": "gemini",   "default": "gemini-3-1-pro-preview", "label": "Google Gemini via Venice",
+               "aliases": {"pro": "gemini-3-1-pro-preview", "flash": "gemini-3-8-flash"}}
+}
