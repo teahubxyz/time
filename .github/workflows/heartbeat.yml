@@ -1,8 +1,8 @@
 name: heartbeat
-# Time's clock: every 15 min, look at `ready` issues and dispatch (dry-run until TIME_MODE=live).
+# Time's clock: hourly, look at `ready` issues and dispatch (dry-run until TIME_MODE=live).
 on:
   schedule:
-    - cron: "7,22,37,52 * * * *"
+    - cron: "7 * * * *"
   workflow_dispatch:
 permissions:
   contents: read
