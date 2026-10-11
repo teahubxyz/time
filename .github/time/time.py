@@ -518,8 +518,8 @@ def beats_of(comments: list[dict]) -> list[dict]:
 
 
 def retry_requested(comments: list[dict], since: str) -> bool:
-    return any(c["created_at"] > since and c["user"].get("type") != "Bot" and "/time retry" in (c.get("body") or "")
-               for c in comments)
+    return any(c["created_at"] >= since and c["user"].get("type") != "Bot" and "/time retry" in (c.get("body") or "")
+               for c in comments)  # >=: a retry typed in the same second as the beat still counts
 
 
 def linked_prs(prs: list[dict], n: int) -> list[dict]:
