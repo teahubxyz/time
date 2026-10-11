@@ -1,5 +1,5 @@
 name: heartbeat
-# Time's clock: hourly, look at `ready` issues and dispatch (dry-run until TIME_MODE=live).
+# Time's clock: hourly, move `ready` cards forward (dry-run until TIME_MODE=live).
 on:
   schedule:
     - cron: "7 * * * *"
@@ -7,6 +7,7 @@ on:
 permissions:
   contents: read
   issues: write
+  pull-requests: write
 concurrency:
   group: heartbeat
   cancel-in-progress: false
@@ -21,5 +22,10 @@ jobs:
       - run: python3 .github/time/time.py heartbeat
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
           TIME_MODE: ${{ vars.TIME_MODE }}
           TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
+          TIME_CURSOR_MODEL: ${{ vars.TIME_CURSOR_MODEL }}
+          TIME_REVIEW: ${{ vars.TIME_REVIEW }}
+          TIME_STUCK_HOURS: ${{ vars.TIME_STUCK_HOURS }}
