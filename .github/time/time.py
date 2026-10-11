@@ -14,6 +14,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -100,16 +101,32 @@ def mentions(text: str) -> dict[str, tuple[str | None, str | None]]:
     return out
 
 
-def think(seat: str, model: str | None, effort: str | None, system: str, user: str) -> str:
+def venice_chat(body: dict, timeout: float) -> dict:
+    """POST chat/completions, riding out Venice's brief overloads (429, 5xx) and dropped connections with backoff."""
     key = os.environ.get("VENICE_API_KEY")
     if not key:
+        raise LookupError("no VENICE_API_KEY secret on this repo yet")
+    for attempt in range(4):
+        try:
+            return http("POST", f"{VENICE}/chat/completions", key, body, timeout=timeout)
+        except (RuntimeError, OSError) as e:
+            transient = isinstance(e, OSError) or re.search(r"-> (429|5\d\d)\b", str(e))
+            if attempt == 3 or not transient:
+                raise
+            print(f"venice busy ({str(e)[:80]}); retrying")
+            time.sleep(int(os.environ.get("TIME_VENICE_BACKOFF") or 15) * (attempt + 1) ** 2)
+    raise AssertionError("unreachable")
+
+
+def think(seat: str, model: str | None, effort: str | None, system: str, user: str) -> str:
+    if not os.environ.get("VENICE_API_KEY"):
         raise LookupError("no VENICE_API_KEY secret on this repo yet")
     body = {"model": model or SEATS[seat]["default"], "temperature": 0.4, "max_tokens": 4000,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "venice_parameters": {"include_venice_system_prompt": False}}
     if effort:
         body["reasoning_effort"] = effort
-    out = http("POST", f"{VENICE}/chat/completions", key, body, timeout=240)
+    out = venice_chat(body, timeout=240)
     text = out["choices"][0]["message"]["content"] or ""
     return re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip() or "(empty reply)"
 
@@ -483,7 +500,7 @@ def venice_work(card: dict, done: str, spec: str) -> dict:
                 "venice_parameters": {"include_venice_system_prompt": False}}
         if effort:
             body["reasoning_effort"] = effort
-        msg = http("POST", f"{VENICE}/chat/completions", key, body, timeout=300)["choices"][0]["message"]
+        msg = venice_chat(body, timeout=300)["choices"][0]["message"]
         msgs.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls")})
         calls = msg.get("tool_calls") or []
         if not calls:

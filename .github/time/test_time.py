@@ -583,3 +583,23 @@ assert vt.external_refs('<link rel="stylesheet" href="https://fonts.x/a.css"><li
     ["https://fonts.x/a.css", "https://img/x.png", "//evil/x.css"]
 assert '"phone", "desktop"' in vt.HARNESS.format(frames="", names=json.dumps(list(vt.SIZES)))
 print("ALL OK 13")
+
+# 22 Venice's brief overloads are ridden out: a 429 and a dropped connection, then the reply
+os.environ["TIME_VENICE_BACKOFF"] = "0"
+seq = [RuntimeError("POST https://api.venice.ai/api/v1/chat/completions -> 429: overloaded"), ConnectionResetError("reset"),
+       {"choices": [{"message": {"content": "fine"}}]}]
+def flaky_http(method, url, token, body=None, timeout=0):
+    x = seq.pop(0)
+    if isinstance(x, Exception):
+        raise x
+    return x
+tm.http, os.environ["VENICE_API_KEY"] = flaky_http, "vk"
+real_think = importlib.util.module_from_spec(spec); spec.loader.exec_module(real_think)
+real_think.http = flaky_http
+assert real_think.think("grok", None, None, "s", "u") == "fine" and seq == []
+real_think.http = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("POST x -> 401: bad key"))
+try:
+    real_think.think("grok", None, None, "s", "u"); raise AssertionError("a 401 must not be retried")
+except RuntimeError as e:
+    assert "401" in str(e)
+print("ALL OK 14")
