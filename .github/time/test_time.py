@@ -677,3 +677,9 @@ assert any("fakes its output" in p and "Simulate processing" in p for p in vt.ch
 for ok in ("simulator.step(dt)", "a physics simulation of orbits", "realistic sample"):
     assert not vt.SIMULATED.search(ok), ok
 print("ALL OK 18")
+
+# 27 prices stay prices: the plan's parentheticals don't land in the pricing card
+p27 = vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}, {"tier": "Pro", "price": "$5/mo founding price (locked in; nothing is charged today)"},
+                                     {"tier": "Team", "price": "$19/mo per repo — nothing charged today"}]}, {})
+assert [t["price"] for t in p27["pricing"]] == ["$0", "$5/mo founding price", "$19/mo per repo"], p27["pricing"]
+print("ALL OK 19")

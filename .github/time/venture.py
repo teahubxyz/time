@@ -287,6 +287,8 @@ def normalize_plan(p: dict, w: dict) -> dict:
     """Whatever the seats wrote, the plan the loop runs on: free tier first, at most two paid tiers, numeric lines."""
     tiers = [{k: _s(t.get(k), 200) for k in ("tier", "price", "for", "includes")}
              for t in (p.get("pricing") or []) if isinstance(t, dict) and _s(t.get("tier"))]
+    for t in tiers:  # "$5/mo founding price (locked in...; nothing is charged today)" -> "$5/mo founding price"
+        t["price"] = _s(re.split(r"\s*(?:\(|;|—|–| - )", t["price"])[0], 40) or t["price"][:40]
     if not tiers or not re.search(r"\bfree\b|\$0\b", f"{tiers[0]['tier']} {tiers[0]['price']}", re.I):
         tiers.insert(0, {"tier": "Free", "price": "$0", "for": _s(w.get("for_whom"), 200), "includes": _s(w.get("page"), 200)})
     chans = []
