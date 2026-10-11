@@ -664,3 +664,16 @@ assert vt.dead({"live": {"n": 4, "t": 20}, "nojs": {"n": 4, "t": 20}}) and not v
 assert not vt.dead({"live": None, "nojs": None})
 assert 'sandbox="allow-same-origin"' in vt.HARNESS.format(frames="", names="[]")
 print("ALL OK 17")
+
+# 26 output that the code admits is simulated is a fake, however good the page looks
+W = VWorld()
+vt.tm.http = W.http
+good = page_from(vt.build_body(w16, plan16))
+W.files["ventures/mdecks/README.md"] = "x" * 300
+W.files["ventures/mdecks/index.html"] = good
+assert not any("fakes its output" in p for p in vt.check_page(w16, plan16))
+W.files["ventures/mdecks/index.html"] = good.replace("<script>", "<script>// Simulate processing (in a real implementation, this would parse the file)\n")
+assert any("fakes its output" in p and "Simulate processing" in p for p in vt.check_page(w16, plan16))
+for ok in ("simulator.step(dt)", "a physics simulation of orbits", "realistic sample"):
+    assert not vt.SIMULATED.search(ok), ok
+print("ALL OK 18")
