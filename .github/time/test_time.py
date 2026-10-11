@@ -262,3 +262,20 @@ w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert not any(c[0] == "PUT" for c in
 w = pr_world(); w.comments[1] = [beat("pr", 0, pr=7)]
 w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert any(c[0] == "PUT" for c in w.calls)
 print("ALL OK 5")
+
+# ---------- venture loop (offline: scripted seats) ----------
+vspec = importlib.util.spec_from_file_location("vt", Path(__file__).resolve().parent / "venture.py")
+vt = importlib.util.module_from_spec(vspec); vspec.loader.exec_module(vt)
+repos = [{"name": "a/b", "stars": 900, "desc": "a tiny thing", "lang": "Rust", "topics": ["cli"], "url": "u"}]
+assert "a/b (900★, Rust): a tiny thing [cli]" in vt.radar(repos)
+answers = {"qwen": '{"slug": "Star Checker!", "title": "Star checker", "one_liner": "x", "why_now": "a/b", "page": "p"}',
+           "kimi": '{"slug": "other", "title": "Other", "one_liner": "y", "why_now": "a/b", "page": "q"}'}
+vt.tm.think = lambda seat, model, effort, system, user: answers.get(seat, "not json")
+ps = vt.pitch(repos, ["qwen", "kimi", "grok"])
+assert [p["slug"] for p in ps] == ["star-checker", "other"] and ps[0]["by"] == "qwen"
+votes = {"grok": '{"ranking": ["other", "star-checker"], "reason": "r"}', "kimi": '{"ranking": ["star-checker"], "reason": "r"}',
+         "qwen": '{"ranking": ["other"], "reason": "r"}'}
+vt.tm.think = lambda seat, model, effort, system, user: votes[seat]
+w, meta = vt.board(ps, ["grok", "kimi", "qwen"])
+assert w == "other" and meta["score"] == {"star-checker": 5, "other": 6}, meta
+print("ALL OK 6")
