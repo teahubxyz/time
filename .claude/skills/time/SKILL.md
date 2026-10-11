@@ -38,7 +38,7 @@ Files: `.github/workflows/{heartbeat,mention,doctor,update}.yml`, `.github/time/
    - `gh variable set TIME_MODE --body dry-run`
    - `gh variable set TIME_DAILY_CAP --body 5` — max agent launches per day
    - `TIME_WORKER`: `cursor` (default) or `venice:<seat> [model] [effort]`, e.g. `venice:kimi code`. A Venice seat needs only `VENICE_API_KEY`: it reads and writes the repo on branch `time/card-N` through the GitHub API, runs tests on the runner, and opens the PR itself. Workflow files are refused to it.
-   - optional `TIME_CURSOR_MODEL` (Cursor worker model id), `TIME_REVIEW`, `TIME_STUCK_HOURS` (default 6), `TIME_WORKER_STEPS` (default 40 tool calls per card)
+   - optional `TIME_CURSOR_MODEL` (Cursor worker model id), `TIME_REVIEW`, `TIME_STUCK_HOURS` (default 6), `TIME_WORKER_STEPS` (default 40 tool calls per card), `TIME_WORKER_FALLBACK` (default `grok build`: takes over when the worker's model stays overloaded; `off` to disable), `TIME_WORKER_MAX_TOKENS` (default 16000)
 4. Cursor (the worker, only when `TIME_WORKER` is `cursor`):
    - The human installs Cursor's GitHub app on this repo (Cursor dashboard → Integrations → GitHub). Cloud agents can't clone or open PRs without it. You can't check this from `gh`; ask them to confirm.
    - The human creates an API key (Cursor dashboard → API Keys) and stores it: `gh secret set CURSOR_API_KEY` (they paste the value at the prompt).
@@ -110,3 +110,11 @@ Only when the human says so: `gh variable set TIME_MODE --body live`. The daily 
 - Runner minutes: private repos have a monthly free allowance, each job rounds up to a minute; keep the heartbeat hourly unless asked. Cursor agent runs bill to the human's Cursor plan.
 - Changed `time.py`? Run `python3 .github/time/test_time.py` before committing.
 - Status: `gh issue list -l ready`, `gh run list -L 10`, and the latest Time comment on each card.
+
+## Ventures (optional)
+
+`gh variable set TIME_VENTURE --body on` starts the venture loop (`venture.yml`, every 20 minutes): one venture card a day, from the repos trending on GitHub to a launch page on GitHub Pages. Seats pitch, the board votes, board seats write launch plans that one seat synthesizes into `LAUNCH.md`, the worker builds the page on `gh-pages`, deterministic checks and headless Chrome gate it, and seven days of signups decide (v2, kill, or one more week). It needs `VENICE_API_KEY`; the loop creates the `gh-pages` branch, the Pages site and the `signup` label if it can.
+- Signups come in through the issue form `.github/ISSUE_TEMPLATE/early-access.yml` (label `signup`); the loop thanks each one on its issue. A signup is a distinct GitHub account (not the owner, not a bot) that opened an early-access issue or 👍'd the venture's signal issue.
+- Settings: `TIME_VENTURE_PITCH`, `TIME_VENTURE_BOARD` (comma-separated seats), `TIME_VENTURE_CHAIR` (synthesizes the launch plans), `TIME_VENTURE_MEASURE_DAYS` (default 7).
+- A page that still fails its checks after two fix rounds gets `needs-human`: fix it on `gh-pages` and comment `/time retry` on the card. A Venice outage only makes a stage wait; it never closes a card.
+- The studio index is generated at `/ventures/` from `ventures/ventures.json`; launch posts are drafts on the card, never sent.

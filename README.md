@@ -12,7 +12,7 @@ A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are t
 
 ## Setup
 
-Open this repo in Claude Code or Cursor and say "set up Time". The agent follows `.claude/skills/time/SKILL.md`. You'll be asked to install Cursor's GitHub app on the repo and to paste your Cursor API key into `gh secret set CURSOR_API_KEY`.
+Open this repo in Claude Code or Cursor and say "set up Time": the agent follows `.claude/skills/time/SKILL.md`. The quickest path needs one secret, `VENICE_API_KEY`: Venice seats plan, build and review (`TIME_WORKER=venice:qwen coder`, `TIME_REVIEW=venice:grok`). A Cursor cloud agent can be the worker instead if you have a Cursor API key. The landing page walks through it: https://teahubxyz.github.io/time/
 
 ## Status
 
