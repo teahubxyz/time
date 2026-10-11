@@ -13,3 +13,7 @@ A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are t
 ## Setup
 
 Open this repo in Claude Code or Cursor and say "set up Time". The agent follows `.claude/skills/time/SKILL.md`. You'll be asked to install Cursor's GitHub app on the repo and to paste your Cursor API key into `gh secret set CURSOR_API_KEY`.
+
+## Status
+
+For changes and release history, see [CHANGELOG.md](CHANGELOG.md).
