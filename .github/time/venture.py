@@ -54,17 +54,23 @@ most stars on GitHub this week. They tell you what builders care about right now
 
 {radar}
 
-Pitch ONE small product the studio could ship as a single static web page today: a tool, calculator, explainer,
-directory, checker, or playground that rides the same wave. It must be useful on its own, need no backend, and be
-honest (no fake data, no fake testimonials). Reply with ONLY JSON:
-{{"slug": "kebab-case", "title": "...", "one_liner": "...", "why_now": "which repo(s) and trend this rides", "page": "what the page does, concretely, in 3-5 sentences"}}"""
+Pitch ONE venture the studio could launch today as a single static web page: a tool, calculator, explainer, directory,
+checker or playground that rides the same wave. It must work on its own with no backend, be honest (no fake data,
+no fake testimonials), and be a *venture*, not just a tool: it has a name, a specific person it is for, a reason to
+come back, and a next version worth paying for. Reply with ONLY JSON:
+{{"slug": "kebab-case", "name": "a brand name, one or two words", "title": "...", "one_liner": "...",
+  "for_whom": "the specific person this is for, in one sentence", "why_now": "which repo(s) and trend this rides",
+  "page": "what the free page does, concretely, in 3-5 sentences",
+  "next": "what the paid or bigger version would be, in one sentence",
+  "cta": "the one thing a visitor should do to say they want more (vote, star, join a list, request a feature)"}}"""
 
 VOTE = """You are `{seat}`, voting on the board of an agent-run venture studio. Pitches:
 
 {pitches}
 
-Rank your top three by: would a real person use this page this week, can one agent build it as a static page in an
-hour, is it honest. Reply with ONLY JSON: {{"ranking": ["slug1", "slug2", "slug3"], "reason": "one sentence"}}"""
+Rank up to three by: would the named person use this page this week, can one agent build it as a static page in an
+hour, is there a believable next version someone would pay for, is it honest. If none is worth a day of the studio,
+rank nothing. Reply with ONLY JSON: {{"ranking": ["slug1", "slug2"], "reason": "one sentence"}} (ranking may be [])."""
 
 
 def ask_json(seat: str, system: str, user: str) -> dict | None:
@@ -92,7 +98,11 @@ def ask_json(seat: str, system: str, user: str) -> dict | None:
 def pitch(repos: list[dict], seats: list[str]) -> list[dict]:
     out = []
     for s in seats:
-        p = ask_json(s, f"You are `{s}`.", PITCH.format(seat=s, radar=radar(repos)))
+        p = None
+        for _ in range(2):  # a seat that answers in prose gets one more go
+            p = ask_json(s, f"You are `{s}`. Reply with JSON only.", PITCH.format(seat=s, radar=radar(repos)))
+            if p and p.get("slug") and p.get("title"):
+                break
         if p and p.get("slug") and p.get("title"):
             p["slug"] = re.sub(r"[^a-z0-9-]", "-", p["slug"].lower())[:40].strip("-")
             p["by"] = s
@@ -115,24 +125,46 @@ def board(pitches: list[dict], seats: list[str]) -> tuple[str | None, dict]:
         for pts, slug in zip((3, 2, 1), seen):
             score[slug] += pts
     if not any(score.values()):
-        return None, votes
-    return max(score, key=lambda k: (score[k], -[p["slug"] for p in pitches].index(k))), {"votes": votes, "score": score}
+        return None, {"votes": votes, "score": score}
+    winner = max(score, key=lambda k: (score[k], -[p["slug"] for p in pitches].index(k)))
+    if sum(1 for v in votes.values() if winner in v.get("ranking", [])) < 2:
+        return None, {"votes": votes, "score": score}  # no quorum: at least two seats must want it
+    return winner, {"votes": votes, "score": score}
 
 
 # ---------- build and ship ----------
 
-BUILD_BODY = """Build the venture **{title}** as one static page.
+BUILD_BODY = """Build the venture **{name}** ({title}) as one static page.
 
-{page}
-
+For: {for_whom}
+What the free page does: {page}
 Why now: {why_now}
+Next version (not built today, but the page should point at it): {next}
 
 Write `ventures/{slug}/index.html`: a complete, self-contained page (inline CSS and JS, no build step, no external
-calls except optional public CDNs). Make it genuinely usable, mobile-friendly, and honest: no invented numbers,
-reviews or logos. Add a one-line footer "built by the Time venture loop" linking to the repo. Also add a row for it to
-`ventures/index.html` (create that index if missing: a plain list of ventures with title, one-liner and link).
+calls except optional public CDNs). Genuinely usable, mobile-friendly, honest: no invented numbers, reviews or logos.
+Brand it as **{name}** (title, header, page <title>). The tool is the hero; keep the page focused on using it.
 
-DONE: ventures/{slug}/index.html renders and ventures/index.html links to it"""
+End the page with a short "Want more?" section, exactly this shape:
+- one sentence on what the next version would do ({next});
+- a primary button "{cta_label}" linking to {cta_url} (opens in a new tab);
+- the line: "Built by an agent-run venture studio. If this is useful, say so: that is how it gets a next version."
+No email forms (there is no backend). Also add or update `ventures/index.html`: a plain list of ventures with name,
+one-liner, who it is for, and link.
+
+DONE: ventures/{slug}/index.html renders with the Want-more section and ventures/index.html links to it"""
+
+
+def signal_issue(w: dict) -> dict:
+    """One issue per venture where interest is counted: 👍 reactions and comments are the signal."""
+    title = f"{w['name']}: want the next version?"
+    for i in tm.gh("GET", f"/repos/{REPO}/issues?state=open&labels=signal&per_page=50"):
+        if i["title"] == title:
+            return i
+    body = (f"**{w['name']}**: {w['one_liner']}\n\nFor: {w['for_whom']}\n\nFree page: {w.get('url', '(shipping)')}\n\n"
+            f"Next version: {w['next']}\n\n👍 this issue if you would use the next version. Comment with what it must do. "
+            f"That is the whole signup: the studio reads the count and decides whether to build it.")
+    return tm.gh("POST", f"/repos/{REPO}/issues", {"title": title, "body": body, "labels": ["signal"]})
 
 
 def ensure_pages() -> str:
@@ -177,6 +209,11 @@ def tick() -> int:
         return 0
     n, st = card["number"], state_of(card)
     stage = st["beat"]
+    if stage == "launched":
+        age_h = (dt.datetime.now(dt.timezone.utc) - dt.datetime.fromisoformat(st["at"].replace("Z", "+00:00"))).total_seconds() / 3600
+        if age_h < float(env("TIME_VENTURE_MEASURE_HOURS", "24")):
+            print(f"venture #{n}: launched {age_h:.1f}h ago, measuring at 24h")
+            return 0
     print(f"venture #{n} stage={stage}")
     say = lambda text, meta: tm.comment(n, text, {"venture": True, **meta})
     try:
@@ -197,19 +234,46 @@ def tick() -> int:
             reasons = "\n".join(f"- `{s}`: {v.get('ranking')} ({v.get('reason', '')})" for s, v in meta["votes"].items())
             say(f"🗳️ Board picks **{w['title']}** (`{winner}`) with Borda {meta['score']}.\n\n{reasons}", {"beat": "picked", "winner": w})
         elif stage == "picked":
-            w = st["winner"]
+            w = dict(st["winner"])
+            w.setdefault("name", w["title"]); w.setdefault("for_whom", "builders"); w.setdefault("next", "a fuller version")
+            w.setdefault("cta", "vote for the next version")
             site = ensure_pages()
+            w["url"] = f"{site.rstrip('/')}/ventures/{w['slug']}/"
+            sig = signal_issue(w)
+            w["signal"] = sig["number"]
             spec = env("TIME_WORKER", "venice:qwen coder")
             if not spec.startswith("venice:"):
                 spec = "venice:qwen coder"
-            fake = {"number": n, "title": w["title"], "body": BUILD_BODY.format(**w)}
-            # build straight onto gh-pages: the worker's branch is the Pages branch for ventures
+            fake = {"number": n, "title": w["title"], "body": BUILD_BODY.format(**w, cta_label=f"👍 I want this", cta_url=sig["html_url"])}
             r = _build_on_pages(fake, spec)
-            url = f"{site.rstrip('/')}/ventures/{w['slug']}/"
-            say(f"🔨 `{r['seat']}` built it in {r['steps']} steps ({r['model']}). Shipping to {url}", {"beat": "built", "winner": w, "url": url, **r})
+            say(f"🔨 `{r['seat']}` built **{w['name']}** in {r['steps']} steps ({r['model']}). Shipping to {w['url']} · signal: #{sig['number']}",
+                {"beat": "built", "winner": w, "url": w["url"], **r})
         elif stage == "built":
-            url = st["url"]
-            say(f"🚀 Shipped: {url}\n\nPages can take a minute to publish. This card is done; tomorrow's loop starts a new one.", {"beat": "done", "url": url})
+            w, url = st["winner"], st["url"]
+            draft = tm.think(env("TIME_VENTURE_LAUNCH", "grok"), None, None,
+                             "You write launch posts for a tiny agent-run venture studio. Plain, specific, no hype, no emoji. "
+                             "Never invent numbers or users.",
+                             f"Draft two posts for **{w['name']}** ({w['one_liner']}; for {w['for_whom']}; page {url}; "
+                             f"signal issue https://github.com/{REPO}/issues/{w['signal']}):\n"
+                             f"1. an X post under 280 characters\n2. a Show HN title and first comment (3-5 sentences)\n"
+                             f"Why now: {w['why_now']}")
+            say(f"🚀 Shipped: {url}\n\nSignal: 👍 on #{w['signal']} means someone wants the next version.\n\n"
+                f"📣 Launch drafts (nothing is sent; the chair posts what they like):\n\n{draft}",
+                {"beat": "launched", "winner": w, "url": url})
+        elif stage == "launched":
+            w = st["winner"]
+            sig = tm.gh("GET", f"/repos/{REPO}/issues/{w['signal']}")
+            ups, comments = sig.get("reactions", {}).get("+1", 0), sig.get("comments", 0)
+            threshold = int(env("TIME_VENTURE_SIGNAL", "3"))
+            if ups + comments >= threshold:
+                tm.gh("POST", f"/repos/{REPO}/issues", {"title": f"Iterate {w['name']}: build the next version",
+                      "body": f"{ups} 👍 and {comments} comments on #{w['signal']}. Next version: {w['next']}\n\nDONE: PR open, tests green",
+                      "labels": ["queued"]})
+                say(f"📈 Measure: {ups} 👍, {comments} comments on #{w['signal']} (threshold {threshold}). Queued an iterate card.",
+                    {"beat": "done", "url": st["url"], "signal": ups + comments})
+            else:
+                say(f"📉 Measure: {ups} 👍, {comments} comments on #{w['signal']} (threshold {threshold}). Parked; the signal issue "
+                    f"stays open, and the loop re-checks it weekly.", {"beat": "done", "url": st["url"], "signal": ups + comments})
             tm.gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
     except Exception as e:  # noqa: BLE001
         errs = int(st.get("errors", 0)) + 1

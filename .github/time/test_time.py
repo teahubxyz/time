@@ -278,6 +278,17 @@ votes = {"grok": '{"ranking": ["other", "other", "star-checker"], "reason": "r"}
 vt.tm.think = lambda seat, model, effort, system, user: votes[seat]
 w, meta = vt.board(ps, ["grok", "kimi", "qwen"])
 assert w == "other" and meta["score"] == {"star-checker": 5, "other": 6}, meta
+# no quorum: only one seat wants the winner -> None
+votes = {"grok": '{"ranking": ["other"], "reason": "r"}', "kimi": '{"ranking": [], "reason": "none worth it"}', "qwen": '{"ranking": [], "reason": "pass"}'}
+vt.tm.think = lambda seat, model, effort, system, user: votes[seat]
+assert vt.board(ps, ["grok", "kimi", "qwen"])[0] is None
+# a seat that answers in prose first gets re-asked
+calls = {"n": 0}
+def flaky(seat, model, effort, system, user):
+    calls["n"] += 1
+    return "let me think..." if calls["n"] == 1 else answers["qwen"]
+vt.tm.think = flaky
+assert [p["slug"] for p in vt.pitch(repos, ["qwen"])] == ["star-checker"] and calls["n"] == 2
 print("ALL OK 6")
 vt.tm.think = lambda *a: 'Sure! Here you go:\n```json\n{"slug": "x", "title": "T", "one_liner": "o", "why_now": "w", "page": "p {with braces}"}\n```'
 assert vt.ask_json("q", "s", "u")["page"] == "p {with braces}"
