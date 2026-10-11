@@ -1,0 +1,19 @@
+{
+ "ventures": [
+  {
+   "slug": "mdecks",
+   "name": "MDecks",
+   "one_liner": "Write slides in plain text and instantly preview a clean presentation layout.",
+   "for_whom": "People who make a quick throwaway deck every week and would rather type than drag boxes.",
+   "url": "https://teahubxyz.github.io/time/ventures/mdecks/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+MDecks&venture=mdecks&plan=Pro",
+   "signal": 13,
+   "card": 11,
+   "design": "editorial print: a broadsheet/magazine layout, serif display type, columns, rules, generous margins",
+   "version": 1,
+   "planned": "2026-10-11",
+   "status": "building",
+   "signups": 0
+  }
+ ]
+}
