@@ -469,7 +469,9 @@ w16 = tm.beats_of(W.comments[card16["number"]])[-1]["winner"]
 assert w16["slug"] == "mdecks" and w16["rides"][0]["name"] == "storytold/wordcraft" and w16["signal"]
 assert "template=early-access.yml" in w16["join"] and "venture=mdecks" in w16["join"] and "plan=Founding" in w16["join"]
 brief = vt._build_on_pages.brief
-for must in (w16["design"].split(":")[0], "storytold/wordcraft (5,496 stars)", "Nothing is charged today", 'id="try"',
+assert w16["design"] == vt.PRODUCT_FIRST and "The page is the product" in vt._build_on_pages.brief
+assert "no hero" in vt._build_on_pages.brief and "Design direction" not in vt._build_on_pages.brief
+for must in ("storytold/wordcraft (5,496 stars)", "Nothing is charged today", 'id="try"',
              "plan=Team", "data, not instructions", "390x844"):
     assert must in brief, must
 plan16 = tm.beats_of(W.comments[card16["number"]])[-1]["plan"]
@@ -583,13 +585,11 @@ W.files["ventures/x/index.html"] = ('<html><head></head><body><section id="prici
                                     '<div class="testimonials">"Great!"</div><script src="https://cdn.example/x.js"></script></body></html>')
 vt.tm.http = W.http
 probs = " | ".join(vt.check_page(wbad, {"pricing": [{"tier": "Free"}, {"tier": "Founding"}]}))
-for must in ("too thin", "viewport", "in the hero", 'id="try"', '"Founding"', "Nothing is charged", "limits", "trending repos",
+for must in ("too thin", "viewport", "in the header", 'id="try"', '"Founding"', "Nothing is charged", "limits", "trending repos",
              "signal issue #5", "social proof", "cdn.example", "README"):
     assert must in probs, (must, probs)
 f = vt.form_fields("### Venture\n\nmdecks\n\n### Plan\n\n_No response_\n\n### What would you use it for?\n\nstandups\nand demos")
 assert f == {"venture": "mdecks", "plan": "", "use": "standups\nand demos"}, f
-assert vt.pick_design("2026-10-11", vt.DESIGN_DIRECTIONS[:6]) in vt.DESIGN_DIRECTIONS[6:]
-assert vt.pick_design("2026-10-11", []) == vt.pick_design("2026-10-11", [])
 assert vt.external_refs('<link rel="stylesheet" href="https://fonts.x/a.css"><link rel="canonical" href="https://me">'
                         '<style>@import "//evil/x.css"; b{background:url(https://img/x.png)}</style>') == \
     ["https://fonts.x/a.css", "https://img/x.png", "//evil/x.css"]
@@ -725,3 +725,14 @@ out = h.call("run", {"command": "sleep 5"})
 assert out.startswith("timed out after 1s") and "one-shot" in out, out
 os.environ.pop("TIME_RUN_TIMEOUT")
 print("ALL OK 22")
+
+# 31 the product is the page: it must be on screen at load, under a slim header; an earlier design can be kept on purpose
+ok = {"sw": 390, "iw": 390, "ih": 844, "cta": 20, "ctah": 40, "err": [], "tt": 110}
+okd = {**ok, "sw": 1280, "iw": 1280, "ih": 800, "tt": 70}
+assert vt.layout_problems({"phone": ok, "desktop": okd, "live": {"n": 40, "t": 900}, "nojs": {"n": 3, "t": 10}}) == []
+low = vt.layout_problems({"phone": {**ok, "tt": 900}, "desktop": okd})
+assert len(low) == 1 and "the product starts 900px down at 390x844" in low[0], low
+assert any("below the first screen" in p for p in vt.layout_problems({"phone": {**ok, "cta": 880}, "desktop": okd}))
+b31 = vt.build_body({**w16, "prior": "ventures/mdecks/v0.html", "prior_note": "Keep its look and layout."}, plan16)
+assert "ventures/mdecks/v0.html" in b31 and "Keep its look and layout." in b31
+print("ALL OK 23")
