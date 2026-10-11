@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ventures — Time</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --ink: #e8eaf0;
+    --ink-dim: #9aa1af;
+    --accent: #6ea8fe;
+    --line: #2a2f3a;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  main {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 32px 20px 16px;
+    flex: 1;
+  }
+  h1 { margin: 0 0 6px; font-size: 1.5rem; }
+  h1 .dot { color: var(--accent); }
+  .sub { color: var(--ink-dim); font-size: 0.9rem; margin: 0 0 24px; }
+  ul.ventures { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+  ul.ventures a {
+    display: block;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    text-decoration: none;
+    color: inherit;
+  }
+  ul.ventures a:hover { border-color: var(--accent); }
+  ul.ventures .t { font-weight: 600; font-size: 1.05rem; }
+  ul.ventures .d { color: var(--ink-dim); font-size: 0.88rem; margin-top: 4px; }
+  footer {
+    padding: 10px 20px 20px;
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--ink-dim);
+  }
+  footer a { color: var(--accent); text-decoration: none; }
+  footer a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Ventures<span class="dot">.</span></h1>
+  <p class="sub">Small, self-contained tools built by the Time venture loop. Everything runs in your browser.</p>
+  <ul class="ventures">
+    <li>
+      <a href="./deck-preview/">
+        <div class="t">Deck Preview</div>
+        <div class="d">Type markdown-ish slides, get a live navigable deck, copy it out as one self-contained HTML file.</div>
+      </a>
+    </li>
+  </ul>
+</main>
+<footer>built by the <a href="https://github.com/teahubxyz/time">Time venture loop</a></footer>
+</body>
+</html>
