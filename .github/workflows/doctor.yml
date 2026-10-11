@@ -21,3 +21,4 @@ jobs:
           TIME_MODE: ${{ vars.TIME_MODE }}
           TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
           TIME_REVIEW: ${{ vars.TIME_REVIEW }}
+          TIME_AUTOMERGE: ${{ vars.TIME_AUTOMERGE }}

@@ -12,9 +12,17 @@ iso = lambda h=0: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 class World:
-    def __init__(self, cards, comments=None, prs=None):
+    def __init__(self, cards, comments=None, prs=None, issues=None, gh_pr=None):
         self.cards, self.comments, self.prs = cards, comments or {}, prs or []
         self.posted, self.launched = [], []
+        self.issues = issues or {}          # extra issues by number: {"state", "labels", "body", ...}
+        self.gh_pr = gh_pr or {}            # number -> {"pr", "reviews", "files", "checks"}
+        self.calls = []
+        for c in cards:
+            self.issues.setdefault(c["number"], {**c, "state": "open", "labels": c.get("labels", ["ready"])})
+
+    def labelled(self, name):
+        return [i for i in self.issues.values() if i["state"] == "open" and name in i["labels"]]
 
     def http(self, method, url, token, body=None, timeout=0):
         if url.startswith(tm.CURSOR):
@@ -24,15 +32,40 @@ class World:
             if url.endswith("/v1/models"):
                 return {"models": [{"id": "composer-2.5"}, {"id": "claude-sonnet-5-5"}]}
         path = url.replace(tm.GH, "")
+        self.calls.append((method, path, body))
+        if method == "POST" and path == "/repos/o/r/issues":
+            n = max([0, *self.issues]) + 1
+            self.issues[n] = {"number": n, "title": body["title"], "body": body["body"], "state": "open", "labels": body["labels"]}
+            return {"number": n}
+        if path.startswith("/repos/o/r/issues/") and "/labels" in path:
+            n = int(path.split("/")[5]); self.issues.setdefault(n, {"number": n, "state": "open", "labels": []})
+            if method == "DELETE": self.issues[n]["labels"].remove(path.rsplit("/", 1)[1])
+            else: self.issues[n]["labels"] += body["labels"]
+            return {}
+        if method == "PATCH": self.issues[int(path.split("/")[-1])].update(body); return {}
+        if method == "PUT" and path.endswith("/merge"):
+            self.gh_pr[int(path.split("/")[-2])]["pr"]["merged_at"] = iso(); return {"merged": True}
+        if "/pulls/" in path:
+            n = int(path.split("/")[5]); d = self.gh_pr[n]
+            if path.endswith("/reviews?per_page=100"): return d.get("reviews", [])
+            if path.endswith("/files?per_page=100"): return [{"filename": f} for f in d.get("files", ["src/x.py"])]
+            return d["pr"]
+        if "/check-runs" in path:
+            return {"check_runs": next(d.get("checks", []) for d in self.gh_pr.values() if d["pr"]["head"]["sha"] in path)}
+        if "/issues?state=open" in path:
+            lab = path.split("labels=")[1].split("&")[0]
+            return [{"number": i["number"], "title": i.get("title", ""), "body": i.get("body", ""), "state": "open"}
+                    for i in sorted(self.labelled(lab), key=lambda i: i["number"])]
+        if method == "GET" and path.startswith("/repos/o/r/issues/") and path.count("/") == 5:
+            return self.issues[int(path.split("/")[-1])]
         if method == "POST" and path.endswith("/comments"):
             n = int(path.split("/")[-2]); self.posted.append((n, body["body"]))
             self.comments.setdefault(n, []).append({"created_at": iso(), "user": {"login": "github-actions[bot]", "type": "Bot"}, "body": body["body"]})
             return {}
-        if "/issues?state=open" in path: return self.cards
         if "/pulls?state=all" in path: return self.prs
         if "/issues/" in path and path.endswith("comments?per_page=100"): return self.comments.get(int(path.split("/")[-2]), [])
         if path == "/repos/o/r": return {"default_branch": "main"}
-        if "/labels" in path: return [{"name": "ready"}]
+        if path.endswith("/labels?per_page=100"): return [{"name": "ready"}]
         raise AssertionError(f"unexpected {method} {path}")
 
 
@@ -41,7 +74,8 @@ def beat(state, h=0, **kw):
 
 
 def run(world, env):
-    for k in ("TIME_MODE", "CURSOR_API_KEY", "TIME_REVIEW", "TIME_DAILY_CAP", "TIME_CURSOR_MODEL"):
+    for k in ("TIME_MODE", "CURSOR_API_KEY", "TIME_REVIEW", "TIME_DAILY_CAP", "TIME_CURSOR_MODEL", "TIME_AUTOMERGE",
+              "TIME_REQUIRE_CHECKS", "VENICE_API_KEY"):
         os.environ.pop(k, None)
     os.environ.update(env)
     tm.http = world.http
@@ -117,3 +151,57 @@ print("ALL OK")
 w = run(World([card(1, D)], {1: [beat("would-dispatch", 2), beat("blocked", 1)]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"})
 assert len(w.launched) == 1, w.posted
 print("ALL OK 2")
+
+# ---------- planner, landing, next card ----------
+K = {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"}
+
+# 12 spec lines -> queued cards with dependencies; the first one is promoted and dispatched in the same run
+spec_body = "Build orbit v0\n\n- [ ] Add login page — DONE: PR open, tests green\n- Add logout | DONE: PR open\n- Docs -- DONE: README updated"
+w = run(World([], issues={1: {"number": 1, "title": "spec", "body": spec_body, "state": "open", "labels": ["spec"]}}), K)
+made = [n for n in w.issues if n != 1]
+assert made == [2, 3, 4] and w.issues[1]["labels"] == ["planned"], w.issues
+assert "Depends on #2" in w.issues[3]["body"] and "DONE: README updated" in w.issues[4]["body"]
+assert w.issues[2]["labels"] == ["ready"] and w.issues[3]["labels"] == ["queued"] and len(w.launched) == 1
+assert "Add login page" in w.launched[0]["prompt"]["text"]
+# section-style spec also parses
+assert [c["title"] for c in tm.parse_spec("intro\n### One\nchange a\nDONE: x\n### Two\nDONE: y")] == ["One", "Two"]
+# unparseable spec without a key -> one helpful comment, spec label removed
+w = run(World([], issues={1: {"number": 1, "title": "s", "body": "make it nice", "state": "open", "labels": ["spec"]}}), K)
+assert "couldn't find cards" in w.posted[0][1] and w.issues[1]["labels"] == []
+
+# 13 landing: Approve from a trusted reviewer + green checks -> squash merge, card closed, next card dispatched
+def pr_world(verdict_body="**Approve** looks right", assoc="NONE", bot=True, checks=None, files=None, extra=None):
+    prd = {"number": 7, "state": "open", "merged_at": None, "head": {"sha": "abc"}, "html_url": "u"}
+    issues = {2: {"number": 2, "title": "next", "body": "Depends on #1\n\nDONE: d", "state": "open", "labels": ["queued"]}}
+    cm = {1: [beat("pr", 1, pr=7)],
+          7: [{"created_at": iso(), "author_association": assoc, "user": {"type": "Bot" if bot else "User"}, "body": verdict_body}]}
+    return World([card(1, D)], cm, [], issues, {7: {"pr": prd, "checks": checks if checks is not None else
+                                                     [{"status": "completed", "conclusion": "success"}], "files": files or ["src/a.py"]}})
+w = run(pr_world(), {**K, "TIME_AUTOMERGE": "on"})
+assert ("PUT", "/repos/o/r/pulls/7/merge", {"merge_method": "squash"}) in w.calls
+assert w.issues[1]["state"] == "closed" and w.issues[2]["labels"] == ["ready"] and len(w.launched) == 1
+# automerge off (default) -> never merges
+w = run(pr_world(), K); assert not any(c[0] == "PUT" for c in w.calls) and w.launched == []
+# a stranger's "Approve" comment on a public repo does nothing
+w = run(pr_world(bot=False, assoc="NONE"), {**K, "TIME_AUTOMERGE": "on"}); assert not any(c[0] == "PUT" for c in w.calls)
+# a collaborator's comment counts
+w = run(pr_world(bot=False, assoc="COLLABORATOR"), {**K, "TIME_AUTOMERGE": "on"}); assert any(c[0] == "PUT" for c in w.calls)
+# Object -> needs-human label, no merge
+w = run(pr_world("**Object** missing tests"), {**K, "TIME_AUTOMERGE": "on"})
+assert not any(c[0] == "PUT" for c in w.calls) and "objected" in w.posted[0][1]
+# protected paths -> human merges
+w = run(pr_world(files=[".github/workflows/ci.yml"]), {**K, "TIME_AUTOMERGE": "on"})
+assert not any(c[0] == "PUT" for c in w.calls) and "protected paths" in w.posted[0][1]
+# failing or missing checks block the merge even when approved
+w = run(pr_world(checks=[{"status": "completed", "conclusion": "failure"}]), {**K, "TIME_AUTOMERGE": "on"})
+assert not any(c[0] == "PUT" for c in w.calls) and "checks are failing" in w.posted[0][1]
+w = run(pr_world(checks=[]), {**K, "TIME_AUTOMERGE": "on"})
+assert not any(c[0] == "PUT" for c in w.calls) and "no checks" in w.posted[0][1]
+w = run(pr_world(checks=[]), {**K, "TIME_AUTOMERGE": "on", "TIME_REQUIRE_CHECKS": "off"}); assert any(c[0] == "PUT" for c in w.calls)
+# pending checks -> silent wait
+w = run(pr_world(checks=[{"status": "in_progress", "conclusion": None}]), {**K, "TIME_AUTOMERGE": "on"})
+assert w.posted == [] and not any(c[0] == "PUT" for c in w.calls)
+# a human merged it by hand -> card closed, next card goes
+wm = pr_world(); wm.gh_pr[7]["pr"]["merged_at"] = iso()
+w = run(wm, K); assert w.issues[1]["state"] == "closed" and w.issues[2]["labels"] == ["ready"]
+print("ALL OK 3")

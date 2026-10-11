@@ -1,7 +1,7 @@
 """Time: the clock for a GitHub-native agent factory. stdlib only; runs on GitHub-hosted runners.
 
     python3 .github/time/time.py mention     # on issue/comment events: answer @seat [model] [effort]
-    python3 .github/time/time.py heartbeat   # on schedule: look at `ready` issues and dispatch (dry-run by default)
+    python3 .github/time/time.py heartbeat   # on schedule: plan specs, dispatch `ready` cards, merge approved PRs, pull the next card
 
 Ledger = this GitHub repo. Brains = Venice (VENICE_API_KEY secret). Seats and aliases: .github/time/seats.json.
 Loop guards: bots and Time's own comments never trigger replies; comments posted with GITHUB_TOKEN don't start
@@ -207,6 +207,157 @@ def cursor_launch(prompt: str, *, model: str | None, pr_url: str | None = None, 
             "status": (out.get("run") or {}).get("status") or agent.get("status")}
 
 
+# ---------- planner: a `spec` issue -> queued cards ----------
+# Cascade: parse the spec deterministically first; only ask a seat when it isn't already card-shaped.
+
+CARD_LINE = re.compile(r"^\s*[-*]\s*(?:\[ \]\s*)?(?P<title>.+?)\s+(?:—|--|-|\|)\s*DONE:\s*(?P<done>.+)$", re.I)
+PLAN_PROMPT = """Split this spec into small cards, one pull request each, in build order.
+Reply with ONLY a JSON list: [{"title": "...", "body": "what to change, as a short list", "done": "what finished means"}]"""
+
+
+def parse_spec(body: str) -> list[dict]:
+    """`- title — DONE: x` lines, or `### title` sections that contain a `DONE:` line."""
+    cards = [{"title": m["title"].strip(), "body": "", "done": m["done"].strip()}
+             for m in map(CARD_LINE.match, body.splitlines()) if m]
+    if cards:
+        return cards
+    for sec in re.split(r"^#{2,3}\s+", body, flags=re.M)[1:]:
+        title, _, rest = sec.partition("\n")
+        m = re.search(r"^\s*DONE:\s*(.+)$", rest, re.M | re.I)
+        if m:
+            cards.append({"title": title.strip(), "body": rest[:m.start()].strip(), "done": m.group(1).strip()})
+    return cards
+
+
+def plan_spec(spec: dict) -> None:
+    n = spec["number"]
+    cards = parse_spec(spec.get("body") or "")
+    if not cards and os.environ.get("VENICE_API_KEY"):
+        seat = (os.environ.get("TIME_PLANNER") or "kimi").split()[0]
+        raw = think(seat, None, None, PLAN_PROMPT, f"# {spec['title']}\n{(spec.get('body') or '')[:20000]}")
+        try:
+            cards = json.loads(raw[raw.index("["): raw.rindex("]") + 1])
+        except ValueError:
+            cards = []
+    if not cards:
+        comment(n, "⏱️ Time: I couldn't find cards in this spec. Write one line per card as `- title — DONE: what finished "
+                "means` (or `### title` sections with a `DONE:` line), or add VENICE_API_KEY so a seat can split it.",
+                {"beat": "plan-failed"})
+        gh("DELETE", f"/repos/{REPO}/issues/{n}/labels/spec")
+        return
+    made, prev = [], None
+    for i, c in enumerate(cards, 1):
+        body = (c.get("body") or "").strip() + f"\n\nPart of #{n} (step {i}/{len(cards)})." + \
+            (f" Depends on #{prev}." if prev else "") + f"\n\nDONE: {c['done']}"
+        prev = gh("POST", f"/repos/{REPO}/issues", {"title": c["title"], "body": body.strip(), "labels": ["queued"]})["number"]
+        made.append(prev)
+    comment(n, "⏱️ Time: planned " + ", ".join(f"#{m}" for m in made) + ". They run one at a time: each starts when "
+            "the one before it merges.", {"beat": "planned", "cards": made})
+    gh("DELETE", f"/repos/{REPO}/issues/{n}/labels/spec")
+    gh("POST", f"/repos/{REPO}/issues/{n}/labels", {"labels": ["planned"]})
+
+
+def promote_next() -> int | None:
+    """Label the oldest `queued` card whose dependencies are closed `ready`; at most TIME_PARALLEL cards in flight."""
+    ready = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=ready&per_page=50") if "pull_request" not in i]
+    if len(ready) >= int(os.environ.get("TIME_PARALLEL") or 1):
+        return None
+    queued = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=queued&per_page=50&sort=created&direction=asc")
+              if "pull_request" not in i]
+    for card in sorted(queued, key=lambda i: i["number"]):
+        deps = [int(d) for d in re.findall(r"Depends on #(\d+)", card.get("body") or "")]
+        if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
+            gh("DELETE", f"/repos/{REPO}/issues/{card['number']}/labels/queued")
+            gh("POST", f"/repos/{REPO}/issues/{card['number']}/labels", {"labels": ["ready"]})
+            return card["number"]
+    return None
+
+
+# ---------- landing: verdict -> merge (TIME_AUTOMERGE=on) ----------
+
+TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
+VERDICT = re.compile(r"^[\s*_>#]*(approve|object)\b", re.I)
+DEFAULT_PROTECTED = ".github/,deploy,infra/,.env,secret"
+
+
+def verdict(pr: dict, since: str) -> str | None:
+    """Latest reviewer verdict after `since`: a comment starting Approve/Object, or a GitHub review."""
+    found = []
+    for c in gh("GET", f"/repos/{REPO}/issues/{pr['number']}/comments?per_page=100"):
+        m = VERDICT.match(c.get("body") or "")
+        trusted = c["user"].get("type") == "Bot" or c.get("author_association") in TRUSTED  # public repos: strangers can comment
+        if m and trusted and c["created_at"] > since:
+            found.append((c["created_at"], m.group(1).lower()))
+    for r in gh("GET", f"/repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100"):
+        state = {"APPROVED": "approve", "CHANGES_REQUESTED": "object"}.get(r.get("state"))
+        if state and r.get("author_association") in TRUSTED and (r.get("submitted_at") or "") > since:
+            found.append((r["submitted_at"], state))
+    return max(found)[1] if found else None
+
+
+def touches_protected(pr_number: int) -> list[str]:
+    paths = [p.strip() for p in (os.environ.get("TIME_PROTECTED") or DEFAULT_PROTECTED).split(",") if p.strip()]
+    files = [f["filename"] for f in gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?per_page=100")]
+    return [f for f in files if any(f.startswith(p) or p in f for p in paths)]
+
+
+def checks(sha: str) -> str:
+    """pass | pending | fail | none, over every check run on the PR head."""
+    runs = gh("GET", f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
+    if not runs:
+        return "none"
+    if any(r["status"] != "completed" for r in runs):
+        return "pending"
+    return "pass" if all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) else "fail"
+
+
+def land(card: dict, last: dict) -> None:
+    """Move a card whose PR is up toward merged. Silent while nothing has changed."""
+    n, pr = card["number"], gh("GET", f"/repos/{REPO}/pulls/{last['pr']}")
+    if pr.get("merged_at"):
+        if card.get("state", "open") == "open":
+            gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
+        comment(n, f"⏱️ Time: PR #{pr['number']} merged. Card done.", {"beat": "merged", "pr": pr["number"]})
+        return
+    if pr["state"] == "closed" or (os.environ.get("TIME_AUTOMERGE") or "off").strip() != "on":
+        return
+    v = verdict(pr, last["at"])
+    if v is None:
+        return
+    if v == "object":
+        if last["beat"] != "needs-human":
+            label(pr["number"], "needs-human")
+            comment(n, f"⏱️ Time: the reviewer objected on PR #{pr['number']}. Over to a human (or comment `/time retry` "
+                    "to send it back to the worker).", {"beat": "needs-human", "pr": pr["number"]})
+        return
+    if (hit := touches_protected(pr["number"])):
+        if last["beat"] != "needs-human":
+            label(pr["number"], "needs-human")
+            comment(n, f"⏱️ Time: approved, but PR #{pr['number']} touches protected paths ({', '.join(hit[:5])}), so a "
+                    "human merges this one.", {"beat": "needs-human", "pr": pr["number"]})
+        return
+    c = checks(pr["head"]["sha"])
+    need = (os.environ.get("TIME_REQUIRE_CHECKS") or "on").strip() != "off"
+    if c == "pending" or (c == "none" and need):
+        if c == "none" and last["beat"] != "no-checks":
+            comment(n, f"⏱️ Time: approved, but PR #{pr['number']} has no checks, and I only merge on green. Add a CI "
+                    "workflow (or set `TIME_REQUIRE_CHECKS=off`).", {"beat": "no-checks", "pr": pr["number"]})
+        return
+    if c == "fail":
+        if last["beat"] != "checks-failed":
+            comment(n, f"⏱️ Time: approved, but checks are failing on PR #{pr['number']}. Waiting for a fix.",
+                    {"beat": "checks-failed", "pr": pr["number"]})
+        return
+    gh("PUT", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"merge_method": "squash"})
+    if gh("GET", f"/repos/{REPO}/issues/{n}")["state"] == "open":
+        gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
+    comment(n, f"⏱️ Time: approved and green, merged PR #{pr['number']}. Card done.", {"beat": "merged", "pr": pr["number"]})
+
+
+def label(number: int, name: str) -> None:
+    gh("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": [name]})
+
+
 # ---------- heartbeat ----------
 
 def beats_of(comments: list[dict]) -> list[dict]:
@@ -269,6 +420,19 @@ def review(card: dict, pr: dict, done: str) -> dict:
 
 
 def cmd_heartbeat() -> int:
+    for spec in [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=spec&per_page=10") if "pull_request" not in i]:
+        try:
+            plan_spec(spec)
+        except Exception as e:  # noqa: BLE001
+            print(f"spec #{spec['number']}: {type(e).__name__}: {e}")
+    for _ in range(3):  # a merge can free the slot for the next card; dispatch it in the same run
+        tick()
+        if promote_next() is None:
+            break
+    return 0
+
+
+def tick() -> None:
     mode = (os.environ.get("TIME_MODE") or "dry-run").strip()
     cap = int(os.environ.get("TIME_DAILY_CAP") or 5)
     stuck_h = float(os.environ.get("TIME_STUCK_HOURS") or 6)
@@ -317,6 +481,9 @@ def cmd_heartbeat() -> int:
                 comment(n, f"⏱️ Time: dispatched to a Cursor cloud agent{link}. It will open a PR that closes #{n}; "
                         "I'll link it here when it appears.", {"beat": "dispatched", "launched": True, **r, "model": worker_model})
                 continue
+            if state in ("pr", "needs-human", "no-checks", "checks-failed"):
+                land(card, last)
+                continue
             if state in ("dispatched", "stuck"):
                 found = linked_prs(prs, n)
                 if found:
@@ -340,7 +507,6 @@ def cmd_heartbeat() -> int:
             print(f"#{n}: {type(e).__name__}: {e}")
             comment(n, f"⏱️ Time: the worker call failed: `{str(e)[:300]}`. Comment `/time retry` to try again.",
                     {"beat": "error"})
-    return 0
 
 
 # ---------- doctor ----------
@@ -358,6 +524,9 @@ def cmd_doctor() -> int:
     row("TIME_MODE", True, os.environ.get("TIME_MODE") or "dry-run (default)")
     row("TIME_DAILY_CAP", True, os.environ.get("TIME_DAILY_CAP") or "5 (default)")
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default)")
+    row("TIME_AUTOMERGE", True, (os.environ.get("TIME_AUTOMERGE") or "off (default)") + "; merges on Approve + green checks")
+    for name in ("queued", "spec", "needs-human"):
+        row(f"(optional) label `{name}`", name in labels, "exists" if name in labels else f"missing: `gh label create {name}`")
     try:
         ids = [m["id"] for m in http("GET", f"{VENICE}/models?type=text", os.environ["VENICE_API_KEY"])["data"]] \
             if os.environ.get("VENICE_API_KEY") else None

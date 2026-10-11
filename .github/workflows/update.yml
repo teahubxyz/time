@@ -1,0 +1,47 @@
+name: update
+# Pull a fresh Time engine from the central repo and open a PR with the diff (weekly, or run it by hand).
+# Upstream: TIME_UPSTREAM (default teahubxyz/time) at TIME_CHANNEL (default main; pin a tag like v1 for stability).
+# Workflow files can't be changed by Actions' own token, so if those differ the PR lists them for a human to copy.
+on:
+  schedule:
+    - cron: "17 9 * * 1"
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+jobs:
+  update:
+    if: github.repository != (vars.TIME_UPSTREAM || 'teahubxyz/time')
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    env:
+      UPSTREAM: ${{ vars.TIME_UPSTREAM || 'teahubxyz/time' }}
+      CHANNEL: ${{ vars.TIME_CHANNEL || 'main' }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v5
+      - run: git clone -q --depth 1 --branch "$CHANNEL" "https://github.com/$UPSTREAM" /tmp/up
+      - name: copy engine, open PR if changed
+        run: |
+          set -e
+          for f in .github/time/time.py .github/time/test_time.py .github/time/seats.json .claude/skills/time/SKILL.md; do
+            mkdir -p "$(dirname "$f")"; cp "/tmp/up/$f" "$f"
+          done
+          python3 .github/time/test_time.py > /dev/null
+          wf=$(for f in /tmp/up/.github/workflows/*.yml; do b=.github/workflows/$(basename "$f"); cmp -s "$f" "$b" || echo "- \`$b\`"; done)
+          if git diff --quiet; then
+            echo "Time engine is up to date." | tee -a "$GITHUB_STEP_SUMMARY"
+            [ -n "$wf" ] && printf 'Workflow files differ upstream, copy by hand:\n%s\n' "$wf" | tee -a "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          sha=$(git -C /tmp/up rev-parse --short HEAD)
+          branch="time-update-$sha"
+          git switch -c "$branch"
+          git -c user.name=time -c user.email=time@users.noreply.github.com commit -qam "Update Time to $UPSTREAM@$sha"
+          git push -q origin "$branch"
+          body="Fresh Time engine from \`$UPSTREAM@$CHANNEL\` ($sha). Offline tests pass."
+          [ -n "$wf" ] && body="$body
+
+          These workflow files differ upstream. Actions can't edit workflows, so copy them by hand from https://github.com/$UPSTREAM/tree/$CHANNEL/.github/workflows:
+          $wf"
+          gh pr create --title "Update Time ($sha)" --body "$body" --head "$branch"

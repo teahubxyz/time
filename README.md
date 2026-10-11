@@ -5,7 +5,9 @@ A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are t
 - **Cards**: an issue with a `DONE:` line, labelled `ready`.
 - **Heartbeat** (`heartbeat.yml`, hourly and whenever a card is labelled `ready`): moves cards forward. In `dry-run` (default) it only says what it would do; with `TIME_MODE=live` it dispatches each card to a Cursor cloud agent, which opens a PR that closes the card. An optional reviewer (`TIME_REVIEW`) checks the PR. At most `TIME_DAILY_CAP` launches a day.
 - **Mentions** (`mention.yml`): `@kimi`, `@grok 4.7`, `@qwen max high` in any issue, PR or comment gets that seat's reply (Venice).
+- **Hands-off** (`TIME_AUTOMERGE=on`): label an issue `spec` and Time splits it into cards that run one at a time. A card's PR merges itself once the reviewer approves and checks are green, then the next card starts. Objections, red checks and protected paths (workflows, deploy, secrets) go to a human.
 - **Doctor** (`doctor.yml`, manual): runs the tests and checks label, settings and keys.
+- **Update** (`update.yml`, weekly or manual): opens a PR with the latest engine from teahubxyz/time, so every project stays on one Time instead of drifting copies.
 
 ## Setup
 

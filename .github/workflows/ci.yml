@@ -1,0 +1,15 @@
+name: ci
+# Time's own tests. Also the check that lets Time auto-merge changes to itself.
+on:
+  pull_request:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v5
+      - run: python3 .github/time/test_time.py

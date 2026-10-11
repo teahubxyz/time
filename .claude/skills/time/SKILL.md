@@ -1,6 +1,6 @@
 ---
 name: time
-description: Set up and run Time, the GitHub-native agent factory in this repo (issues as cards, a `ready` label, a DONE line, a Cursor cloud agent as the worker, @seat mentions, an hourly heartbeat in GitHub Actions). Use when asked to set up Time or the factory, connect Cursor, check its status, write a card, tag a seat, or switch it to live.
+description: Set up and run Time, the GitHub-native agent factory in this repo (a spec becomes cards, a Cursor cloud agent builds each one, a reviewer approves, Time merges on green and starts the next card; @seat mentions; an hourly heartbeat in GitHub Actions). Use when asked to set up Time or the factory, connect Cursor, check its status, write a spec or a card, tag a seat, switch it to live or hands-off, or update Time.
 ---
 
 # Time
@@ -11,6 +11,8 @@ You (Claude Code, Cursor, or any agent with `gh`) are the hands for setup and th
 ## You are here
 
 ```
+ chat ─writes─▶ spec issue ─label `spec`─▶ planner ─▶ cards (`queued`, one PR each, in order)
+                                                      │ first unblocked card gets `ready`
  chat ─writes─▶ card = issue (spec + DONE:) ─label `ready`─▶ heartbeat (on label + hourly)
                                                               │
    dry-run ◀─────────── TIME_MODE ───────────▶ live           ▼
@@ -18,17 +20,20 @@ You (Claude Code, Cursor, or any agent with `gh`) are the hands for setup and th
                                                               │ next heartbeat finds it
                                                               ▼
                                         review (TIME_REVIEW): Cursor model | Venice seat | off
+                                                              │ TIME_AUTOMERGE=on
+                         Approve + checks green ─▶ squash merge ─▶ next `queued` card gets `ready`
+                         Object · protected path · red checks ─▶ `needs-human`
  @seat [model] [effort] in any comment ─▶ mention.yml ─▶ seat replies in the thread (Venice)
 ```
 
-Card states (Time's comments on the issue): `would-dispatch` → `dispatched` → `pr` · side states `needs-done`, `stuck`, `blocked` (a key is missing; resumes by itself once added), `error` (comment `/time retry`).
+Card states (Time's comments on the issue): `would-dispatch` → `dispatched` → `pr` → `merged` · landing states `needs-human`, `no-checks`, `checks-failed` · side states `needs-done`, `stuck`, `blocked` (a key is missing; resumes by itself once added), `error` (comment `/time retry`).
 
-Files: `.github/workflows/{heartbeat,mention,doctor}.yml`, `.github/time/time.py` (stdlib), `.github/time/seats.json`, `.github/time/test_time.py` (offline tests).
+Files: `.github/workflows/{heartbeat,mention,doctor,update}.yml`, `.github/time/time.py` (stdlib), `.github/time/seats.json`, `.github/time/test_time.py` (offline tests).
 
 ## Setup (idempotent; do only what's missing)
 
 1. `gh auth status` — logged in with admin on this repo. If not: ask the human to run `gh auth login`.
-2. Label: `gh label create ready --color 0e8a16 --description "Time picks this up on the next heartbeat" || true`
+2. Labels: `gh label create ready --color 0e8a16 --description "Time picks this up on the next heartbeat" || true`, and for hands-off mode `gh label create spec --color 5319e7 || true; gh label create queued --color c5def5 || true; gh label create planned --color ededed || true; gh label create needs-human --color d93f0b || true`
 3. Settings (`gh variable list` first; set only missing ones):
    - `gh variable set TIME_MODE --body dry-run`
    - `gh variable set TIME_DAILY_CAP --body 5` — max agent launches per day
@@ -72,6 +77,27 @@ Label it `ready`. No `DONE:` line → Time asks for one instead of dispatching. 
 
 Not a Time seat: `@cursor`. If Cursor's GitHub app is installed, `@cursor` in a comment is Cursor's own integration and it answers directly.
 
+## Hands-off: spec in, merged work out
+
+1. CI: the project needs at least one check on pull requests (tests or lint). Without checks Time won't merge
+   (`TIME_REQUIRE_CHECKS=off` overrides, not recommended). Add `.github/workflows/ci.yml` for the project's stack.
+2. A reviewer: `gh variable set TIME_REVIEW --body cursor:<model id>` (or `venice:kimi`).
+3. `gh variable set TIME_AUTOMERGE --body on`. Time squash-merges a card's PR when the reviewer's latest verdict is
+   Approve and every check is green, then gives `ready` to the next card. Approve/Object counts from bots and from the
+   repo's owner, members and collaborators only.
+4. Human gate: PRs touching `TIME_PROTECTED` paths (default `.github/,deploy,infra/,.env,secret`) are never merged by
+   Time; they get `needs-human`. So are PRs the reviewer objects to.
+5. Specs: write an issue, label it `spec`. One card per line, `- title — DONE: what finished means`, or `### title`
+   sections that contain a `DONE:` line. Time creates `queued` cards that run one at a time (`TIME_PARALLEL`, default 1).
+   A spec that isn't card-shaped is split by a seat when `VENICE_API_KEY` is set (`TIME_PLANNER`, default kimi).
+
+## Updating Time
+
+The engine lives centrally in teahubxyz/time. `update.yml` (weekly, or `gh workflow run update.yml`) opens a PR with
+the latest `time.py`, tests, seats and this skill from `TIME_UPSTREAM`@`TIME_CHANNEL` (default `main`; pin a tag
+for stability). Actions can't edit workflow files, so the PR lists any that changed for you to copy. Improvements go
+to teahubxyz/time as PRs so every project gets them. Needs "Allow GitHub Actions to create pull requests" on.
+
 ## Going live
 
 Only when the human says so: `gh variable set TIME_MODE --body live`. The daily cap still applies. Back to `dry-run` the same way. Stop everything: `gh workflow disable heartbeat.yml`.
@@ -79,7 +105,7 @@ Only when the human says so: `gh variable set TIME_MODE --body live`. The daily 
 ## Rules
 
 - Never print, echo, commit or paste a secret. Secrets go in with `gh secret set`, values typed by the human.
-- Ask before: going live, raising the daily cap, changing the heartbeat schedule, adding a self-hosted runner. A public repo must never get a self-hosted runner.
+- Ask before: going live, turning on auto-merge, raising the daily cap, changing the heartbeat schedule, adding a self-hosted runner. A public repo must never get a self-hosted runner.
 - Runner minutes: private repos have a monthly free allowance, each job rounds up to a minute; keep the heartbeat hourly unless asked. Cursor agent runs bill to the human's Cursor plan.
 - Changed `time.py`? Run `python3 .github/time/test_time.py` before committing.
 - Status: `gh issue list -l ready`, `gh run list -L 10`, and the latest Time comment on each card.
