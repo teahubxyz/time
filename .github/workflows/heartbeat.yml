@@ -1,9 +1,11 @@
 name: heartbeat
-# Time's clock: hourly, move `ready` cards forward (dry-run until TIME_MODE=live).
+# Time's clock: hourly, and right away when a card gets the `ready` label (dry-run until TIME_MODE=live).
 on:
   schedule:
     - cron: "7 * * * *"
   workflow_dispatch:
+  issues:
+    types: [labeled]
 permissions:
   contents: read
   issues: write
@@ -13,6 +15,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   tick:
+    if: github.event_name != 'issues' || github.event.label.name == 'ready'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
