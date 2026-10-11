@@ -279,3 +279,8 @@ vt.tm.think = lambda seat, model, effort, system, user: votes[seat]
 w, meta = vt.board(ps, ["grok", "kimi", "qwen"])
 assert w == "other" and meta["score"] == {"star-checker": 5, "other": 6}, meta
 print("ALL OK 6")
+vt.tm.think = lambda *a: 'Sure! Here you go:\n```json\n{"slug": "x", "title": "T", "one_liner": "o", "why_now": "w", "page": "p {with braces}"}\n```'
+assert vt.ask_json("q", "s", "u")["page"] == "p {with braces}"
+vt.tm.think = lambda *a: "I would rather not."
+assert vt.ask_json("q", "s", "u") is None
+print("ALL OK 7")

@@ -69,10 +69,24 @@ hour, is it honest. Reply with ONLY JSON: {{"ranking": ["slug1", "slug2", "slug3
 
 def ask_json(seat: str, system: str, user: str) -> dict | None:
     text = tm.think(seat, None, None, system, user)
-    try:
-        return json.loads(text[text.index("{"): text.rindex("}") + 1])
-    except ValueError:
-        return None
+    text = re.sub(r"```(?:json)?", "", text)
+    # the outermost {...} may contain prose braces; try the widest span first, then each balanced candidate
+    starts = [m.start() for m in re.finditer(r"\{", text)]
+    for a in starts:
+        depth = 0
+        for b, ch in enumerate(text[a:], a):
+            depth += ch == "{"
+            depth -= ch == "}"
+            if depth == 0:
+                try:
+                    out = json.loads(text[a:b + 1])
+                    if isinstance(out, dict):
+                        return out
+                except ValueError:
+                    pass
+                break
+    print(f"{seat}: no JSON in reply: {text[:160]!r}")
+    return None
 
 
 def pitch(repos: list[dict], seats: list[str]) -> list[dict]:
