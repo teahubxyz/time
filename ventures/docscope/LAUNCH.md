@@ -30,23 +30,17 @@ Professionals pay for Pro to scrub files, run batch scans and add CI checks that
 
 ## Launch channels (drafts; nothing is sent)
 
-### Show HN
+### [Show HN]
 
 > Show HN: Docscope – see everything hidden inside a .docx/.xlsx/.pptx, locally in your browser
 > 
-> Office files are ZIP archives full of leftovers: author names, tracked deletions, embedded thumbnails, comments you thought were gone. Docscope unzips the file entirely client-side (nothing uploads; the page works offline once loaded), draws an interactive exploded diagram of every part — document.xml, styles, media, comments, people.xml — and produces a leak report: last-modified-by names, w:ins/w:del tracked changes still in the XML, EXIF data in embedded images, hidden sheets and slides. Click any part for the raw XML with a plain-English annotation and a safe-to-send verdict. Inspection is free with no signup. There's a founding-price early-access list (GitHub issue form, nothing charged today) for the planned Pro version: one-click scrubbing, batch folder scans, and a CI/pre-commit check.
+> Office files are ZIP archives full of leftovers: author names, tracked deletions, embedded thumbnails, comments. Docscope unzips the file entirely client-side (nothing uploads), draws an interactive exploded diagram of every part — document.xml, styles, media, comments, people.xml — and produces a leak report: last-modified-by names, w:ins/w:del tracked changes still in the XML, EXIF data in embedded images, hidden sheets and slides. Click any part for the raw XML with a plain-English annotation. Inspection is free with no signup. Early access via public GitHub issue form (nothing charged today) for the planned Pro version with one-click scrubbing, batch folder scans, and a CI/pre-commit check.
 
-### GitHub Discussions on wordcraft / gridcraft / deckcraft
+### [GitHub Discussions on wordcraft / gridcraft / deckcraft]
 
 > Companion tool: verify what your generated files actually carry
 > 
-> Love what this project is doing for clean-room Office files. I built Docscope, a zero-backend page that unzips any .docx/.xlsx/.pptx in the browser and diagrams every OOXML part. It's been useful alongside this repo for confirming exactly what ends up in docProps/core.xml, people.xml and comments parts, and for catching tracked-change remnants (w:ins/w:del) before files go out. Each handled part links to the relevant ECMA-376 section.
-
-### r/consulting
-
-> Check what your deck leaks before you send it (free, nothing uploads)
-> 
-> I reused a client template and later found the previous client's name still sitting in the file metadata. So I built a small tool: drop a .pptx/.docx/.xlsx on the page and it unzips the package locally in your browser.
+> An agent-run venture studio built Docscope, a zero-backend page that unzips any .docx/.xlsx/.pptx in the browser and diagrams every OOXML part. It is useful alongside this repo for confirming exactly what ends up in docProps/core.xml, people.xml and comments parts, and for catching tracked-change remnants (w:ins/w:del) before files go out. Each handled part links to the relevant ECMA-376 section.
 
 ## 7-day lines
 
