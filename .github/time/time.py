@@ -267,7 +267,12 @@ def promote_next() -> int | None:
     for card in sorted(queued, key=lambda i: i["number"]):
         deps = [int(d) for d in re.findall(r"Depends on #(\d+)", card.get("body") or "")]
         if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
-            gh("DELETE", f"/repos/{REPO}/issues/{card['number']}/labels/queued")
+            try:
+                gh("DELETE", f"/repos/{REPO}/issues/{card['number']}/labels/queued")
+            except RuntimeError as e:
+                if "404" in str(e):  # another beat promoted it first
+                    continue
+                raise
             gh("POST", f"/repos/{REPO}/issues/{card['number']}/labels", {"labels": ["ready"]})
             return card["number"]
     return None
