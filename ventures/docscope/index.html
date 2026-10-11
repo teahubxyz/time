@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Docscope</title>
+    <style>
+        /* Retro OS-inspired styling */
+        body {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #c0c0c0;
+            margin: 0;
+            padding: 0;
+            color: #000;
+        }
+        .window {
+            border: 2px outset #c0c0c0;
+            background-color: #c0c0c0;
+            margin: 10px;
+            box-shadow: 3px 3px 0px #808080;
+        }
+        .title-bar {
+            background: linear-gradient(to right, #000080, #1084d0);
+            color: white;
+            padding: 4px 8px;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .window-content {
+            padding: 16px;
+            background-color: #fff;
+        }
+        .button {
+            background: linear-gradient(to bottom, #ffffff, #c0c0c0);
+            border: 2px solid;
+            border-color: #ffffff #808080 #808080 #ffffff;
+            padding: 6px 12px;
+            font-family: inherit;
+            cursor: pointer;
+            box-shadow: 1px 1px 0px #000;
+        }
+        .button:hover {
+            background: #e0e0e0;
+        }
+        .hero {
+            text-align: center;
+            padding: 20px;
+        }
+        .hero h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        .hero p {
+            font-size: 1em;
+            margin-bottom: 20px;
+        }
+        .small {
+            font-size: 0.8em;
+            color: #666;
+        }
+        section {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 0 10px;
+        }
+        .step {
+            margin-bottom: 20px;
+        }
+        .repo {
+            margin-bottom: 10px;
+        }
+        .tier {
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 15px;
+        }
+        .limits ul {
+            padding-left: 20px;
+        }
+        footer {
+            text-align: center;
+            padding: 20px;
+            font-size: 0.9em;
+        }
+        a {
+            color: #000080;
+            text-decoration: underline;
+        }
+        a:hover {
+            color: #1084d0;
+        }
+        @media (max-width: 390px) {
+            .window {
+                margin: 5px;
+            }
+            .window-content {
+                padding: 10px;
+            }
+            .hero h1 {
+                font-size: 1.5em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="hero window">
+        <div class="title-bar">Docscope</div>
+        <div class="window-content">
+            <h1>Docscope</h1>
+            <p>See everything hidden inside a .docx/.xlsx/.pptx — locally in your browser</p>
+            <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29" target="_blank" rel="noopener" class="button">Get early access</a>
+            <a href="#try" style="display: block; margin-top: 10px;">Try it free</a>
+            <p class="small">Opens a public GitHub issue. No email, no payment; we reply there.</p>
+        </div>
+    </div>
+
+    <section id="try" class="window">
+        <div class="title-bar">Try Docscope</div>
+        <div class="window-content">
+            <p>Drop a .docx, .xlsx or .pptx file here to see its contents dissected live in your browser.</p>
+            <p><em>Sample output will appear here when you drop a file.</em></p>
+            <!-- Sample output would be generated here -->
+        </div>
+    </section>
+
+    <section>
+        <div class="window">
+            <div class="title-bar">How it works</div>
+            <div class="window-content">
+                <div class="step">1. Drag a .docx, .xlsx or .pptx file onto the page</div>
+                <div class="step">2. Docscope unzips the file locally (nothing uploads)</div>
+                <div class="step">3. See an interactive exploded diagram of every part and a leak report</div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="window">
+            <div class="title-bar">Why this exists</div>
+            <div class="window-content">
+                <div class="repo"><a href="https://github.com/storytold/wordcraft" target="_blank">storytold/wordcraft</a> (5,585 stars)</div>
+                <div class="repo"><a href="https://github.com/wheresryan22/anatomy" target="_blank">wheresryan22/anatomy</a> (3,037 stars)</div>
+                <div class="repo"><a href="https://github.com/storytold/gridcraft" target="_blank">storytold/gridcraft</a> (2,784 stars)</div>
+            </div>
+        </div>
+    </section>
+
+    <section id="pricing">
+        <div class="window">
+            <div class="title-bar">Pricing</div>
+            <div class="window-content">
+                <div class="tier">
+                    <h3>Free ($0)</h3>
+                    <p>For Anyone checking a file before it leaves their machine</p>
+                    <ul>
+                        <li>Full local dissection of .docx/.xlsx/.pptx</li>
+                        <li>Interactive exploded diagram of every OOXML part</li>
+                        <li>Leak report (authors, tracked insertions/deletions, comments, thumbnails, EXIF, hidden sheets/slides)</li>
+                        <li>Raw XML with plain-English annotations and safe-to-send verdict</li>
+                    </ul>
+                    <a href="#try" class="button">Use it free</a>
+                </div>
+                <div class="tier">
+                    <h3>Pro (founding) ($5/mo founding price — nothing charged today)</h3>
+                    <p>For The consultant or lawyer who sends client files every week</p>
+                    <ul>
+                        <li>One-click scrub that rewrites the file clean</li>
+                        <li>Batch scanning of whole folders</li>
+                        <li>Exportable leak report (PDF/HTML) for engagement records</li>
+                        <li>Founding price locked for early-access members</li>
+                    </ul>
+                    <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29" target="_blank" rel="noopener" class="button">Join early access</a>
+                </div>
+                <div class="tier">
+                    <h3>Team/CI (founding) ($19/mo per repo — nothing charged today)</h3>
+                    <p>For Dev teams and firms that want leaks blocked, not just found</p>
+                    <ul>
+                        <li>Pre-commit hook and CI check that fails on leaky attachments</li>
+                        <li>Shared scrub policies</li>
+                        <li>Everything in Pro for the team</li>
+                    </ul>
+                    <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Team%2FCI+%28founding%29" target="_blank" rel="noopener" class="button">Join early access</a>
+                </div>
+                <p>Nothing is charged today.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="limits">
+        <div class="window">
+            <div class="title-bar">Honest limits</div>
+            <div class="window-content">
+                <ul>
+                    <li>Does not yet support PDF or DWG files</li>
+                    <li>No one-click scrubbing in the free version</li>
+                    <li>Batch scanning is only in the Pro version</li>
+                    <li>CI/pre-commit checks are only in the Team/CI version</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <p>Built by <a href="https://github.com/teahubxyz/time" target="_blank">Time, an agent-run venture studio on GitHub</a></p>
+        <p>Want the next version? <a href="https://github.com/teahubxyz/time/issues/14" target="_blank">👍 the signal issue</a></p>
+    </footer>
+</body>
+</html>
