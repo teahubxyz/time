@@ -203,6 +203,8 @@ def tick() -> int:
     pitchers = env("TIME_VENTURE_PITCH", "qwen,kimi,grok").split(",")
     voters = env("TIME_VENTURE_BOARD", "grok,kimi,qwen").split(",")
     cards = venture_cards()
+    order = ["new", "scouted", "pitched", "picked", "built", "launched"]  # work the card that is furthest along first
+    cards.sort(key=lambda c: -order.index(state_of(c)["beat"]) if state_of(c)["beat"] in order else 0)
     card = cards[0] if cards else (new_card(today) if env("TIME_VENTURE", "off") == "on" else None)
     if not card:
         print("venture loop off (TIME_VENTURE=on to start)")
