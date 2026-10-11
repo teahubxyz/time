@@ -104,7 +104,7 @@ def think(seat: str, model: str | None, effort: str | None, system: str, user: s
     key = os.environ.get("VENICE_API_KEY")
     if not key:
         raise LookupError("no VENICE_API_KEY secret on this repo yet")
-    body = {"model": model or SEATS[seat]["default"], "temperature": 0.4, "max_tokens": 2500,
+    body = {"model": model or SEATS[seat]["default"], "temperature": 0.4, "max_tokens": 4000,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "venice_parameters": {"include_venice_system_prompt": False}}
     if effort:
@@ -416,6 +416,8 @@ class Hands:
         d = tempfile.mkdtemp(prefix="time-worker-")
         url = f"https://x-access-token:{os.environ['GITHUB_TOKEN']}@github.com/{REPO}"
         subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", self.branch, url, d], check=True, capture_output=True)
+        # the token must not stay in .git/config, where a `run` command could read it
+        subprocess.run(["git", "remote", "set-url", "origin", f"https://github.com/{REPO}"], cwd=d, check=True, capture_output=True)
         return d
 
     def call(self, name: str, a: dict) -> str:
@@ -445,7 +447,9 @@ class Hands:
             return f"wrote {a['path']}"
         if name == "run":
             self.checkout = self._checkout()  # fresh: see the latest writes
-            p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=600)
+            # Cards and venture inputs can carry third-party text, so the shell the model drives sees no secrets.
+            clean = {k: v for k, v in os.environ.items() if not re.search(r"TOKEN|KEY|SECRET|PASSWORD|ACTIONS_", k, re.I)}
+            p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=600, env=clean)
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
             # GitHub does not run pull_request workflows for commits made with the Actions token, so the worker's own
             # test run is recorded as a commit status; land() counts statuses as checks.
@@ -474,7 +478,8 @@ def venice_work(card: dict, done: str, spec: str) -> dict:
              body=(card.get("body") or "")[:20000], branch=hands.branch, done=done)},
             {"role": "user", "content": "Begin. Look at the repository first."}]
     for _ in range(int(os.environ.get("TIME_WORKER_STEPS") or 40)):
-        body = {"model": model, "temperature": 0.2, "max_tokens": 6000, "messages": msgs, "tools": WORKER_TOOLS,
+        body = {"model": model, "temperature": 0.2, "max_tokens": int(os.environ.get("TIME_WORKER_MAX_TOKENS") or 16000),
+                "messages": msgs, "tools": WORKER_TOOLS,
                 "venice_parameters": {"include_venice_system_prompt": False}}
         if effort:
             body["reasoning_effort"] = effort

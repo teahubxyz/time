@@ -1,6 +1,7 @@
 name: venture
-# The venture loop: one stage per tick. Daily kickoff plus a nudge every 20 minutes while a card is open
-# (cheap: a tick with no open card and TIME_VENTURE!=on exits at once). Off until TIME_VENTURE=on.
+# The venture loop: trending repos -> pitches -> board -> launch plan -> launch page on Pages -> 7 days of signups.
+# Every 20 minutes it advances whatever is due (cheap when nothing is); a new venture card starts once a day.
+# Off until TIME_VENTURE=on. Signups come in through .github/ISSUE_TEMPLATE/early-access.yml.
 on:
   schedule:
     - cron: "*/20 * * * *"
@@ -16,11 +17,12 @@ concurrency:
 jobs:
   tick:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
         with:
           sparse-checkout: .github/time
+          persist-credentials: false   # the worker's shell must not find the token in .git/config
       - run: python3 .github/time/venture.py tick
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -28,5 +30,8 @@ jobs:
           TIME_VENTURE: ${{ vars.TIME_VENTURE }}
           TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}
           TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}
+          TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}
+          TIME_VENTURE_MEASURE_DAYS: ${{ vars.TIME_VENTURE_MEASURE_DAYS }}
           TIME_WORKER: ${{ vars.TIME_WORKER }}
           TIME_WORKER_STEPS: ${{ vars.TIME_WORKER_STEPS }}
+          TIME_WORKER_MAX_TOKENS: ${{ vars.TIME_WORKER_MAX_TOKENS }}

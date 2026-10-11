@@ -1,0 +1,29 @@
+name: Early access
+description: Join the early-access list for one of the studio's ventures. No email, nothing charged.
+title: "Early access: "
+labels: ["signup"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for raising your hand. This is a **public** GitHub issue: no email is collected and nothing is charged.
+        The studio replies here, and what you write below shapes the next version.
+  - type: input
+    id: venture
+    attributes:
+      label: Venture
+      description: Filled in from the page you came from.
+      placeholder: e.g. mdecks
+    validations:
+      required: true
+  - type: input
+    id: plan
+    attributes:
+      label: Plan
+      description: The tier you would want. Paid tiers are early-access ideas; nothing is charged.
+      placeholder: e.g. Free, or a founding tier
+  - type: textarea
+    id: use
+    attributes:
+      label: What would you use it for?
+      description: One or two sentences about your use. This decides what gets built next.

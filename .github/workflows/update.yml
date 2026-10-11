@@ -24,7 +24,7 @@ jobs:
       - name: copy engine, open PR if changed
         run: |
           set -e
-          for f in .github/time/time.py .github/time/venture.py .github/time/test_time.py .github/time/seats.json .claude/skills/time/SKILL.md; do
+          for f in .github/time/time.py .github/time/venture.py .github/time/test_time.py .github/time/seats.json .github/ISSUE_TEMPLATE/early-access.yml .claude/skills/time/SKILL.md; do
             mkdir -p "$(dirname "$f")"; cp "/tmp/up/$f" "$f"
           done
           python3 .github/time/test_time.py > /dev/null
