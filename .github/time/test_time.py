@@ -736,3 +736,18 @@ assert any("below the first screen" in p for p in vt.layout_problems({"phone": {
 b31 = vt.build_body({**w16, "prior": "ventures/mdecks/v0.html", "prior_note": "Keep its look and layout."}, plan16)
 assert "ventures/mdecks/v0.html" in b31 and "Keep its look and layout." in b31
 print("ALL OK 23")
+
+# 32 a run can land the files it generated (keep), and nothing outside the checkout or in workflows
+import tempfile as _tf
+d32 = _tf.mkdtemp()
+os.makedirs(os.path.join(d32, "ventures/x"))
+W32 = World([card(1, D)])
+tm.http = W32.http
+h = tm.Hands.__new__(tm.Hands)
+h.n, h.branch, h.pr, h.steps, h.checkout = 1, "gh-pages", None, 0, None
+h._checkout = lambda: d32
+out = h.call("run", {"command": "printf 'const SAMPLE=1;' > ventures/x/sample.js && echo ok > junk.txt",
+                     "keep": ["ventures/x/sample.js", "../../etc/passwd", ".github/workflows/x.yml"]})
+assert "ventures/x/sample.js: kept" in out and "refused or missing" in out, out
+assert W32.files.get("ventures/x/sample.js") == "const SAMPLE=1;" and "junk.txt" not in W32.files
+print("ALL OK 24")

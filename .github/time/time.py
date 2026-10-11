@@ -400,8 +400,13 @@ WORKER_TOOLS = [
     {"type": "function", "function": {"name": "write_file", "description": "Create or replace one file on the branch with the full new content (commits it).",
      "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"},
                                                      "message": {"type": "string"}}, "required": ["path", "content"]}}},
-    {"type": "function", "function": {"name": "run", "description": "Run a shell command on a checkout of the branch (tests, lint). Returns exit code and output.",
-     "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
+    {"type": "function", "function": {"name": "run", "description": "Run a shell command on a fresh checkout of the branch (tests, checks, "
+     "generators). Returns exit code and output. Whatever the command creates or changes is thrown away, except the paths "
+     "listed in `keep`, which are committed to the branch afterwards.",
+     "parameters": {"type": "object", "properties": {"command": {"type": "string"},
+                    "keep": {"type": "array", "items": {"type": "string"},
+                             "description": "Repo-relative paths the command created or changed that should land on the branch."}},
+                    "required": ["command"]}}},
     {"type": "function", "function": {"name": "open_pr", "description": "Open the pull request when the work is done and checked. Call this exactly once, last.",
      "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "summary": {"type": "string",
                     "description": "What changed and how you checked it."}}, "required": ["title", "summary"]}}},
@@ -411,8 +416,9 @@ WORKER_RULES = """You are the worker for card #{n} in {repo}: "{title}".
 
 {body}
 
-You have hands: list_files, read_file, write_file (one file per call, full content), run (shell on a checkout of your
-branch), open_pr. Work on the branch `{branch}`; everything you write lands there. Keep the change small and focused.
+You have hands: list_files, read_file, write_file (one file per call, full content), run (shell on a fresh checkout of
+your branch), open_pr. Work on the branch `{branch}`. Only two things reach it: write_file, and files a run lists in
+`keep` (for generated files, e.g. a sample built by a script). Anything else a run does is thrown away. Keep the change small and focused.
 Read before you write. Always `run` the project's tests or checks before opening the PR (that run is the PR's check). When it is done and checked, call open_pr once
 with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows.
 The card's finish line is: DONE: {done}"""
@@ -472,12 +478,33 @@ class Hands:
             except subprocess.TimeoutExpired:  # a server or watcher never exits: tell the model, don't crash the card
                 return (f"timed out after {limit}s and was stopped. Servers and watchers never exit; run one-shot commands "
                         f"(a parser, a test script, node -e '...') instead")
+            kept = []
+            root = os.path.realpath(self.checkout)
+            for rel in (a.get("keep") or [])[:10]:
+                full = os.path.realpath(os.path.join(root, str(rel)))
+                rel = os.path.relpath(full, root)
+                if not full.startswith(root + os.sep) or rel.startswith(".github/workflows") or not os.path.isfile(full):
+                    kept.append(f"{rel}: refused or missing")
+                    continue
+                data = open(full, "rb").read()
+                if len(data) > 2_000_000:
+                    kept.append(f"{rel}: too big to keep")
+                    continue
+                body = {"message": f"card #{self.n}: {rel} (generated)", "branch": self.branch, "content": base64.b64encode(data).decode()}
+                try:
+                    body["sha"] = gh("GET", f"/repos/{REPO}/contents/{rel}?ref={self.branch}")["sha"]
+                except RuntimeError:
+                    pass
+                gh("PUT", f"/repos/{REPO}/contents/{rel}", body)
+                kept.append(f"{rel}: kept")
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
             # GitHub does not run pull_request workflows for commits made with the Actions token, so the worker's own
             # test run is recorded as a commit status; land() counts statuses as checks.
             gh("POST", f"/repos/{REPO}/statuses/{sha}", {"state": "success" if p.returncode == 0 else "failure",
                "context": "time/worker-run", "description": a["command"][:100]})
-            return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}"
+            self.checkout = None if kept else self.checkout
+            note = ("\n" + "; ".join(kept)) if kept else ""
+            return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}{note}"
         if name == "open_pr":
             pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": default_branch(),
                     "body": f"{a['summary']}\n\nCloses #{self.n}\n\n<sub>worker: Venice seat via Time</sub>"})
