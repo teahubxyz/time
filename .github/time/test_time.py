@@ -405,6 +405,9 @@ def seat_brain(seat, model, effort, system, user):
         return json.dumps({"ranking": ["mdecks", f"deck-{seat}"], "reason": "specific person"})
     if "Write the launch plan" in user:
         return "Here is my plan:\n" + json.dumps({**GOOD, "positioning": f"{GOOD['positioning']} ({seat})"})
+    if "You write launch posts for" in user:
+        assert "What the product does, from its README" in user and "never invent" in user.lower()
+        return json.dumps({"launch_channels": [{"channel": "Show HN", "draft": "Show HN: MDecks, built by an agent-run studio"}]})
     if "You chair the launch" in user:
         assert "### grok" in user and "### kimi" in user
         return json.dumps({**GOOD, "from": {"positioning": "kimi", "pricing": "grok"}, "dissent": "qwen wanted $3"})
@@ -419,7 +422,9 @@ def page_from(brief, bad=False):
     pricing = "" if bad else f'<section id="pricing">{" ".join(tiers)} Nothing is charged today.</section>'
     return (f'<!doctype html><html><head><meta name="viewport" content="width=device-width"><title>MDecks</title></head><body>'
             f'<header><h1>MDecks</h1><a class="cta" href="{join.replace("&", "&amp;")}">Join early access</a></header>'
-            f'<section id="try"><textarea># Slide</textarea></section>{pricing}'
+            f'<section id="try"><textarea># Slide</textarea><div id="out"></div></section>{pricing}'
+            '<script>' + "function render(src){var o=document.getElementById('out');o.textContent=src.split('---').join(' | ');}" * 12
+            + "render(document.querySelector('textarea').value);</script>"
             f'<section><h2>Why this exists</h2><a href="https://github.com/storytold/wordcraft">storytold/wordcraft</a> 5,496 stars</section>'
             f'<section><h2>Honest limits</h2><ul><li>No export yet</li></ul></section>'
             f'<footer><a href="{signal}">signal</a></footer>' + "<!-- filler -->" * 250 + "</body></html>")
@@ -475,6 +480,9 @@ assert sig["labels"] == ["signal"] and "join early access" in sig["body"].lower(
 post = W.text(card16["number"])
 assert "is live: https://o.github.io/r/ventures/mdecks/" in post and "Decision on" in post and "/c" in post and "sheet.png" in post
 assert "📋 Launch plan from `grok`, `kimi`, `qwen`, synthesized by `grok`" in post
+# the launch drafts were rewritten against the build, on the card and in LAUNCH.md
+assert "Show HN: MDecks, built by an agent-run studio" in post and "built by an agent-run studio" in W.files["ventures/mdecks/LAUNCH.md"]
+assert "Type slides." not in W.files["ventures/mdecks/LAUNCH.md"].split("## Launch channels")[1].split("## 7-day")[0]
 # the same day never gets a second card
 vtick({"TIME_VENTURE": "on"})
 assert sum(1 for i in W.issues.values() if "venture" in i["labels"]) == 1
@@ -640,3 +648,19 @@ vt._build_on_pages.brief = vt.build_body(w16, plan16)
 vtick()
 assert W.beats(c24)[-2:] == ["built", "launched"], W.beats(c24)
 print("ALL OK 16")
+
+# 25 a facade fails: no script means no product, and a #try that scripts don't change is dead
+W = VWorld()
+vt.tm.http = W.http
+facade = page_from(vt.build_body(w16, plan16))
+facade = re.sub(r"<script>.*?</script>", "", facade, flags=re.S)
+W.files["ventures/mdecks/index.html"] = facade
+W.files["ventures/mdecks/README.md"] = "x" * 300
+assert any("no working product" in p for p in vt.check_page(w16, plan16))
+W.files["ventures/mdecks/index.html"] = facade.replace("</body>", '<script src="app.js"></script></body>')
+W.files["ventures/mdecks/app.js"] = "function run(){document.getElementById('out').textContent='rendered';}\n" * 20
+assert not any("no working product" in p for p in vt.check_page(w16, plan16)), "a product in app.js counts"
+assert vt.dead({"live": {"n": 4, "t": 20}, "nojs": {"n": 4, "t": 20}}) and not vt.dead({"live": {"n": 30, "t": 900}, "nojs": {"n": 4, "t": 20}})
+assert not vt.dead({"live": None, "nojs": None})
+assert 'sandbox="allow-same-origin"' in vt.HARNESS.format(frames="", names="[]")
+print("ALL OK 17")

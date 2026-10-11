@@ -185,7 +185,8 @@ through a GitHub issue form (no email, no payment processor); nothing is charged
   "launch_channels": [{{"channel": "a specific place", "draft": "the post, ready to paste"}}],
   "success_metric": "what success looks like after 7 days", "success_signups": 10,
   "kill_metric": "what failure looks like after 7 days", "kill_signups": 2}}
-Pricing: the free tier first, then at most two paid tiers. Launch channels: two or three."""
+Pricing: the free tier first, then at most two paid tiers. Launch channels: two or three, each draft plain and specific, with no
+invented people, stories, usage or results."""
 
 SYNTH = """You chair the launch of **{name}** ({one_liner}) for an agent-run venture studio. The board seats wrote these
 launch plans:
@@ -402,6 +403,9 @@ FIX_BODY = """The launch page for **{name}** (ventures/{slug}/ on this branch) f
 
 {problems}
 
+The product the page must carry, working, in <section id="try">: {page}
+It runs entirely in the browser and, on first load, runs on a preloaded realistic sample and shows the real output.
+
 Fix exactly these and keep everything else as it is. Read the files first, then write each fixed file whole.
 The hero's one primary button links to {join}
 The signal issue is {signal}
@@ -425,8 +429,7 @@ def build_body(w: dict, plan: dict) -> str:
 def launch_md(w: dict, plan: dict, plans: dict) -> str:
     cell = lambda v: str(v).replace("|", "/").replace("\n", " ")
     rows = "\n".join(f"| {cell(t['tier'])} | {cell(t['price'])} | {cell(t['for'])} | {cell(t['includes'])} |" for t in plan["pricing"])
-    chans = "\n\n".join(f"### {c['channel']}\n\n" + "\n".join("> " + line for line in c["draft"].splitlines())
-                        for c in plan["launch_channels"]) or "(none)"
+    chans = chans_md(plan["launch_channels"])
     src = "\n".join(f"- {k.replace('_', ' ')}: `{v}`" for k, v in plan["from"].items()) or "- one plan, no synthesis"
     dissent = f"\n\n**Dissent:** {plan['dissent']}" if plan["dissent"] else ""
     raw = "\n\n".join(f"<details><summary>{s}</summary>\n\n```json\n{json.dumps(p, indent=1, ensure_ascii=False)[:6000]}\n```\n\n</details>"
@@ -648,8 +651,15 @@ def check_page(w: dict, plan: dict) -> list[str]:
     page = pages_file(f"ventures/{slug}/index.html")
     if page is None:
         return [f"ventures/{slug}/index.html is missing"]
-    assets = "".join(pages_file(f"ventures/{slug}/{a}") or "" for a in ("style.css", "app.js") if a in page)
+    local = [a for a in re.findall(r"<(?:script|link)\b[^>]*\b(?:src|href)\s*=\s*[\"']([^\"'#?]+\.(?:js|css))", page, re.I)
+             if not re.match(r"(?:https?:)?//", a)]
+    files = {a: pages_file(f"ventures/{slug}/{a.lstrip('./')}") or "" for a in dict.fromkeys(local)}
+    assets = "".join(files.values())
     low, problems = page.lower(), []
+    code = "".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I)) + "".join(v for a, v in files.items() if a.endswith(".js"))
+    if len(re.sub(r"\s+", "", code)) < 800:
+        problems.append("no working product: the page has almost no JavaScript. The product must run in the page and show real "
+                        "output from a preloaded sample")
     if len(page) < 3000:
         problems.append(f"index.html is only {len(page)} characters: too thin to be a launch page")
     if not re.search(r"<meta[^>]+name\s*=\s*[\"']?viewport", low):
@@ -693,13 +703,27 @@ PROBE = ('<script>window.__timeErr=[];addEventListener("error",function(e){__tim
          '{sw:d.scrollWidth,iw:innerWidth,ih:innerHeight,cta:r?Math.round(r.top):-1,ctah:r?Math.round(r.height):0,err:__timeErr}))},300)})</script>')
 SIZES = {"phone": (390, 844), "desktop": (1280, 800)}
 # Headless Chrome clamps its window to 500px wide, so each size is measured inside an iframe of exactly that size.
-HARNESS = """<!doctype html><html><body style="margin:0">{frames}<script>setTimeout(function(){{var o={{}};
+# A sandboxed twin with scripts off shows what #try looks like before the product runs; the product must change it.
+HARNESS = """<!doctype html><html><body style="margin:0">{frames}
+<iframe id="nojs" src="index.html" sandbox="allow-same-origin" width="1280" height="800" style="border:0;display:block"></iframe>
+<script>function tryStats(d){{var t=d&&d.getElementById("try");return t?{{n:t.getElementsByTagName("*").length,t:(t.innerText||"").length}}:null}}
+setTimeout(function(){{var o={{}};
 {names}.forEach(function(n){{try{{o[n]=JSON.parse(document.getElementById(n).contentDocument.documentElement.getAttribute("data-time-probe")||"null")}}
-catch(e){{o[n]=null}}}});document.documentElement.setAttribute("data-time-result",JSON.stringify(o))}},3000)</script></body></html>"""
+catch(e){{o[n]=null}}}});
+try{{o.live=tryStats(document.getElementById("desktop").contentDocument);o.nojs=tryStats(document.getElementById("nojs").contentDocument)}}catch(e){{}}
+document.documentElement.setAttribute("data-time-result",JSON.stringify(o))}},3000)</script></body></html>"""
+DEAD = ("the product in #try shows nothing it computed: with scripts on and off it looks the same. On first load, its script "
+        "must run the product on a preloaded realistic sample and render the real output")
 SHEET = """<!doctype html><html><body style="margin:0;background:#e8e4da;display:flex;gap:24px;padding:24px;align-items:flex-start">
 <iframe src="{page}" width="390" height="844" style="border:0;background:#fff;box-shadow:0 2px 14px rgba(0,0,0,.18)"></iframe>
 <div style="width:768px;height:480px;overflow:hidden;box-shadow:0 2px 14px rgba(0,0,0,.18);background:#fff">
 <iframe src="{page}" width="1280" height="800" style="border:0;transform:scale(.6);transform-origin:0 0"></iframe></div></body></html>"""
+
+
+def dead(result: dict) -> bool:
+    """#try with scripts on looks like #try with scripts off: the product rendered nothing of its own."""
+    live, nojs = result.get("live"), result.get("nojs")
+    return bool(live and nojs and live["n"] - nojs["n"] < 3 and abs(live["t"] - nojs["t"]) < 40)
 
 
 def chrome() -> str | None:
@@ -764,6 +788,8 @@ def browser_check(slug: str) -> tuple[list[str], bytes | None, str]:
                 problems.append(f"the primary button is below the first screen at {w}x{h} (its top is at {p['cta']}px)")
             if p["err"]:
                 problems.append(f"JavaScript errors on load: {'; '.join(map(str, p['err'][:3]))}")
+        if dead(result):
+            problems.append(DEAD)
         return list(dict.fromkeys(problems)), (shot.read_bytes() if shot.exists() else None), "checked in headless Chrome at 390x844 and 1280x800"
     finally:
         if srv:
@@ -888,6 +914,44 @@ def rank(stage: str) -> int:
 
 def first(beats: list[dict], name: str) -> dict:
     return next((b for b in reversed(beats) if b["beat"] == name), {})
+
+
+DRAFTS = """You write launch posts for **{name}**, launched today by an agent-run venture studio on GitHub.
+
+What the product does, from its README:
+{readme}
+
+The page's own words:
+{page}
+
+These drafts were written before it was built. Rewrite each so every claim is true of the product as built (the README and
+the page above are the only evidence); drop a channel if it no longer fits:
+{drafts}
+
+Rules: plain and specific, no hype. Never invent people, stories, usage, results or numbers ("I built this after a client
+file leaked" is an invented story). Where a channel expects the maker to speak, say an agent-run studio built it.
+Page: {url} · Early access: a public GitHub issue form, no email, nothing charged.
+Reply with ONLY JSON: {{"launch_channels": [{{"channel": "...", "draft": "..."}}]}}"""
+
+
+def chans_md(chans: list[dict]) -> str:
+    return "\n\n".join(f"### {c['channel']}\n\n" + "\n".join("> " + line for line in c["draft"].splitlines()) for c in chans) or "(none)"
+
+
+def true_drafts(w: dict, plan: dict, chair: str) -> list[dict]:
+    """The chair rewrites the plan's launch drafts against what was built; the plan's drafts stand if that fails."""
+    readme = (pages_file(f"ventures/{w['slug']}/README.md") or "")[:4000]
+    html = pages_file(f"ventures/{w['slug']}/index.html") or ""
+    text = _s(re.sub(r"<script.*?</script>|<style.*?</style>|<[^>]+>", " ", html, flags=re.S | re.I), 3000)
+    drafts = "\n\n".join(f"[{c['channel']}]\n{c['draft']}" for c in plan["launch_channels"])
+    try:
+        out = ask_json(chair, f"You are `{chair}`. Reply with JSON only.",
+                       DRAFTS.format(name=w["name"], readme=readme, page=text, drafts=drafts, url=w["url"]))
+    except Exception as e:  # noqa: BLE001
+        print("drafts rewrite failed:", e)
+        out = None
+    chans = normalize_plan({"launch_channels": (out or {}).get("launch_channels") or []}, w)["launch_channels"]
+    return chans or plan["launch_channels"]
 
 
 def plan_summary(w: dict, plan: dict, plans: dict, chair: str) -> str:
@@ -1019,12 +1083,19 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 say(f"🔧 The checks found {len(problems)} problem(s); fix round {fixes + 1}:\n\n{bullets}",
                     {"beat": "built", **keep, "fixes": fixes, "problems": problems})
                 r = _build_on_pages({"number": n, "title": f"Fix the {w['name']} launch page",
-                                     "body": FIX_BODY.format(name=w["name"], slug=w["slug"], problems=bullets,
+                                     "body": FIX_BODY.format(name=w["name"], slug=w["slug"], problems=bullets, page=w.get("page", ""),
                                                              join=w["join"], signal=signal_url(w))},
                                     "every check above passes", worker_spec())
                 say(f"🔧 `{r['seat']}` worked on the fixes in {r['steps']} steps. Re-checking.",
                     {"beat": "built", **keep, "fixes": fixes + 1})
                 return "heavy"
+            plan = {**plan, "launch_channels": true_drafts(w, plan, chair)}
+            keep["plan"] = plan
+            md = pages_file(f"ventures/{w['slug']}/LAUNCH.md")
+            if md and "## Launch channels" in md:
+                md = re.sub(r"(## Launch channels \(drafts; nothing is sent\)\n\n).*?(\n\n## 7-day lines)",
+                            lambda m: m.group(1) + chans_md(plan["launch_channels"]) + m.group(2), md, flags=re.S)
+                put_pages(f"ventures/{w['slug']}/LAUNCH.md", md, f"venture {w['slug']}: launch drafts checked against the build")
             shot = None
             if sheet:
                 res = put_pages(f"ventures/{w['slug']}/shots/sheet.png", sheet, f"venture {w['slug']}: screenshots")
