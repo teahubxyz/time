@@ -12,8 +12,9 @@
    "design": "editorial print: a broadsheet/magazine layout, serif display type, columns, rules, generous margins",
    "version": 1,
    "planned": "2026-10-11",
-   "status": "building",
-   "signups": 0
+   "status": "live",
+   "signups": 0,
+   "launched": "2026-10-11"
   },
   {
    "slug": "docscope",
