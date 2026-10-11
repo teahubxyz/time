@@ -91,6 +91,128 @@
         a:hover {
             color: #1084d0;
         }
+        
+        /* Docscope specific styles */
+        #drop-zone {
+            border: 2px dashed #000080;
+            border-radius: 4px;
+            padding: 30px;
+            text-align: center;
+            margin: 20px 0;
+            background-color: #f0f8ff;
+            transition: background-color 0.3s;
+        }
+        #drop-zone.dragover {
+            background-color: #d0e8ff;
+        }
+        #file-info {
+            margin: 15px 0;
+            padding: 10px;
+            background-color: #f9f9f9;
+            border: 1px solid #ddd;
+        }
+        #parts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin: 20px 0;
+        }
+        .part-item {
+            background: #e6f3ff;
+            border: 1px solid #000080;
+            border-radius: 4px;
+            padding: 8px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: background-color 0.2s;
+        }
+        .part-item:hover {
+            background: #cce5ff;
+        }
+        .part-item.hidden {
+            background: #ffe6e6;
+            border-color: #cc0000;
+        }
+        .part-item.media {
+            background: #e6ffe6;
+            border-color: #008000;
+        }
+        .part-item.metadata {
+            background: #fff0e6;
+            border-color: #ff8000;
+        }
+        #leak-report {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #fff8e6;
+            border: 1px solid #ff8000;
+            border-radius: 4px;
+        }
+        .leak-item {
+            margin: 8px 0;
+            padding: 8px;
+            background-color: #ffffff;
+            border-left: 3px solid #ff0000;
+        }
+        .leak-item.safe {
+            border-left-color: #008000;
+        }
+        #xml-viewer {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #000;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none;
+        }
+        .annotation {
+            background-color: #ffff00;
+            color: #000;
+            padding: 2px 4px;
+        }
+        .tab-container {
+            margin: 20px 0;
+        }
+        .tab-button {
+            background: #e0e0e0;
+            border: 1px solid #808080;
+            padding: 8px 16px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .tab-button.active {
+            background: #000080;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+            padding: 15px;
+            border: 1px solid #808080;
+            margin-top: -1px;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        .loading {
+            text-align: center;
+            padding: 20px;
+        }
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #000080;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 15px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
         @media (max-width: 390px) {
             .window {
                 margin: 5px;
@@ -120,8 +242,56 @@
         <div class="title-bar">Try Docscope</div>
         <div class="window-content">
             <p>Drop a .docx, .xlsx or .pptx file here to see its contents dissected live in your browser.</p>
-            <p><em>Sample output will appear here when you drop a file.</em></p>
-            <!-- Sample output would be generated here -->
+            
+            <div id="drop-zone">
+                <p>Drag & drop a .docx, .xlsx, or .pptx file here</p>
+                <p>or</p>
+                <input type="file" id="file-input" accept=".docx,.xlsx,.pptx" style="display: none;">
+                <button class="button" onclick="document.getElementById('file-input').click()">Choose File</button>
+            </div>
+            
+            <div id="file-info" style="display: none;"></div>
+            
+            <div id="loading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Analyzing file...</p>
+            </div>
+            
+            <div id="results" style="display: none;">
+                <div class="tab-container">
+                    <button class="tab-button active" onclick="showTab('diagram')">Diagram</button>
+                    <button class="tab-button" onclick="showTab('leaks')">Leak Report</button>
+                    <button class="tab-button" onclick="showTab('reference')">Reference</button>
+                </div>
+                
+                <div id="diagram-tab" class="tab-content active">
+                    <h3>Exploded Diagram</h3>
+                    <p>Click any part to see the raw XML with annotations:</p>
+                    <div id="parts-container"></div>
+                </div>
+                
+                <div id="leaks-tab" class="tab-content">
+                    <h3>Leak Report</h3>
+                    <div id="leak-report"></div>
+                </div>
+                
+                <div id="reference-tab" class="tab-content">
+                    <h3>OOXML Reference</h3>
+                    <p>Parts we handle, linked to ECMA-376 specifications:</p>
+                    <ul>
+                        <li><strong>document.xml</strong> - Main document content (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 1</a>)</li>
+                        <li><strong>styles.xml</strong> - Document styles definitions (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 1</a>)</li>
+                        <li><strong>core.xml</strong> - Core document properties (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 2</a>)</li>
+                        <li><strong>app.xml</strong> - Application-specific properties (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 2</a>)</li>
+                        <li><strong>comments.xml</strong> - Document comments (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 1</a>)</li>
+                        <li><strong>people.xml</strong> - People referenced in comments (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 4</a>)</li>
+                        <li><strong>thumbnail.*</strong> - Embedded preview images (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 2</a>)</li>
+                        <li><strong>[Content_Types].xml</strong> - Content types mapping (<a href="https://www.ecma-international.org/publications-and-standards/standards/ecma-376/" target="_blank">ECMA-376 Part 2</a>)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div id="xml-viewer"></div>
         </div>
     </section>
 
@@ -206,5 +376,471 @@
         <p>Built by <a href="https://github.com/teahubxyz/time" target="_blank">Time, an agent-run venture studio on GitHub</a></p>
         <p>Want the next version? <a href="https://github.com/teahubxyz/time/issues/14" target="_blank">👍 the signal issue</a></p>
     </footer>
+
+    <script>
+        // Global variables
+        let currentFile = null;
+        let fileParts = {};
+        let leakReport = [];
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', function() {
+            setupEventListeners();
+            loadSampleFile();
+        });
+        
+        // Set up event listeners
+        function setupEventListeners() {
+            const dropZone = document.getElementById('drop-zone');
+            const fileInput = document.getElementById('file-input');
+            
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false);
+            });
+            
+            // Highlight drop zone when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, highlight, false);
+            });
+            
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, unhighlight, false);
+            });
+            
+            // Handle dropped files
+            dropZone.addEventListener('drop', handleDrop, false);
+            fileInput.addEventListener('change', handleFileSelect, false);
+        }
+        
+        // Event handler functions
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        function highlight(e) {
+            document.getElementById('drop-zone').classList.add('dragover');
+        }
+        
+        function unhighlight(e) {
+            document.getElementById('drop-zone').classList.remove('dragover');
+        }
+        
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length) {
+                processFile(files[0]);
+            }
+        }
+        
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length) {
+                processFile(files[0]);
+            }
+        }
+        
+        // Process the selected file
+        function processFile(file) {
+            // Check file type
+            const validTypes = ['.docx', '.xlsx', '.pptx'];
+            const fileName = file.name.toLowerCase();
+            const isValidType = validTypes.some(type => fileName.endsWith(type));
+            
+            if (!isValidType) {
+                alert('Please select a .docx, .xlsx, or .pptx file.');
+                return;
+            }
+            
+            currentFile = file;
+            document.getElementById('file-info').innerHTML = `<strong>File:</strong> ${file.name} (${formatFileSize(file.size)})`;
+            document.getElementById('file-info').style.display = 'block';
+            
+            // Show loading indicator
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('results').style.display = 'none';
+            
+            // Simulate processing (in a real implementation, this would parse the file)
+            setTimeout(() => {
+                analyzeFile(file);
+            }, 1500);
+        }
+        
+        // Analyze the file (simulated for this example)
+        function analyzeFile(file) {
+            // Hide loading indicator
+            document.getElementById('loading').style.display = 'none';
+            
+            // Generate sample parts based on file type
+            const fileType = file.name.split('.').pop().toLowerCase();
+            generateSampleParts(fileType);
+            
+            // Show results
+            document.getElementById('results').style.display = 'block';
+            
+            // Display parts diagram
+            displayPartsDiagram();
+            
+            // Generate and display leak report
+            generateLeakReport();
+            displayLeakReport();
+        }
+        
+        // Generate sample parts for demonstration
+        function generateSampleParts(fileType) {
+            fileParts = {};
+            
+            // Common parts across all Office files
+            fileParts['[Content_Types].xml'] = {
+                content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+    <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+    <Default Extension="xml" ContentType="application/xml"/>
+    <Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
+</Types>`,
+                description: "Defines content types for all parts in the package"
+            };
+            
+            fileParts['_rels/.rels'] = {
+                content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+    <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>
+</Relationships>`,
+                description: "Root relationships for the package"
+            };
+            
+            // Document-specific parts
+            if (fileType === 'docx') {
+                fileParts['word/document.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:body>
+        <w:p>
+            <w:r>
+                <w:t>This is a sample document content.</w:t>
+            </w:r>
+        </w:p>
+        <w:p>
+            <w:r>
+                <w:t>Some tracked changes might be present.</w:t>
+            </w:r>
+            <w:ins w:id="0" w:author="John Doe" w:date="2023-01-15T10:30:00Z">
+                <w:r>
+                    <w:t>This was inserted by John.</w:t>
+                </w:r>
+            </w:ins>
+        </w:p>
+    </w:body>
+</w:document>`,
+                    description: "Main document content with possible tracked changes"
+                };
+                
+                fileParts['word/styles.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:style w:type="paragraph" w:styleId="Normal">
+        <w:name w:val="Normal"/>
+        <w:rPr>
+            <w:rFonts w:ascii="Calibri" w:hAnsi="Calibri"/>
+            <w:sz w:val="22"/>
+        </w:rPr>
+    </w:style>
+</w:styles>`,
+                    description: "Document styles definitions"
+                };
+                
+                fileParts['docProps/core.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Sample Document</dc:title>
+    <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Jane Smith</dc:creator>
+    <cp:lastModifiedBy>Jane Smith</cp:lastModifiedBy>
+    <cp:revision>2</cp:revision>
+</cp:coreProperties>`,
+                    description: "Core document properties including author information"
+                };
+                
+                fileParts['word/comments.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:comments xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+    <w:comment w:id="0" w:author="Alice Johnson" w:date="2023-01-10T14:20:00Z">
+        <w:p>
+            <w:r>
+                <w:t>Please review this section for accuracy.</w:t>
+            </w:r>
+        </w:p>
+    </w:comment>
+</w:comments>`,
+                    description: "Document comments that may contain sensitive information"
+                };
+                
+                fileParts['word/media/image1.jpg'] = {
+                    content: "[Binary image data - would show thumbnail preview]",
+                    description: "Embedded image that may contain EXIF metadata"
+                };
+                
+                fileParts['docProps/thumbnail.jpeg'] = {
+                    content: "[Thumbnail preview image]",
+                    description: "Preview image of the document"
+                };
+            } 
+            // Spreadsheet-specific parts
+            else if (fileType === 'xlsx') {
+                fileParts['xl/workbook.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <sheets>
+        <sheet name="Sheet1" sheetId="1" r:id="rId1"/>
+        <sheet name="HiddenSheet" sheetId="2" r:id="rId2" state="hidden"/>
+    </sheets>
+</workbook>`,
+                    description: "Workbook structure with visible and hidden sheets"
+                };
+                
+                fileParts['xl/worksheets/sheet1.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+    <sheetData>
+        <row r="1">
+            <c r="A1" t="s">
+                <v>0</v>
+            </c>
+        </row>
+    </sheetData>
+</worksheet>`,
+                    description: "Worksheet data content"
+                };
+                
+                fileParts['xl/sharedStrings.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="1" uniqueCount="1">
+    <si>
+        <t>Sample Data</t>
+    </si>
+</sst>`,
+                    description: "Shared string table"
+                };
+                
+                fileParts['docProps/core.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Financial Report</dc:title>
+    <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Bob Wilson</dc:creator>
+    <cp:lastModifiedBy>Alice Chen</cp:lastModifiedBy>
+</cp:coreProperties>`,
+                    description: "Spreadsheet core properties"
+                };
+            }
+            // Presentation-specific parts
+            else if (fileType === 'pptx') {
+                fileParts['ppt/presentation.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<presentation xmlns="http://schemas.openxmlformats.org/presentationml/2006/main">
+    <sldMasterIdLst>
+        <sldMasterId id="2147483648" r:id="rId1"/>
+    </sldMasterIdLst>
+    <sldIdLst>
+        <sldId id="256" r:id="rId2"/>
+        <sldId id="257" r:id="rId3"/>
+        <sldId id="258" r:id="rId4" state="hidden"/>
+    </sldIdLst>
+</presentation>`,
+                    description: "Presentation structure with visible and hidden slides"
+                };
+                
+                fileParts['ppt/slides/slide1.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<sld xmlns="http://schemas.openxmlformats.org/presentationml/2006/main">
+    <spTree>
+        <sp>
+            <txBody>
+                <p>
+                    <r>
+                        <t>Presentation Title</t>
+                    </r>
+                </p>
+            </txBody>
+        </sp>
+    </spTree>
+</sld>`,
+                    description: "Slide content"
+                };
+                
+                fileParts['docProps/core.xml'] = {
+                    content: `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties">
+    <dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Q4 Results Presentation</dc:title>
+    <dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Marketing Team</dc:creator>
+    <cp:lastModifiedBy>Sarah Davis</cp:lastModifiedBy>
+</cp:coreProperties>`,
+                    description: "Presentation core properties"
+                };
+            }
+        }
+        
+        // Display the parts diagram
+        function displayPartsDiagram() {
+            const container = document.getElementById('parts-container');
+            container.innerHTML = '';
+            
+            // Add each part as a clickable item
+            for (const [partName, partData] of Object.entries(fileParts)) {
+                const partElement = document.createElement('div');
+                partElement.className = 'part-item';
+                partElement.textContent = partName;
+                partElement.title = partData.description;
+                
+                // Add special classes for different types
+                if (partName.includes('hidden')) {
+                    partElement.classList.add('hidden');
+                } else if (partName.includes('media/') || partName.includes('thumbnail')) {
+                    partElement.classList.add('media');
+                } else if (partName.includes('core.xml') || partName.includes('app.xml')) {
+                    partElement.classList.add('metadata');
+                }
+                
+                partElement.onclick = () => showXmlViewer(partName, partData);
+                container.appendChild(partElement);
+            }
+        }
+        
+        // Generate sample leak report
+        function generateLeakReport() {
+            leakReport = [
+                {
+                    type: "Author Information",
+                    content: "Creator: Jane Smith",
+                    severity: "medium",
+                    safe: false,
+                    description: "Author name visible in document properties"
+                },
+                {
+                    type: "Last Modified By",
+                    content: "Last Modified By: Jane Smith",
+                    severity: "medium",
+                    safe: false,
+                    description: "Name of last person to modify document"
+                },
+                {
+                    type: "Tracked Changes",
+                    content: "Inserted content by John Doe (2023-01-15)",
+                    severity: "high",
+                    safe: false,
+                    description: "Unaccepted tracked changes still present in document"
+                },
+                {
+                    type: "Comments",
+                    content: "Comment by Alice Johnson: 'Please review this section'",
+                    severity: "medium",
+                    safe: false,
+                    description: "Document comments may contain sensitive information"
+                },
+                {
+                    type: "Embedded Thumbnail",
+                    content: "thumbnail.jpeg found",
+                    severity: "low",
+                    safe: true,
+                    description: "Preview image embedded in document"
+                },
+                {
+                    type: "EXIF Data",
+                    content: "Image contains GPS coordinates",
+                    severity: "high",
+                    safe: false,
+                    description: "Embedded images may contain location metadata"
+                }
+            ];
+        }
+        
+        // Display the leak report
+        function displayLeakReport() {
+            const reportContainer = document.getElementById('leak-report');
+            reportContainer.innerHTML = '';
+            
+            leakReport.forEach(item => {
+                const itemElement = document.createElement('div');
+                itemElement.className = `leak-item ${item.safe ? 'safe' : ''}`;
+                itemElement.innerHTML = `
+                    <strong>${item.type}</strong>: ${item.content}
+                    <br><small>${item.description}</small>
+                `;
+                reportContainer.appendChild(itemElement);
+            });
+        }
+        
+        // Show XML viewer for a part
+        function showXmlViewer(partName, partData) {
+            const viewer = document.getElementById('xml-viewer');
+            viewer.style.display = 'block';
+            viewer.innerHTML = `
+<h3>${partName}</h3>
+<p><em>${partData.description}</em></p>
+<pre>${escapeHtml(partData.content)}</pre>
+<div style="margin-top: 15px;">
+    <strong>Analysis:</strong>
+    <ul>
+        <li>This part ${partName.includes('core.xml') ? 'contains author metadata that should be reviewed' : 'appears to be standard OOXML content'}</li>
+        <li>${partName.includes('comments') ? 'Comments should be removed before sharing' : 'No immediate concerns detected'}</li>
+        <li>${partName.includes('thumbnail') ? 'Thumbnail images may reveal document appearance' : 'Content appears standard'}</li>
+    </ul>
+</div>
+<button class="button" onclick="document.getElementById('xml-viewer').style.display='none'" style="margin-top: 10px;">Close</button>
+            `;
+        }
+        
+        // Helper function to escape HTML
+        function escapeHtml(unsafe) {
+            return unsafe
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+        
+        // Format file size
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+        
+        // Tab switching functionality
+        function showTab(tabName) {
+            // Hide all tab contents
+            document.querySelectorAll('.tab-content').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            
+            // Remove active class from all tab buttons
+            document.querySelectorAll('.tab-button').forEach(button => {
+                button.classList.remove('active');
+            });
+            
+            // Show selected tab content
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+        
+        // Load a sample file on page load
+        function loadSampleFile() {
+            // Create a fake file object for demonstration
+            const sampleFile = new File(["sample"], "sample-document.docx", {
+                type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            });
+            
+            // Process it after a short delay to allow UI to render
+            setTimeout(() => {
+                processFile(sampleFile);
+            }, 1000);
+        }
+    </script>
 </body>
 </html>
