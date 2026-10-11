@@ -80,6 +80,9 @@ class World:
             return d["pr"]
         if "/check-runs" in path:
             return {"check_runs": next(d.get("checks", []) for d in self.gh_pr.values() if d["pr"]["head"]["sha"] in path)}
+        if path.endswith("/status"):
+            return {"statuses": next(d.get("statuses", []) for d in self.gh_pr.values() if d["pr"]["head"]["sha"] in path)}
+        if "/statuses/" in path and method == "POST": self.statuses = getattr(self, "statuses", []) + [body]; return {}
         if "/issues?state=open" in path:
             lab = path.split("labels=")[1].split("&")[0]
             return [{"number": i["number"], "title": i.get("title", ""), "body": i.get("body", ""), "state": "open"}
@@ -199,7 +202,7 @@ assert "couldn't find cards" in w.posted[0][1] and w.issues[1]["labels"] == []
 
 # 13 landing: Approve from a trusted reviewer + green checks -> squash merge, card closed, next card dispatched
 def pr_world(verdict_body="**Approve** looks right", assoc="NONE", bot=True, checks=None, files=None, extra=None):
-    prd = {"number": 7, "state": "open", "merged_at": None, "head": {"sha": "abc"}, "html_url": "u"}
+    prd = {"number": 7, "state": "open", "merged_at": None, "head": {"sha": "abc"}, "html_url": "u", "created_at": iso(2)}
     issues = {2: {"number": 2, "title": "next", "body": "Depends on #1\n\nDONE: d", "state": "open", "labels": ["queued"]}}
     cm = {1: [beat("pr", 1, pr=7)],
           7: [{"created_at": iso(), "author_association": assoc, "user": {"type": "Bot" if bot else "User"}, "body": verdict_body}]}
@@ -249,3 +252,13 @@ assert "PR #42" in w2.posted[0][1]
 w3 = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_MODE": "live", "TIME_WORKER": "venice:kimi"})
 assert "VENICE_API_KEY" in w3.posted[-1][1]
 print("ALL OK 4")
+
+# 15 a commit status from the worker's own test run counts as the check
+w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "success", "context": "time/worker-run"}]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert any(c[0] == "PUT" for c in w.calls), "status should count as a green check"
+w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "failure", "context": "time/worker-run"}]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert not any(c[0] == "PUT" for c in w.calls)
+# a verdict posted in the same run as the `pr` beat still counts (window starts at PR creation)
+w = pr_world(); w.comments[1] = [beat("pr", 0, pr=7)]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert any(c[0] == "PUT" for c in w.calls)
+print("ALL OK 5")

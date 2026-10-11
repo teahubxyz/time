@@ -309,16 +309,19 @@ def touches_protected(pr_number: int) -> list[str]:
 def checks(sha: str) -> str:
     """pass | pending | fail | none, over every check run on the PR head."""
     runs = gh("GET", f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
-    if not runs:
+    states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses", [])  # commit statuses count too
+    if not runs and not states:
         return "none"
-    if any(r["status"] != "completed" for r in runs):
+    if any(r["status"] != "completed" for r in runs) or any(st["state"] == "pending" for st in states):
         return "pending"
-    return "pass" if all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) else "fail"
+    ok = all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) and all(st["state"] == "success" for st in states)
+    return "pass" if ok else "fail"
 
 
 def land(card: dict, last: dict) -> None:
     """Move a card whose PR is up toward merged. Silent while nothing has changed."""
     n, pr = card["number"], gh("GET", f"/repos/{REPO}/pulls/{last['pr']}")
+    since = pr["created_at"]  # any verdict after the PR exists counts; a stale beat time would hide same-run reviews
     if pr.get("merged_at"):
         if card.get("state", "open") == "open":
             gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
@@ -326,7 +329,7 @@ def land(card: dict, last: dict) -> None:
         return
     if pr["state"] == "closed" or (os.environ.get("TIME_AUTOMERGE") or "off").strip() != "on":
         return
-    v = verdict(pr, last["at"])
+    v = verdict(pr, since)
     if v is None:
         return
     if v == "object":
@@ -393,7 +396,7 @@ WORKER_RULES = """You are the worker for card #{n} in {repo}: "{title}".
 
 You have hands: list_files, read_file, write_file (one file per call, full content), run (shell on a checkout of your
 branch), open_pr. Work on the branch `{branch}`; everything you write lands there. Keep the change small and focused.
-Read before you write. Run the project's tests or checks if any exist. When it is done and checked, call open_pr once
+Read before you write. Always `run` the project's tests or checks before opening the PR (that run is the PR's check). When it is done and checked, call open_pr once
 with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows.
 The card's finish line is: DONE: {done}"""
 
@@ -441,8 +444,13 @@ class Hands:
             self.checkout = None
             return f"wrote {a['path']}"
         if name == "run":
-            self.checkout = self.checkout or self._checkout()
+            self.checkout = self._checkout()  # fresh: see the latest writes
             p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=600)
+            sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
+            # GitHub does not run pull_request workflows for commits made with the Actions token, so the worker's own
+            # test run is recorded as a commit status; land() counts statuses as checks.
+            gh("POST", f"/repos/{REPO}/statuses/{sha}", {"state": "success" if p.returncode == 0 else "failure",
+               "context": "time/worker-run", "description": a["command"][:100]})
             return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}"
         if name == "open_pr":
             pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": default_branch(),
