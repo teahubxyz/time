@@ -1,0 +1,23 @@
+name: doctor
+# Manual check of Time's setup: label, settings, keys (never printed). Result in the run summary.
+on: workflow_dispatch
+permissions:
+  contents: read
+  issues: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/time
+      - run: python3 .github/time/test_time.py
+      - run: python3 .github/time/time.py doctor
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          TIME_MODE: ${{ vars.TIME_MODE }}
+          TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
+          TIME_REVIEW: ${{ vars.TIME_REVIEW }}
