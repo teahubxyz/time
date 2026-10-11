@@ -1,0 +1,30 @@
+name: mention
+# @seat [model] [effort] in an issue, PR or comment -> that seat replies in the thread.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+concurrency:
+  group: mention-${{ github.event.issue.number }}
+  cancel-in-progress: false
+jobs:
+  reply:
+    # cheap filter before a runner spins up: something that looks like a mention, not from a bot
+    if: >-
+      contains(github.event.comment.body || github.event.issue.body, '@') &&
+      (github.event.comment.user.type || github.event.issue.user.type) != 'Bot'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/time
+      - run: python3 .github/time/time.py mention
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
