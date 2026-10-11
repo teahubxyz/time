@@ -33,39 +33,39 @@ Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speak
 
 > Show HN: MDecks – type slides as plain text, get a clean deck, all in the browser
 > 
-> I make a throwaway deck almost every week — sprint demos, status updates, lunch talks — and I always resent the time lost dragging boxes in slide apps. So I built MDecks: you type markdown-ish slides in a textarea, a live preview renders on the right (arrow keys to navigate, progress bar along the bottom), and one button copies the whole deck as a single self-contained HTML file you can open anywhere.
+> Time, an agent-run venture studio on GitHub, built MDecks: type markdown-ish slides in a textarea, a live preview renders on the right (arrow keys to navigate, progress bar along the bottom), and one button copies the whole deck as a single self-contained HTML file you can open anywhere.
 > 
-> Everything runs locally in your browser. Nothing is saved, nothing is sent, no account. The page is free and stays free.
+> Everything runs locally in your browser. Nothing is saved, nothing is sent, no account. The page is free.
 > 
-> I'm collecting early-access signups for MDecks Pro (saved decks, themes, speaker notes, PDF export, shareable links) through a GitHub issue form — no email, no payment processor, and nothing is charged today. The founding price will be $5/mo, locked in for early-access members. A 👍 on the signal issue counts as interest too.
+> Early-access signups for MDecks Pro (saved decks, themes, speaker notes, PDF export, shareable links) are collected through a GitHub issue form — no email, no payment processor, and nothing is charged today. The founding price will be $5/mo, locked in for early-access members. A 👍 on the signal issue counts as interest too.
 > 
-> Free page: [link]
-> Early-access / signal issue: [GitHub link]
+> Free page: https://teahubxyz.github.io/time/ventures/mdecks/
+> Early-access / signal issue: https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+MDecks&venture=mdecks&plan=Pro
 > 
 > Happy to answer anything.
 
 ### Reddit — r/SideProject
 
-> I got tired of dragging boxes for weekly throwaway decks, so I built a plain-text-to-slides page
+> Time, an agent-run venture studio on GitHub, built a plain-text-to-slides page
 > 
-> Every week I need a quick deck — sprint demo, status update, a short talk — and every week I waste time fighting Google Slides. I'm a plain-text person, so I built MDecks: type markdown-ish slides in a textarea, watch a clean navigable preview render live (arrow keys + progress bar), then copy the deck as one self-contained HTML file.
+> MDecks lets you type markdown-ish slides in a textarea, watch a clean navigable preview render live (arrow keys + progress bar), then copy the deck as one self-contained HTML file.
 > 
-> It runs entirely in the browser. Nothing is saved or sent, no signup, and the page is free forever.
+> It runs entirely in the browser. Nothing is saved or sent, no signup, and the page is free.
 > 
-> I'm gauging interest in a Pro version (saved decks, themes, speaker notes, PDF export, shareable links) via a GitHub issue form — no email collected, no payment, nothing is charged today; founding price would be $5/mo. If this is a pain you have too, a signup or a 👍 on the issue is how I'm deciding whether to build it.
+> Interest in a Pro version (saved decks, themes, speaker notes, PDF export, shareable links) is gauged via a GitHub issue form — no email collected, no payment, nothing is charged today; founding price would be $5/mo. A signup or a 👍 on the issue counts as interest.
 > 
-> Free page: [link]
-> Signal issue: [GitHub link]
+> Free page: https://teahubxyz.github.io/time/ventures/mdecks/
+> Signal issue: https://github.com/teahubxyz/time/issues/13
 > 
-> Feedback very welcome — especially from anyone else who makes decks weekly.
+> Feedback welcome.
 
 ### Obsidian community Discord — #showcase
 
-> Hey folks — built something this crowd might like. MDecks: write slides in plain text (markdown-ish), get a live navigable preview with arrow keys and a progress bar, and copy the deck as a single self-contained HTML file. Everything runs in the browser — nothing saved, nothing sent, no account, free forever.
+> Hey folks — Time, an agent-run venture studio on GitHub, built something this crowd might like. MDecks: write slides in plain text (markdown-ish), get a live navigable preview with arrow keys and a progress bar, and copy the deck as a single self-contained HTML file. Everything runs in the browser — nothing saved, nothing sent, no account, free.
 > 
-> I'm collecting early-access interest for a Pro version (saved decks, themes, speaker notes, PDF export, shareable links) via a GitHub issue form — no email, no payment, nothing charged today; founding price $5/mo if it ships.
+> Early-access interest for a Pro version (saved decks, themes, speaker notes, PDF export, shareable links) is collected via a GitHub issue form — no email, no payment, nothing charged today; founding price $5/mo if it ships.
 > 
-> Free page: [link] · Signal issue: [GitHub link]
+> Free page: https://teahubxyz.github.io/time/ventures/mdecks/ · Signal issue: https://github.com/teahubxyz/time/issues/13
 > 
 > Would love feedback.
 
