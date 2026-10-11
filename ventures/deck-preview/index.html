@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Deck Preview — markdown in, slides out, nothing leaves your browser</title>
+<title>MDecks — markdown in, slides out, nothing leaves your browser</title>
 <style>
   :root {
     --bg: #0f1115;
@@ -193,6 +193,41 @@
     color: var(--ink-dim);
     margin-top: 8px;
   }
+  .want-more {
+    margin: 26px 20px 8px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--panel);
+    padding: 20px;
+    max-width: 720px;
+  }
+  .want-more h2 {
+    margin: 0 0 8px;
+    font-size: 1.05rem;
+  }
+  .want-more p {
+    margin: 0 0 14px;
+    color: var(--ink-dim);
+    font-size: 0.9rem;
+    line-height: 1.55;
+  }
+  .want-more .cta {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #0b0d12;
+    font-weight: 600;
+    border: none;
+    border-radius: 9px;
+    padding: 10px 18px;
+    font-size: 0.9rem;
+    text-decoration: none;
+  }
+  .want-more .cta:hover { filter: brightness(1.08); }
+  .want-more .fineprint {
+    margin: 14px 0 0;
+    font-size: 0.78rem;
+    color: var(--ink-dim);
+  }
   footer {
     padding: 10px 20px 16px;
     font-size: 0.8rem;
@@ -212,7 +247,7 @@
 </head>
 <body>
 <header>
-  <h1>Deck Preview<span class="dot">.</span></h1>
+  <h1>MDecks<span class="dot">.</span></h1>
   <p>Type markdown-ish slides on the left, watch them render live on the right.
      Navigate with arrow keys or swipe. Everything runs in your browser — nothing is saved or sent anywhere.</p>
 </header>
@@ -238,6 +273,12 @@
     <p class="export-note">The copied file is a self-contained deck: open it in any browser and use &larr; / &rarr; to present.</p>
   </section>
 </main>
+<section class="want-more">
+  <h2>Want more?</h2>
+  <p>The next version — MDecks Pro — would add saved decks, themes, speaker notes, PDF export, and a shareable link, still plain text in.</p>
+  <a class="cta" href="https://github.com/teahubxyz/time/issues/13" target="_blank" rel="noopener">👍 I want this</a>
+  <p class="fineprint">Built by an agent-run venture studio. If this is useful, say so: that is how it gets a next version.</p>
+</section>
 <footer>built by the <a href="https://github.com/teahubxyz/time">Time venture loop</a></footer>
 <script>
 (function () {
@@ -252,7 +293,7 @@
   var copyBtn = document.getElementById("copy");
 
   var SAMPLE = [
-    "# Deck Preview",
+    "# MDecks",
     "## Markdown in, slides out",
     "",
     "- Type on the left, slides render live",
@@ -320,12 +361,12 @@
         continue;
       }
       hasContent = true;
-      if (t.indexOf("# ") === 0) {
-        if (inList) { html += "</ul>"; inList = false; }
-        html += "<h1>" + inline(t.slice(2)) + "</h1>";
-      } else if (t.indexOf("## ") === 0) {
+      if (t.indexOf("## ") === 0) {
         if (inList) { html += "</ul>"; inList = false; }
         html += "<h2>" + inline(t.slice(3)) + "</h2>";
+      } else if (t.indexOf("# ") === 0) {
+        if (inList) { html += "</ul>"; inList = false; }
+        html += "<h1>" + inline(t.slice(2)) + "</h1>";
       } else if (t.indexOf("- ") === 0 || t.indexOf("* ") === 0) {
         if (!inList) { html += "<ul>"; inList = true; }
         html += "<li>" + inline(t.slice(2)) + "</li>";
@@ -395,7 +436,7 @@
     }).join("\n");
     return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n" +
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-      "<title>Deck</title>\n<style>\n" +
+      "<title>Deck — MDecks</title>\n<style>\n" +
       "*{box-sizing:border-box}html,body{height:100%;margin:0}" +
       "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0f1115;color:#e8eaf0;display:flex;flex-direction:column}" +
       ".bar{height:5px;background:#1e222b}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#6ea8fe,#9d7bff);transition:width .18s ease}" +
