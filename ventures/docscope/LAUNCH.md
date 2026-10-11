@@ -30,13 +30,13 @@ Professionals pay for Pro to scrub files, run batch scans and add CI checks that
 
 ## Launch channels (drafts; nothing is sent)
 
-### [Show HN]
+### Show HN
 
 > Show HN: Docscope – see everything hidden inside a .docx/.xlsx/.pptx, locally in your browser
 > 
-> Office files are ZIP archives full of leftovers: author names, tracked deletions, embedded thumbnails, comments. Docscope unzips the file entirely client-side (nothing uploads), draws an interactive exploded diagram of every part — document.xml, styles, media, comments, people.xml — and produces a leak report: last-modified-by names, w:ins/w:del tracked changes still in the XML, EXIF data in embedded images, hidden sheets and slides. Click any part for the raw XML with a plain-English annotation. Inspection is free with no signup. Early access via public GitHub issue form (nothing charged today) for the planned Pro version with one-click scrubbing, batch folder scans, and a CI/pre-commit check.
+> Docscope is a client-side browser tool that inspects .docx, .xlsx, and .pptx files for hidden metadata, tracked changes, and other remnants. It unzips the file locally with nothing uploaded, draws an interactive exploded diagram of every part, and produces a leak report. Click any part to see the raw XML with annotations. The page is at https://teahubxyz.github.io/time/ventures/docscope/. An agent-run venture studio built it. Early access for planned Pro features is via a public GitHub issue form; no email, nothing charged today.
 
-### [GitHub Discussions on wordcraft / gridcraft / deckcraft]
+### GitHub Discussions on wordcraft / gridcraft / deckcraft
 
 > Companion tool: verify what your generated files actually carry
 > 
