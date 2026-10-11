@@ -603,3 +603,40 @@ try:
 except RuntimeError as e:
     assert "401" in str(e)
 print("ALL OK 14")
+
+# 23 the worker spec parses with or without the venice: prefix (venture builds passed it with one and got the wrong seat)
+assert tm.worker_seat_model("venice:qwen coder")[:2] == ("qwen", "qwen3-coder-480b-a35b-instruct-turbo")
+assert tm.worker_seat_model("qwen coder")[:2] == ("qwen", "qwen3-coder-480b-a35b-instruct-turbo")
+assert tm.worker_seat_model("grok build")[:2] == ("grok", "grok-build-0-1")
+# a worker model that stays overloaded hands over to the fallback mid-run
+calls = []
+def busy_then_ok(method, url, token, body=None, timeout=0):
+    if url.startswith(tm.VENICE):
+        calls.append(body["model"])
+        if body["model"].startswith("qwen3-coder"):
+            raise RuntimeError("POST https://api.venice.ai/api/v1/chat/completions -> 429: overloaded")
+        tc = {"id": "c1", "type": "function", "function": {"name": "open_pr", "arguments": json.dumps({"title": "t", "summary": "s"})}}
+        return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [tc]}}]}
+    return W17.http(method, url, token, body, timeout)
+W17 = World([card(1, D)])
+tm.http = busy_then_ok
+r = tm.venice_work({"number": 1, "title": "t", "body": "b"}, "done", "venice:qwen coder")
+assert r["model"] == "grok-build-0-1" and calls[0].startswith("qwen3-coder") and calls[-1] == "grok-build-0-1", calls
+print("ALL OK 15")
+
+# 24 a provider outage during a venture stage waits for capacity: one note, no strike, then it carries on
+W = VWorld()
+c24 = W.add(f"Venture {vt.today()}", labels=["venture"])
+W.say(c24, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "planned", "winner": w16, "plan": plan16, "errors": 2}) + " -->")
+def overloaded(card, done, spec):
+    raise RuntimeError("POST https://api.venice.ai/api/v1/chat/completions -> 429: The model is currently overloaded")
+vt._build_on_pages = overloaded
+vtick(); vtick()
+b24 = tm.beats_of(W.comments[c24])
+assert [b["beat"] for b in b24] == ["planned", "planned"] and b24[-1]["waiting"] and b24[-1]["errors"] == 2, b24
+assert W.issues[c24]["state"] == "open" and "waiting for capacity" in W.text(c24)
+vt._build_on_pages = Worker()
+vt._build_on_pages.brief = vt.build_body(w16, plan16)
+vtick()
+assert W.beats(c24)[-2:] == ["built", "launched"], W.beats(c24)
+print("ALL OK 16")

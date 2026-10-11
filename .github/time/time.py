@@ -481,12 +481,21 @@ class Hands:
         return f"unknown tool {name}"
 
 
-def venice_work(card: dict, done: str, spec: str) -> dict:
-    """Run one card with a Venice seat as the worker. Returns {pr, steps, seat, model}."""
+def worker_seat_model(spec: str) -> tuple[str, str, str | None]:
+    """'qwen coder' or 'venice:kimi code high' -> (seat, model id, effort)."""
+    spec = spec.split(":", 1)[1] if spec.startswith("venice:") else spec
     words = spec.split()
     seat = words[0] if words and words[0] in SEATS else "kimi"
     model, effort = mentions(f"@{spec}").get(seat, (None, None)) if seat in SEATS else (None, None)
-    model = model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"]
+    return seat, model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"], effort
+
+
+def venice_work(card: dict, done: str, spec: str) -> dict:
+    """Run one card with a Venice seat as the worker. Returns {pr, steps, seat, model}.
+    TIME_WORKER_FALLBACK (default `grok build`, `off` to disable) takes over if the worker's model stays overloaded."""
+    seat, model, effort = worker_seat_model(spec)
+    fallback = (os.environ.get("TIME_WORKER_FALLBACK") or "grok build").strip()
+    fb_model = worker_seat_model(fallback)[1] if fallback.lower() != "off" else None
     key = os.environ.get("VENICE_API_KEY")
     if not key:
         raise LookupError("no VENICE_API_KEY secret on this repo yet")
@@ -500,7 +509,14 @@ def venice_work(card: dict, done: str, spec: str) -> dict:
                 "venice_parameters": {"include_venice_system_prompt": False}}
         if effort:
             body["reasoning_effort"] = effort
-        msg = venice_chat(body, timeout=300)["choices"][0]["message"]
+        try:
+            msg = venice_chat(body, timeout=300)["choices"][0]["message"]
+        except RuntimeError as e:
+            if not fb_model or model == fb_model or not re.search(r"-> (429|5\d\d)\b", str(e)):
+                raise
+            print(f"{model} stays overloaded; the fallback {fb_model} takes over")
+            model = body["model"] = fb_model
+            msg = venice_chat(body, timeout=300)["choices"][0]["message"]
         msgs.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls")})
         calls = msg.get("tool_calls") or []
         if not calls:

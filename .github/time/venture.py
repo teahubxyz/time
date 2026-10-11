@@ -1046,6 +1046,11 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             measure(n, st, say)
         return "ok"
     except Exception as e:  # noqa: BLE001
+        if transient(e):  # a provider outage is not the venture's failure: wait for capacity, don't spend a strike
+            if not st.get("waiting"):
+                say(f"⏳ `{stage}` is waiting for capacity: Venice is overloaded (`{str(e)[:160]}`). It retries every tick, "
+                    f"and this doesn't count as a failure.", {**st, "waiting": True})
+            return "error"
         errs = int(st.get("errors", 0)) + 1
         if errs >= 3:
             say(f"🧭 Digest: stuck at `{stage}` after 3 tries: {str(e)[:300]}. Closing; the next card starts fresh.",
@@ -1054,6 +1059,11 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
         else:
             say(f"⚠️ {stage} failed ({errs}/3): `{str(e)[:300]}`. Retrying next tick.", {**st, "errors": errs})
         return "error"
+
+
+def transient(e: Exception) -> bool:
+    """A provider being busy or unreachable (after the engine's own retries), as opposed to a real failure."""
+    return isinstance(e, OSError) or bool(re.search(r"-> (429|5\d\d)\b|overloaded|rate limit", str(e), re.I))
 
 
 def measure(n: int, st: dict, say) -> None:
