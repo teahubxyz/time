@@ -1,0 +1,25 @@
+name: heartbeat
+# Time's clock: every 15 min, look at `ready` issues and dispatch (dry-run until TIME_MODE=live).
+on:
+  schedule:
+    - cron: "7,22,37,52 * * * *"
+  workflow_dispatch:
+permissions:
+  contents: read
+  issues: write
+concurrency:
+  group: heartbeat
+  cancel-in-progress: false
+jobs:
+  tick:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/time
+      - run: python3 .github/time/time.py heartbeat
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TIME_MODE: ${{ vars.TIME_MODE }}
+          TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
