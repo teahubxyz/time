@@ -683,3 +683,16 @@ p27 = vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}, {"tier": "
                                      {"tier": "Team", "price": "$19/mo per repo — nothing charged today"}]}, {})
 assert [t["price"] for t in p27["pricing"]] == ["$0", "$5/mo founding price", "$19/mo per repo"], p27["pricing"]
 print("ALL OK 19")
+
+# 28 the second fix round escalates to a stronger worker (cost cascade)
+W = VWorld()
+c28 = W.add(f"Venture {vt.today()}", labels=["venture"])
+W.say(c28, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "built", "winner": w16, "plan": plan16, "fixes": 1}) + " -->")
+W.files["ventures/mdecks/index.html"] = "<html>thin</html>"
+specs = []
+def spy(card, done, spec):
+    specs.append(spec); return {"pr": -1, "steps": 3, "seat": "grok", "model": "grok-4-7"}
+vt._build_on_pages = spy
+vtick()
+assert specs == ["venice:grok 4.7"] and "(grok-4-7)" in W.text(c28), (specs, W.text(c28)[-200:])
+print("ALL OK 20")

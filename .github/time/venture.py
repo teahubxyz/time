@@ -1101,11 +1101,13 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                     return "wait"
                 say(f"🔧 The checks found {len(problems)} problem(s); fix round {fixes + 1}:\n\n{bullets}",
                     {"beat": "built", **keep, "fixes": fixes, "problems": problems})
+                # cost cascade: the cheap worker gets the first round; a failed round escalates to a stronger model
+                spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", "venice:grok 4.7")
                 r = _build_on_pages({"number": n, "title": f"Fix the {w['name']} launch page",
                                      "body": FIX_BODY.format(name=w["name"], slug=w["slug"], problems=bullets, page=w.get("page", ""),
                                                              join=w["join"], signal=signal_url(w))},
-                                    "every check above passes", worker_spec())
-                say(f"🔧 `{r['seat']}` worked on the fixes in {r['steps']} steps. Re-checking.",
+                                    "every check above passes", spec)
+                say(f"🔧 `{r['seat']}` ({r['model']}) worked on the fixes in {r['steps']} steps. Re-checking.",
                     {"beat": "built", **keep, "fixes": fixes + 1})
                 return "heavy"
             plan = {**plan, "launch_channels": true_drafts(w, plan, chair)}
