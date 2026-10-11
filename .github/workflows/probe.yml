@@ -1,0 +1,31 @@
+name: probe
+# One-off: what can Time reach from a GitHub-hosted runner with no secrets?
+on: workflow_dispatch
+permissions:
+  contents: read
+  models: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: GitHub Models catalog + one call
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          tok = os.environ["GH_TOKEN"]
+          h = {"Authorization": f"Bearer {tok}", "Accept": "application/json"}
+          req = urllib.request.Request("https://models.github.ai/catalog/models", headers=h)
+          cat = json.loads(urllib.request.urlopen(req, timeout=30).read())
+          print(f"{len(cat)} models")
+          for m in cat:
+              print(m["id"], "|", m.get("rate_limit_tier"), "|", m.get("publisher"))
+          body = {"model": "openai/gpt-4.1-mini", "messages": [{"role": "user", "content": "Reply with exactly: ok"}]}
+          req = urllib.request.Request("https://models.github.ai/inference/chat/completions",
+                                       data=json.dumps(body).encode(), method="POST",
+                                       headers={**h, "Content-Type": "application/json"})
+          out = json.loads(urllib.request.urlopen(req, timeout=60).read())
+          print("inference:", out["choices"][0]["message"]["content"])
+          PY
