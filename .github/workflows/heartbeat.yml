@@ -16,6 +16,7 @@ permissions:
   issues: write
   pull-requests: write
   checks: read
+  statuses: write     # a Venice worker's test run is recorded as the PR's check
 concurrency:
   group: heartbeat
   cancel-in-progress: false
