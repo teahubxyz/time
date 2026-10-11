@@ -358,6 +358,136 @@ def label(number: int, name: str) -> None:
     gh("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": [name]})
 
 
+# ---------- worker: a Venice seat with hands ----------
+# TIME_WORKER=venice:<seat> [model] [effort]. The seat edits the repo on its own branch through the GitHub contents
+# API (the Actions token already has contents: write), runs shell steps on the runner's checkout, and opens the PR
+# itself. Same contract as the Cursor worker: a PR whose body says "Closes #N".
+
+import base64
+import subprocess
+import tempfile
+
+WORKER_TOOLS = [
+    {"type": "function", "function": {"name": "list_files", "description": "List repository files (paths), optionally under a directory.",
+     "parameters": {"type": "object", "properties": {"dir": {"type": "string"}}, "required": []}}},
+    {"type": "function", "function": {"name": "read_file", "description": "Read one file from the branch.",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}}, "required": ["path"]}}},
+    {"type": "function", "function": {"name": "write_file", "description": "Create or replace one file on the branch with the full new content (commits it).",
+     "parameters": {"type": "object", "properties": {"path": {"type": "string"}, "content": {"type": "string"},
+                                                     "message": {"type": "string"}}, "required": ["path", "content"]}}},
+    {"type": "function", "function": {"name": "run", "description": "Run a shell command on a checkout of the branch (tests, lint). Returns exit code and output.",
+     "parameters": {"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}}},
+    {"type": "function", "function": {"name": "open_pr", "description": "Open the pull request when the work is done and checked. Call this exactly once, last.",
+     "parameters": {"type": "object", "properties": {"title": {"type": "string"}, "summary": {"type": "string",
+                    "description": "What changed and how you checked it."}}, "required": ["title", "summary"]}}},
+]
+
+WORKER_RULES = """You are the worker for card #{n} in {repo}: "{title}".
+
+{body}
+
+You have hands: list_files, read_file, write_file (one file per call, full content), run (shell on a checkout of your
+branch), open_pr. Work on the branch `{branch}`; everything you write lands there. Keep the change small and focused.
+Read before you write. Run the project's tests or checks if any exist. When it is done and checked, call open_pr once
+with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows.
+The card's finish line is: DONE: {done}"""
+
+
+class Hands:
+    def __init__(self, n: int, branch: str):
+        self.n, self.branch, self.pr, self.steps = n, branch, None, 0
+        base = gh("GET", f"/repos/{REPO}/git/ref/heads/{default_branch()}")["object"]["sha"]
+        try:
+            gh("POST", f"/repos/{REPO}/git/refs", {"ref": f"refs/heads/{branch}", "sha": base})
+        except RuntimeError as e:
+            if "422" not in str(e):
+                raise
+        self.checkout = None
+
+    def _checkout(self) -> str:
+        d = tempfile.mkdtemp(prefix="time-worker-")
+        url = f"https://x-access-token:{os.environ['GITHUB_TOKEN']}@github.com/{REPO}"
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", self.branch, url, d], check=True, capture_output=True)
+        return d
+
+    def call(self, name: str, a: dict) -> str:
+        self.steps += 1
+        if name == "list_files":
+            tree = gh("GET", f"/repos/{REPO}/git/trees/{self.branch}?recursive=1").get("tree", [])
+            d = (a.get("dir") or "").strip("/")
+            paths = [t["path"] for t in tree if t["type"] == "blob" and (not d or t["path"].startswith(d + "/"))]
+            return "\n".join(paths[:400]) or "(empty)"
+        if name == "read_file":
+            try:
+                f = gh("GET", f"/repos/{REPO}/contents/{a['path']}?ref={self.branch}")
+            except RuntimeError as e:
+                return f"error: {e}"
+            return base64.b64decode(f["content"]).decode(errors="replace")[:60000]
+        if name == "write_file":
+            if a["path"].startswith(".github/workflows"):
+                return "refused: workflow files are a human's to change"
+            body = {"message": a.get("message") or f"card #{self.n}: update {a['path']}", "branch": self.branch,
+                    "content": base64.b64encode(a["content"].encode()).decode()}
+            try:
+                body["sha"] = gh("GET", f"/repos/{REPO}/contents/{a['path']}?ref={self.branch}")["sha"]
+            except RuntimeError:
+                pass
+            gh("PUT", f"/repos/{REPO}/contents/{a['path']}", body)
+            self.checkout = None
+            return f"wrote {a['path']}"
+        if name == "run":
+            self.checkout = self.checkout or self._checkout()
+            p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=600)
+            return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}"
+        if name == "open_pr":
+            pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": default_branch(),
+                    "body": f"{a['summary']}\n\nCloses #{self.n}\n\n<sub>worker: Venice seat via Time</sub>"})
+            self.pr = pr["number"]
+            return f"opened PR #{self.pr}"
+        return f"unknown tool {name}"
+
+
+def venice_work(card: dict, done: str, spec: str) -> dict:
+    """Run one card with a Venice seat as the worker. Returns {pr, steps, seat, model}."""
+    words = spec.split()
+    seat = words[0] if words and words[0] in SEATS else "kimi"
+    model, effort = mentions(f"@{spec}").get(seat, (None, None)) if seat in SEATS else (None, None)
+    model = model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"]
+    key = os.environ.get("VENICE_API_KEY")
+    if not key:
+        raise LookupError("no VENICE_API_KEY secret on this repo yet")
+    hands = Hands(card["number"], f"time/card-{card['number']}")
+    msgs = [{"role": "system", "content": WORKER_RULES.format(n=card["number"], repo=REPO, title=card["title"],
+             body=(card.get("body") or "")[:20000], branch=hands.branch, done=done)},
+            {"role": "user", "content": "Begin. Look at the repository first."}]
+    for _ in range(int(os.environ.get("TIME_WORKER_STEPS") or 40)):
+        body = {"model": model, "temperature": 0.2, "max_tokens": 6000, "messages": msgs, "tools": WORKER_TOOLS,
+                "venice_parameters": {"include_venice_system_prompt": False}}
+        if effort:
+            body["reasoning_effort"] = effort
+        msg = http("POST", f"{VENICE}/chat/completions", key, body, timeout=300)["choices"][0]["message"]
+        msgs.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls")})
+        calls = msg.get("tool_calls") or []
+        if not calls:
+            if hands.pr:
+                break
+            msgs.append({"role": "user", "content": "You have not opened the PR. Finish the work and call open_pr, or explain what blocks you."})
+            continue
+        for c in calls:
+            try:
+                args = json.loads(c["function"].get("arguments") or "{}")
+            except ValueError:
+                args = {}
+            out = hands.call(c["function"]["name"], args)
+            msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out})
+        if hands.pr:
+            break
+    if not hands.pr:
+        last = next((m.get("content") for m in reversed(msgs) if m.get("role") == "assistant" and m.get("content")), "")
+        raise RuntimeError(f"{seat} stopped without a PR after {hands.steps} steps: {(last or '')[:200]}")
+    return {"pr": hands.pr, "steps": hands.steps, "seat": seat, "model": model}
+
+
 # ---------- heartbeat ----------
 
 def beats_of(comments: list[dict]) -> list[dict]:
@@ -437,6 +567,9 @@ def tick() -> None:
     cap = int(os.environ.get("TIME_DAILY_CAP") or 5)
     stuck_h = float(os.environ.get("TIME_STUCK_HOURS") or 6)
     worker_model = (os.environ.get("TIME_CURSOR_MODEL") or "").strip() or None
+    worker = (os.environ.get("TIME_WORKER") or "cursor").strip()
+    worker_name = f"Venice seat `{worker.split(':', 1)[1].split()[0]}`" if worker.startswith("venice:") else \
+        f"Cursor cloud agent{f' ({worker_model})' if worker_model else ''}"
     now = dt.datetime.now(dt.timezone.utc)
     today = now.date().isoformat()
     cards = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=ready&per_page=50") if "pull_request" not in i]
@@ -467,12 +600,20 @@ def tick() -> None:
                 continue
             if state in (None, "needs-done") and mode != "live":
                 comment(n, f"⏱️ Time (dry run): would dispatch this to the worker now.\n\n- DONE: {done}\n"
-                        f"- Worker: Cursor cloud agent{f' ({worker_model})' if worker_model else ''}, opens a PR that closes #{n}\n"
+                        f"- Worker: {worker_name}, opens a PR that closes #{n}\n"
                         "- Goes for real once `TIME_MODE=live`", {"beat": "would-dispatch", "mode": mode})
                 continue
             if state in (None, "needs-done", "would-dispatch") and mode == "live":
                 if launches_today >= cap:
                     print(f"#{n}: daily cap reached")
+                    continue
+                if worker.startswith("venice:"):
+                    comment(n, f"⏱️ Time: {worker_name} is working on this now, on branch `time/card-{n}`.",
+                            {"beat": "dispatched", "launched": True, "worker": "venice"})
+                    launches_today += 1
+                    r = venice_work(card, done, worker.split(":", 1)[1])
+                    comment(n, f"⏱️ Time: `{r['seat']}` opened PR #{r['pr']} ({r['steps']} steps, {r['model']}). "
+                            "Review and landing follow on the next beat.", {"beat": "dispatched", "worker": "venice", **r})
                     continue
                 r = cursor_launch(BUILD_PROMPT.format(n=n, repo=REPO, title=card["title"], body=(card.get("body") or "")[:20000],
                                                       base=default_branch(), done=done), model=worker_model)
@@ -523,6 +664,7 @@ def cmd_doctor() -> int:
     row("label `ready`", "ready" in labels, "exists" if "ready" in labels else "missing: `gh label create ready`")
     row("TIME_MODE", True, os.environ.get("TIME_MODE") or "dry-run (default)")
     row("TIME_DAILY_CAP", True, os.environ.get("TIME_DAILY_CAP") or "5 (default)")
+    row("TIME_WORKER", True, os.environ.get("TIME_WORKER") or "cursor (default); or venice:<seat> for a seat with hands")
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default)")
     row("TIME_AUTOMERGE", True, (os.environ.get("TIME_AUTOMERGE") or "off (default)") + "; merges on Approve + green checks")
     for name in ("queued", "spec", "needs-human"):

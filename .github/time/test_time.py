@@ -21,6 +21,21 @@ class World:
         for c in cards:
             self.issues.setdefault(c["number"], {**c, "state": "open", "labels": c.get("labels", ["ready"])})
 
+        self.files, self.writes, self.opened, self.turn = {"README.md": "hi", "app.py": "x = 1\n"}, [], [], 0
+
+    def venice(self, body):
+        """Scripted seat: list, read, write, open_pr."""
+        self.turn += 1
+        tc = lambda name, args: {"id": f"c{self.turn}", "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}
+        script = [tc("list_files", {}), tc("read_file", {"path": "app.py"}),
+                  tc("write_file", {"path": "app.py", "content": "x = 2\n"}),
+                  tc("write_file", {"path": ".github/workflows/evil.yml", "content": "nope"}),
+                  tc("open_pr", {"title": "Set x to 2", "summary": "Changed app.py; ran nothing."})]
+        assert body["tools"] and body["messages"][0]["role"] == "system"
+        if self.turn <= len(script):
+            return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [script[self.turn - 1]]}}]}
+        return {"choices": [{"message": {"role": "assistant", "content": "done"}}]}
+
     def labelled(self, name):
         return [i for i in self.issues.values() if i["state"] == "open" and name in i["labels"]]
 
@@ -31,8 +46,21 @@ class World:
                 self.launched.append(body); return {"agent": {"id": f"a{len(self.launched)}", "url": "https://cursor.com/agents/x"}, "run": {"status": "RUNNING"}}
             if url.endswith("/v1/models"):
                 return {"models": [{"id": "composer-2.5"}, {"id": "claude-sonnet-5-5"}]}
+        if url.startswith(tm.VENICE):
+            return self.venice(body)
         path = url.replace(tm.GH, "")
         self.calls.append((method, path, body))
+        if "/git/ref/heads/" in path: return {"object": {"sha": "base"}}
+        if path.endswith("/git/refs") and method == "POST": self.branches = getattr(self, "branches", []) + [body["ref"]]; return {}
+        if "/git/trees/" in path: return {"tree": [{"path": k, "type": "blob"} for k in self.files]}
+        if "/contents/" in path:
+            fp = path.split("/contents/")[1].split("?")[0]
+            if method == "GET":
+                if fp not in self.files: raise RuntimeError(f"GET {path} -> 404: not found")
+                import base64; return {"sha": "s", "content": base64.b64encode(self.files[fp].encode()).decode()}
+            import base64; self.files[fp] = base64.b64decode(body["content"]).decode(); self.writes.append((fp, body.get("sha"))); return {}
+        if path == "/repos/o/r/pulls" and method == "POST":
+            self.opened.append(body); return {"number": 42}
         if method == "POST" and path == "/repos/o/r/issues":
             n = max([0, *self.issues]) + 1
             self.issues[n] = {"number": n, "title": body["title"], "body": body["body"], "state": "open", "labels": body["labels"]}
@@ -205,3 +233,19 @@ assert w.posted == [] and not any(c[0] == "PUT" for c in w.calls)
 wm = pr_world(); wm.gh_pr[7]["pr"]["merged_at"] = iso()
 w = run(wm, K); assert w.issues[1]["state"] == "closed" and w.issues[2]["labels"] == ["ready"]
 print("ALL OK 3")
+
+# 14 TIME_WORKER=venice:kimi -> the seat edits on its branch, is refused on workflows, opens a PR that closes the card
+w = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk"})
+assert w.launched == [], "no Cursor launch"
+assert w.branches == ["refs/heads/time/card-1"] and w.files["app.py"] == "x = 2\n" and w.writes == [("app.py", "s")]
+assert ".github/workflows/evil.yml" not in w.files
+assert len(w.opened) == 1 and w.opened[0]["head"] == "time/card-1" and "Closes #1" in w.opened[0]["body"]
+assert "opened PR #42" in w.posted[-1][1] and "kimi-k2-7-code" in w.posted[-1][1]
+# then the normal path links the PR and reviews it
+w2 = run(World([card(1, D)], {1: [beat("dispatched", launched=True, worker="venice", pr=42)]},
+         [{"number": 42, "title": "Set x to 2", "body": "Closes #1", "html_url": "u"}]), K)
+assert "PR #42" in w2.posted[0][1]
+# missing key -> blocked, no crash
+w3 = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_MODE": "live", "TIME_WORKER": "venice:kimi"})
+assert "VENICE_API_KEY" in w3.posted[-1][1]
+print("ALL OK 4")

@@ -48,3 +48,5 @@ jobs:
           TIME_PROTECTED: ${{ vars.TIME_PROTECTED }}
           TIME_PARALLEL: ${{ vars.TIME_PARALLEL }}
           TIME_PLANNER: ${{ vars.TIME_PLANNER }}
+          TIME_WORKER: ${{ vars.TIME_WORKER }}
+          TIME_WORKER_STEPS: ${{ vars.TIME_WORKER_STEPS }}

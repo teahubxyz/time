@@ -1,9 +1,9 @@
 # time
 
-A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are the clock (Time), a Cursor cloud agent is the worker, and chat is where you plan.
+A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are the clock (Time), the worker is a Venice seat with hands or a Cursor cloud agent, and chat is where you plan.
 
 - **Cards**: an issue with a `DONE:` line, labelled `ready`.
-- **Heartbeat** (`heartbeat.yml`, hourly and whenever a card is labelled `ready`): moves cards forward. In `dry-run` (default) it only says what it would do; with `TIME_MODE=live` it dispatches each card to a Cursor cloud agent, which opens a PR that closes the card. An optional reviewer (`TIME_REVIEW`) checks the PR. At most `TIME_DAILY_CAP` launches a day.
+- **Heartbeat** (`heartbeat.yml`, hourly and whenever a card is labelled `ready`): moves cards forward. In `dry-run` (default) it only says what it would do; with `TIME_MODE=live` it dispatches each card to the worker (`TIME_WORKER`: a Venice seat such as `venice:kimi`, which edits the repo and opens the PR itself, or a Cursor cloud agent), which opens a PR that closes the card. An optional reviewer (`TIME_REVIEW`) checks the PR. At most `TIME_DAILY_CAP` launches a day.
 - **Mentions** (`mention.yml`): `@kimi`, `@grok 4.7`, `@qwen max high` in any issue, PR or comment gets that seat's reply (Venice).
 - **Hands-off** (`TIME_AUTOMERGE=on`): label an issue `spec` and Time splits it into cards that run one at a time. A card's PR merges itself once the reviewer approves and checks are green, then the next card starts. Objections, red checks and protected paths (workflows, deploy, secrets) go to a human.
 - **Doctor** (`doctor.yml`, manual): runs the tests and checks label, settings and keys.

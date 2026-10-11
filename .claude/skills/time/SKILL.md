@@ -1,6 +1,6 @@
 ---
 name: time
-description: Set up and run Time, the GitHub-native agent factory in this repo (a spec becomes cards, a Cursor cloud agent builds each one, a reviewer approves, Time merges on green and starts the next card; @seat mentions; an hourly heartbeat in GitHub Actions). Use when asked to set up Time or the factory, connect Cursor, check its status, write a spec or a card, tag a seat, switch it to live or hands-off, or update Time.
+description: Set up and run Time, the GitHub-native agent factory in this repo (a spec becomes cards, a worker (a Venice seat with hands, or a Cursor cloud agent) builds each one, a reviewer approves, Time merges on green and starts the next card; @seat mentions; an hourly heartbeat in GitHub Actions). Use when asked to set up Time or the factory, connect Cursor, check its status, write a spec or a card, tag a seat, switch it to live or hands-off, or update Time.
 ---
 
 # Time
@@ -37,8 +37,9 @@ Files: `.github/workflows/{heartbeat,mention,doctor,update}.yml`, `.github/time/
 3. Settings (`gh variable list` first; set only missing ones):
    - `gh variable set TIME_MODE --body dry-run`
    - `gh variable set TIME_DAILY_CAP --body 5` — max agent launches per day
-   - optional `TIME_CURSOR_MODEL` (worker model id; unset = Cursor's default), `TIME_REVIEW`, `TIME_STUCK_HOURS` (default 6)
-4. Cursor (the worker):
+   - `TIME_WORKER`: `cursor` (default) or `venice:<seat> [model] [effort]`, e.g. `venice:kimi code`. A Venice seat needs only `VENICE_API_KEY`: it reads and writes the repo on branch `time/card-N` through the GitHub API, runs tests on the runner, and opens the PR itself. Workflow files are refused to it.
+   - optional `TIME_CURSOR_MODEL` (Cursor worker model id), `TIME_REVIEW`, `TIME_STUCK_HOURS` (default 6), `TIME_WORKER_STEPS` (default 40 tool calls per card)
+4. Cursor (the worker, only when `TIME_WORKER` is `cursor`):
    - The human installs Cursor's GitHub app on this repo (Cursor dashboard → Integrations → GitHub). Cloud agents can't clone or open PRs without it. You can't check this from `gh`; ask them to confirm.
    - The human creates an API key (Cursor dashboard → API Keys) and stores it: `gh secret set CURSOR_API_KEY` (they paste the value at the prompt).
 5. Optional, seats on Venice: `gh secret set VENICE_API_KEY`. Without it, `@seat` mentions reply that the key is missing.
