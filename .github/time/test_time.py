@@ -715,3 +715,13 @@ vt.tm.think = lambda *a: (_ for _ in ()).throw(RuntimeError("POST x -> 429: over
 assert vt.judge_product(w16)[0] == [] and "skipped" in vt.judge_product(w16)[1]
 vt.tm.think = seat_brain
 print("ALL OK 21")
+
+# 30 a worker command that never exits is stopped and reported to the model, not a crash
+os.environ["TIME_RUN_TIMEOUT"] = "1"
+h = tm.Hands.__new__(tm.Hands)
+h.n, h.branch, h.pr, h.steps, h.checkout = 1, "b", None, 0, None
+h._checkout = lambda: os.getcwd()
+out = h.call("run", {"command": "sleep 5"})
+assert out.startswith("timed out after 1s") and "one-shot" in out, out
+os.environ.pop("TIME_RUN_TIMEOUT")
+print("ALL OK 22")

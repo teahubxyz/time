@@ -466,7 +466,12 @@ class Hands:
             self.checkout = self._checkout()  # fresh: see the latest writes
             # Cards and venture inputs can carry third-party text, so the shell the model drives sees no secrets.
             clean = {k: v for k, v in os.environ.items() if not re.search(r"TOKEN|KEY|SECRET|PASSWORD|ACTIONS_", k, re.I)}
-            p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=600, env=clean)
+            limit = int(os.environ.get("TIME_RUN_TIMEOUT") or 180)
+            try:
+                p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=limit, env=clean)
+            except subprocess.TimeoutExpired:  # a server or watcher never exits: tell the model, don't crash the card
+                return (f"timed out after {limit}s and was stopped. Servers and watchers never exit; run one-shot commands "
+                        f"(a parser, a test script, node -e '...') instead")
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
             # GitHub does not run pull_request workflows for commits made with the Actions token, so the worker's own
             # test run is recorded as a commit status; land() counts statuses as checks.
