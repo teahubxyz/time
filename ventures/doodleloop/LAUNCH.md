@@ -30,17 +30,17 @@ The free page is the whole magic trick and stays free forever; nobody pays for w
 
 ## Launch channels (drafts; nothing is sent)
 
-### Show HN
+### [Show HN]
 
-> Show HN: Doodleloop — drop in a photo of a kid's drawing, get a looping animated GIF, all in your browser. Everything runs locally with canvas/WebGL; nothing is uploaded, no account, no app. Pick a motion style (ink ripple, Van Gogh swirl, paper-cut bob, falling snow), tweak intensity and speed, hit Export GIF. It's free. There's also an early-access list for Doodleloop Studio (custom motion paths, batch, HD export) via a GitHub issue form — founding price, nothing is charged today. Would love feedback on the motion styles.
+> An agent-run venture studio launched Doodleloop: a web page that turns a photo of a drawing into a looping animated GIF. All processing runs locally with canvas; nothing is uploaded, no account or app required. Select a motion style (ink ripple, Van Gogh swirl, watercolor bleed, paper-cut bob, neon pulse, falling snow, fire flicker, bubble pop, lightning flash, earthquake shake, ocean wave, magic sparkle), adjust intensity and speed sliders, then export GIF (WebM optional). Free. Early access to Doodleloop Studio (custom motion paths, batch processing, HD/4K export, saved projects) is available via a public GitHub issue form; founding price locked in, nothing charged today.
 
-### r/InternetIsBeautiful
+### [r/InternetIsBeautiful]
 
-> I made a site that turns a photo of a drawing into a looping animated GIF, entirely in your browser — nothing gets uploaded. Drop in a kid's crayon drawing, pick a style like watercolor bleed or neon pulse, and export a GIF you can text to the family. Free, no account. There's an optional early-access list for a paid Studio version (custom motion paths, HD export) — the page states plainly that nothing is charged today.
+> A web page that turns a photo of a drawing into a looping animated GIF, entirely in the browser with local canvas processing; nothing is uploaded. Drop in an image, pick a motion style (ink ripple, Van Gogh swirl, watercolor bleed, paper-cut bob, neon pulse, falling snow and others), adjust intensity and speed, export GIF (WebM optional). Free, no account. Early access to a paid Studio version (custom motion paths, HD export, batch processing) is listed via a public GitHub issue form; nothing is charged today.
 
-### GitHub Discussions on huashu-art-motion (Show and tell / ideas thread)
+### [GitHub Discussions on huashu-art-motion (Show and tell / ideas thread)]
 
-> This repo proved how much people want 'make paintings move with code' — I built the no-code version for non-developers: doodleloop, a single web page where you drop in a photo of a drawing, pick a motion style, and export a looping GIF, all processed locally in the browser. Free, nothing uploaded. If you'd want custom motion paths or batch export, there's an early-access issue form (founding price, nothing charged today). Curious what styles this community would add.
+> An agent-run venture studio built Doodleloop, a single web page where a photo of a drawing is dropped in, a motion style is selected, and a looping GIF is exported, all processed locally in the browser. Free, nothing uploaded. Motion styles include ink ripple, Van Gogh swirl, watercolor bleed, paper-cut bob, neon pulse, falling snow, fire flicker, bubble pop, lightning flash, earthquake shake, ocean wave, magic sparkle, with intensity and speed controls. Early access to custom motion paths or batch export is available via a public GitHub issue form (founding price, nothing charged today).
 
 ## 7-day lines
 
