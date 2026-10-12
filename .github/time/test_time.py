@@ -814,3 +814,16 @@ assert all(x.startswith("refused: this build writes only under ventures/mdecks/"
 assert not seen34[6].startswith("refused") and list(W.files) == ["ventures/mdecks/index.html"], (seen34[6], list(W.files))
 assert vt._inside("ventures/mdecks/app.js", "ventures/mdecks/") and not vt._inside("ventures/mdecks", "")
 print("ALL OK 26")
+
+# 35 a product that paints (a canvas, an image its script made) is alive; layout problems name their culprits;
+#    the header's one button asks for early access, never a product verb
+alive = {"phone": ok, "desktop": okd, "live": {"n": 30, "t": 120, "c": 2, "m": 0}, "nojs": {"n": 30, "t": 118, "c": 0, "m": 0}}
+assert not vt.dead(alive) and vt.dead({**alive, "live": {"n": 30, "t": 120, "c": 0, "m": 0}})
+assert not vt.dead({**alive, "live": {"n": 30, "t": 120, "m": 1}, "nojs": {"n": 30, "t": 120}})
+assert "drawn(t)" in vt.HARNESS and "getImageData" in vt.HARNESS and "__timeWide()" in vt.PROBE
+w35 = vt.layout_problems({"phone": {**ok, "sw": 463, "wide": ["table.ref (439px wide, inside div.face)"], "tt": 285, "hh": 262}, "desktop": okd})
+assert any("Too wide: table.ref (439px wide, inside div.face)" in x and "overflow-x:auto" in x for x in w35), w35
+assert any("the product starts 285px down at 390x844 (the header alone is 262px tall)" in x for x in w35), w35
+assert vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}], "primary_cta": "Export GIF"}, {})["primary_cta"] == "Join early access"
+assert vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}], "primary_cta": "Get early access"}, {})["primary_cta"] == "Get early access"
+print("ALL OK 27")

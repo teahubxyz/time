@@ -317,6 +317,8 @@ def normalize_plan(p: dict, w: dict) -> dict:
     success = max(1, _int(p.get("success_signups"), 10))
     kill = min(_int(p.get("kill_signups"), 2), success - 1)
     cta = _s(p.get("primary_cta"), 40)
+    if cta and not re.search(r"early|access|join|wait|list|founding|notify|reserve|pre-?order|sign ?up|interest", cta, re.I):
+        cta = ""  # a product verb (e.g. "Export GIF") on the button that opens the signup form misleads: use the default
     return {"positioning": _s(p.get("positioning")) or _s(w.get("one_liner")),
             "audience": _s(p.get("audience")), "business_model": _s(p.get("business_model"), 900),
             "pricing": tiers[:3], "primary_cta": cta if cta and len(cta.split()) <= 5 else "Join early access",
@@ -775,13 +777,23 @@ var e=document.elementFromPoint(x,y);if(e&&!t.contains(e)&&!e.contains(t)){hits+
 who=c.tagName.toLowerCase()+(c.id?"#"+c.id:"")}}}return{n:n,hits:hits,who:who}}
 addEventListener("load",function(){setTimeout(function(){var a=document.querySelector('a[href*="early-access"]'),r=a?a.getBoundingClientRect():null,d=document.documentElement;
 d.setAttribute("data-time-probe",JSON.stringify({sw:d.scrollWidth,iw:innerWidth,ih:innerHeight,cta:r?Math.round(r.top):-1,ctah:r?Math.round(r.height):0,err:__timeErr,
-tt:(function(){var t=document.getElementById("try");return t?Math.round(t.getBoundingClientRect().top):-1})(),cov:__timeCover()}))},300)})</script>"""
+tt:(function(){var t=document.getElementById("try");return t?Math.round(t.getBoundingClientRect().top):-1})(),cov:__timeCover(),
+wide:__timeWide(),hh:(function(){var h=document.querySelector("header");return h?Math.round(h.getBoundingClientRect().height):-1})()}))},300)})
+function __timeName(e){var c=(typeof e.className==="string"&&e.className.trim())?"."+e.className.trim().split(/\\s+/).slice(0,2).join("."):"";
+return e.tagName.toLowerCase()+(e.id?"#"+e.id:"")+c}
+function __timeWide(){var W=innerWidth+2,out=[];[].forEach.call(document.body.querySelectorAll("*"),function(e){if(out.length>=3)return;
+var r=e.getBoundingClientRect(),p=e.parentElement;if(r.right<=W||r.width<1)return;var q=p?p.getBoundingClientRect():null;
+if(!q||q.right<=W)out.push(__timeName(e)+" ("+Math.round(r.width)+"px wide, inside "+(p?__timeName(p):"body")+")")});return out}</script>"""
 SIZES = {"phone": (390, 844), "desktop": (1280, 800)}
 # Headless Chrome clamps its window to 500px wide, so each size is measured inside an iframe of exactly that size.
 # A sandboxed twin with scripts off shows what #try looks like before the product runs; the product must change it.
 HARNESS = """<!doctype html><html><body style="margin:0">{frames}
 <iframe id="nojs" src="index.html" sandbox="allow-same-origin" width="1280" height="800" style="border:0;display:block"></iframe>
-<script>function tryStats(d){{var t=d&&d.getElementById("try");return t?{{n:t.getElementsByTagName("*").length,t:(t.innerText||"").length}}:null}}
+<script>function drawn(t){{var c=0;[].forEach.call(t.querySelectorAll("canvas"),function(v){{try{{if(!v.width||!v.height)return;var x=v.getContext("2d");
+if(!x){{c++;return}}var p=x.getImageData(0,0,v.width,v.height).data,step=4*Math.max(1,Math.floor(p.length/4/4000));
+for(var i=3;i<p.length;i+=step){{if(p[i]){{c++;return}}}}}}catch(e){{c++}}}});return c}}
+function made(t){{return [].filter.call(t.querySelectorAll("img,video,source"),function(m){{return /^(blob|data):/.test(m.currentSrc||m.src||"")}}).length}}
+function tryStats(d){{var t=d&&d.getElementById("try");return t?{{n:t.getElementsByTagName("*").length,t:(t.innerText||"").length,c:drawn(t),m:made(t)}}:null}}
 setTimeout(function(){{var o={{}};
 {names}.forEach(function(n){{try{{o[n]=JSON.parse(document.getElementById(n).contentDocument.documentElement.getAttribute("data-time-probe")||"null")}}
 catch(e){{o[n]=null}}}});
@@ -852,13 +864,17 @@ def layout_problems(result: dict) -> list[str]:
             problems.append(f"the page did not finish loading at {w}x{h}")
             continue
         if p["sw"] > p["iw"] + 2:
-            problems.append(f"horizontal scrolling at {w}px wide: the content is {p['sw']}px wide")
+            culprits = "; ".join(p.get("wide") or [])
+            problems.append(f"horizontal scrolling at {w}px wide: the content is {p['sw']}px wide"
+                            + (f". Too wide: {culprits}. Let it wrap or shrink, or give it its own scroll box (overflow-x:auto)"
+                               if culprits else ""))
         if p["cta"] < 0:
             problems.append("the browser found no early-access link")
         elif p["cta"] + p.get("ctah", 0) > h:
             problems.append(f"the primary button is below the first screen at {w}x{h} (its top is at {p['cta']}px)")
         if p.get("tt", -1) > h * 0.3:
-            problems.append(f"the product starts {p['tt']}px down at {w}x{h}: it must start in the top third of the first "
+            tall = f" (the header alone is {p['hh']}px tall)" if p.get("hh", -1) > h * 0.18 else ""
+            problems.append(f"the product starts {p['tt']}px down at {w}x{h}{tall}: it must start in the top third of the first "
                             f"screen, right under a slim header (move any intro or hero content below it)")
         c = p.get("cov") or {}
         if c.get("hits", 0) >= 2 and c["hits"] >= 0.15 * max(c.get("n", 0), 1):
@@ -873,9 +889,13 @@ def layout_problems(result: dict) -> list[str]:
 
 
 def dead(result: dict) -> bool:
-    """#try with scripts on looks like #try with scripts off: the product rendered nothing of its own."""
+    """#try with scripts on looks like #try with scripts off: the product rendered nothing of its own. What a product paints
+    counts too (a canvas with pixels on it, an image or video its script made), not only the elements and text it adds."""
     live, nojs = result.get("live"), result.get("nojs")
-    return bool(live and nojs and live["n"] - nojs["n"] < 3 and abs(live["t"] - nojs["t"]) < 40)
+    if not (live and nojs):
+        return False
+    painted = live.get("c", 0) > nojs.get("c", 0) or live.get("m", 0) > nojs.get("m", 0)
+    return not painted and live["n"] - nojs["n"] < 3 and abs(live["t"] - nojs["t"]) < 40
 
 
 def chrome() -> str | None:
