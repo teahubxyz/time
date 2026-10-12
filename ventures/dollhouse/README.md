@@ -29,7 +29,7 @@ The whole plan is encoded in the URL, so sharing is just copying the link — pe
 - Limited furniture library (only 5 items)
 - No multi-room support
 - No collaboration features
-- Only basic SVG export (no PNG)
+- Basic export options (PNG/SVG posters only)
 
 ## Next version (Pro)
 
