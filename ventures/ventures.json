@@ -63,8 +63,9 @@
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
    "planned": "2026-10-12",
-   "status": "building",
-   "signups": 0
+   "status": "live",
+   "signups": 0,
+   "launched": "2026-10-12"
   }
  ],
  "refreshed": "2026-10-12"
