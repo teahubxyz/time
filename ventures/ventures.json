@@ -5,7 +5,7 @@
    "name": ".mdeck",
    "one_liner": "Write slides in plain text and instantly preview a clean presentation layout.",
    "for_whom": "People who make a quick throwaway deck every week and would rather type than drag boxes.",
-   "url": "https://teahubxyz.github.io/time/ventures/mdecks/",
+   "url": "https://mdecks.yolopreneur.lol/",
    "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro",
    "signal": 13,
    "card": 11,
@@ -17,14 +17,21 @@
    "launched": "2026-10-12",
    "aliases": [
     "deck-preview"
-   ]
+   ],
+   "pages": "https://teahubxyz.github.io/time/ventures/mdecks/",
+   "backend": {
+    "worker": "time-mdecks",
+    "db": "423fe9c1-97ea-49ee-b981-bd20be5651aa",
+    "rev": "ce45b9453edd",
+    "api": "https://mdecks.yolopreneur.lol/api/"
+   }
   },
   {
    "slug": "docscope",
    "name": "Docscope",
    "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside — author names, tracked deletions, embedded thumbnails, leftover comments — dissected live in your browser, nothing uploaded.",
    "for_whom": "Consultants, lawyers, journalists and developers who email Office files and want to know exactly what metadata and draft remnants they're about to leak (or need to parse).",
-   "url": "https://teahubxyz.github.io/time/ventures/docscope/",
+   "url": "https://docscope.yolopreneur.lol/",
    "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29",
    "signal": 14,
    "card": 12,
@@ -33,7 +40,14 @@
    "planned": "2026-10-11",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-12"
+   "launched": "2026-10-12",
+   "pages": "https://teahubxyz.github.io/time/ventures/docscope/",
+   "backend": {
+    "worker": "time-docscope",
+    "db": "d433b108-0af2-4017-8db5-c06a1298fca7",
+    "rev": "c4d8e75ba405",
+    "api": "https://docscope.yolopreneur.lol/api/"
+   }
   },
   {
    "slug": "doodleloop",
