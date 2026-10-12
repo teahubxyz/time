@@ -20,6 +20,7 @@ The syntax:
 - `- bullet` (or `* bullet`) for lists
 - `---` on its own line starts a new slide
 - Inline `**bold**`, `*italic*`, and `` `code` ``
+- `[text](https://…)` for a link
 - Any other line becomes a paragraph
 
 Everything runs in the page. Nothing is saved, nothing is sent anywhere, no account is needed, and the page is free.
