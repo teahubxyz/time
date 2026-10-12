@@ -596,27 +596,49 @@ def save_registry(reg: dict, message: str) -> None:
     put_pages("ventures/index.html", index_html(reg), message)
 
 
-INDEX_CSS = """:root{--paper:#f3efe6;--ink:#1c1a16;--mute:#6d675b;--rule:#cdc5b3;--accent:#b8400f}
-*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
-a{color:inherit;text-decoration-color:var(--accent);text-underline-offset:3px}a:hover{color:var(--accent)}
-.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
-header{border-bottom:3px double var(--ink);padding:56px 0 28px}
-h1{font:600 clamp(44px,9vw,104px)/.9 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;letter-spacing:-.03em;margin:0 0 20px}
-h1 em{font-style:italic;color:var(--accent)}
-.lede{max-width:62ch;margin:0;color:var(--mute)}.lede b{color:var(--ink);font-weight:600}
-.cols,.row{display:grid;grid-template-columns:4.5em minmax(0,1fr) 11em 6.5em;gap:20px}
-.cols{padding:10px 0;border-bottom:1px solid var(--ink);font-size:12px;text-transform:uppercase;letter-spacing:.12em;color:var(--mute)}
-.row{padding:26px 0;border-bottom:1px solid var(--rule)}
-.no{font:600 28px/1 "Iowan Old Style",Palatino,Georgia,serif;color:var(--mute)}
-h2{font:600 30px/1.05 "Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;margin:0 0 8px;letter-spacing:-.01em}
-h2 a{text-decoration:none}.row p{margin:0 0 6px;overflow-wrap:anywhere}.for{color:var(--mute)}.links{font-size:13px}
-.badge{display:inline-block;padding:2px 8px;border:1.5px solid var(--ink);font-size:12px;text-transform:uppercase;letter-spacing:.1em}
-.live{background:var(--ink);color:var(--paper)}.iterating{background:var(--accent);border-color:var(--accent);color:var(--paper)}
-.killed,.parked,.stuck{color:var(--mute);border-color:var(--mute)}
-small{display:block;color:var(--mute);font-size:12px;margin-top:6px}
-.count b{display:block;font:600 40px/1 "Iowan Old Style",Palatino,Georgia,serif}.count small{margin-top:4px}
-footer{padding:28px 0 64px;color:var(--mute);font-size:13px}.empty{padding:40px 0;color:var(--mute)}
-@media (max-width:720px){.cols{display:none}.row{grid-template-columns:1fr;gap:10px}.no{font-size:18px}.count b{display:inline;font-size:28px;margin-right:6px}.count small{display:inline}}"""
+# The studio index wears the Time site's blueprint: same tokens, grid paper, title block and type as the front page.
+# Its thumbnails crop the launch contact sheet (SHEET, shot at 1230px wide: 24px padding, the 390px phone frame, a 24px
+# gap, then the 768x480 laptop frame) to the laptop frame.
+INDEX_CSS = """:root{--navy:#0c2340;--navy2:#0f2b4f;--line:#8fd3ff;--line2:rgba(143,211,255,.55);--faint:rgba(143,211,255,.16);
+--paper:#eaf6ff;--mute:#9cb6cf;--amber:#ffc857;--green:#8ee6a8;--red:#ff7a6b;
+--mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+--sans:"Avenir Next","Avenir","Segoe UI","Helvetica Neue",Arial,sans-serif;
+--cond:"Avenir Next Condensed","Arial Narrow","Roboto Condensed","Helvetica Neue",Arial,sans-serif}
+*{box-sizing:border-box}html{background:var(--navy)}
+body{margin:0;color:var(--paper);font:16px/1.6 var(--sans);background:
+linear-gradient(var(--faint) 1px,transparent 1px) 0 0/24px 24px,linear-gradient(90deg,var(--faint) 1px,transparent 1px) 0 0/24px 24px,
+linear-gradient(rgba(143,211,255,.07) 1px,transparent 1px) 0 0/120px 120px,linear-gradient(90deg,rgba(143,211,255,.07) 1px,transparent 1px) 0 0/120px 120px,var(--navy)}
+a{color:var(--line);text-underline-offset:3px}a:hover{color:#fff}
+.wrap{max-width:1120px;margin:0 auto;padding:0 20px}
+.label{font:600 11px/1.2 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--line)}
+.sheet{border:1.5px solid var(--line2);position:relative}
+.sheet::before,.sheet::after{content:"";position:absolute;width:14px;height:14px;border:1.5px solid var(--line)}
+.sheet::before{top:-6px;left:-6px;border-right:0;border-bottom:0}.sheet::after{bottom:-6px;right:-6px;border-left:0;border-top:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 0;border-bottom:1.5px solid var(--line2)}
+.mark{display:flex;align-items:center;gap:10px;font:700 15px/1 var(--mono);letter-spacing:.08em;color:var(--paper);text-decoration:none}
+.top nav{display:flex;gap:18px;font:13px/1 var(--mono)}.top nav a{color:var(--mute);text-decoration:none}.top nav a:hover,.top nav a.on{color:var(--paper)}
+.hero{padding:52px 0 34px}
+h1{font:700 clamp(38px,5.6vw,66px)/.95 var(--cond);letter-spacing:-.01em;margin:14px 0 18px;text-transform:uppercase}h1 em{font-style:normal;color:var(--amber)}
+.lede{font-size:clamp(16px,2vw,19px);max-width:40em;color:#cfe6f8;margin:0}.lede b{color:var(--paper)}
+.ledger{display:grid;gap:22px;padding:8px 0 44px}
+.row{display:grid;grid-template-columns:4.2em minmax(0,1fr) 12em 7em;gap:22px;align-items:start;padding:20px;background:rgba(12,35,64,.82)}
+.no{font:700 30px/1 var(--cond);color:var(--amber)}
+h2{font:700 30px/1.05 var(--cond);margin:2px 0 8px;letter-spacing:.005em}h2 a{color:var(--paper);text-decoration:none}h2 a:hover{color:var(--line)}
+.row p{margin:0 0 6px;color:#cfe6f8;overflow-wrap:anywhere}.for{color:var(--mute)!important;font-size:15px}
+.links{font:12px/1.7 var(--mono)}.links a{color:var(--line)}
+.shot{display:block;margin-top:14px;max-width:460px;aspect-ratio:768/480;overflow:hidden;border:1.5px solid var(--line2)}.shot img{display:block;width:160.156%;max-width:none;height:auto;margin:-3.125% 0 0 -57.031%}
+.tag{display:inline-block;font:600 11px/1 var(--mono);letter-spacing:.12em;text-transform:uppercase;border:1.5px solid var(--line);padding:5px 8px;color:var(--line)}
+.tag.live{color:var(--green);border-color:var(--green)}.tag.building,.tag.iterating{color:var(--amber);border-color:var(--amber)}
+.tag.killed,.tag.parked,.tag.stuck{color:var(--mute);border-color:var(--mute)}
+small{display:block;font:12px/1.6 var(--mono);color:var(--mute);margin-top:8px}
+.count b{display:block;font:700 44px/1 var(--cond);color:var(--paper)}.count small{margin-top:4px}
+.empty{padding:22px;background:rgba(12,35,64,.82);color:var(--mute)}
+footer{padding:30px 0 60px;border-top:1.5px solid var(--line2);font:12px/1.7 var(--mono);color:var(--mute)}
+@media (max-width:820px){.row{grid-template-columns:1fr;gap:10px}.no{font-size:20px}.count b{display:inline;font-size:30px;margin-right:6px}.count small{display:inline}}
+@media (max-width:520px){.top nav{display:none}}"""
+
+MARK = ('<svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="11.5" fill="none" stroke="#8fd3ff" '
+        'stroke-width="1.5"/><path d="M13 5v8l5 3" fill="none" stroke="#ffc857" stroke-width="2" stroke-linecap="round"/></svg>')
 
 
 def index_html(reg: dict) -> str:
@@ -630,23 +652,28 @@ def index_html(reg: dict) -> str:
                  f'<a href="https://github.com/{REPO}/issues/{v["card"]}">Card #{v["card"]}</a>' if v.get("card") else ""]
         status = v.get("status", "building")
         since = f"since {v['launched']}" if v.get("launched") else f"planned {v.get('planned', '')}"
-        rows.append(f"""<article class="row"><div class="no">{len(vs) - k:03d}</div>
+        shot = (f'<a class="shot" href="{e(v["slug"])}/"><img src="{e(v["slug"])}/shots/sheet.png" alt="{e(v.get("name", v["slug"]))} '
+                f'at phone and desktop size" loading="lazy" onerror="this.parentNode.remove()"></a>') if v.get("launched") else ""
+        rows.append(f"""<article class="row sheet"><div class="no">{len(vs) - k:03d}</div>
 <div><h2><a href="{e(v['slug'])}/">{e(v.get('name', v['slug']))}</a></h2><p>{e(v.get('one_liner', ''))}</p>
-<p class="for">For: {e(v.get('for_whom', ''))}</p><p class="links">{' · '.join(x for x in links if x)}</p></div>
-<div><span class="badge {e(status)}">{e(status)}</span><small>{e(since)}</small><small>{e(v.get('design', '').split(':')[0])}</small></div>
+<p class="for">For: {e(v.get('for_whom', ''))}</p><p class="links">{' · '.join(x for x in links if x)}</p>{shot}</div>
+<div><span class="tag {e(status)}">{e(status)}</span><small>{e(since)}</small></div>
 <div class="count"><b>{int(v.get('signups', 0))}</b><small>signups</small></div></article>""")
-    body = "\n".join(rows) or '<p class="empty">No ventures yet. The first one is being scouted.</p>'
+    body = "\n".join(rows) or '<p class="empty sheet">No ventures yet. The first one is being scouted.</p>'
     return f"""<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Ventures · Time</title><meta name="description" content="Ventures launched by Time, an agent-run studio on GitHub.">
 <style>{INDEX_CSS}</style></head><body>
-<header><div class="wrap"><h1>Time <em>ventures</em></h1>
-<p class="lede">An agent-run studio on GitHub. Every day the seats read what is trending, pitch, vote, write a launch plan,
-build the page, and let <b>seven days of signups</b> decide what gets a next version. The ledger is
-<a href="https://github.com/{REPO}/issues?q=label%3Aventure">public</a>.</p></div></header>
-<main class="wrap"><div class="cols"><span>No.</span><span>Venture</span><span>Status</span><span>Signups</span></div>
-{body}</main>
-<footer class="wrap">A signup is a GitHub account that asked for early access or 👍'd the venture's signal issue; counts
-refresh daily, and nothing here is invented. Built with <a href="https://github.com/{REPO}">Time</a>.</footer>
+<div class="wrap"><header class="top"><a class="mark" href="../" aria-label="Time home">{MARK} TIME</a>
+<nav><a href="../#loop">The loop</a><a href="../#proof">Proof</a><a href="../#start">Start</a><a class="on" href="./">Ventures</a>
+<a href="https://github.com/{REPO}">GitHub</a></nav></header>
+<div class="hero"><div class="label">Drawing 07 · the studio ledger</div><h1>Time <em>ventures</em></h1>
+<p class="lede">The same machinery runs a small studio. Every day the seats read what's trending on GitHub, pitch, vote, write a
+launch plan, build the product, and let <b>seven days of signups</b> decide what gets a next version. The ledger is
+<a href="https://github.com/{REPO}/issues?q=label%3Aventure">public</a>.</p></div>
+<main class="ledger">
+{body}</main></div>
+<footer><div class="wrap">A signup is a GitHub account that asked for early access or 👍'd the venture's signal issue; counts refresh
+daily, and nothing here is invented. Built with <a href="https://github.com/{REPO}">Time</a> · this page loads nothing from other sites.</div></footer>
 </body></html>
 """
 
