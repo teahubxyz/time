@@ -4,7 +4,7 @@ Turn a photo of a drawing into a looping animated GIF in under a minute — all 
 
 ## What is Doodleloop?
 
-Doodleloop is a free web-based tool that lets you animate drawings and photos instantly. Simply drop in an image, pick a motion style, and export a looping animated GIF — all processed locally in your browser with canvas/WebGL. Nothing leaves your device.
+Doodleloop is a free web-based tool that lets you animate drawings and photos instantly. Simply drop in an image, pick a motion style, and export a looping animated GIF — all processed locally in your browser with canvas. Nothing leaves your device.
 
 ## Who is it for?
 
@@ -52,7 +52,6 @@ Join the early access list on the website - founding price locked in for life!
 Doodleloop uses modern web technologies including:
 
 - HTML5 Canvas for image processing
-- WebGL for hardware-accelerated effects
 - JavaScript for animation logic
 - Responsive design for all devices
 
