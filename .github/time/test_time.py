@@ -414,6 +414,7 @@ def seat_brain(seat, model, effort, system, user):
     if "Write the launch plan" in user:
         return "Here is my plan:\n" + json.dumps({**GOOD, "positioning": f"{GOOD['positioning']} ({seat})"})
     if "You review the product code" in user:
+        assert "The page's own text" in user and "<script" not in user.split("The page's own text")[1].split("Its JavaScript")[0]
         fake = "createRealisticParsedParts" in user
         return json.dumps({"real": not fake, "evidence": "createRealisticParsedParts returns fixed parts" if fake else "render() uses the textarea",
                            "missing": []})
