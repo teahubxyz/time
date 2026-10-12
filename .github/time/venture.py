@@ -1367,14 +1367,18 @@ def tick() -> int:
         refresh_daily(reg)
     except Exception as e:  # noqa: BLE001  chores never block the cards
         print("chores failed:", e)
+    fresh = []
     if env("TIME_VENTURE", "off") == "on":
         titles = {c["title"] for c in venture_cards("all")}
         if f"Venture {today()}" not in titles or env("TIME_VENTURE_START", "").lower() in ("1", "true", "yes"):
-            new_card(next_title(titles))  # once a day on the schedule; any time someone asks for one
+            fresh.append(new_card(next_title(titles)))  # once a day on the schedule; any time someone asks for one
     heavy_left, skip = 1, set()
     while time.monotonic() - t0 < budget:
         due = []
-        for c in venture_cards():
+        cards = venture_cards()
+        listed = {c["number"] for c in cards}
+        cards += [c for c in fresh if c["number"] not in listed]  # GitHub can take a moment to list a card made just now
+        for c in cards:
             if c["number"] in skip:
                 continue
             cm = comments_of(c["number"])

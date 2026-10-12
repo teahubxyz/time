@@ -843,3 +843,16 @@ c36 = next(i["number"] for i in W.issues.values() if i["title"].endswith("(2)"))
 assert W.beats(c36)[:2] == ["scouted", "pitched"], W.beats(c36)
 assert vt.next_title({f"Venture {vt.today()}", f"Venture {vt.today()} (2)"}) == f"Venture {vt.today()} (3)"
 print("ALL OK 28")
+
+# 37 a card made a moment ago still starts in the same run, even when GitHub doesn't list it yet
+W = VWorld()
+vt._build_on_pages = Worker()
+W.add(f"Venture {vt.today()}", labels=["venture"], state="closed")
+listing = vt.venture_cards
+vt.venture_cards = lambda state="open", n=30: [i for i in listing(state, n) if state == "all" or not i["title"].endswith("(2)")]
+vtick({"TIME_VENTURE": "on", "TIME_VENTURE_START": "1", "TIME_VENTURE_HEAVY_START_MIN": "0"})
+vt.venture_cards = listing
+os.environ.pop("TIME_VENTURE_START", None); os.environ.pop("TIME_VENTURE_HEAVY_START_MIN", None)
+c37 = next(i["number"] for i in W.issues.values() if i["title"].endswith("(2)"))
+assert W.beats(c37)[:3] == ["scouted", "pitched", "picked"], W.beats(c37)
+print("ALL OK 29")
