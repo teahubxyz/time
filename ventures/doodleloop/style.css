@@ -403,3 +403,14 @@ footer a:hover {
         grid-template-columns: 1fr;
     }
 }
+
+/* finish: a one-line header that stays put, and the product right under it */
+header { position: static; box-shadow: 0 1px 0 rgba(0,0,0,0.08); }
+.header-content { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 1rem; text-align: left; padding: 0.6rem 1rem; }
+header h1 { font-size: 1.35rem; margin: 0; }
+header .tagline { margin: 0; font-size: 0.92rem; flex: 1 1 260px; }
+header .cta { display: inline-block; background-color: #3498db; color: #fff; padding: 0.5rem 1rem; border-radius: 4px; text-decoration: none; font-weight: bold; font-size: 0.9rem; }
+header .cta:hover { background-color: #2980b9; }
+header .note { margin: 0; font-size: 0.75rem; flex-basis: 100%; }
+#try { min-height: 0; justify-content: flex-start; padding: 1rem; }
+@media (min-width: 821px) { header .note { flex-basis: auto; } }
