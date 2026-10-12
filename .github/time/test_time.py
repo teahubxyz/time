@@ -266,6 +266,7 @@ print("ALL OK 5")
 # ---------- venture loop (offline: scripted seats) ----------
 vspec = importlib.util.spec_from_file_location("vt", Path(__file__).resolve().parent / "venture.py")
 vt = importlib.util.module_from_spec(vspec); vspec.loader.exec_module(vt)
+REAL_BUILD = vt._build_on_pages  # the tests below swap in fakes; #34 tests the real wrapper
 repos = [{"name": "a/b", "stars": 900, "desc": "a tiny thing", "lang": "Rust", "topics": ["cli"], "url": "u"}]
 assert "a/b (900★, Rust): a tiny thing [cli]" in vt.radar(repos)
 answers = {"qwen": '{"slug": "Star Checker!", "title": "Star checker", "one_liner": "x", "why_now": "a/b", "page": "p"}',
@@ -445,7 +446,8 @@ class Worker:
     def __init__(self, bad=0):
         self.bad, self.briefs = bad, []
 
-    def __call__(self, card, done, spec):
+    def __call__(self, card, done, spec, root=""):
+        self.root = root
         self.briefs.append(card["body"])
         if card["title"].startswith("Launch"):
             self.brief = card["body"]
@@ -647,7 +649,7 @@ print("ALL OK 15")
 W = VWorld()
 c24 = W.add(f"Venture {vt.today()}", labels=["venture"])
 W.say(c24, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "planned", "winner": w16, "plan": plan16, "errors": 2}) + " -->")
-def overloaded(card, done, spec):
+def overloaded(card, done, spec, root=""):
     raise RuntimeError("POST https://api.venice.ai/api/v1/chat/completions -> 429: The model is currently overloaded")
 vt._build_on_pages = overloaded
 vtick(); vtick()
@@ -700,12 +702,13 @@ W = VWorld()
 c28 = W.add(f"Venture {vt.today()}", labels=["venture"])
 W.say(c28, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "built", "winner": w16, "plan": plan16, "fixes": 1}) + " -->")
 W.files["ventures/mdecks/index.html"] = "<html>thin</html>"
-specs = []
-def spy(card, done, spec):
-    specs.append(spec); return {"pr": -1, "steps": 3, "seat": "grok", "model": "grok-4-7"}
+specs, roots = [], []
+def spy(card, done, spec, root=""):
+    specs.append(spec); roots.append(root); return {"pr": -1, "steps": 3, "seat": "grok", "model": "grok-4-7"}
 vt._build_on_pages = spy
 vtick()
 assert specs == ["venice:grok 4.7"] and "(grok-4-7)" in W.text(c28), (specs, W.text(c28)[-200:])
+assert roots == ["ventures/mdecks/"], roots
 print("ALL OK 20")
 
 # 29 the honesty review: canned output that dodges the phrase check is still caught by the reviewing seat
@@ -740,6 +743,10 @@ assert vt.layout_problems({"phone": ok, "desktop": okd, "live": {"n": 40, "t": 9
 low = vt.layout_problems({"phone": {**ok, "tt": 900}, "desktop": okd})
 assert len(low) == 1 and "the product starts 900px down at 390x844" in low[0], low
 assert any("below the first screen" in p for p in vt.layout_problems({"phone": {**ok, "cta": 880}, "desktop": okd}))
+# something on top of the product (a page fixed to the screen's height lets the next section slide over it)
+cov = vt.layout_problems({"phone": {**ok, "cov": {"n": 25, "hits": 23, "who": "section#how"}}, "desktop": {**okd, "cov": {"n": 15, "hits": 1, "who": "div"}}})
+assert len(cov) == 1 and "section#how covers 23 of the 25 parts of #try" in cov[0] and "390x844" in cov[0], cov
+assert "data-time-probe" in vt.PROBE and "elementFromPoint" in vt.PROBE and "cov:__timeCover()" in vt.PROBE
 b31 = vt.build_body({**w16, "prior": "ventures/mdecks/v0.html", "prior_note": "Keep its look and layout."}, plan16)
 assert "ventures/mdecks/v0.html" in b31 and "Keep its look and layout." in b31
 print("ALL OK 23")
@@ -780,3 +787,30 @@ names33 = vt.taken(json.loads(W.files["ventures/ventures.json"]))
 assert vt.repeats({"slug": "deck-preview-2", "name": "DeckPreview"}, names33) and vt.repeats({"slug": "x", "name": "MDeck"}, names33)
 assert not vt.repeats({"slug": "offramp", "name": "Offramp", "title": "Will it open?"}, names33)
 print("ALL OK 25")
+
+# 34 a venture build writes only inside its own folder: the Pages branch also carries the studio's site and the other ventures
+W = VWorld()
+def http34(method, url, token, body=None, timeout=0):
+    base = url.split("?")[0]
+    if base.endswith("/repos/o/r"): return {"default_branch": "main"}
+    if "/git/ref/heads/" in base: return {"object": {"sha": "base"}}
+    if base.endswith("/git/refs"): return {}
+    return W.http(method, url, token, body, timeout)
+vt.tm.http = http34
+seen34 = []
+def work34(card, done, spec):
+    h = vt.tm.Hands(card["number"], "card-7")
+    seen34.append(h.branch)
+    for path in ("index.html", "ventures/mdecks/../../index.html", "/ventures/mdecks/index.html", "ventures/other/index.html",
+                 "ventures/mdecks-2/index.html", "ventures/mdecks/index.html"):
+        seen34.append(h.call("write_file", {"path": path, "content": "<h1>x</h1>"}))
+    h.call("open_pr", {})
+    return {"pr": h.pr, "steps": h.steps, "seat": "qwen", "model": "m"}
+real34, vt.tm.venice_work = vt.tm.venice_work, work34
+r34 = REAL_BUILD({"number": 7, "title": "Fix", "body": "b"}, "d", "venice:qwen", root="ventures/mdecks/")
+vt.tm.venice_work = real34
+assert seen34[0] == "gh-pages" and r34["pr"] == -1, (seen34[0], r34)
+assert all(x.startswith("refused: this build writes only under ventures/mdecks/") for x in seen34[1:6]), seen34
+assert not seen34[6].startswith("refused") and list(W.files) == ["ventures/mdecks/index.html"], (seen34[6], list(W.files))
+assert vt._inside("ventures/mdecks/app.js", "ventures/mdecks/") and not vt._inside("ventures/mdecks", "")
+print("ALL OK 26")
