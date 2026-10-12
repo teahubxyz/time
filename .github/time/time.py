@@ -10,6 +10,7 @@ workflows; the heartbeat has a daily cap.
 from __future__ import annotations
 
 import datetime as dt
+import importlib.util
 import json
 import os
 import re
@@ -758,6 +759,11 @@ def cmd_doctor() -> int:
         row("(optional) VENICE_API_KEY (seats)", ids is not None, f"works, {len(ids)} models" if ids else "not set")
     except Exception as e:  # noqa: BLE001
         row("(optional) VENICE_API_KEY (seats)", False, f"set but failing: {str(e)[:120]}")
+    cfs = importlib.util.spec_from_file_location("cfb", Path(__file__).resolve().parent / "cloudflare.py")
+    cfb = importlib.util.module_from_spec(cfs)
+    cfs.loader.exec_module(cfb)
+    good, detail = cfb.check()
+    row("(optional) CLOUDFLARE_API_TOKEN (venture backends)", good, detail)
     try:
         models = cursor("GET", "/v1/models")
         items = models.get("models") or models.get("data") or models.get("items") or (models if isinstance(models, list) else [])

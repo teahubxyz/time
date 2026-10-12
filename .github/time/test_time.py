@@ -856,3 +856,180 @@ os.environ.pop("TIME_VENTURE_START", None); os.environ.pop("TIME_VENTURE_HEAVY_S
 c37 = next(i["number"] for i in W.issues.values() if i["title"].endswith("(2)"))
 assert W.beats(c37)[:3] == ["scouted", "pitched", "picked"], W.beats(c37)
 print("ALL OK 29")
+
+# 38 Cloudflare backing: a venture gets its own Worker, database and domain; its page gets time.js; nothing is held up
+cfb = vt.cfb
+
+
+class FakeCF:
+    """Fake Cloudflare API: D1 databases, scripts (with their metadata), custom domains, zones."""
+    def __init__(self, fail=None):
+        self.dbs, self.scripts, self.domains, self.fail, self.calls = {}, {}, {}, fail, []
+
+    def __call__(self, method, path, body=None, *, data=None, ctype="application/json"):
+        self.calls.append((method, path.split("?")[0]))
+        if self.fail and self.fail in path:
+            raise RuntimeError(f"cloudflare {method} {path} -> 403: 10000 Authentication error")
+        if path.startswith("/zones?name="):
+            return [{"id": "z1", "name": path.split("=")[1]}] if path.endswith("yolo.lol") else []
+        if "/d1/database" in path:
+            if method == "POST":
+                self.dbs[body["name"]] = f"uuid-{len(self.dbs) + 1}"
+                return {"uuid": self.dbs[body["name"]], "name": body["name"]}
+            name = dict(urllib.parse.parse_qsl(path.partition("?")[2])).get("name")
+            return [{"name": n, "uuid": u} for n, u in self.dbs.items() if not name or n == name]
+        if path.endswith("/workers/domains"):
+            self.domains[body["hostname"]] = body["service"]; return {}
+        if "/workers/scripts/" in path and method == "PUT":
+            assert ctype.startswith("multipart/form-data; boundary=")
+            meta = json.loads(re.search(rb'name="metadata".*?\r\n\r\n(.*?)\r\n--', data, re.S).group(1))
+            assert b"export default" in data and meta["main_module"] == "worker.js"
+            self.scripts[path.rsplit("/", 1)[1]] = meta; return {}
+        if path.endswith("/subdomain") and method == "POST":
+            return {}
+        if path.endswith("/workers/subdomain"):
+            return {"subdomain": "acct"}
+        if path.endswith("/workers/scripts"):
+            return []
+        raise AssertionError(f"unexpected cloudflare {method} {path}")
+
+
+def with_cf(fake, extra=None):
+    cfb.cf = fake
+    os.environ.update({"CLOUDFLARE_API_TOKEN": "cft", "CLOUDFLARE_ACCOUNT_ID": "acct", **(extra or {})})
+
+
+def without_cf():
+    for k in ("CLOUDFLARE_API_TOKEN", "CLOUDFLARE_ACCOUNT_ID", "TIME_VENTURE_DOMAIN"):
+        os.environ.pop(k, None)
+
+
+# deploy: one database, one script with its bindings, a custom domain; deploying again reuses them
+CF = FakeCF()
+with_cf(CF, {"TIME_VENTURE_DOMAIN": "yolo.lol"})
+be = cfb.deploy("mdecks", "https://o.github.io/r/ventures/mdecks/")
+assert be["url"] == "https://mdecks.yolo.lol/" and be["api"] == "https://mdecks.yolo.lol/api/" and be["worker"] == "time-mdecks", be
+meta = CF.scripts["time-mdecks"]
+kinds = {b["name"]: b for b in meta["bindings"]}
+assert kinds["DB"] == {"type": "d1", "name": "DB", "id": "uuid-1"} and kinds["AI"]["type"] == "ai", kinds
+assert kinds["ORIGIN"]["text"] == "https://o.github.io/r/ventures/mdecks" and kinds["PAGES_ORIGIN"]["text"] == "https://o.github.io"
+assert kinds["REV"]["text"] == be["rev"] and CF.domains == {"mdecks.yolo.lol": "time-mdecks"}
+assert cfb.deploy("mdecks", "https://o.github.io/r/ventures/mdecks/")["rev"] == be["rev"] and len(CF.dbs) == 1
+assert "cft" not in str(CF.calls) and "https://mdecks.yolo.lol/api/" in cfb.client(be["api"]) and "__TIME_API__" not in cfb.client(be["api"])
+# no domain: the script's workers.dev address; an unknown zone is a clear error
+os.environ.pop("TIME_VENTURE_DOMAIN")
+assert cfb.deploy("dl", "https://o.github.io/r/ventures/dl/")["url"] == "https://time-dl.acct.workers.dev/"
+os.environ["TIME_VENTURE_DOMAIN"] = "nope.dev"
+try:
+    cfb.deploy("dl", "https://o.github.io/r/ventures/dl/"); raise AssertionError("expected an error")
+except RuntimeError as e:
+    assert "nope.dev is not a zone" in str(e)
+assert cfb.check()[0] is False and "nope.dev" in cfb.check()[1]
+os.environ["TIME_VENTURE_DOMAIN"] = "yolo.lol"
+assert cfb.check() == (True, "works: Workers and D1; ventures live at <slug>.yolo.lol")
+without_cf()
+assert cfb.check()[0] is False and "optional" in cfb.check()[1]
+print("ALL OK 30")
+
+# a new venture with Cloudflare: its own domain everywhere, time.js on Pages, the brief explains the backend
+W = VWorld()
+vt._build_on_pages = Worker()
+CF = FakeCF()
+with_cf(CF, {"TIME_VENTURE_DOMAIN": "yolo.lol"})
+vtick({"TIME_VENTURE": "on"})
+c38 = next(i["number"] for i in W.issues.values() if "venture" in i["labels"])
+assert W.beats(c38)[-1] == "launched", W.beats(c38)
+w38 = tm.beats_of(W.comments[c38])[-1]["winner"]
+assert w38["url"] == "https://mdecks.yolo.lol/" and w38["pages"] == "https://o.github.io/r/ventures/mdecks/", w38
+assert w38["backend"]["worker"] == "time-mdecks" and "Backend: https://mdecks.yolo.lol/" in W.text(c38)
+assert "https://mdecks.yolo.lol/api/" in W.files["ventures/mdecks/time.js"]
+brief = vt._build_on_pages.briefs[0]
+assert "This venture has a backend at https://mdecks.yolo.lol/" in brief and "Time.save(obj)" in brief and "never write it" in brief
+reg38 = json.loads(W.files["ventures/ventures.json"])["ventures"][0]
+assert reg38["url"] == "https://mdecks.yolo.lol/" and reg38["pages"] == w38["pages"] and reg38["backend"]["rev"] == w38["backend"]["rev"]
+assert "https://mdecks.yolo.lol/" in W.files["ventures/index.html"] and "mdecks.yolo.lol" in W.files["ventures/mdecks/LAUNCH.md"]
+deploys = len(CF.scripts) and sum(1 for m, p in CF.calls if m == "PUT" and "/workers/scripts/" in p)
+vtick({"TIME_VENTURE": "on"})  # nothing changed: no redeploy
+assert sum(1 for m, p in CF.calls if m == "PUT" and "/workers/scripts/" in p) == deploys
+print("ALL OK 31")
+
+# Cloudflare refusing doesn't hold the venture: it launches on Pages, and the chores give it a backend once it works
+W = VWorld()
+vt._build_on_pages = Worker()
+with_cf(FakeCF(fail="/d1/database"), {"TIME_VENTURE_DOMAIN": "yolo.lol"})
+vtick({"TIME_VENTURE": "on"})
+c39 = next(i["number"] for i in W.issues.values() if "venture" in i["labels"])
+w39 = tm.beats_of(W.comments[c39])[-1]["winner"]
+assert W.beats(c39)[-1] == "launched" and w39["url"] == "https://o.github.io/r/ventures/mdecks/" and "backend" not in w39
+assert "Cloudflare didn't take it" in W.text(c39) and "ventures/mdecks/time.js" not in W.files
+assert "Backend" not in vt._build_on_pages.briefs[0]
+CF = FakeCF()
+with_cf(CF, {"TIME_VENTURE_DOMAIN": "yolo.lol"})
+vt.refresh_backends(vt.registry())
+reg39 = json.loads(W.files["ventures/ventures.json"])["ventures"][0]
+assert reg39["url"] == "https://mdecks.yolo.lol/" and reg39["pages"] == "https://o.github.io/r/ventures/mdecks/", reg39
+assert "ventures/mdecks/time.js" in W.files and "https://mdecks.yolo.lol/" in W.files["ventures/index.html"]
+print("ALL OK 32")
+
+# the chores: old ventures get backfilled (a couple per tick), a new worker.js redeploys everyone, killed ones are left
+W = VWorld()
+W.files["ventures/ventures.json"] = json.dumps({"ventures": [
+    {"slug": s, "name": s, "status": st, "url": f"https://o.github.io/r/ventures/{s}/"}
+    for s, st in (("a", "live"), ("b", "parked"), ("c", "live"), ("k", "killed"))]})
+vt.tm.http = W.http
+CF = FakeCF()
+with_cf(CF, {"TIME_VENTURE_DOMAIN": "yolo.lol"})
+vt.refresh_backends(vt.registry())
+got = {v["slug"]: v for v in json.loads(W.files["ventures/ventures.json"])["ventures"]}
+assert sorted(CF.scripts) == ["time-a", "time-b"] and got["c"]["url"].startswith("https://o.github.io"), sorted(CF.scripts)
+vt.refresh_backends(vt.registry())
+got = {v["slug"]: v for v in json.loads(W.files["ventures/ventures.json"])["ventures"]}
+assert sorted(CF.scripts) == ["time-a", "time-b", "time-c"] and "backend" not in got["k"] and got["c"]["url"] == "https://c.yolo.lol/"
+puts = lambda: sum(1 for m, p in CF.calls if m == "PUT" and "/workers/scripts/" in p)
+before = puts()
+vt.refresh_backends(vt.registry())
+assert puts() == before  # up to date: nothing to do
+real = cfb.WORKER
+newer = Path(_tf.mkdtemp()) / "worker.js"
+newer.write_text(real.read_text() + "\n// a newer worker from Time's update\n")
+cfb.WORKER = newer
+vt.refresh_backends(vt.registry()); vt.refresh_backends(vt.registry())
+cfb.WORKER = real
+assert puts() == before + 3, puts() - before
+without_cf()
+print("ALL OK 33")
+
+# the builds never write time.js, and Time's client doesn't count as the product's code
+calls = []
+class FakeHands:
+    def __init__(self, n, branch): self.steps = 0
+    def call(self, name, a): calls.append(a.get("path")); return "wrote"
+real_hands, real_work = tm.Hands, tm.venice_work
+tm.Hands = FakeHands
+tm.venice_work = lambda card, done, spec: {"refusals": [tm.Hands(1, "x").call("write_file", {"path": p, "content": "x"})
+                                                         for p in ("ventures/s/time.js", "ventures/s/./time.js", "ventures/s/app.js")]}
+# vt._build_on_pages is a scripted Worker here: load a fresh venture.py for the real one
+vspec2 = importlib.util.spec_from_file_location("vt2", Path(__file__).resolve().parent / "venture.py")
+vt2 = importlib.util.module_from_spec(vspec2); vspec2.loader.exec_module(vt2)
+vt2.tm.Hands, vt2.tm.venice_work = tm.Hands, tm.venice_work
+r = vt2._build_on_pages({"number": 1}, "done", "venice:qwen", root="ventures/s/")
+tm.Hands, tm.venice_work = real_hands, real_work
+assert r["refusals"][0].startswith("refused: time.js") and r["refusals"][1].startswith("refused: time.js"), r
+assert r["refusals"][2] == "wrote" and calls == ["ventures/s/app.js"], (r, calls)
+W = VWorld()
+vt.tm.http = W.http
+wq = {"slug": "q", "signal": 3, "join": "https://github.com/o/r/issues/new?template=early-access.yml&venture=q", "rides": []}
+W.files["ventures/q/index.html"] = ('<!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>'
+                                    + '<script src="time.js"></script>' + "<!-- x -->" * 400 + "</body></html>")
+W.files["ventures/q/time.js"] = cfb.client("https://q.yolo.lol/api/") * 3
+assert any("no working product" in p for p in vt.check_page(wq, {"pricing": []}))
+print("ALL OK 34")
+
+# the worker itself (worker.js), against a fake D1, Workers AI and Pages
+import shutil as _sh, subprocess as _sp  # noqa: E402
+if _sh.which("node"):
+    res = _sp.run(["node", str(Path(__file__).resolve().parent / "cloudflare" / "test_worker.mjs")], capture_output=True, text=True, timeout=60)
+    assert res.returncode == 0 and "WORKER OK" in res.stdout, res.stdout[-2000:] + res.stderr[-2000:]
+    print("ALL OK 35")
+else:
+    print("skipped the worker test: no node")

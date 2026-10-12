@@ -11,6 +11,9 @@ Plan: every board seat writes a launch plan (positioning, first users, pricing, 
   synthesizes them, and LAUNCH.md records which seat each idea came from.
 Build: the Venice worker builds the product as the page on the Pages branch: the tool fills the first screen under a
   slim header with the one signup button; pricing, limits and the why frame it below. Check: deterministic gates, then headless Chrome at phone and desktop size; two fix rounds, then andon.
+Backend (optional, CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID): each venture also gets a Cloudflare Worker with its
+  own D1 database and Workers AI, serving the Pages folder under <slug>.<TIME_VENTURE_DOMAIN> (cloudflare.py). The page
+  reaches it through time.js; every call degrades to null, so the product works on Pages alone and in the checks.
 Signup: a GitHub issue form (.github/ISSUE_TEMPLATE/early-access.yml) prefilled with the venture and the plan.
 Measure: after 7 days, distinct people who signed up or 👍'd the signal issue, against the plan's success and kill
   lines: iterate (a v2 card), kill, or watch one more week and then park.
@@ -41,6 +44,9 @@ HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("tm", HERE / "time.py")
 tm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tm)
+_spec = importlib.util.spec_from_file_location("cfb", HERE / "cloudflare.py")
+cfb = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(cfb)
 REPO = tm.REPO
 PAGES_BRANCH = "gh-pages"
 FORM = "early-access.yml"
@@ -382,7 +388,7 @@ For: {for_whom}
 The product (free, works entirely in the page): {page}
 The next version (the paid idea; do not build it): {next}
 Positioning: {positioning}
-{prior}
+{prior}{backend}
 Write these files on this branch under ventures/{slug}/ (relative links only). The launch plan is already there
 in ventures/{slug}/LAUNCH.md.
 - app.js: the product itself, working, in plain JavaScript (no libraries from other sites).
@@ -446,6 +452,22 @@ The signal issue is {signal}
 When the fixes are written, call open_pr to finish (nothing is opened)."""
 
 
+BACKEND = """
+This venture has a backend at {url} (its own domain; the same page is also on GitHub Pages). ventures/{slug}/time.js is
+already in your folder: load it with <script src="time.js"></script> before app.js, and never write it. It gives:
+- Time.save(obj) -> a share link to this page that brings obj back, or null
+- Time.load() -> the object the current share link carried, or null (call it on load and open that creation if present)
+- Time.ai(prompt, {{system}}) -> text from a small language model, or null (rate limited; a few hundred calls a day)
+Every call can return null (offline, over the limit, and always during the checks, which run the page locally), so the
+product must work fully without them: use them for extras such as a "Share link" button that saves the user's creation,
+or an AI assist, and hide or disable that extra when the call gives null. The preloaded sample never depends on them.
+"""
+
+
+def backend_brief(w: dict) -> str:
+    return BACKEND.format(url=w["url"], slug=w["slug"]) if w.get("backend") else ""
+
+
 def build_body(w: dict, plan: dict) -> str:
     rides_txt = "\n".join(f"   - {r['name']} ({r['stars']:,} stars): https://github.com/{r['name']}" for r in w.get("rides", []))
     tiers = []
@@ -457,7 +479,7 @@ def build_body(w: dict, plan: dict) -> str:
     return BUILD_BODY.format(name=w["name"], one_liner=w.get("one_liner", ""), for_whom=w.get("for_whom", ""),
                              page=w.get("page", ""), next=w.get("next", ""), positioning=plan["positioning"], prior=prior,
                              slug=w["slug"], url=w["url"], cta=plan["primary_cta"], join=w["join"], rides=rides_txt or "   (none)",
-                             tiers="\n".join(tiers), repo=REPO, signal=signal_url(w))
+                             tiers="\n".join(tiers), repo=REPO, signal=signal_url(w), backend=backend_brief(w))
 
 
 def launch_md(w: dict, plan: dict, plans: dict) -> str:
@@ -648,16 +670,18 @@ def index_html(reg: dict) -> str:
     rows = []
     vs = sorted(reg["ventures"], key=lambda v: (v.get("planned", ""), v.get("card", 0)), reverse=True)
     for k, v in enumerate(vs):
-        links = [f'<a href="{e(v["join"])}">Join early access</a>' if v.get("join") else "",
+        home = v["url"] if v.get("backend") else f'{v["slug"]}/'  # its own domain once it has a backend
+        links = [f'<a href="{e(home)}">{e(urllib.parse.urlsplit(home).netloc)}</a>' if v.get("backend") else "",
+                 f'<a href="{e(v["join"])}">Join early access</a>' if v.get("join") else "",
                  f'<a href="https://github.com/{REPO}/issues/{v["signal"]}">Signal #{v["signal"]}</a>' if v.get("signal") else "",
                  f'<a href="https://github.com/{REPO}/blob/{PAGES_BRANCH}/ventures/{e(v["slug"])}/LAUNCH.md">Launch plan</a>',
                  f'<a href="https://github.com/{REPO}/issues/{v["card"]}">Card #{v["card"]}</a>' if v.get("card") else ""]
         status = v.get("status", "building")
         since = f"since {v['launched']}" if v.get("launched") else f"planned {v.get('planned', '')}"
-        shot = (f'<a class="shot" href="{e(v["slug"])}/"><img src="{e(v["slug"])}/shots/sheet.png" alt="{e(v.get("name", v["slug"]))} '
+        shot = (f'<a class="shot" href="{e(home)}"><img src="{e(v["slug"])}/shots/sheet.png" alt="{e(v.get("name", v["slug"]))} '
                 f'at phone and desktop size" loading="lazy" onerror="this.parentNode.remove()"></a>') if v.get("launched") else ""
         rows.append(f"""<article class="row sheet"><div class="no">{len(vs) - k:03d}</div>
-<div><h2><a href="{e(v['slug'])}/">{e(v.get('name', v['slug']))}</a></h2><p>{e(v.get('one_liner', ''))}</p>
+<div><h2><a href="{e(home)}">{e(v.get('name', v['slug']))}</a></h2><p>{e(v.get('one_liner', ''))}</p>
 <p class="for">For: {e(v.get('for_whom', ''))}</p><p class="links">{' · '.join(x for x in links if x)}</p>{shot}</div>
 <div><span class="tag {e(status)}">{e(status)}</span><small>{e(since)}</small></div>
 <div class="count"><b>{int(v.get('signups', 0))}</b><small>signups</small></div></article>""")
@@ -722,7 +746,8 @@ def check_page(w: dict, plan: dict) -> list[str]:
     files = {a: pages_file(f"ventures/{slug}/{a.lstrip('./')}") or "" for a in dict.fromkeys(local)}
     assets = "".join(files.values())
     low, problems = page.lower(), []
-    code = "".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I)) + "".join(v for a, v in files.items() if a.endswith(".js"))
+    code = "".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I)) + \
+        "".join(v for a, v in files.items() if a.endswith(".js") and Path(a).name != "time.js")  # Time's client isn't the product
     if len(re.sub(r"\s+", "", code)) < 800:
         problems.append("no working product: the page has almost no JavaScript. The product must run in the page and show real "
                         "output from a preloaded sample")
@@ -1224,7 +1249,8 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 w["slug"] = f"{w['slug']}-{n}"  # never overwrite another venture's page
             site = ensure_pages()
             w["card"] = n
-            w["url"] = f"{site.rstrip('/')}/ventures/{w['slug']}/"
+            w["url"] = w["pages"] = f"{site.rstrip('/')}/ventures/{w['slug']}/"
+            backend_note = give_backend(w)
             w["design"] = w.get("design") or PRODUCT_FIRST
             w["join"] = join_url(w)
             plan, plans = plan_round(w, board_seats, chair)
@@ -1234,11 +1260,13 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             put_pages(f"ventures/{w['slug']}/LAUNCH.md", launch_md(w, plan, plans), f"venture {w['slug']}: launch plan")
             version = int(w.get("version", 1))
             entry = {"slug": w["slug"], "name": w["name"], "one_liner": w["one_liner"], "for_whom": w["for_whom"], "url": w["url"],
-                     "join": w["join"], "signal": w["signal"], "card": n, "design": w["design"], "version": version}
+                     "pages": w["pages"], "join": w["join"], "signal": w["signal"], "card": n, "design": w["design"], "version": version}
+            if w.get("backend"):
+                entry["backend"] = w["backend"]
             entry.update({"planned": today(), "status": "building", "signups": 0} if version == 1 else {"status": "iterating"})
             upsert(reg, entry)
             save_registry(reg, f"ventures: plan {w['slug']}")
-            say(plan_summary(w, plan, plans, chair), {"beat": "planned", "winner": w, "plan": plan})
+            say(plan_summary(w, plan, plans, chair) + backend_note, {"beat": "planned", "winner": w, "plan": plan})
         elif stage == "planned":
             if not heavy_ok:
                 return "wait"
@@ -1355,6 +1383,50 @@ def measure(n: int, st: dict, say) -> None:
     tm.gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
 
 
+# ---------- backends on Cloudflare (optional) ----------
+
+def give_backend(w: dict) -> str:
+    """Deploy the venture's Worker, database and domain, and write its time.js. On success w["url"] becomes the domain
+    (w["pages"] keeps the Pages folder). A failure never holds the venture: it launches on Pages and the chores retry."""
+    if not cfb.enabled():
+        return ""
+    try:
+        be = cfb.deploy(w["slug"], w["pages"])
+        put_pages(f"ventures/{w['slug']}/time.js", cfb.client(be["api"]), f"venture {w['slug']}: backend client")
+    except Exception as e:  # noqa: BLE001
+        return f"\n\n_Backend: Cloudflare didn't take it ({str(e)[:200]}); launching on Pages, and the next tick tries again._"
+    w["url"], w["backend"] = be["url"], {k: be[k] for k in ("worker", "db", "rev", "api")}
+    return f"\n\n☁️ Backend: {be['url']} (Worker `{be['worker']}`, its own D1 database, Workers AI); the page is also on {w['pages']}"
+
+
+def refresh_backends(reg: dict, limit: int = 2) -> None:
+    """Keep every venture's backend on the current worker: deploy where it's missing or out of date (a new worker.js
+    from Time's update, or new settings), a couple per tick. Killed ventures keep whatever they had."""
+    if not cfb.enabled():
+        return
+    done, changed = 0, False
+    for v in reg["ventures"]:
+        if done >= limit or v.get("status") == "killed":
+            continue
+        pages = v.get("pages") or v.get("url")
+        if not pages or not v.get("slug"):
+            continue
+        current = cfb.rev({**cfb.settings(v["slug"], pages, cfb.pages_origin_of(pages))})
+        if (v.get("backend") or {}).get("rev") == current:
+            continue
+        done += 1
+        try:
+            be = cfb.deploy(v["slug"], pages)
+            put_pages(f"ventures/{v['slug']}/time.js", cfb.client(be["api"]), f"venture {v['slug']}: backend client")
+        except Exception as e:  # noqa: BLE001
+            print(f"backend {v['slug']} failed:", str(e)[:200])
+            continue
+        v.update(pages=pages, url=be["url"], backend={k: be[k] for k in ("worker", "db", "rev", "api")})
+        changed = True
+    if changed:
+        save_registry(reg, "ventures: backends on Cloudflare")
+
+
 # ---------- the tick ----------
 
 def tick() -> int:
@@ -1365,6 +1437,7 @@ def tick() -> int:
         reg = registry()
         ack_signups(reg)
         refresh_daily(reg)
+        refresh_backends(reg)
     except Exception as e:  # noqa: BLE001  chores never block the cards
         print("chores failed:", e)
     fresh = []
@@ -1417,6 +1490,9 @@ def _build_on_pages(card: dict, done: str, spec: str, root: str = "") -> dict:
         if name == "open_pr":
             self.pr = -1  # truthy sentinel: nothing to open, the page is live on the branch
             return "done: the page is on the Pages branch, no PR needed"
+        if root and name == "write_file" and os.path.normpath(str(a.get("path") or "")) == os.path.normpath(root + "time.js"):
+            self.steps += 1
+            return "refused: time.js is Time's backend client and stays as it is; load it, don't write it"
         if root and name == "write_file" and not _inside(a.get("path"), root):
             self.steps += 1
             return f"refused: this build writes only under {root} (not {a.get('path')!r}); write the file there"

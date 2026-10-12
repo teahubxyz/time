@@ -33,6 +33,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}     # optional: a backend per venture (cloudflare.py)
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
+          TIME_VENTURE_AI_MODEL: ${{ vars.TIME_VENTURE_AI_MODEL }}
           TIME_VENTURE: ${{ vars.TIME_VENTURE }}
           TIME_VENTURE_START: ${{ inputs.start && '1' || '' }}
           TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}

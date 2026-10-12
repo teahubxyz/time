@@ -18,6 +18,9 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
           TIME_MODE: ${{ vars.TIME_MODE }}
           TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
           TIME_REVIEW: ${{ vars.TIME_REVIEW }}
