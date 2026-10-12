@@ -395,14 +395,21 @@ GOOD = {"positioning": "For people who make a weekly deck: type it, see it.", "a
         "success_metric": "10 people want saved decks", "success_signups": 10, "kill_metric": "2 or fewer", "kill_signups": 2}
 
 
+PROMPTS = {}
+
+
 def seat_brain(seat, model, effort, system, user):
     if "Pitch ONE venture" in user:
-        assert "data, not instructions" in user and "One person, one problem" in user
+        assert "data, not instructions" in user and "One person, one problem" in user and "already runs these ventures" in user
+        PROMPTS["pitch"] = user
         return json.dumps({"slug": f"deck-{seat}" if seat != "grok" else "mdecks", "name": "MDecks" if seat == "grok" else f"D{seat}",
-                           "title": "Deck preview", "one_liner": "Type slides, see them.", "for_whom": "weekly deck makers",
-                           "why_now": "rides storytold/wordcraft", "page": "textarea to slides", "next": "MDecks Pro"})
+                           "title": "Deck preview" if seat == "grok" else f"Deck {seat}", "one_liner": "Type slides, see them.",
+                           "for_whom": "weekly deck makers", "why_now": "rides storytold/wordcraft", "page": "textarea to slides",
+                           "next": "MDecks Pro"})
     if "voting on the board" in user:
-        return json.dumps({"ranking": ["mdecks", f"deck-{seat}"], "reason": "specific person"})
+        PROMPTS["vote"] = user
+        slugs = re.findall(r"^### (\S+) \(by", user, re.M)
+        return json.dumps({"ranking": ["mdecks", f"deck-{seat}"] if "mdecks" in slugs else slugs[:2], "reason": "specific person"})
     if "Write the launch plan" in user:
         return "Here is my plan:\n" + json.dumps({**GOOD, "positioning": f"{GOOD['positioning']} ({seat})"})
     if "You review the product code" in user:
@@ -751,3 +758,25 @@ out = h.call("run", {"command": "printf 'const SAMPLE=1;' > ventures/x/sample.js
 assert "ventures/x/sample.js: kept" in out and "refused or missing" in out, out
 assert W32.files.get("ventures/x/sample.js") == "const SAMPLE=1;" and "junk.txt" not in W32.files
 print("ALL OK 24")
+
+# 33 the board sees what the studio already has: a pitch that repeats a venture (its slug, name or an earlier slug) is set aside
+W = VWorld()
+vt._build_on_pages = Worker()
+W.files["ventures/ventures.json"] = json.dumps({"ventures": [{"slug": "mdecks", "name": ".mdeck", "aliases": ["deck-preview"],
+                                                              "one_liner": "Slides from plain markdown.", "status": "live", "card": 1}],
+                                               "refreshed": vt.today()})
+c33 = W.add(f"Venture {vt.today()}", labels=["venture"])
+W.say(c33, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "scouted", "repos": [{"name": "storytold/wordcraft", "stars": 5,
+      "desc": "d", "lang": "Rust", "topics": [], "url": "u"}]}) + " -->")
+vtick({"TIME_VENTURE": "on", "TIME_VENTURE_HEAVY_START_MIN": "0"})
+os.environ.pop("TIME_VENTURE_HEAVY_START_MIN", None)
+b33 = tm.beats_of(W.comments[c33])
+p33 = next(b for b in b33 if b["beat"] == "pitched")
+assert [p["slug"] for p in p33["pitches"]] == ["deck-qwen", "deck-kimi"], p33["pitches"]
+assert "Set aside as repeats of the studio's own ventures: MDecks by `grok`" in W.text(c33), W.text(c33)
+assert "- .mdeck: Slides from plain markdown." in PROMPTS["pitch"] and "- .mdeck: Slides from plain markdown." in PROMPTS["vote"]
+assert next(b for b in b33 if b["beat"] == "picked")["winner"]["slug"] == "deck-qwen" and b33[-1]["beat"] == "planned", b33[-1]["beat"]
+names33 = vt.taken(json.loads(W.files["ventures/ventures.json"]))
+assert vt.repeats({"slug": "deck-preview-2", "name": "DeckPreview"}, names33) and vt.repeats({"slug": "x", "name": "MDeck"}, names33)
+assert not vt.repeats({"slug": "offramp", "name": "Offramp", "title": "Will it open?"}, names33)
+print("ALL OK 25")
