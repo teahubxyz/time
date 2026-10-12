@@ -1088,7 +1088,7 @@ def launch_post(w: dict, plan: dict, sheet: str | None, note: str) -> str:
             f"| Tier | Price | For |\n|---|---|---|\n{tiers}\n\n"
             f"**7-day lines:** success at ≥{plan['success_signups']} signups ({plan['success_metric']}); kill at "
             f"≤{plan['kill_signups']} ({plan['kill_metric']}). Decision on {decide}.\n\n"
-            f"✅ Checks passed: files and links, the early-access button in the hero, pricing, limits, no invented social "
+            f"✅ Checks passed: files and links, the early-access button in the header, pricing, limits, no invented social "
             f"proof, nothing loaded from other sites; {note}.{pic}\n\n"
             f"📣 Launch drafts (nothing is sent; the chair posts what they like):\n\n{drafts}")
 
