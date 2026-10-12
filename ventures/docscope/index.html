@@ -265,6 +265,8 @@
   footer.desk-foot { padding: 8px 0 40px; color: #c5d7ea; font-size: 13.5px; }
   footer.desk-foot a { color: #fff; }
   footer.desk-foot p { margin: 0 0 6px; }
+  
+  /* Responsive fixes for mobile */
   @media (max-width: 860px) {
     .layout, .tiers, .steps { grid-template-columns: 1fr; }
     .repo { grid-template-columns: 1fr; }
@@ -272,81 +274,114 @@
   @media (max-width: 520px) {
     .face { padding: 10px; }
     pre.xml { max-height: 240px; }
+    .hero-actions { flex-direction: column; align-items: flex-start; gap: 12px; }
+    .btn { width: 100%; text-align: center; }
+  }
+  
+  /* Fix horizontal scrolling issue */
+  body { 
+    overflow-x: hidden; 
+    width: 100%;
+  }
+  
+  /* Ensure content doesn't exceed viewport */
+  .wrap {
+    max-width: 100%;
+    padding: 0 12px;
+  }
+  
+  /* Reduce hero padding to move product higher */
+  header.hero {
+    padding: 16px 0 8px;
+  }
+  
+  /* Slim header fix */
+  .slim-header {
+    padding: 8px 0;
+    text-align: center;
+  }
+  .slim-header .kicker {
+    margin: 0;
+    font-size: 11px;
+  }
+  
+  /* Move intro content below the product */
+  .intro-content {
+    margin-top: 20px;
+    padding: 16px;
+    background: rgba(28, 58, 95, 0.7);
+    border-radius: 4px;
   }
 </style>
 </head>
 <body>
 
-<header class="hero">
+<!-- Slim header moved to top -->
+<div class="slim-header">
   <div class="wrap">
     <p class="kicker">Time · Venture · Docscope</p>
-    <div class="win">
+  </div>
+</div>
+
+<!-- Product section moved to start -->
+<section id="try">
+  <div class="wrap">
+    <div class="win" id="app">
       <div class="titlebar">
         <span class="glyph" aria-hidden="true"></span>
-        <span class="caption">Docscope — Office Package Inspector</span>
+        <span class="caption" id="win-caption">Docscope — waiting for a package</span>
         <span class="tb-btn" aria-hidden="true">_</span>
         <span class="tb-btn" aria-hidden="true">□</span>
         <span class="tb-btn" aria-hidden="true">×</span>
       </div>
-      <div class="face" style="background:#123152;color:#fff">
-        <h1>Doc<span>scope</span></h1>
-        <p class="promise">Drop a .docx, .xlsx or .pptx and see everything still inside it — author names, tracked deletions, thumbnails, comments — dissected on this machine. Nothing is uploaded.</p>
-        <div class="hero-actions">
-          <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
-          <a class="try-link" href="#try">Inspect the sample ↓</a>
+      <div class="menu" aria-hidden="true"><span><u>F</u>ile</span><span><u>V</u>iew</span><span><u>P</u>arts</span><span><u>H</u>elp</span></div>
+      <div class="face">
+        <div class="drop" id="drop">
+          <strong>Drag a .docx, .xlsx or .pptx here</strong>
+          <p>Unzipped locally with <code>DecompressionStream</code>. The page works offline once loaded. The list below is the ZIP central directory, verbatim — nothing is invented.</p>
+          <input class="file-input" id="file" type="file" accept=".docx,.xlsx,.pptx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-label="Choose an Office file">
         </div>
-        <p class="fineprint">Opens a public GitHub issue. No email, no payment. Nothing is charged today.</p>
+        <p class="meta-line" id="pkg-meta">Loading the preloaded sample through the same unzipper…</p>
+        <div class="layout">
+          <div class="panel">
+            <h3>Exploded package</h3>
+            <div class="body" id="tree"><p class="meta-line">No parts yet.</p></div>
+          </div>
+          <div class="panel">
+            <h3>Leak report</h3>
+            <div class="body" id="report"><p class="meta-line">No findings yet.</p></div>
+          </div>
+        </div>
+        <div class="panel" style="margin-top:12px">
+          <h3 id="part-title">Part inspector</h3>
+          <div class="body raw-wrap" id="inspector">
+            <p class="anno">Click any part in the diagram. Raw XML (or a hex preview of a binary part) appears here, with a plain-English note and a safe-to-send verdict.</p>
+            <pre class="xml" id="raw">(nothing selected)</pre>
+          </div>
+        </div>
+        <div class="statusline">
+          <span id="status-left">client-side · no upload</span>
+          <span id="status-right">ECMA-376</span>
+        </div>
       </div>
     </div>
   </div>
-</header>
+</section>
+
+<!-- Intro content moved below product -->
+<div class="intro-content">
+  <div class="wrap">
+    <h1>Doc<span>scope</span></h1>
+    <p class="promise">Drop a .docx, .xlsx or .pptx and see everything still inside it — author names, tracked deletions, thumbnails, comments — dissected on this machine. Nothing is uploaded.</p>
+    <div class="hero-actions">
+      <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
+      <a class="try-link" href="#try">Inspect the sample ↑</a>
+    </div>
+    <p class="fineprint">Opens a public GitHub issue. No email, no payment. Nothing is charged today.</p>
+  </div>
+</div>
 
 <main>
-  <section id="try">
-    <div class="wrap">
-      <p class="sec-label">The product</p>
-      <div class="win" id="app">
-        <div class="titlebar">
-          <span class="glyph" aria-hidden="true"></span>
-          <span class="caption" id="win-caption">Docscope — waiting for a package</span>
-          <span class="tb-btn" aria-hidden="true">_</span>
-          <span class="tb-btn" aria-hidden="true">□</span>
-          <span class="tb-btn" aria-hidden="true">×</span>
-        </div>
-        <div class="menu" aria-hidden="true"><span><u>F</u>ile</span><span><u>V</u>iew</span><span><u>P</u>arts</span><span><u>H</u>elp</span></div>
-        <div class="face">
-          <div class="drop" id="drop">
-            <strong>Drag a .docx, .xlsx or .pptx here</strong>
-            <p>Unzipped locally with <code>DecompressionStream</code>. The page works offline once loaded. The list below is the ZIP central directory, verbatim — nothing is invented.</p>
-            <input class="file-input" id="file" type="file" accept=".docx,.xlsx,.pptx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation" aria-label="Choose an Office file">
-          </div>
-          <p class="meta-line" id="pkg-meta">Loading the preloaded sample through the same unzipper…</p>
-          <div class="layout">
-            <div class="panel">
-              <h3>Exploded package</h3>
-              <div class="body" id="tree"><p class="meta-line">No parts yet.</p></div>
-            </div>
-            <div class="panel">
-              <h3>Leak report</h3>
-              <div class="body" id="report"><p class="meta-line">No findings yet.</p></div>
-            </div>
-          </div>
-          <div class="panel" style="margin-top:12px">
-            <h3 id="part-title">Part inspector</h3>
-            <div class="body raw-wrap" id="inspector">
-              <p class="anno">Click any part in the diagram. Raw XML (or a hex preview of a binary part) appears here, with a plain-English note and a safe-to-send verdict.</p>
-              <pre class="xml" id="raw">(nothing selected)</pre>
-            </div>
-          </div>
-          <div class="statusline">
-            <span id="status-left">client-side · no upload</span>
-            <span id="status-right">ECMA-376</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  </section>
-
   <section id="reference">
     <div class="wrap">
       <p class="sec-label">Reference</p>
