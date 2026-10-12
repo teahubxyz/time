@@ -33,6 +33,21 @@
    "planned": "2026-10-11",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "doodleloop",
+   "name": "Doodleloop",
+   "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute — no app, no account, nothing uploaded.",
+   "for_whom": "A parent who just photographed their kid's latest crayon masterpiece taped to the fridge and wants to text the family a version where the rocket actually wiggles and the sun really shines.",
+   "url": "https://teahubxyz.github.io/time/ventures/doodleloop/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29",
+   "signal": 17,
+   "card": 15,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "planned": "2026-10-12",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-12"
