@@ -14,7 +14,10 @@
    "planned": "2026-10-11",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-11"
+   "launched": "2026-10-11",
+   "aliases": [
+    "deck-preview"
+   ]
   },
   {
    "slug": "docscope",
@@ -28,21 +31,6 @@
    "design": "retro OS: a classic desktop-window metaphor (title bars, bevels, pixel accents) used with restraint",
    "version": 1,
    "planned": "2026-10-11",
-   "status": "building",
-   "signups": 0
-  },
-  {
-   "slug": "deck-preview",
-   "name": "DeckPreview",
-   "one_liner": "Paste outline, get browser-native slides you can tweak and export.",
-   "for_whom": "A product manager rewriting investor slides the night before a board meeting who needs zero-install edits.",
-   "url": "https://teahubxyz.github.io/time/ventures/deck-preview/",
-   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+DeckPreview&venture=deck-preview&plan=Pro",
-   "signal": 16,
-   "card": 15,
-   "design": "product-first: the tool fills the first screen and the look follows the product",
-   "version": 1,
-   "planned": "2026-10-12",
    "status": "building",
    "signups": 0
   }
