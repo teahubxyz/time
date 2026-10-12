@@ -1048,6 +1048,14 @@ CARD_BODY = ("The venture loop runs this card by itself: scout the repos trendin
              "DONE: a launched venture linked from this card, or a digest saying where it stuck.")
 
 
+def next_title(titles: set[str]) -> str:
+    """Today's card, or the next free 'Venture <day> (n)' when today's has already run and another is asked for."""
+    t, k = f"Venture {today()}", 2
+    while t in titles:
+        t, k = f"Venture {today()} ({k})", k + 1
+    return t
+
+
 def new_card(title: str) -> dict:
     return tm.gh("POST", f"/repos/{REPO}/issues", {"title": title, "body": CARD_BODY, "labels": ["venture"]})
 
@@ -1359,8 +1367,10 @@ def tick() -> int:
         refresh_daily(reg)
     except Exception as e:  # noqa: BLE001  chores never block the cards
         print("chores failed:", e)
-    if env("TIME_VENTURE", "off") == "on" and not any(c["title"] == f"Venture {today()}" for c in venture_cards("all")):
-        new_card(f"Venture {today()}")
+    if env("TIME_VENTURE", "off") == "on":
+        titles = {c["title"] for c in venture_cards("all")}
+        if f"Venture {today()}" not in titles or env("TIME_VENTURE_START", "").lower() in ("1", "true", "yes"):
+            new_card(next_title(titles))  # once a day on the schedule; any time someone asks for one
     heavy_left, skip = 1, set()
     while time.monotonic() - t0 < budget:
         due = []

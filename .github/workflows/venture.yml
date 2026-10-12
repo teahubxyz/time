@@ -1,11 +1,17 @@
 name: venture
 # The venture loop: trending repos -> pitches -> board -> launch plan -> launch page on Pages -> 7 days of signups.
-# Every 20 minutes it advances whatever is due (cheap when nothing is); a new venture card starts once a day.
+# Every 20 minutes it advances whatever is due (cheap when nothing is); a new venture card starts once a day,
+# or right away: Actions -> venture -> Run workflow -> tick "Start a new venture now" (gh workflow run venture.yml -f start=true).
 # Off until TIME_VENTURE=on. Signups come in through .github/ISSUE_TEMPLATE/early-access.yml.
 on:
   schedule:
     - cron: "*/20 * * * *"
   workflow_dispatch:
+    inputs:
+      start:
+        description: "Start a new venture now, even if today's has already run"
+        type: boolean
+        default: false
 permissions:
   contents: write
   issues: write
@@ -28,6 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
           TIME_VENTURE: ${{ vars.TIME_VENTURE }}
+          TIME_VENTURE_START: ${{ inputs.start && '1' || '' }}
           TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}
           TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}
           TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}

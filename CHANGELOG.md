@@ -8,6 +8,7 @@
 
 ### Added
 - Venture loop launches products, not pages: a launch round where board seats write plans and one synthesizes `LAUNCH.md` with attribution; launch pages where the working product fills the first screen under a slim header with one call to action, then pricing and honest limits, in a look that follows the product; early-access signups through a GitHub issue form, thanked on their issues; deterministic and headless-Chrome checks with fix rounds and an andon; a 7-day decision against success and kill lines; a studio index at `/ventures/`.
+- Start a venture whenever you like: Actions → venture → Run workflow → "Start a new venture now" (`gh workflow run venture.yml -f start=true`); the schedule still starts one a day.
 - The board's taste: a delight anyone gets within a minute ranks above another developer utility, and when a product makes something people read (a deck, a card), its preloaded sample is the product's own pitch.
 - The studio index at `/ventures/` wears the Time site's blueprint theme (title block, grid paper, type), with each launched venture's laptop screenshot.
 - The headless-Chrome check fails a launch page where something sits on top of the product (a page fixed to the screen's height lets the next section slide over it).

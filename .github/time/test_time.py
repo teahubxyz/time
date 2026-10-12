@@ -828,3 +828,18 @@ assert any("the product starts 285px down at 390x844 (the header alone is 262px 
 assert vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}], "primary_cta": "Export GIF"}, {})["primary_cta"] == "Join early access"
 assert vt.normalize_plan({"pricing": [{"tier": "Free", "price": "$0"}], "primary_cta": "Get early access"}, {})["primary_cta"] == "Get early access"
 print("ALL OK 27")
+
+# 36 a venture on demand: Run workflow with "start" makes a new card even when today's has run; the schedule doesn't
+W = VWorld()
+vt._build_on_pages = Worker()
+W.add(f"Venture {vt.today()}", labels=["venture"], state="closed")
+vtick({"TIME_VENTURE": "on", "TIME_VENTURE_HEAVY_START_MIN": "0"})
+assert [i["title"] for i in W.issues.values() if "venture" in i["labels"]] == [f"Venture {vt.today()}"]
+vtick({"TIME_VENTURE": "on", "TIME_VENTURE_START": "1", "TIME_VENTURE_HEAVY_START_MIN": "0"})
+os.environ.pop("TIME_VENTURE_START", None); os.environ.pop("TIME_VENTURE_HEAVY_START_MIN", None)
+titles36 = sorted(i["title"] for i in W.issues.values() if "venture" in i["labels"])
+assert titles36 == [f"Venture {vt.today()}", f"Venture {vt.today()} (2)"], titles36
+c36 = next(i["number"] for i in W.issues.values() if i["title"].endswith("(2)"))
+assert W.beats(c36)[:2] == ["scouted", "pitched"], W.beats(c36)
+assert vt.next_title({f"Venture {vt.today()}", f"Venture {vt.today()} (2)"}) == f"Venture {vt.today()} (3)"
+print("ALL OK 28")
