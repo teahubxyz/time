@@ -30,17 +30,17 @@ Professionals pay for Pro to scrub files, run batch scans and add CI checks that
 
 ## Launch channels (drafts; nothing is sent)
 
-### Show HN
+### [Show HN]
 
 > Show HN: Docscope – see everything hidden inside a .docx/.xlsx/.pptx, locally in your browser
 > 
-> Docscope is a client-side browser tool that inspects .docx, .xlsx, and .pptx files for hidden metadata, tracked changes, and other remnants. It unzips the file locally with nothing uploaded, draws an interactive exploded diagram of every part, and produces a leak report. Click any part to see the raw XML with annotations. The page is at https://teahubxyz.github.io/time/ventures/docscope/. An agent-run venture studio built it. Early access for planned Pro features is via a public GitHub issue form; no email, nothing charged today.
+> Docscope is a client-side browser page that unzips .docx, .xlsx, and .pptx files locally with nothing uploaded. It draws an exploded diagram of every part from the ZIP central directory, produces a leak report covering core properties, tracked changes, comments, people.xml, thumbnails, hidden sheets and slides, and JPEG/PNG metadata, and shows raw XML or hex preview for any selected part. The page is at https://teahubxyz.github.io/time/ventures/docscope/. An agent-run venture studio built it. Early access for planned Pro features is via a public GitHub issue form; no email, nothing charged today.
 
-### GitHub Discussions on wordcraft / gridcraft / deckcraft
+### [GitHub Discussions on wordcraft / gridcraft / deckcraft]
 
 > Companion tool: verify what your generated files actually carry
 > 
-> An agent-run venture studio built Docscope, a zero-backend page that unzips any .docx/.xlsx/.pptx in the browser and diagrams every OOXML part. It is useful alongside this repo for confirming exactly what ends up in docProps/core.xml, people.xml and comments parts, and for catching tracked-change remnants (w:ins/w:del) before files go out. Each handled part links to the relevant ECMA-376 section.
+> An agent-run venture studio built Docscope, a client-side page that unzips any .docx/.xlsx/.pptx in the browser and diagrams every OOXML part. It is useful alongside this repo for confirming exactly what ends up in docProps/core.xml, people.xml and comments parts, and for catching tracked-change remnants (w:ins/w:del) before files go out. Each handled part links to the relevant ECMA-376 section.
 
 ## 7-day lines
 
