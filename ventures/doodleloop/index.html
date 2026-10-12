@@ -23,11 +23,12 @@
                     <canvas id="original-canvas"></canvas>
                     <canvas id="animation-canvas"></canvas>
                 </div>
+                <p id="loop-status" class="loop-status">Loading the sample drawing through the same local canvas path as a photo you drop…</p>
             </div>
             
             <div class="controls">
                 <div class="drop-zone" id="drop-zone">
-                <p>Drag & drop your drawing here<br><small>or click to browse</small></p>
+                <p>Drag & drop your drawing here<br><small>or click to browse — processed locally, nothing leaves the device</small></p>
                 <input type="file" id="file-input" accept="image/*" hidden>
                 </div>
                 
@@ -62,7 +63,14 @@
                 </div>
                 
                 <button id="export-btn" class="export-button">Export GIF</button>
+                <p class="secondary-links"><a href="#" id="export-webm">WebM optional</a> · <a href="#sample-gallery">Sample gallery</a></p>
             </div>
+        </div>
+        <div id="sample-gallery" class="sample-gallery">
+            <p>Sample gallery — tap to run the same local path as a dropped photo.</p>
+            <button type="button" class="gallery-sample" id="gallery-sample" aria-label="Play the preloaded sample drawing">
+                <img src="sample.jpg" alt="Sample kid drawing of a house, tree, and sun" width="96" height="96">
+            </button>
         </div>
     </section>
 
