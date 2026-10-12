@@ -54,7 +54,7 @@
    "name": "Doodleloop",
    "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute — no app, no account, nothing uploaded.",
    "for_whom": "A parent who just photographed their kid's latest crayon masterpiece taped to the fridge and wants to text the family a version where the rocket actually wiggles and the sun really shines.",
-   "url": "https://teahubxyz.github.io/time/ventures/doodleloop/",
+   "url": "https://doodleloop.yolopreneur.lol/",
    "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29",
    "signal": 17,
    "card": 15,
@@ -63,14 +63,21 @@
    "planned": "2026-10-12",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-12"
+   "launched": "2026-10-12",
+   "pages": "https://teahubxyz.github.io/time/ventures/doodleloop/",
+   "backend": {
+    "worker": "time-doodleloop",
+    "db": "6179f2d5-8f2d-49ec-9aca-3d1e6bc3ddca",
+    "rev": "413b4d1e075e",
+    "api": "https://doodleloop.yolopreneur.lol/api/"
+   }
   },
   {
    "slug": "dollhouse",
    "name": "Dollhouse",
    "one_liner": "Drag out your floor plan, drop in furniture, and get a clean isometric diorama of your actual room you can send to anyone in under a minute.",
    "for_whom": "Someone who just signed a lease (or is about to rearrange) and is arguing with their partner or roommate about whether the couch fits along that wall.",
-   "url": "https://teahubxyz.github.io/time/ventures/dollhouse/",
+   "url": "https://dollhouse.yolopreneur.lol/",
    "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29",
    "signal": 19,
    "card": 18,
@@ -79,7 +86,14 @@
    "planned": "2026-10-12",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-12"
+   "launched": "2026-10-12",
+   "pages": "https://teahubxyz.github.io/time/ventures/dollhouse/",
+   "backend": {
+    "worker": "time-dollhouse",
+    "db": "d3fa15e7-4b61-4722-8263-0b9ff506b2c2",
+    "rev": "f138dab08065",
+    "api": "https://dollhouse.yolopreneur.lol/api/"
+   }
   }
  ],
  "refreshed": "2026-10-12"
