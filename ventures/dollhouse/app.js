@@ -248,65 +248,177 @@ class DollhouseApp {
     diorama.innerHTML = '';
     
     // Set viewBox for consistent sizing
-    diorama.setAttribute('viewBox', '0 0 600 400');
+    diorama.setAttribute('viewBox', '0 0 800 600');
     diorama.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     
-    // Draw floor
-    const floor = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-    floor.setAttribute('x', '50');
-    floor.setAttribute('y', '100');
-    floor.setAttribute('width', '500');
-    floor.setAttribute('height', '250');
+    // Isometric projection settings
+    const isoScale = 20;
+    const offsetX = 400;
+    const offsetY = 100;
+    
+    // Draw floor (isometric projection)
+    this.drawIsometricFloor(diorama, offsetX, offsetY, isoScale);
+    
+    // Draw walls with isometric projection
+    this.walls.forEach(wall => {
+      this.drawIsometricWall(diorama, wall, offsetX, offsetY, isoScale);
+    });
+    
+    // Draw furniture with isometric projection
+    this.furniture.forEach(item => {
+      this.drawIsometricFurniture(diorama, item, offsetX, offsetY, isoScale);
+    });
+  }
+
+  // Draw isometric floor
+  drawIsometricFloor(svg, offsetX, offsetY, scale) {
+    // Define isometric floor points
+    const points = [
+      {x: offsetX, y: offsetY + 10 * scale},           // Bottom left
+      {x: offsetX + 15 * scale, y: offsetY},          // Top center
+      {x: offsetX + 30 * scale, y: offsetY + 10 * scale}, // Bottom right
+      {x: offsetX + 15 * scale, y: offsetY + 20 * scale}  // Bottom center
+    ];
+    
+    // Create floor polygon
+    const floor = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ');
+    floor.setAttribute('points', pointsStr);
     floor.setAttribute('fill', '#f0f0f0');
     floor.setAttribute('stroke', '#ccc');
-    diorama.appendChild(floor);
+    floor.setAttribute('stroke-width', '1');
+    svg.appendChild(floor);
+  }
+
+  // Draw isometric wall
+  drawIsometricWall(svg, wall, offsetX, offsetY, scale) {
+    // Convert grid coordinates to isometric
+    const startX = offsetX + wall.startX * scale;
+    const startY = offsetY + wall.startY * scale;
+    const endX = offsetX + wall.endX * scale;
+    const endY = offsetY + wall.endY * scale;
     
-    // Draw walls
-    this.walls.forEach(wall => {
-      // Convert grid coordinates to isometric
-      const startX = 50 + wall.startX * 10;
-      const startY = 100 + wall.startY * 10;
-      const endX = 50 + wall.endX * 10;
-      const endY = 100 + wall.endY * 10;
-      
-      // Simple wall representation
-      const wallLine = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      wallLine.setAttribute('x', startX);
-      wallLine.setAttribute('y', startY);
-      wallLine.setAttribute('width', (endX - startX) || 10);
-      wallLine.setAttribute('height', (endY - startY) || 10);
-      wallLine.setAttribute('fill', '#8B4513');
-      diorama.appendChild(wallLine);
-    });
+    // Create isometric wall representation (simple approach)
+    const wallGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
     
-    // Draw furniture
-    this.furniture.forEach(item => {
-      // Convert grid coordinates to isometric
-      const x = 50 + item.x * 10;
-      const y = 100 + item.y * 10;
-      
-      // Simple furniture representation
-      const furnitureRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-      furnitureRect.setAttribute('x', x);
-      furnitureRect.setAttribute('y', y);
-      furnitureRect.setAttribute('width', item.width * 10);
-      furnitureRect.setAttribute('height', item.height * 10);
-      furnitureRect.setAttribute('fill', item.color);
-      furnitureRect.setAttribute('stroke', '#000');
-      furnitureRect.setAttribute('stroke-width', '0.5');
-      diorama.appendChild(furnitureRect);
-      
-      // Add label
-      const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
-      text.setAttribute('x', x + item.width * 5);
-      text.setAttribute('y', y + item.height * 5);
-      text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('dominant-baseline', 'middle');
-      text.setAttribute('font-size', '8');
-      text.setAttribute('fill', '#fff');
-      text.textContent = item.name.charAt(0);
-      diorama.appendChild(text);
-    });
+    // Front face
+    if (wall.endX > wall.startX) {
+      const frontFace = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const points = [
+        {x: startX, y: startY + 10 * scale},
+        {x: endX, y: endY + 10 * scale},
+        {x: endX, y: endY},
+        {x: startX, y: startY}
+      ];
+      const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ');
+      frontFace.setAttribute('points', pointsStr);
+      frontFace.setAttribute('fill', '#8B4513');
+      frontFace.setAttribute('stroke', '#5D2906');
+      frontFace.setAttribute('stroke-width', '0.5');
+      wallGroup.appendChild(frontFace);
+    }
+    
+    // Side face
+    if (wall.endY > wall.startY) {
+      const sideFace = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const points = [
+        {x: endX, y: endY + 10 * scale},
+        {x: endX + 5 * scale, y: endY + 5 * scale},
+        {x: endX + 5 * scale, y: endY - 5 * scale},
+        {x: endX, y: endY}
+      ];
+      const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ');
+      sideFace.setAttribute('points', pointsStr);
+      sideFace.setAttribute('fill', '#6B3503');
+      sideFace.setAttribute('stroke', '#5D2906');
+      sideFace.setAttribute('stroke-width', '0.5');
+      wallGroup.appendChild(sideFace);
+    }
+    
+    svg.appendChild(wallGroup);
+  }
+
+  // Draw isometric furniture
+  drawIsometricFurniture(svg, item, offsetX, offsetY, scale) {
+    // Convert grid coordinates to isometric
+    const x = offsetX + item.x * scale;
+    const y = offsetY + item.y * scale;
+    
+    // Create isometric furniture representation
+    const furnitureGroup = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+    
+    // Base of furniture (top-down view in isometric)
+    const base = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+    const widthScaled = item.width * scale;
+    const heightScaled = item.height * scale;
+    
+    // Isometric base points
+    const points = [
+      {x: x, y: y},
+      {x: x + widthScaled * 0.8, y: y - widthScaled * 0.3},
+      {x: x + widthScaled * 0.8 + heightScaled * 0.5, y: y - widthScaled * 0.3 + heightScaled * 0.3},
+      {x: x + heightScaled * 0.5, y: y + heightScaled * 0.3}
+    ];
+    
+    const pointsStr = points.map(p => `${p.x},${p.y}`).join(' ');
+    base.setAttribute('points', pointsStr);
+    base.setAttribute('fill', item.color);
+    base.setAttribute('stroke', '#000');
+    base.setAttribute('stroke-width', '0.5');
+    furnitureGroup.appendChild(base);
+    
+    // Add 3D effect for some furniture
+    if (item.type === 'couch' || item.type === 'bed') {
+      // Backrest
+      const back = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+      const backPoints = [
+        {x: x, y: y},
+        {x: x, y: y - heightScaled * 0.7},
+        {x: x + widthScaled * 0.8, y: y - widthScaled * 0.3 - heightScaled * 0.7},
+        {x: x + widthScaled * 0.8, y: y - widthScaled * 0.3}
+      ];
+      const backPointsStr = backPoints.map(p => `${p.x},${p.y}`).join(' ');
+      back.setAttribute('points', backPointsStr);
+      back.setAttribute('fill', this.darkenColor(item.color, 20));
+      back.setAttribute('stroke', '#000');
+      back.setAttribute('stroke-width', '0.5');
+      furnitureGroup.appendChild(back);
+    }
+    
+    // Add label
+    const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+    text.setAttribute('x', x + widthScaled * 0.4);
+    text.setAttribute('y', y - heightScaled * 0.2);
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('font-size', '12');
+    text.setAttribute('fill', '#fff');
+    text.setAttribute('font-weight', 'bold');
+    text.textContent = item.name.charAt(0);
+    furnitureGroup.appendChild(text);
+    
+    svg.appendChild(furnitureGroup);
+  }
+
+  // Helper function to darken a color
+  darkenColor(color, percent) {
+    let R = parseInt(color.substring(1, 3), 16);
+    let G = parseInt(color.substring(3, 5), 16);
+    let B = parseInt(color.substring(5, 7), 16);
+    
+    R = Math.floor(R * (100 - percent) / 100);
+    G = Math.floor(G * (100 - percent) / 100);
+    B = Math.floor(B * (100 - percent) / 100);
+    
+    R = (R < 0) ? 0 : R;
+    G = (G < 0) ? 0 : G;
+    B = (B < 0) ? 0 : B;
+    
+    const RR = ((R.toString(16).length === 1) ? "0" + R.toString(16) : R.toString(16));
+    const GG = ((G.toString(16).length === 1) ? "0" + G.toString(16) : G.toString(16));
+    const BB = ((B.toString(16).length === 1) ? "0" + B.toString(16) : B.toString(16));
+    
+    return "#" + RR + GG + BB;
   }
 
   updateURL() {
@@ -364,14 +476,14 @@ class DollhouseApp {
   loadSamplePlan() {
     // Sample room: 2 walls forming a corner and some furniture
     this.walls = [
-      { startX: 2, startY: 2, endX: 10, endY: 2 }, // Horizontal wall
-      { startX: 10, startY: 2, endX: 10, endY: 8 }  // Vertical wall
+      { startX: 5, startY: 5, endX: 15, endY: 5 }, // Horizontal wall
+      { startX: 15, startY: 5, endX: 15, endY: 12 }  // Vertical wall
     ];
     
     this.furniture = [
       {
-        x: 3,
-        y: 3,
+        x: 7,
+        y: 7,
         type: 'couch',
         name: 'Couch',
         width: 6,
@@ -379,30 +491,67 @@ class DollhouseApp {
         color: '#8B4513'
       },
       {
-        x: 4,
-        y: 6,
+        x: 9,
+        y: 10,
         type: 'desk',
         name: 'Desk',
         width: 4,
         height: 2,
         color: '#696969'
+      },
+      {
+        x: 12,
+        y: 6,
+        type: 'plant',
+        name: 'Plant',
+        width: 1,
+        height: 1,
+        color: '#228B22'
       }
     ];
+    
+    // Update URL with sample plan
+    this.updateURL();
   }
 
   downloadDiorama() {
     const svg = document.getElementById('diorama-svg');
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const blob = new Blob([svgData], { type: 'image/svg+xml' });
-    const url = URL.createObjectURL(blob);
     
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'dollhouse-diorama.svg';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    // Create PNG version
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    const img = new Image();
+    
+    // Set canvas size
+    canvas.width = 800;
+    canvas.height = 600;
+    
+    img.onload = function() {
+      ctx.drawImage(img, 0, 0);
+      
+      // Download PNG
+      const pngUrl = canvas.toDataURL('image/png');
+      const pngLink = document.createElement('a');
+      pngLink.href = pngUrl;
+      pngLink.download = 'dollhouse-diorama.png';
+      document.body.appendChild(pngLink);
+      pngLink.click();
+      document.body.removeChild(pngLink);
+    };
+    
+    img.src = 'data:image/svg+xml;base64,' + btoa(svgData);
+    
+    // Also download SVG
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml' });
+    const svgUrl = URL.createObjectURL(svgBlob);
+    const svgLink = document.createElement('a');
+    svgLink.href = svgUrl;
+    svgLink.download = 'dollhouse-diorama.svg';
+    document.body.appendChild(svgLink);
+    svgLink.click();
+    document.body.removeChild(svgLink);
+    URL.revokeObjectURL(svgUrl);
   }
 }
 
