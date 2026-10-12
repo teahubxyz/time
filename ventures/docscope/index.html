@@ -148,7 +148,6 @@
     letter-spacing: .16em;
     text-transform: uppercase;
   }
-  h2 { margin: 0; font: 700 22px/1.15 var(--sans); }
   .lede { margin: 0 0 14px; color: var(--ink-soft); max-width: 68ch; }
   .statusline {
     display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap;
@@ -191,15 +190,8 @@
   .tree ul { margin: 0; padding: 0 0 0 14px; list-style: none; border-left: 1px dotted #b7c0ca; }
   .part {
     display: flex; align-items: baseline; gap: 8px; width: 100%;
-    text-align: left;
-    background: transparent;
-    border: 0;
-    border-left: 3px solid transparent;
-    padding: 4px 6px;
-    font: inherit;
-    color: var(--ink);
-    cursor: pointer;
-    touch-action: manipulation;
+    text-align: left; background: transparent; border: 0; border-left: 3px solid transparent;
+    padding: 4px 6px; font: inherit; color: var(--ink); cursor: pointer; touch-action: manipulation;
   }
   .part:hover, .part.on { background: #fff6d8; border-left-color: var(--amber); }
   .part .nm { overflow-wrap: anywhere; }
@@ -212,12 +204,8 @@
   .findings { display: grid; gap: 8px; }
   .finding { border: 1px solid var(--rule); background: #fff; padding: 8px 10px; font-size: 14px; }
   .finding .tag {
-    display: inline-block;
-    margin-right: 6px;
-    padding: 0 6px;
-    font: 700 11px/1.6 var(--mono);
-    letter-spacing: .04em;
-    text-transform: uppercase;
+    display: inline-block; margin-right: 6px; padding: 0 6px;
+    font: 700 11px/1.6 var(--mono); letter-spacing: .04em; text-transform: uppercase;
   }
   .sev-leak { background: var(--danger-bg); }
   .sev-leak .tag { background: var(--danger); color: #fff; }
@@ -228,11 +216,7 @@
   .sev-ok { background: var(--ok-bg); }
   .sev-ok .tag { background: var(--ok); color: #fff; }
   .finding p { margin: 4px 0 0; }
-  .finding code, .anno code, .limits code, .ref code {
-    font: 12px/1.4 var(--mono);
-    background: #eef2f6;
-    padding: 0 4px;
-  }
+  .finding code, .anno code, .limits code, .ref code { font: 12px/1.4 var(--mono); background: #eef2f6; padding: 0 4px; }
   .raw-wrap { display: grid; gap: 8px; }
   .anno { margin: 0; font-size: 14px; color: var(--ink-soft); }
   .verdict { display: inline-block; margin-top: 4px; padding: 1px 7px; font: 700 12px/1.6 var(--mono); }
@@ -240,27 +224,18 @@
   .verdict.careful { background: var(--warn); color: #fff; }
   .verdict.yes { background: var(--ok); color: #fff; }
   pre.xml {
-    margin: 0;
-    max-height: 340px;
-    overflow: auto;
-    padding: 10px;
-    background: #11161c;
-    color: #e7eef6;
-    font: 12px/1.45 var(--mono);
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    margin: 0; max-height: 340px; overflow: auto; padding: 10px;
+    background: #11161c; color: #e7eef6; font: 12px/1.45 var(--mono);
+    white-space: pre-wrap; overflow-wrap: anywhere;
   }
   .err { color: var(--danger); font-weight: 700; }
   .ref { width: 100%; border-collapse: collapse; font-size: 14px; }
   .ref th, .ref td { text-align: left; vertical-align: top; padding: 8px; border-bottom: 1px solid var(--rule); }
   .ref th { font: 700 12px/1.3 var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--mute); }
-  .repos { display: grid; gap: 0; }
+  .repos { display: grid; }
   .repo {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 4px 16px;
-    padding: 12px 0;
-    border-top: 1px solid var(--rule);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px;
+    padding: 12px 0; border-top: 1px solid var(--rule);
   }
   .repo a { font: 600 15px/1.3 var(--mono); }
   .stars { font: 13px/1 var(--mono); color: var(--mute); white-space: nowrap; }
@@ -269,22 +244,11 @@
   .tiers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
   .tier {
     background: var(--paper);
-    border: 2px solid #fff;
-    border-right-color: #8b95a3;
-    border-bottom-color: #8b95a3;
-    padding: 14px 14px 12px;
-    display: flex;
-    flex-direction: column;
-    min-width: 0;
+    border: 2px solid #fff; border-right-color: #8b95a3; border-bottom-color: #8b95a3;
+    padding: 14px 14px 12px; display: flex; flex-direction: column; min-width: 0;
   }
   .tier.featured { background: #fffdf6; outline: 2px solid var(--amber); }
-  .tier-name {
-    margin: 0 0 6px;
-    font: 700 12px/1 var(--mono);
-    letter-spacing: .12em;
-    text-transform: uppercase;
-    color: var(--title);
-  }
+  .tier-name { margin: 0 0 6px; font: 700 12px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--title); }
   .price { margin: 0; font: 700 26px/1.15 var(--sans); letter-spacing: -.02em; }
   .price small { display: block; margin-top: 4px; font: 400 13px/1.35 var(--sans); color: var(--mute); }
   .for-whom { margin: 8px 0; color: var(--mute); font-size: 13.5px; }
@@ -389,7 +353,7 @@
       <div class="win">
         <div class="titlebar"><span class="glyph" aria-hidden="true"></span><span class="caption">OOXML parts this page actually handles</span></div>
         <div class="face">
-          <p class="lede">Only parts the inspector reads are listed. Each link goes to the ECMA-376 5th edition page that publishes the section defining it. Parts we do not understand still appear in the diagram, labelled as unhandled.</p>
+          <p class="lede">Only parts the inspector reads are listed. Each link goes to the ECMA-376 5th edition page. Parts we do not understand still appear in the diagram, labelled as unhandled.</p>
           <table class="ref">
             <thead><tr><th>Part</th><th>What we read</th><th>Spec</th></tr></thead>
             <tbody>
@@ -542,70 +506,20 @@
   "use strict";
 
   var SAMPLE_NAME = "Hale-engagement-letter.docx";
-  var SAMPLE_NOTE = "Preloaded sample (sample.docx, a real .docx). It is fetched and unzipped by the same code as a file you drop — not a canned report.";
+  var SAMPLE_NOTE = "Preloaded sample, decoded from sample.b64 and unzipped by the same code as a file you drop — not a canned report.";
   var ECMA = "https://ecma-international.org/publications-and-standards/standards/ecma-376/";
 
   var PARTS = {
-    "[Content_Types].xml": {
-      title: "Content Types stream",
-      spec: "ECMA-376 Part 2, §10.1.2",
-      note: "Names the media type of every part. Office uses it to decide which XML vocabulary a part speaks. It is not itself a leak, but a missing or odd override is a sign the package was hand-edited.",
-      send: "yes"
-    },
-    "docProps/core.xml": {
-      title: "Core properties",
-      spec: "ECMA-376 Part 2, §11.1",
-      note: "Dublin Core metadata: title, creator, lastModifiedBy, revision, created and modified. This is the usual place a previous client's name or your own name survives a Save As.",
-      send: "no"
-    },
-    "docProps/app.xml": {
-      title: "Extended properties",
-      spec: "ECMA-376 Part 1, §22.2",
-      note: "Application, company, template name, and page or word counts. The template name often identifies the firm or the prior engagement the file was cloned from.",
-      send: "careful"
-    },
-    "docProps/thumbnail.jpeg": {
-      title: "Package thumbnail",
-      spec: "ECMA-376 Part 2, thumbnail relationship",
-      note: "A JPEG preview of the document, stored even when you never inserted an image. It can show a page you have since deleted, and its EXIF can name the author.",
-      send: "no"
-    },
-    "word/document.xml": {
-      title: "Main document part",
-      spec: "ECMA-376 Part 1, §17.13",
-      note: "The visible text, plus tracked insertions (w:ins), tracked deletions (w:del / w:delText) and comment markers. Accepting changes in Word is not the same as this XML being clean.",
-      send: "careful"
-    },
-    "word/comments.xml": {
-      title: "Comments part",
-      spec: "ECMA-376 Part 1, §17.13.4",
-      note: "Comment authors, timestamps and the comment text. Deleting a comment in the UI does not always remove this part.",
-      send: "no"
-    },
-    "word/people.xml": {
-      title: "People part",
-      spec: "ECMA-376 people part",
-      note: "Authors who have touched the document, sometimes with a provider user id or email. Easy to miss because Word never shows this file.",
-      send: "no"
-    },
-    "word/styles.xml": {
-      title: "Styles part",
-      spec: "ECMA-376 Part 1, §17.7",
-      note: "Paragraph and character styles. Rarely a direct leak; style names copied from a client template can still identify the source firm.",
-      send: "yes"
-    },
-    "xl/workbook.xml": {
-      title: "Workbook part",
-      spec: "ECMA-376 Part 1, §18.2",
-      note: "Sheet index. state=\"hidden\" or state=\"veryHidden\" marks a sheet the recipient will not see in the tab bar but can unhide.",
-      send: "careful"
-    },
-    "ppt/presentation.xml": {
-      title: "Presentation part",
-      spec: "ECMA-376 Part 1, §19.2",
-      note: "Slide list. show=\"0\" marks a hidden slide. Hidden is not deleted — the slide XML is still in the package.",
-      send: "careful"
-    }
+    "[Content_Types].xml": { title: "Content Types stream", spec: "ECMA-376 Part 2, §10.1.2", note: "Names the media type of every part. Office uses it to decide which XML vocabulary a part speaks. It is not itself a leak, but a missing or odd override is a sign the package was hand-edited.", send: "yes" },
+    "docProps/core.xml": { title: "Core properties", spec: "ECMA-376 Part 2, §11.1", note: "Dublin Core metadata: title, creator, lastModifiedBy, revision, created and modified. This is the usual place a previous client's name or your own name survives a Save As.", send: "no" },
+    "docProps/app.xml": { title: "Extended properties", spec: "ECMA-376 Part 1, §22.2", note: "Application, company, template name, and page or word counts. The template name often identifies the firm or the prior engagement the file was cloned from.", send: "careful" },
+    "docProps/thumbnail.jpeg": { title: "Package thumbnail", spec: "ECMA-376 Part 2, thumbnail relationship", note: "A JPEG preview of the document, stored even when you never inserted an image. It can show a page you have since deleted, and its EXIF can name the author.", send: "no" },
+    "word/document.xml": { title: "Main document part", spec: "ECMA-376 Part 1, §17.13", note: "The visible text, plus tracked insertions (w:ins), tracked deletions (w:del / w:delText) and comment markers. Accepting changes in Word is not the same as this XML being clean.", send: "careful" },
+    "word/comments.xml": { title: "Comments part", spec: "ECMA-376 Part 1, §17.13.4", note: "Comment authors, timestamps and the comment text. Deleting a comment in the UI does not always remove this part.", send: "no" },
+    "word/people.xml": { title: "People part", spec: "ECMA-376 people part", note: "Authors who have touched the document, sometimes with a provider user id or email. Easy to miss because Word never shows this file.", send: "no" },
+    "word/styles.xml": { title: "Styles part", spec: "ECMA-376 Part 1, §17.7", note: "Paragraph and character styles. Rarely a direct leak; style names copied from a client template can still identify the source firm.", send: "yes" },
+    "xl/workbook.xml": { title: "Workbook part", spec: "ECMA-376 Part 1, §18.2", note: "Sheet index. state=\"hidden\" or state=\"veryHidden\" marks a sheet the recipient will not see in the tab bar but can unhide.", send: "careful" },
+    "ppt/presentation.xml": { title: "Presentation part", spec: "ECMA-376 Part 1, §19.2", note: "Slide list. show=\"0\" marks a hidden slide. Hidden is not deleted — the slide XML is still in the package.", send: "careful" }
   };
 
   var treeEl = document.getElementById("tree");
@@ -620,17 +534,20 @@
   var dropEl = document.getElementById("drop");
   var fileEl = document.getElementById("file");
 
-  function esc(s) {
-    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  }
+  function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
   function u16(b, o) { return b[o] | (b[o + 1] << 8); }
   function u32(b, o) { return (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0; }
 
+  function b64ToBytes(b64) {
+    var bin = atob(b64.replace(/\s+/g, ""));
+    var out = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+    return out;
+  }
+
   function findEocd(bytes) {
     var start = Math.max(0, bytes.length - 22 - 65535);
-    for (var i = bytes.length - 22; i >= start; i--) {
-      if (u32(bytes, i) === 0x06054b50) return i;
-    }
+    for (var i = bytes.length - 22; i >= start; i--) if (u32(bytes, i) === 0x06054b50) return i;
     return -1;
   }
 
@@ -642,9 +559,7 @@
     var entries = [];
     var p = cdOff;
     for (var i = 0; i < count; i++) {
-      if (p + 46 > bytes.length || u32(bytes, p) !== 0x02014b50) {
-        throw new Error("Central directory is truncated or not a ZIP.");
-      }
+      if (p + 46 > bytes.length || u32(bytes, p) !== 0x02014b50) throw new Error("Central directory is truncated or not a ZIP.");
       var method = u16(bytes, p + 10);
       var compSize = u32(bytes, p + 20);
       var nameLen = u16(bytes, p + 28);
@@ -670,14 +585,11 @@
 
   function readLocal(bytes, entry) {
     var lp = entry.localOff;
-    if (lp + 30 > bytes.length || u32(bytes, lp) !== 0x04034b50) {
-      throw new Error("Local header missing for " + entry.name);
-    }
+    if (lp + 30 > bytes.length || u32(bytes, lp) !== 0x04034b50) throw new Error("Local header missing for " + entry.name);
     var method = u16(bytes, lp + 8);
     var nlen = u16(bytes, lp + 26);
     var elen = u16(bytes, lp + 28);
-    var start = lp + 30 + nlen + elen;
-    var comp = bytes.subarray(start, start + entry.compSize);
+    var comp = bytes.subarray(lp + 30 + nlen + elen, lp + 30 + nlen + elen + entry.compSize);
     if (method === 0) return Promise.resolve(comp.slice());
     if (method === 8) return inflateRaw(comp);
     return Promise.reject(new Error(entry.name + " uses ZIP method " + method + ". Docscope only inflates stored (0) and deflate (8)."));
@@ -702,38 +614,28 @@
   }
 
   function asText(bytes) { return new TextDecoder("utf-8", { fatal: false }).decode(bytes); }
-
   function parseXml(text) {
     var doc = new DOMParser().parseFromString(text, "application/xml");
-    if (doc.querySelector("parsererror")) return null;
-    return doc;
+    return doc.querySelector("parsererror") ? null : doc;
   }
-
   function localName(el) { return el.localName || el.nodeName; }
-
   function all(doc, name) {
     if (!doc) return [];
-    var out = [];
-    var nodes = doc.getElementsByTagName("*");
+    var out = [], nodes = doc.getElementsByTagName("*");
     for (var i = 0; i < nodes.length; i++) if (localName(nodes[i]) === name) out.push(nodes[i]);
     return out;
   }
-
   function textOf(el) { return (el.textContent || "").replace(/\s+/g, " ").trim(); }
-
   function attr(el, name) {
     if (el.hasAttribute(name)) return el.getAttribute(name);
-    var attrs = el.attributes;
-    for (var i = 0; i < attrs.length; i++) {
-      if (attrs[i].localName === name || attrs[i].name === name) return attrs[i].value;
+    for (var i = 0; i < el.attributes.length; i++) {
+      if (el.attributes[i].localName === name || el.attributes[i].name === name) return el.attributes[i].value;
     }
     return "";
   }
-
   function looksText(bytes) {
     if (!bytes.length) return false;
-    var n = Math.min(bytes.length, 800);
-    var odd = 0;
+    var n = Math.min(bytes.length, 800), odd = 0;
     for (var i = 0; i < n; i++) {
       var c = bytes[i];
       if (c === 0) return false;
@@ -741,13 +643,10 @@
     }
     return odd / n < 0.05;
   }
-
   function hexPreview(bytes) {
-    var n = Math.min(bytes.length, 256);
-    var lines = [];
+    var n = Math.min(bytes.length, 256), lines = [];
     for (var i = 0; i < n; i += 16) {
-      var hex = [];
-      var asc = "";
+      var hex = [], asc = "";
       for (var j = 0; j < 16 && i + j < n; j++) {
         var c = bytes[i + j];
         hex.push((c < 16 ? "0" : "") + c.toString(16));
@@ -769,15 +668,12 @@
       if (marker === 0xd8 || marker === 0xd9) { o += 2; continue; }
       var len = (bytes[o + 2] << 8) | bytes[o + 3];
       if (len < 2 || o + 2 + len > bytes.length) break;
-      if (marker === 0xe1 && asText(bytes.subarray(o + 4, o + 10)).indexOf("Exif") === 0) {
-        tags = tags.concat(readTiff(bytes.subarray(o + 10, o + 2 + len)));
-      }
+      if (marker === 0xe1 && asText(bytes.subarray(o + 4, o + 10)).indexOf("Exif") === 0) tags = tags.concat(readTiff(bytes.subarray(o + 10, o + 2 + len)));
       o += 2 + len;
       if (marker === 0xda) break;
     }
     return tags;
   }
-
   function readTiff(tiff) {
     var out = [];
     if (tiff.length < 8) return out;
@@ -786,9 +682,8 @@
     if (!le && !be) return out;
     function r16(off) { return le ? tiff[off] | (tiff[off + 1] << 8) : (tiff[off] << 8) | tiff[off + 1]; }
     function r32(off) {
-      return le
-        ? (tiff[off] | (tiff[off + 1] << 8) | (tiff[off + 2] << 16) | (tiff[off + 3] << 24)) >>> 0
-        : ((tiff[off] << 24) | (tiff[off + 1] << 16) | (tiff[off + 2] << 8) | tiff[off + 3]) >>> 0;
+      return le ? (tiff[off] | (tiff[off + 1] << 8) | (tiff[off + 2] << 16) | (tiff[off + 3] << 24)) >>> 0
+                : ((tiff[off] << 24) | (tiff[off + 1] << 16) | (tiff[off + 2] << 8) | tiff[off + 3]) >>> 0;
     }
     var names = { 0x010e: "ImageDescription", 0x010f: "Make", 0x0110: "Model", 0x0131: "Software", 0x0132: "DateTime", 0x013b: "Artist", 0x8298: "Copyright", 0x9003: "DateTimeOriginal" };
     function walk(ifd, depth) {
@@ -797,9 +692,7 @@
       for (var i = 0; i < n; i++) {
         var e = ifd + 2 + i * 12;
         if (e + 12 > tiff.length) break;
-        var tag = r16(e);
-        var typ = r16(e + 2);
-        var count = r32(e + 4);
+        var tag = r16(e), typ = r16(e + 2), count = r32(e + 4);
         if (typ === 2 && count > 1 && count < 400) {
           var start = count <= 4 ? e + 8 : r32(e + 8);
           if (start >= 0 && start + count <= tiff.length) {
@@ -816,7 +709,6 @@
     walk(r32(4), 0);
     return out;
   }
-
   function readPngText(bytes) {
     var out = [];
     if (bytes.length < 8 || bytes[0] !== 0x89 || bytes[1] !== 0x50) return out;
@@ -835,21 +727,18 @@
     }
     return out;
   }
-
   function partByName(parts, name) {
     for (var i = 0; i < parts.length; i++) if (parts[i].name === name) return parts[i];
     return null;
   }
 
   function analyze(pkg) {
-    var findings = [];
-    var flags = {};
+    var findings = [], flags = {};
     function flag(name, sev) { if (!flags[name] || sev === "leak") flags[name] = sev; }
     function add(sev, label, html, partName) {
-      findings.push({ sev: sev, label: label, html: html, part: partName });
+      findings.push({ sev: sev, label: label, html: html });
       if (partName) flag(partName, sev);
     }
-
     var core = partByName(pkg.parts, "docProps/core.xml");
     if (core) {
       var cdoc = parseXml(asText(core.bytes));
@@ -861,9 +750,7 @@
       if (modifiedBy.length) add("leak", "Last modified by", "cp:lastModifiedBy is <strong>" + esc(modifiedBy.join(", ")) + "</strong>" + (modified.length ? " (" + esc(modified.join(", ")) + ")" : "") + ".", "docProps/core.xml");
       if (title.length) add("info", "Title", "dc:title is “" + esc(title.join(" / ")) + "”.", "docProps/core.xml");
       if (!creator.length && !modifiedBy.length) add("ok", "Core properties", "No creator or lastModifiedBy in docProps/core.xml.", "docProps/core.xml");
-    } else {
-      add("ok", "Core properties", "No docProps/core.xml in this package.");
-    }
+    } else add("ok", "Core properties", "No docProps/core.xml in this package.");
 
     var app = partByName(pkg.parts, "docProps/app.xml");
     if (app) {
@@ -880,41 +767,26 @@
       if (text.indexOf("<") === -1) return;
       var doc = parseXml(text);
       if (!doc) return;
-      var ins = all(doc, "ins");
-      var del = all(doc, "del");
+      var ins = all(doc, "ins"), del = all(doc, "del");
       if (ins.length || del.length) {
         var bits = [];
-        ins.slice(0, 6).forEach(function (el) {
-          bits.push("insertion by " + esc(attr(el, "author") || "unknown") + (textOf(el) ? ": “" + esc(textOf(el).slice(0, 140)) + "”" : ""));
-        });
-        del.slice(0, 6).forEach(function (el) {
-          bits.push("deletion by " + esc(attr(el, "author") || "unknown") + (textOf(el) ? ": “" + esc(textOf(el).slice(0, 140)) + "”" : ""));
-        });
+        ins.slice(0, 6).forEach(function (el) { bits.push("insertion by " + esc(attr(el, "author") || "unknown") + (textOf(el) ? ": “" + esc(textOf(el).slice(0, 140)) + "”" : "")); });
+        del.slice(0, 6).forEach(function (el) { bits.push("deletion by " + esc(attr(el, "author") || "unknown") + (textOf(el) ? ": “" + esc(textOf(el).slice(0, 140)) + "”" : "")); });
         add("leak", "Tracked changes", ins.length + " insertion" + (ins.length === 1 ? "" : "s") + " (w:ins) and " + del.length + " deletion" + (del.length === 1 ? "" : "s") + " (w:del) still in " + esc(part.name) + ". " + bits.join("; ") + ".", part.name);
       }
       var comments = all(doc, "comment").filter(function (el) { return attr(el, "author") || textOf(el); });
       if (comments.length && /comment/i.test(part.name)) {
-        var lines = comments.slice(0, 8).map(function (el) {
+        add("leak", "Comments", comments.length + " comment" + (comments.length === 1 ? "" : "s") + " in " + esc(part.name) + ". " + comments.slice(0, 8).map(function (el) {
           return esc(attr(el, "author") || "unknown") + ": “" + esc(textOf(el).slice(0, 160)) + "”";
-        });
-        add("leak", "Comments", comments.length + " comment" + (comments.length === 1 ? "" : "s") + " in " + esc(part.name) + ". " + lines.join(" · "), part.name);
+        }).join(" · "), part.name);
       }
       if (/people\.xml$/i.test(part.name)) {
         var people = all(doc, "person");
-        if (people.length) {
-          add("leak", "People", people.length + " person record" + (people.length === 1 ? "" : "s") + " in people.xml: <strong>" + esc(people.map(function (el) { return attr(el, "author") || textOf(el); }).filter(Boolean).join(", ")) + "</strong>.", part.name);
-        }
+        if (people.length) add("leak", "People", people.length + " person record" + (people.length === 1 ? "" : "s") + " in people.xml: <strong>" + esc(people.map(function (el) { return attr(el, "author") || textOf(el); }).filter(Boolean).join(", ")) + "</strong>.", part.name);
       }
       if (/workbook\.xml$/i.test(part.name)) {
-        var hidden = all(doc, "sheet").filter(function (el) {
-          var st = (attr(el, "state") || "").toLowerCase();
-          return st === "hidden" || st === "veryhidden";
-        });
-        if (hidden.length) {
-          add("leak", "Hidden sheets", hidden.map(function (el) {
-            return esc(attr(el, "name") || "(unnamed)") + " (" + esc(attr(el, "state")) + ")";
-          }).join(", ") + " — still in the workbook, just not on the tab bar.", part.name);
-        }
+        var hidden = all(doc, "sheet").filter(function (el) { var st = (attr(el, "state") || "").toLowerCase(); return st === "hidden" || st === "veryhidden"; });
+        if (hidden.length) add("leak", "Hidden sheets", hidden.map(function (el) { return esc(attr(el, "name") || "(unnamed)") + " (" + esc(attr(el, "state")) + ")"; }).join(", ") + " — still in the workbook, just not on the tab bar.", part.name);
       }
       if (/presentation\.xml$/i.test(part.name)) {
         var sld = all(doc, "sldId").filter(function (el) { return attr(el, "show") === "0"; });
@@ -925,9 +797,7 @@
     pkg.parts.forEach(function (part) {
       if (part.dir) return;
       var lower = part.name.toLowerCase();
-      if (/thumbnail/.test(lower)) {
-        add("leak", "Thumbnail", "Embedded thumbnail preview at <code>" + esc(part.name) + "</code> (" + part.size + " bytes). Recipients can open it without Word.", part.name);
-      }
+      if (/thumbnail/.test(lower)) add("leak", "Thumbnail", "Embedded thumbnail preview at <code>" + esc(part.name) + "</code> (" + part.size + " bytes). Recipients can open it without Word.", part.name);
       if (/\.jpe?g$/.test(lower)) {
         var exif = readExif(part.bytes);
         if (exif.length) add("leak", "EXIF", esc(part.name) + " carries " + exif.map(function (t) { return esc(t.tag) + "=" + esc(t.value); }).join(", ") + ".", part.name);
@@ -937,7 +807,6 @@
         if (pngText.length) add("warn", "PNG text", esc(part.name) + ": " + pngText.map(function (t) { return esc(t.key) + "=" + esc(t.value); }).join(", ") + ".", part.name);
       }
     });
-
     if (!findings.some(function (f) { return f.sev === "leak"; })) {
       add("ok", "No leak flags", "Nothing in the handled parts matched author names, tracked changes, comments, people, thumbnails, EXIF, PNG text, or hidden sheets/slides. Unhandled parts are still listed in the diagram.");
     }
@@ -954,9 +823,8 @@
     if (known) return known;
     if (/\.rels$/i.test(part.name)) return { title: "Relationships part", spec: "ECMA-376 Part 2, §9.2", note: "Points from one part to another (styles, comments, images, the thumbnail). A thumbnail relationship here is how Explorer finds the preview.", send: "careful" };
     if (/media\//i.test(part.name)) return { title: "Embedded media", spec: "ECMA-376 Part 1, §15.2.14", note: "A binary file stored inside the package. Images can carry EXIF or PNG text even when the slide looks clean.", send: "careful" };
-    return { title: "Unhandled part", spec: "", note: "This page lists the part because it is in the ZIP central directory, but it does not interpret this vocabulary. The bytes are shown as-is.", send: "careful" };
+    return { title: "Unhandled part", spec: "", note: "Listed because it is in the ZIP central directory. This page does not interpret this vocabulary; the bytes are shown as-is.", send: "careful" };
   }
-
   function verdictLabel(send, flagged) {
     if (flagged === "leak" || send === "no") return { cls: "no", text: "Not safe to send as-is" };
     if (flagged === "warn" || send === "careful") return { cls: "careful", text: "Check before you send" };
@@ -990,18 +858,14 @@
     treeEl.innerHTML = "<p class=\"meta-line\">" + pkg.parts.length + " central-directory entries, shown verbatim. Red marks a part the leak report cited.</p>" + walk(root);
     var buttons = treeEl.querySelectorAll(".part");
     for (var i = 0; i < buttons.length; i++) {
-      buttons[i].addEventListener("click", function (ev) {
-        showPart(pkg, flags, Number(ev.currentTarget.getAttribute("data-index")));
-      });
+      buttons[i].addEventListener("click", function (ev) { showPart(pkg, flags, Number(ev.currentTarget.getAttribute("data-index"))); });
     }
   }
-
   function renderReport(findings) {
     reportEl.innerHTML = "<div class=\"findings\">" + findings.map(function (f) {
       return "<article class=\"finding sev-" + f.sev + "\"><span class=\"tag\">" + esc(f.label) + "</span><p>" + f.html + "</p></article>";
     }).join("") + "</div>";
   }
-
   function showPart(pkg, flags, index) {
     var part = pkg.parts[index];
     if (!part) return;
@@ -1016,12 +880,10 @@
     for (var i = 0; i < buttons.length; i++) buttons[i].classList.toggle("on", Number(buttons[i].getAttribute("data-index")) === index);
     statusRight.textContent = part.name + " · " + part.size + " bytes · method " + part.method;
   }
-
   function renderPackage(pkg, fileName, note) {
     var report = analyze(pkg);
     captionEl.textContent = "Docscope — " + fileName;
-    var names = pkg.entries.map(function (e) { return e.name; });
-    metaEl.textContent = fileName + " · " + pkg.entries.length + " central-directory entries · " + names.join(" · ") + (note ? " — " + note : "");
+    metaEl.textContent = fileName + " · " + pkg.entries.length + " central-directory entries · " + pkg.entries.map(function (e) { return e.name; }).join(" · ") + (note ? " — " + note : "");
     statusLeft.textContent = fileName + " · " + pkg.parts.length + " parts · parsed locally";
     renderTree(pkg, report.flags);
     renderReport(report.findings);
@@ -1032,17 +894,14 @@
     });
     if (first >= 0) showPart(pkg, report.flags, first);
   }
-
   function fail(err) {
     metaEl.innerHTML = "<span class=\"err\">" + esc(err && err.message ? err.message : String(err)) + "</span>";
     statusLeft.textContent = "could not read that file";
   }
-
   function loadBytes(bytes, name, note) {
     metaEl.textContent = "Unzipping " + name + "…";
-    unzipPackage(bytes).then(function (pkg) { renderPackage(pkg, name, note); }).catch(fail);
+    return unzipPackage(bytes).then(function (pkg) { renderPackage(pkg, name, note); return pkg; }).catch(fail);
   }
-
   function onFile(file) {
     if (!file) return;
     var name = file.name || "dropped-file";
@@ -1062,11 +921,11 @@
   });
   fileEl.addEventListener("change", function () { onFile(fileEl.files && fileEl.files[0]); });
 
-  fetch("sample.docx").then(function (res) {
-    if (!res.ok) throw new Error("Could not load the preloaded sample.docx (" + res.status + "). Drop a file instead.");
-    return res.arrayBuffer();
-  }).then(function (buf) {
-    loadBytes(new Uint8Array(buf), SAMPLE_NAME, SAMPLE_NOTE);
+  fetch("sample.b64").then(function (res) {
+    if (!res.ok) throw new Error("Could not load the preloaded sample (" + res.status + "). Drop a file instead.");
+    return res.text();
+  }).then(function (text) {
+    return loadBytes(b64ToBytes(text), SAMPLE_NAME, SAMPLE_NOTE);
   }).catch(fail);
 })();
 </script>
