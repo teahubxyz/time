@@ -799,7 +799,7 @@
                 emit(prefix);
                 if (nextCode < 4096) {
                     dict[wk] = nextCode++;
-                    if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;
+                    if (nextCode === (1 << codeSize) + 1 && codeSize < 12) codeSize++;  // the decoder adds each entry one code later
                 } else {
                     emit(clear);
                     dict = Object.create(null);
@@ -810,6 +810,7 @@
             }
         }
         emit(wKey.indexOf(",") === -1 ? +wKey : dict[wKey]);
+        if (nextCode === (1 << codeSize) && codeSize < 12) codeSize++;  // the decoder's last entry can widen the end code
         emit(eoi);
         var acc = 0, nbits = 0, bytesOut = [];
         for (i = 0; i < outBits.length; i += 2) {
