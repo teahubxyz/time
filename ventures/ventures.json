@@ -50,6 +50,21 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-12"
+  },
+  {
+   "slug": "dollhouse",
+   "name": "Dollhouse",
+   "one_liner": "Drag out your floor plan, drop in furniture, and get a clean isometric diorama of your actual room you can send to anyone in under a minute.",
+   "for_whom": "Someone who just signed a lease (or is about to rearrange) and is arguing with their partner or roommate about whether the couch fits along that wall.",
+   "url": "https://teahubxyz.github.io/time/ventures/dollhouse/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29",
+   "signal": 19,
+   "card": 18,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "planned": "2026-10-12",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-12"
