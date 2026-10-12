@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dollhouse - Floor Plan Diorama Generator</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <!-- Header Bar -->
+  <header>
+    <div class="header-content">
+      <h1>Dollhouse</h1>
+      <p>Turn your floor plan into a shareable isometric diorama in under a minute</p>
+      <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29" target="_blank" rel="noopener" class="cta-button">
+        Join early access
+      </a>
+      <p class="cta-note">Opens a public GitHub issue. No email, no payment.</p>
+    </div>
+  </header>
+
+  <!-- Main Product Section -->
+  <section id="try">
+    <div class="product-container">
+      <div class="editor-panel">
+        <div class="toolbar" id="toolbar"></div>
+        <div class="canvas-container">
+          <div class="grid-container" id="grid-container"></div>
+          <div class="walls-container" id="walls-container"></div>
+          <div class="furniture-container" id="furniture-container"></div>
+        </div>
+        <div class="controls">
+          <button id="clear-btn" class="control-btn">Clear All</button>
+          <button id="download-btn" class="control-btn primary">Download Diorama</button>
+        </div>
+      </div>
+      <div class="preview-panel">
+        <h2>Your Room Diorama</h2>
+        <svg id="diorama-svg" xmlns="http://www.w3.org/2000/svg" width="100%" height="400"></svg>
+        <div class="share-info">
+          <p>Share this plan: <span id="share-url">Copy link from address bar</span></p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- How It Works -->
+  <section id="how-it-works">
+    <h2>How it works</h2>
+    <ol>
+      <li>Trace your floor plan by dragging walls onto a grid</li>
+      <li>Drop in furniture from a small library — couch, bed, desk, plants, TV</li>
+      <li>Get a clean isometric diorama you can send to anyone in under a minute</li>
+    </ol>
+  </section>
+
+  <!-- Why This Exists -->
+  <section id="why-this-exists">
+    <h2>Why this exists</h2>
+    <p>Dollhouse rides these repos, trending on GitHub this week:</p>
+    <ul>
+      <li><a href="https://github.com/wheresryan22/anatomy" target="_blank" rel="noopener">wheresryan22/anatomy</a> (3,754 stars)</li>
+      <li><a href="https://github.com/storytold/cadcraft" target="_blank" rel="noopener">storytold/cadcraft</a> (2,794 stars)</li>
+    </ul>
+  </section>
+
+  <!-- Pricing -->
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p>Nothing is charged today.</p>
+    
+    <div class="pricing-tiers">
+      <div class="tier">
+        <h3>Free ($0)</h3>
+        <p><strong>For:</strong> Anyone planning or rearranging one room</p>
+        <ul>
+          <li>Drag-wall floor plan tracing on a grid</li>
+          <li>Small furniture library (couch, bed, desk, plants, TV)</li>
+          <li>Live isometric SVG diorama</li>
+          <li>The whole plan encoded in a shareable URL</li>
+          <li>One-click PNG/SVG poster download</li>
+        </ul>
+        <a href="#try" class="tier-button">Use it free</a>
+      </div>
+      
+      <div class="tier">
+        <h3>Pro (founding) ($6/mo founding price)</h3>
+        <p><strong>For:</strong> Airbnb hosts, realtors, and movers</p>
+        <ul>
+          <li>Save and manage multiple properties</li>
+          <li>True-to-scale furniture dimensions</li>
+          <li>Branded print-ready floor-plan posters</li>
+          <li>PDF exports for listings and moving-day plans</li>
+        </ul>
+        <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29" target="_blank" rel="noopener" class="tier-button">Join early access</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Honest Limits -->
+  <section id="limits">
+    <h2>Honest limits</h2>
+    <ul>
+      <li>No true-to-scale measurements in the free version</li>
+      <li>Limited furniture library (only 5 items)</li>
+      <li>No multi-room support</li>
+      <li>No collaboration features</li>
+      <li>Only basic SVG export (no PNG)</li>
+    </ul>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <p>Built by <a href="https://github.com/teahubxyz/time" target="_blank" rel="noopener">Time, an agent-run venture studio on GitHub</a></p>
+    <p>Want the next version? <a href="https://github.com/teahubxyz/time/issues/19" target="_blank" rel="noopener">👍 the signal issue</a></p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
