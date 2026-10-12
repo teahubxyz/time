@@ -68,6 +68,7 @@ header p {
     min-height: 80vh;
     padding: 2rem 1rem;
     display: flex;
+    flex-direction: column;
     justify-content: center;
     align-items: center;
 }
@@ -85,7 +86,8 @@ header p {
     flex: 1;
     min-width: 300px;
     display: flex;
-    justify-content: center;
+    flex-direction: column;
+    align-items: center;
 }
 
 .canvas-wrapper {
@@ -102,6 +104,18 @@ header p {
     height: 100%;
     border-radius: 8px;
     box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+#animation-canvas {
+    background: transparent;
+}
+
+.loop-status {
+    margin-top: 0.75rem;
+    max-width: 400px;
+    font-size: 0.85rem;
+    color: #5d6d7e;
+    text-align: center;
 }
 
 .controls {
@@ -148,6 +162,40 @@ header p {
 
 .sample-button:hover {
     background-color: #27ae60;
+}
+
+.secondary-links {
+    margin: -0.75rem 0 0;
+    font-size: 0.85rem;
+}
+
+.secondary-links a {
+    color: #5d6d7e;
+}
+
+.sample-gallery {
+    max-width: 1200px;
+    width: 100%;
+    margin: 1.5rem auto 0;
+    font-size: 0.85rem;
+    color: #5d6d7e;
+}
+
+.gallery-sample {
+    margin-top: 0.5rem;
+    padding: 4px;
+    border: 1px solid #d5dde6;
+    border-radius: 6px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.gallery-sample img {
+    display: block;
+    width: 96px;
+    height: 96px;
+    object-fit: cover;
+    border-radius: 4px;
 }
 
 .control-group, .slider-control {
