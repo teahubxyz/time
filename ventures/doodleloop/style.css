@@ -1,0 +1,357 @@
+/* Doodleloop Styles */
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+    line-height: 1.6;
+    color: #333;
+    background-color: #f8f9fa;
+}
+
+header {
+    background-color: #fff;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.header-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1rem;
+    text-align: center;
+}
+
+header h1 {
+    font-size: 1.8rem;
+    margin-bottom: 0.5rem;
+    color: #2c3e50;
+}
+
+header p {
+    font-size: 1rem;
+    margin-bottom: 1rem;
+    color: #7f8c8d;
+}
+
+.export-button {
+    display: inline-block;
+    background-color: #3498db;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+}
+
+.export-button:hover {
+    background-color: #2980b9;
+}
+
+.note {
+    font-size: 0.8rem;
+    color: #95a5a6;
+    margin-top: 0.5rem;
+}
+
+#try {
+    min-height: 80vh;
+    padding: 2rem 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.product-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2rem;
+    max-width: 1200px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.canvas-area {
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    justify-content: center;
+}
+
+.canvas-wrapper {
+    position: relative;
+    width: 400px;
+    height: 400px;
+}
+
+#original-canvas, #animation-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border-radius: 8px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+}
+
+.controls {
+    flex: 1;
+    min-width: 300px;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.drop-zone {
+    border: 2px dashed #3498db;
+    border-radius: 8px;
+    padding: 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background-color 0.3s;
+    background-color: #ecf5ff;
+}
+
+.drop-zone:hover, .drop-zone.drag-over {
+    background-color: #d6eaf8;
+}
+
+.drop-zone p {
+    font-size: 1.2rem;
+    color: #3498db;
+}
+
+.drop-zone small {
+    font-size: 0.9rem;
+}
+
+.sample-button {
+    background-color: #2ecc71;
+    color: white;
+    border: none;
+    padding: 0.75rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: background-color 0.3s;
+}
+
+.sample-button:hover {
+    background-color: #27ae60;
+}
+
+.control-group, .slider-control {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.control-group label, .slider-control label {
+    font-weight: bold;
+    color: #2c3e50;
+}
+
+.control-group select, .slider-control input {
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 1rem;
+}
+
+.slider-control input {
+    accent-color: #3498db;
+}
+
+#export-btn {
+    align-self: flex-start;
+}
+
+section {
+    max-width: 1200px;
+    margin: 3rem auto;
+    padding: 0 1rem;
+}
+
+section h2 {
+    font-size: 1.8rem;
+    margin-bottom: 1.5rem;
+    color: #2c3e50;
+    text-align: center;
+}
+
+#how-it-works ol {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 2rem;
+    list-style-type: decimal;
+    padding-left: 2rem;
+}
+
+#how-it-works li {
+    font-size: 1.1rem;
+    background-color: #fff;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    flex: 1;
+    min-width: 200px;
+    text-align: center;
+}
+
+#why-this-exists ul {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 1rem;
+    list-style: none;
+    padding: 0;
+}
+
+#why-this-exists li {
+    background-color: #fff;
+    padding: 1rem 1.5rem;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+    text-align: center;
+}
+
+#why-this-exists a {
+    color: #3498db;
+    text-decoration: none;
+    font-weight: bold;
+}
+
+#why-this-exists a:hover {
+    text-decoration: underline;
+}
+
+.pricing-tiers {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 2rem;
+}
+
+.tier {
+    background-color: #fff;
+    border-radius: 8px;
+    padding: 2rem;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.tier h3 {
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+}
+
+.tier p {
+    color: #7f8c8d;
+    margin-bottom: 1rem;
+}
+
+.tier ul {
+    flex: 1;
+    list-style-type: none;
+    padding: 0;
+}
+
+.tier li {
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #eee;
+}
+
+.tier li:last-child {
+    border-bottom: none;
+}
+
+.tier-button {
+    display: inline-block;
+    background-color: #3498db;
+    color: white;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    text-decoration: none;
+    font-weight: bold;
+    transition: background-color 0.3s;
+    text-align: center;
+    margin-top: auto;
+}
+
+.tier-button:hover {
+    background-color: #2980b9;
+    color: white;
+}
+
+#limits ul {
+    max-width: 800px;
+    margin: 0 auto;
+    list-style-type: disc;
+    padding-left: 2rem;
+}
+
+#limits li {
+    margin-bottom: 0.5rem;
+}
+
+footer {
+    background-color: #2c3e50;
+    color: #ecf0f1;
+    text-align: center;
+    padding: 2rem 1rem;
+    margin-top: 3rem;
+}
+
+footer a {
+    color: #3498db;
+    text-decoration: none;
+}
+
+footer a:hover {
+    text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+    .header-content h1 {
+        font-size: 1.5rem;
+    }
+    
+    .header-content p {
+        font-size: 0.9rem;
+    }
+    
+    .product-container {
+        flex-direction: column;
+        align-items: center;
+    }
+    
+    .canvas-wrapper {
+        width: 300px;
+        height: 300px;
+    }
+    
+    #how-it-works ol {
+        flex-direction: column;
+        padding-left: 1rem;
+    }
+    
+    #why-this-exists ul {
+        flex-direction: column;
+    }
+    
+    .pricing-tiers {
+        grid-template-columns: 1fr;
+    }
+}
