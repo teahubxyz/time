@@ -10,39 +10,59 @@
   var copyBtn = document.getElementById("copy");
 
   var SAMPLE = [
-    "# Sprint 14 demo",
-    "## Platform team · Friday status",
+    "# .mdeck",
+    "## Plain text in, clean slides out",
     "",
-    "- What shipped, what slipped, what is next",
-    "- Typed in plain text; typeset by MDecks",
-    "",
-    "---",
-    "# Shipped this sprint",
-    "",
-    "- Migrated the billing service off the legacy queue",
-    "- Cut p99 API latency from **840ms** to **310ms**",
-    "- Shipped the new audit log behind a flag",
+    "- Type markdown-ish slides in the editor",
+    "- Live preview renders on the right",
+    "- Navigate with arrow keys or swipe",
+    "- Copy as self-contained HTML",
     "",
     "---",
-    "# What slipped",
+    "# How it works",
     "",
-    "The SSO rollout moved to next sprint.",
-    "",
-    "- Blocked on the identity provider's sandbox",
-    "- Mitigation: contract tests already written",
-    "",
-    "---",
-    "# Next sprint",
-    "",
-    "- Finish SSO rollout",
-    "- Start the `events v2` schema",
-    "- *One* stretch goal, chosen Monday",
+    "- `# Title` and `## Subtitle`",
+    "- `- bullet` points or `* bullet`",
+    "- `---` on its own line starts a new slide",
+    "- Inline **bold**, *italic*, and `code`",
+    "- Plain lines become paragraphs",
     "",
     "---",
-    "# That's the update",
-    "## Questions?",
+    "# Free tier ($0)",
     "",
-    "This deck was copied out of MDecks as one HTML file — arrow keys to present."
+    "- Full plain-text editor",
+    "- Live navigable preview",
+    "- Arrow keys + progress bar",
+    "- One-click HTML export",
+    "- Nothing saved or sent",
+    "",
+    "---",
+    "# Pro tier ($5/mo)",
+    "",
+    "- Saved decks",
+    "- Themes",
+    "- Speaker notes",
+    "- PDF export",
+    "- Shareable links",
+    "",
+    "---",
+    "# Who it's for",
+    "",
+    "- Weekly status updates",
+    "- Sprint demos",
+    "- Lunch talks",
+    "- Class notes",
+    "- Anyone who'd rather type than drag boxes",
+    "",
+    "---",
+    "# Try it now",
+    "",
+    "Edit this deck to try the syntax:",
+    "- Change this bullet",
+    "- Add another slide with `---`",
+    "- Make text **bold** or *italic*",
+    "",
+    "[Join early access](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro)"
   ].join("\n");
 
   function esc(s) {
@@ -54,6 +74,8 @@
     out = out.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     out = out.replace(/\*([^*]+)\*/g, "<em>$1</em>");
     out = out.replace(/`([^`]+)`/g, "<code>$1</code>");
+    // Handle links - only http and https
+    out = out.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
     return out;
   }
 
@@ -95,7 +117,7 @@
         html += "<li>" + inline(t.slice(2)) + "</li>";
       } else {
         if (inList) { html += "</ul>"; inList = false; }
-        html += "<p>" + inline(t) + "</p>";
+        html += "<p>" + inline(line) + "</p>";
       }
     }
     if (inList) html += "</ul>";
@@ -159,7 +181,7 @@
     }).join("\n");
     return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n" +
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-      "<title>Deck — MDecks</title>\n<style>\n" +
+      "<title>Deck — .mdeck</title>\n<style>\n" +
       "*{box-sizing:border-box}html,body{height:100%;margin:0}" +
       "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0f1115;color:#e8eaf0;display:flex;flex-direction:column}" +
       ".bar{height:5px;background:#1e222b}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#6ea8fe,#9d7bff);transition:width .18s ease}" +
@@ -171,6 +193,7 @@
       "ul{margin:0;padding-left:1.3em;font-size:clamp(1.1rem,2.5vw,1.5rem);line-height:1.7}" +
       "p{font-size:clamp(1.1rem,2.5vw,1.5rem);line-height:1.7;margin:.3em 0}" +
       "code{background:rgba(110,168,254,.12);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}" +
+      "a{color:#6ea8fe;text-decoration:none}a:hover{text-decoration:underline}" +
       ".empty{color:#9aa1af;font-style:italic}" +
       ".n{position:fixed;bottom:12px;right:16px;color:#9aa1af;font-size:.85rem;font-variant-numeric:tabular-nums}" +
       "\n</style>\n</head>\n<body>\n<div class=\"bar\"><div id=\"b\"></div></div>\n<main>\n" +
