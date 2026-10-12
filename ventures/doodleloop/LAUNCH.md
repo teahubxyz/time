@@ -26,7 +26,7 @@ The free page is the whole magic trick and stays free forever; nobody pays for w
 
 ## Primary call to action
 
-**Export GIF**: the header's one button, linking to the early-access form.
+**Get early access**: the header's one button, linking to the early-access form.
 
 ## Launch channels (drafts; nothing is sent)
 
