@@ -12,4 +12,7 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4   # node 22+ has node:sqlite, which the passkey test runs on
+        with:
+          node-version: 22
       - run: python3 .github/time/test_time.py

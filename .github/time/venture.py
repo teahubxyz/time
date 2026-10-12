@@ -458,9 +458,15 @@ already in your folder: load it with <script src="time.js"></script> before app.
 - Time.save(obj) -> a share link to this page that brings obj back, or null
 - Time.load() -> the object the current share link carried, or null (call it on load and open that creation if present)
 - Time.ai(prompt, {{system}}) -> text from a small language model, or null (rate limited; a few hundred calls a day)
+- Accounts with passkeys (no passwords, no email), only on the venture's own domain: Time.accounts is true when the page
+  can sign people in. Time.user() -> {{id, name}} or null; Time.signUp(name) and Time.signIn() -> the user or null;
+  Time.signOut(); Time.mine() -> the share links the signed-in person saved (Time.save records the owner by itself).
+  Use them for what the plan's paid tier promises, e.g. "Your saved decks": a small "Sign in" control in the header,
+  shown only when Time.accounts is true, never in front of the product and never before someone has used it.
 Every call can return null (offline, over the limit, and always during the checks, which run the page locally), so the
 product must work fully without them: use them for extras such as a "Share link" button that saves the user's creation,
-or an AI assist, and hide or disable that extra when the call gives null. The preloaded sample never depends on them.
+an AI assist, or saved work for signed-in people, and hide or disable that extra when the call gives null. The
+preloaded sample never depends on them, and nobody has to sign in to use the free product.
 """
 
 

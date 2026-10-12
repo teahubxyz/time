@@ -945,6 +945,7 @@ assert w38["backend"]["worker"] == "time-mdecks" and "Backend: https://mdecks.yo
 assert "https://mdecks.yolo.lol/api/" in W.files["ventures/mdecks/time.js"]
 brief = vt._build_on_pages.briefs[0]
 assert "This venture has a backend at https://mdecks.yolo.lol/" in brief and "Time.save(obj)" in brief and "never write it" in brief
+assert "Time.signIn()" in brief and "nobody has to sign in to use the free product" in brief
 reg38 = json.loads(W.files["ventures/ventures.json"])["ventures"][0]
 assert reg38["url"] == "https://mdecks.yolo.lol/" and reg38["pages"] == w38["pages"] and reg38["backend"]["rev"] == w38["backend"]["rev"]
 assert "https://mdecks.yolo.lol/" in W.files["ventures/index.html"] and "mdecks.yolo.lol" in W.files["ventures/mdecks/LAUNCH.md"]
@@ -1033,3 +1034,9 @@ if _sh.which("node"):
     print("ALL OK 35")
 else:
     print("skipped the worker test: no node")
+
+# passkey accounts in worker.js, against a real SQLite and a software authenticator (needs node:sqlite)
+if _sh.which("node"):
+    res = _sp.run(["node", str(Path(__file__).resolve().parent / "cloudflare" / "test_auth.mjs")], capture_output=True, text=True, timeout=120)
+    assert res.returncode == 0 and ("AUTH OK" in res.stdout or "AUTH SKIPPED" in res.stdout), res.stdout[-2000:] + res.stderr[-2000:]
+    print("ALL OK 36" if "AUTH OK" in res.stdout else "skipped the passkey test: no node:sqlite")

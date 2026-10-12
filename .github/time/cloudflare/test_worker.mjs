@@ -60,7 +60,7 @@ assert.equal(r.status, 201);
 const saved = await r.json();
 assert.match(saved.id, /^[a-f0-9]{12}$/);
 assert.equal(saved.link, `https://mdecks.yolo.lol/?s=${saved.id}`);
-assert.equal(env.DB.created, 2);
+assert.equal(env.DB.created, 7);  // every table, created once
 r = await call(`/api/items/${saved.id}`);
 assert.deepEqual(await r.json(), { slides: ["# Hi"] });
 assert.equal((await call("/api/items/doesnotexist1")).status, 404);
