@@ -68,7 +68,7 @@
    "backend": {
     "worker": "time-doodleloop",
     "db": "6179f2d5-8f2d-49ec-9aca-3d1e6bc3ddca",
-    "rev": "413b4d1e075e",
+    "rev": "e251d8e5321f",
     "api": "https://doodleloop.yolopreneur.lol/api/"
    }
   },
@@ -91,7 +91,7 @@
    "backend": {
     "worker": "time-dollhouse",
     "db": "d3fa15e7-4b61-4722-8263-0b9ff506b2c2",
-    "rev": "f138dab08065",
+    "rev": "b2749178ee56",
     "api": "https://dollhouse.yolopreneur.lol/api/"
    }
   }
