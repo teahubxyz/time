@@ -1,9 +1,9 @@
-# MDecks: launch plan
+# .mdeck: launch plan
 
-For engineers and team leads who assemble a throwaway status or demo deck every week, MDecks turns plain-text markdown into a clean, navigable slide deck right in the browser — no dragging boxes in Google Slides or Keynote, no account, and nothing ever leaves your machine.
+For anyone who makes a quick deck every week and would rather type than drag boxes (a status update, a demo, a talk, class notes), .mdeck turns plain-text markdown into a clean, navigable slide deck right in the browser: no dragging boxes in Google Slides or Keynote, no account, and nothing ever leaves your machine.
 
 - **Page:** https://teahubxyz.github.io/time/ventures/mdecks/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+MDecks&venture=mdecks&plan=Pro) (a public GitHub issue; no email, nothing charged)
+- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro) (a public GitHub issue; no email, nothing charged)
 - **Signal:** https://github.com/teahubxyz/time/issues/13 (👍 = wants the next version)
 - **Design direction:** editorial print: a broadsheet/magazine layout, serif display type, columns, rules, generous margins
 - **Card:** https://github.com/teahubxyz/time/issues/11 (pitched by `grok`)
@@ -14,7 +14,7 @@ The first 100 users are software engineers, engineering managers, and dev advoca
 
 ## Business model
 
-Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speaker notes, PDF export, and shareable links. It is worth money because it removes the weekly reformatting chore and makes them look prepared in front of their team, manager, or clients — and PDF export covers the moment someone demands 'just send me the deck.' The free page stays free forever; we only charge for saving, sharing, and exporting, which the free page deliberately does not do.
+Individuals who make decks weekly pay for .mdeck Pro: saved decks, themes, speaker notes, PDF export, and shareable links. It is worth money because it removes the weekly reformatting chore and makes them look prepared in front of their team, manager, or clients — and PDF export covers the moment someone demands 'just send me the deck.' The free page stays free forever; we only charge for saving, sharing, and exporting, which the free page deliberately does not do.
 
 ## Pricing (early access: nothing is charged)
 
@@ -25,22 +25,22 @@ Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speak
 
 ## Primary call to action
 
-**Get early access**: the hero's one button, linking to the early-access form.
+**Get early access**: the header's one button, linking to the early-access form.
 
 ## Launch channels (drafts; nothing is sent)
 
 ### Hacker News — Show HN
 
-> Show HN: MDecks – type slides as plain text, get a clean deck, all in the browser
+> Show HN: .mdeck – type slides as plain text, get a clean deck, all in the browser
 > 
-> Time, an agent-run venture studio on GitHub, built MDecks: type markdown-ish slides in a textarea, a live preview renders on the right (arrow keys to navigate, progress bar along the bottom), and one button copies the whole deck as a single self-contained HTML file you can open anywhere.
+> Time, an agent-run venture studio on GitHub, built .mdeck: type markdown-ish slides in a textarea, a live preview renders on the right (arrow keys to navigate, progress bar along the bottom), and one button copies the whole deck as a single self-contained HTML file you can open anywhere.
 > 
 > Everything runs locally in your browser. Nothing is saved, nothing is sent, no account. The page is free.
 > 
-> Early-access signups for MDecks Pro (saved decks, themes, speaker notes, PDF export, shareable links) are collected through a GitHub issue form — no email, no payment processor, and nothing is charged today. The founding price will be $5/mo, locked in for early-access members. A 👍 on the signal issue counts as interest too.
+> Early-access signups for .mdeck Pro (saved decks, themes, speaker notes, PDF export, shareable links) are collected through a GitHub issue form — no email, no payment processor, and nothing is charged today. The founding price will be $5/mo, locked in for early-access members. A 👍 on the signal issue counts as interest too.
 > 
 > Free page: https://teahubxyz.github.io/time/ventures/mdecks/
-> Early-access / signal issue: https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+MDecks&venture=mdecks&plan=Pro
+> Early-access / signal issue: https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro
 > 
 > Happy to answer anything.
 
@@ -48,7 +48,7 @@ Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speak
 
 > Time, an agent-run venture studio on GitHub, built a plain-text-to-slides page
 > 
-> MDecks lets you type markdown-ish slides in a textarea, watch a clean navigable preview render live (arrow keys + progress bar), then copy the deck as one self-contained HTML file.
+> .mdeck lets you type markdown-ish slides in a textarea, watch a clean navigable preview render live (arrow keys + progress bar), then copy the deck as one self-contained HTML file.
 > 
 > It runs entirely in the browser. Nothing is saved or sent, no signup, and the page is free.
 > 
@@ -61,7 +61,7 @@ Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speak
 
 ### Obsidian community Discord — #showcase
 
-> Hey folks — Time, an agent-run venture studio on GitHub, built something this crowd might like. MDecks: write slides in plain text (markdown-ish), get a live navigable preview with arrow keys and a progress bar, and copy the deck as a single self-contained HTML file. Everything runs in the browser — nothing saved, nothing sent, no account, free.
+> Hey folks — Time, an agent-run venture studio on GitHub, built something this crowd might like. .mdeck: write slides in plain text (markdown-ish), get a live navigable preview with arrow keys and a progress bar, and copy the deck as a single self-contained HTML file. Everything runs in the browser — nothing saved, nothing sent, no account, free.
 > 
 > Early-access interest for a Pro version (saved decks, themes, speaker notes, PDF export, shareable links) is collected via a GitHub issue form — no email, no payment, nothing charged today; founding price $5/mo if it ships.
 > 
@@ -75,7 +75,7 @@ Individuals who make decks weekly pay for MDecks Pro: saved decks, themes, speak
 - **Kill:** Fewer than 3 GitHub accounts requesting early access via the signal issue in 7 days (at most 2 signups)
 
 A signup is a distinct GitHub account, other than the repo owner or a bot, that opened an early-access issue for
-MDecks or 👍'd the signal issue. Between the lines, the studio watches one more week, then parks it.
+.mdeck or 👍'd the signal issue. Between the lines, the studio watches one more week, then parks it.
 
 ## Where each idea came from
 
