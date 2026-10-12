@@ -276,6 +276,7 @@
     pre.xml { max-height: 240px; }
     .hero-actions { flex-direction: column; align-items: flex-start; gap: 12px; }
     .btn { width: 100%; text-align: center; }
+    header.slim-header .btn { width: auto; }
   }
   
   /* Fix horizontal scrolling issue */
@@ -295,15 +296,22 @@
     padding: 16px 0 8px;
   }
   
-  /* Slim header fix */
-  .slim-header {
+  /* Slim header: one primary early-access button, before #try and #pricing */
+  header.slim-header {
     padding: 8px 0;
-    text-align: center;
+    text-align: left;
   }
-  .slim-header .kicker {
+  header.slim-header .wrap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+  header.slim-header .kicker {
     margin: 0;
     font-size: 11px;
   }
+  header.slim-header .btn { flex: none; }
   
   /* Move intro content below the product */
   .intro-content {
@@ -316,12 +324,12 @@
 </head>
 <body>
 
-<!-- Slim header moved to top -->
-<div class="slim-header">
+<header class="slim-header">
   <div class="wrap">
     <p class="kicker">Time · Venture · Docscope</p>
+    <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
   </div>
-</div>
+</header>
 
 <!-- Product section moved to start -->
 <section id="try">
@@ -374,7 +382,6 @@
     <h1>Doc<span>scope</span></h1>
     <p class="promise">Drop a .docx, .xlsx or .pptx and see everything still inside it — author names, tracked deletions, thumbnails, comments — dissected on this machine. Nothing is uploaded.</p>
     <div class="hero-actions">
-      <a class="btn primary" href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Docscope&amp;venture=docscope&amp;plan=Pro+%28founding%29">Get early access</a>
       <a class="try-link" href="#try">Inspect the sample ↑</a>
     </div>
     <p class="fineprint">Opens a public GitHub issue. No email, no payment. Nothing is charged today.</p>
