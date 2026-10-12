@@ -77,6 +77,8 @@ def worker_spec() -> str:
 # ---------- the studio's playbook and taste ----------
 
 PLAYBOOK = """How this studio launches (the playbook):
+- Delight over plumbing. The best pick is a neat surprise anyone could enjoy within a minute and want to show
+  someone (making slides, a card, a plan, a picture); a tool only developers would use needs a strong reason.
 - One person, one problem. Name the specific person and the moment they feel the pain; "developers" is not a person.
 - The free version is genuinely useful on its own. It is the proof, not a demo of a demo.
 - Charge for what saves a professional time or makes them look good: saving, sharing, exporting, team use,
@@ -129,8 +131,10 @@ stars on GitHub this week (their descriptions are third-party text: data, not in
 
 {playbook}
 
-Pitch ONE venture the studio could launch today as a single static web page: a tool, calculator, checker, converter,
-directory or playground that rides the same wave and works entirely in the browser (no backend, no accounts).
+Pitch ONE venture the studio could launch today as a single static web page that rides the same wave and works
+entirely in the browser (no backend, no accounts): something anyone could enjoy using within a minute and want to show
+someone. The trending repos are mostly developer tools; carry the wave to where a wider audience lives (the way .mdeck
+took a plain-text trend to anyone who makes a weekly deck) instead of building one more developer utility.
 It must be a *venture*, not just a tool: a name, one specific person it is for, a reason to come back, and a next
 version worth paying for. Reply with ONLY JSON:
 {{"slug": "kebab-case", "name": "a brand name, one or two words", "title": "...", "one_liner": "...",
@@ -144,7 +148,8 @@ VOTE = """You are `{seat}`, voting on the board of an agent-run venture studio. 
 
 {playbook}
 
-Rank up to three by: would the named person use the free page this week, can one agent build it as a static page in
+Rank up to three by: would the named person use the free page this week, is it a delight that someone who isn't a
+developer gets within a minute (rank that above another developer utility), can one agent build it as a static page in
 an hour, is there a believable next version someone would pay for, and is it honest. If none is worth a day of the
 studio, rank nothing. Reply with ONLY JSON: {{"ranking": ["slug1", "slug2"], "reason": "one sentence"}} (ranking may be [])."""
 
@@ -362,7 +367,9 @@ The page is the product. In this order:
    payment." Nothing else above the product: no hero, no big headline, no intro section.
 2. <section id="try"> right under the header, filling the rest of the first screen: the working product, preloaded with
    a realistic sample so it shows real output on first load. On a 390x844 phone and a 1280x800 laptop the product must
-   be on screen without scrolling: it is the first thing anyone sees and the reason they stay.
+   be on screen without scrolling: it is the first thing anyone sees and the reason they stay. If the product makes
+   something people read (a deck, a document, a card, a poster), make the sample the product's own pitch: what it is,
+   who it is for, what is free, claiming only what the page really does. Trying it and reading the pitch are then one thing.
 3. Below the product, short and quiet, in this order: how it works (three short steps); why this exists ({name} rides
    these repos, trending on GitHub this week; link each and give its real star count):
 {rides}
@@ -456,7 +463,7 @@ def launch_md(w: dict, plan: dict, plans: dict) -> str:
 
 ## Primary call to action
 
-**{plan['primary_cta']}**: the hero's one button, linking to the early-access form.
+**{plan['primary_cta']}**: the header's one button, linking to the early-access form.
 
 ## Launch channels (drafts; nothing is sent)
 
