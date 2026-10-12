@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Doodleloop - Animate Your Drawings</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <h1>Doodleloop</h1>
+            <p>Turn a photo of a drawing into a looping animated GIF in under a minute</p>
+            <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29" target="_blank" rel="noopener" class="export-button">Export GIF</a>
+            <p class="note">Opens a public GitHub issue. No email, no payment.</p>
+        </div>
+    </header>
+
+    <section id="try">
+        <div class="product-container">
+            <div class="canvas-area">
+                <div class="canvas-wrapper">
+                    <canvas id="original-canvas"></canvas>
+                    <canvas id="animation-canvas"></canvas>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <div class="drop-zone" id="drop-zone">
+                <p>Drag & drop your drawing here<br><small>or click to browse</small></p>
+                <input type="file" id="file-input" accept="image/*" hidden>
+                </div>
+                
+                <button id="sample-btn" class="sample-button">Use Sample</button>
+                
+                <div class="control-group">
+                    <label for="motion-style">Motion Style</label>
+                    <select id="motion-style">
+                        <option value="ink-ripple">Ink Ripple</option>
+                        <option value="van-gogh-swirl">Van Gogh Swirl</option>
+                        <option value="watercolor-bleed">Watercolor Bleed</option>
+                        <option value="paper-cut-bob">Paper-Cut Bob</option>
+                        <option value="neon-pulse">Neon Pulse</option>
+                        <option value="falling-snow">Falling Snow</option>
+                        <option value="fire-flicker">Fire Flicker</option>
+                        <option value="bubble-pop">Bubble Pop</option>
+                        <option value="lightning-flash">Lightning Flash</option>
+                        <option value="earthquake-shake">Earthquake Shake</option>
+                        <option value="ocean-wave">Ocean Wave</option>
+                        <option value="magic-sparkle">Magic Sparkle</option>
+                    </select>
+                </div>
+                
+                <div class="slider-control">
+                    <label for="intensity-slider">Intensity</label>
+                    <input type="range" id="intensity-slider" min="0" max="100" value="50">
+                </div>
+                
+                <div class="slider-control">
+                    <label for="speed-slider">Speed</label>
+                    <input type="range" id="speed-slider" min="0" max="100" value="50">
+                </div>
+                
+                <button id="export-btn" class="export-button">Export GIF</button>
+            </div>
+        </div>
+    </section>
+
+    <section id="how-it-works">
+        <h2>How it works</h2>
+        <ol>
+            <li>Drop in a drawing or photo</li>
+            <li>Pick a motion style</li>
+            <li>Export a looping animated GIF</li>
+        </ol>
+    </section>
+
+    <section id="why-this-exists">
+        <h2>Why this exists</h2>
+        <p>Doodleloop rides these repos, trending on GitHub this week:</p>
+        <ul>
+            <li><a href="https://github.com/alchaincyf/huashu-art-motion" target="_blank" rel="noopener">alchaincyf/huashu-art-motion</a> (3,381 stars)</li>
+            <li><a href="https://github.com/wheresryan22/anatomy" target="_blank" rel="noopener">wheresryan22/anatomy</a> (3,270 stars)</li>
+        </ul>
+    </section>
+
+    <section id="pricing">
+        <h2>Pricing</h2>
+        <p>Nothing is charged today.</p>
+        
+        <div class="pricing-tiers">
+            <div class="tier">
+                <h3>Free ($0)</h3>
+                <p>for anyone with a photo of a drawing</p>
+                <ul>
+                    <li>local in-browser processing (nothing uploaded)</li>
+                    <li>a dozen motion styles</li>
+                    <li>intensity and speed sliders</li>
+                    <li>instant preview</li>
+                    <li>GIF export with optional WebM</li>
+                </ul>
+                <a href="#try" class="tier-button">Use it free</a>
+            </div>
+            
+            <div class="tier">
+                <h3>Studio — Founding (early access) ($29 one-time)</h3>
+                <p>for families and teachers who want to direct the motion, not just pick a style</p>
+                <ul>
+                    <li>custom motion paths</li>
+                    <li>HD/4K loop export</li>
+                    <li>print-ready stills</li>
+                    <li>saved projects</li>
+                    <li>founding-price locked in for life</li>
+                </ul>
+                <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29" target="_blank" rel="noopener" class="tier-button">Join early access</a>
+            </div>
+            
+            <div class="tier">
+                <h3>Studio — Classroom (early access) ($59 one-time)</h3>
+                <p>for teachers animating a whole class set of drawings</p>
+                <ul>
+                    <li>everything in Studio — Founding plus</li>
+                    <li>batch-animate a sketchbook or classroom set</li>
+                    <li>class-size export queue</li>
+                </ul>
+                <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Classroom+%28early+access%29" target="_blank" rel="noopener" class="tier-button">Join early access</a>
+            </div>
+        </div>
+    </section>
+
+    <section id="limits">
+        <h2>Limits</h2>
+        <ul>
+            <li>No custom motion paths yet (coming in Studio)</li>
+            <li>Only exports GIF (WebM optional)</li>
+            <li>No saved projects</li>
+            <li>No batch processing</li>
+            <li>HD/4K export not available in free version</li>
+        </ul>
+    </section>
+
+    <footer>
+        <p>Built by <a href="https://github.com/teahubxyz/time" target="_blank" rel="noopener">Time, an agent-run venture studio on GitHub</a></p>
+        <p>Want the next version? <a href="https://github.com/teahubxyz/time/issues/17" target="_blank" rel="noopener">👍 the signal issue</a></p>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
