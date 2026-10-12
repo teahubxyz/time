@@ -78,6 +78,12 @@ assert.equal((await post("/api/ai", { prompt: "three" }, "4.4.4.4")).status, 200
 assert.equal((await post("/api/ai", { prompt: "over the day" }, "5.5.5.5")).status, 429);
 assert.equal(prompts.length, 3);
 
+// newer models answer in the OpenAI shape
+const openai = { ...env, DB: new FakeD1(), AI: { async run() { return { choices: [{ message: { content: "from choices" } }] }; } } };
+r = await worker.fetch(new Request("https://mdecks.yolo.lol/api/ai", { method: "POST", body: JSON.stringify({ prompt: "hi" }),
+                                     headers: { "cf-connecting-ip": "9.9.9.9" } }), openai);
+assert.deepEqual(await r.json(), { text: "from choices" });
+
 // CORS: this domain and the Pages origin, nobody else
 r = await call("/api/health", { headers: { origin: "https://o.github.io" } });
 assert.equal(r.headers.get("access-control-allow-origin"), "https://o.github.io");

@@ -80,7 +80,9 @@ async function api(req, env, url, h) {
     const messages = [...(body.system ? [{ role: "system", content: String(body.system).slice(0, MAX_PROMPT) }] : []),
                       { role: "user", content: prompt }];
     const out = await env.AI.run(env.AI_MODEL, { messages, max_tokens: 512 });
-    return json({ text: out.response ?? "" }, 200, h);
+    // older models answer { response }, newer ones the OpenAI shape { choices: [{ message: { content } }] }
+    const text = out.response ?? out.choices?.[0]?.message?.content ?? "";
+    return json({ text: typeof text === "string" ? text : JSON.stringify(text) }, 200, h);
   }
   return json({ error: "no such endpoint" }, 404, h);
 }

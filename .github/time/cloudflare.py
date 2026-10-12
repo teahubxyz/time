@@ -29,7 +29,7 @@ HERE = Path(__file__).resolve().parent
 WORKER = HERE / "cloudflare" / "worker.js"
 CLIENT = HERE / "cloudflare" / "time.js"
 COMPAT = "2026-09-01"
-AI_MODEL = "@cf/meta/llama-3.1-8b-instruct"
+AI_MODEL = "@cf/google/gemma-4-26b-a4b-it"
 
 
 def env(name: str, default: str = "") -> str:
