@@ -22,7 +22,7 @@
    "backend": {
     "worker": "time-mdecks",
     "db": "423fe9c1-97ea-49ee-b981-bd20be5651aa",
-    "rev": "ce45b9453edd",
+    "rev": "3a8a7f1d0193",
     "api": "https://mdecks.yolopreneur.lol/api/"
    }
   },
@@ -45,7 +45,7 @@
    "backend": {
     "worker": "time-docscope",
     "db": "d433b108-0af2-4017-8db5-c06a1298fca7",
-    "rev": "c4d8e75ba405",
+    "rev": "663bb65a8017",
     "api": "https://docscope.yolopreneur.lol/api/"
    }
   },
