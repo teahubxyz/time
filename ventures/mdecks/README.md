@@ -1,4 +1,4 @@
-# MDecks
+# .mdeck
 
 Type slides in plain text and instantly preview a clean presentation layout — right in the browser.
 
@@ -6,7 +6,7 @@ Type slides in plain text and instantly preview a clean presentation layout — 
 
 ## Who it is for
 
-People who make a quick throwaway deck every week — sprint demos, status updates, lunch talks — and would rather type than drag boxes in Google Slides or Keynote. If you already write everything else in Markdown, MDecks lets you write your deck the same way.
+People who make a quick throwaway deck every week — sprint demos, status updates, lunch talks — and would rather type than drag boxes in Google Slides or Keynote. If you already write everything else in Markdown, .mdeck lets you write your deck the same way.
 
 ## How to use it
 
@@ -32,9 +32,9 @@ Everything runs in the page. Nothing is saved, nothing is sent anywhere, no acco
 - No speaker notes, presenter view, or PDF export (that is the Pro idea, if enough people ask for it).
 - The copy button needs a modern browser with clipboard access.
 
-## MDecks Pro (not built yet)
+## .mdeck Pro (not built yet)
 
-The paid idea: saved decks, themes, speaker notes, PDF export, and shareable links — still plain text in. Early access is collected via a [public GitHub issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+MDecks&venture=mdecks&plan=Pro); no email, no payment, nothing is charged today. A 👍 on the [signal issue](https://github.com/teahubxyz/time/issues/13) counts as interest too.
+The paid idea: saved decks, themes, speaker notes, PDF export, and shareable links — still plain text in. Early access is collected via a [public GitHub issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro); no email, no payment, nothing is charged today. A 👍 on the [signal issue](https://github.com/teahubxyz/time/issues/13) counts as interest too.
 
 ## Context
 
