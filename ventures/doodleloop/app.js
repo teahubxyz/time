@@ -1,6 +1,6 @@
 // Doodleloop — local canvas animation. Sample and user photos share one path.
 // GIF bytes are encoded here (LZW). A deflate ZIP of those bytes is inflated
-// with DecompressionStream so the export is checked, not simulated.
+// with DecompressionStream before the file is offered for download.
 
 (function () {
     "use strict";
@@ -539,7 +539,7 @@
         var btn = document.getElementById("export-btn");
         var prev = btn ? btn.textContent : "";
         if (btn) btn.textContent = "Rendering GIF…";
-        this.setStatus("Rendering a real GIF from the current drawing and style…");
+        this.setStatus("Rendering a GIF from the current drawing and style…");
         var count = 12;
         var duration = 1.6;
         var delay = Math.round((duration / count) * 100);
@@ -676,10 +676,9 @@
         return bytes([0x21, 0xF9, 0x04, 0x08, delayCs & 255, (delayCs >> 8) & 255, 0x00, 0x00]);
     }
     function paletteSizeFlag(n) {
-        var size = 2, flag = 0;
+        var flag = 0;
         while ((1 << (flag + 1)) < n) flag++;
-        size = 1 << (flag + 1);
-        return { flag: flag, size: size };
+        return { flag: flag, size: 1 << (flag + 1) };
     }
     function imageDescriptor(w, h, colors) {
         var pf = paletteSizeFlag(colors);
@@ -788,7 +787,7 @@
         var outBits = [];
         function emit(code) { outBits.push(code, codeSize); }
         emit(clear);
-        var wKey = index[0];
+        var wKey = String(index[0]);
         var i, k, wk, prefix;
         for (i = 1; i < index.length; i++) {
             k = index[i];
