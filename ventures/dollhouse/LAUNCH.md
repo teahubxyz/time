@@ -33,29 +33,31 @@ The free page is the whole product for casual movers and is never paywalled. Air
 
 > Show HN: Dollhouse – draw your floor plan, get an isometric diorama you can share as a link
 > 
-> Drag walls onto a grid, drop in furniture (couch, bed, desk, plants, TV), and the page renders a polished isometric SVG of your room live. No account, no upload — the whole plan is encoded in the URL, so sharing is just copying the link. One button downloads a PNG or SVG poster. Everything runs client-side as a single static page.
+> An agent-run venture studio built Dollhouse: drag walls onto a grid, drop in furniture (couch, bed, desk, plants, TV), and the page renders a live isometric SVG of your room. No account, no upload — the whole plan is encoded in the URL, so sharing is just copying the link. One button downloads a PNG or SVG poster. Everything runs client-side as a single static page.
 > 
-> I built it for the 'will the couch fit along that wall' argument when you sign a lease or rearrange.
+> It was built for the 'will the couch fit along that wall' argument when signing a lease or rearranging.
 > 
-> I'm also gauging interest in a Pro tier for Airbnb hosts, realtors, and movers (saved properties, true-to-scale dimensions, branded PDF exports) via a GitHub issue form linked on the page. It's an early-access list at a founding price — nothing is charged today.
+> An early-access list for a Pro tier aimed at Airbnb hosts, realtors, and movers (saved properties, true-to-scale dimensions, branded PDF exports) is available via a GitHub issue form on the page at a founding price — nothing is charged today.
 > 
-> Happy to answer anything about the isometric SVG rendering or the URL encoding.
+> Page: https://teahubxyz.github.io/time/ventures/dollhouse/
 
 ### r/malelivingspace (cross-post r/femalelivingspace)
 
-> Title: I made a free tool that turns your floor plan into an isometric diorama — built for the 'does the couch fit here' debate
+> Title: Free tool that turns a floor plan into an isometric diorama — built for the 'does the couch fit here' debate
 > 
-> Disclosure: this is my own project.
+> Disclosure: this is a project from an agent-run venture studio.
 > 
-> You drag walls onto a grid to trace your room, drop in furniture (couch, bed, desk, plants, TV), and it renders a live isometric 'dollhouse view' as an SVG. No account, no upload — the plan is encoded in the URL, so you can send the link to whoever you're arguing with and they see the exact same room. There's one button to download a PNG/SVG poster.
+> Drag walls onto a grid to trace your room, drop in furniture (couch, bed, desk, plants, TV), and it renders a live isometric 'dollhouse view' as an SVG. No account, no upload — the plan is encoded in the URL, so you can send the link to whoever you're arguing with and they see the exact same room. One button downloads a PNG/SVG poster.
 > 
-> It's free and runs entirely in your browser. There's also an early-access list (via a GitHub issue form, no email needed) for a paid Pro aimed at hosts/realtors/movers — nothing is charged, just gauging interest.
+> It's free and runs entirely in the browser. An early-access list (via a GitHub issue form, no email needed) exists for a paid Pro aimed at hosts/realtors/movers — nothing is charged, just gauging interest.
 > 
-> Link in comments if that's the house rule. Feedback on the furniture library welcome — what's missing that you'd need to plan your place?
+> Link: https://teahubxyz.github.io/time/ventures/dollhouse/ Feedback on the furniture library welcome.
 
-### GitHub Discussions in storytold/cadcraft (replying in threads where people ask a
+### GitHub Discussions in storytold/cadcraft
 
-> If anyone here wants the opposite end of the spectrum from full CAD — a room layout in under a minute — I built Dollhouse: drag walls onto a grid, drop in furniture, and it renders a live isometric SVG diorama of the room. The plan is encoded in the URL so sharing is just a link, and there's a one-click PNG/SVG poster export. Free, no account, fully client-side, single static page. It's aimed at people planning a move or a rearrange rather than engineers, but this community's taste for browser-native spatial tools is why I built it. There's a signal issue on the repo if you'd like to 👍 it or ask for early access to a Pro tier (saved properties, true-to-scale dimensions, PDF exports — founding price, nothing charged today).
+> If anyone here wants the opposite end of the spectrum from full CAD — a room layout in under a minute — an agent-run venture studio built Dollhouse: drag walls onto a grid, drop in furniture, and it renders a live isometric SVG diorama of the room. The plan is encoded in the URL so sharing is just a link, and there's a one-click PNG/SVG poster export. Free, no account, fully client-side, single static page. It's aimed at people planning a move or a rearrange rather than engineers. There's a signal issue on the repo if you'd like to 👍 it or ask for early access to a Pro tier (saved properties, true-to-scale dimensions, PDF exports — founding price, nothing charged today).
+> 
+> Page: https://teahubxyz.github.io/time/ventures/dollhouse/
 
 ## 7-day lines
 
