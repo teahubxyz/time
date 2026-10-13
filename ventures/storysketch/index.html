@@ -213,6 +213,47 @@
       background-color: var(--primary-dark);
     }
 
+    /* Panel editor styles */
+    .panel-editor {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+
+    .panel-card {
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      background-color: var(--panel-bg);
+    }
+
+    .panel-card h4 {
+      margin-top: 0;
+      margin-bottom: 0.5rem;
+    }
+
+    .panel-textarea {
+      width: 100%;
+      min-height: 80px;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 0.25rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      resize: vertical;
+    }
+
+    .scene-select {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid var(--border);
+      border-radius: 0.25rem;
+      font-family: inherit;
+      font-size: 0.875rem;
+      margin-top: 0.5rem;
+    }
+
     .how-it-works, .why-exists, #pricing, .limits {
       max-width: 1200px;
       margin: 3rem auto;
@@ -328,6 +369,10 @@
       .section-header h2 {
         font-size: 1.5rem;
       }
+
+      .panel-editor {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -353,9 +398,87 @@
         <h2 class="section-title">Your Story</h2>
         <textarea id="story-input" placeholder="Type or paste your bedtime story here (up to 150 words)..."></textarea>
         <div class="word-count"><span id="word-count">0</span>/150 words</div>
+        
+        <!-- Panel Editor for editing individual panels -->
+        <div class="panel-editor" id="panel-editor" style="display: none;">
+          <div class="panel-card">
+            <h4>Panel 1</h4>
+            <textarea class="panel-textarea" id="panel-1-text" placeholder="Panel 1 text..."></textarea>
+            <select class="scene-select" id="panel-1-scene">
+              <option value="empty">Empty</option>
+              <option value="forest">Forest</option>
+              <option value="house">House</option>
+              <option value="pond">Pond</option>
+              <option value="rabbit">Rabbit</option>
+              <option value="turtle">Turtle</option>
+              <option value="sun">Sun</option>
+              <option value="moon">Moon</option>
+              <option value="generic1">Generic 1</option>
+              <option value="generic2">Generic 2</option>
+              <option value="generic3">Generic 3</option>
+              <option value="generic4">Generic 4</option>
+            </select>
+          </div>
+          <div class="panel-card">
+            <h4>Panel 2</h4>
+            <textarea class="panel-textarea" id="panel-2-text" placeholder="Panel 2 text..."></textarea>
+            <select class="scene-select" id="panel-2-scene">
+              <option value="empty">Empty</option>
+              <option value="forest">Forest</option>
+              <option value="house">House</option>
+              <option value="pond">Pond</option>
+              <option value="rabbit">Rabbit</option>
+              <option value="turtle">Turtle</option>
+              <option value="sun">Sun</option>
+              <option value="moon">Moon</option>
+              <option value="generic1">Generic 1</option>
+              <option value="generic2">Generic 2</option>
+              <option value="generic3">Generic 3</option>
+              <option value="generic4">Generic 4</option>
+            </select>
+          </div>
+          <div class="panel-card">
+            <h4>Panel 3</h4>
+            <textarea class="panel-textarea" id="panel-3-text" placeholder="Panel 3 text..."></textarea>
+            <select class="scene-select" id="panel-3-scene">
+              <option value="empty">Empty</option>
+              <option value="forest">Forest</option>
+              <option value="house">House</option>
+              <option value="pond">Pond</option>
+              <option value="rabbit">Rabbit</option>
+              <option value="turtle">Turtle</option>
+              <option value="sun">Sun</option>
+              <option value="moon">Moon</option>
+              <option value="generic1">Generic 1</option>
+              <option value="generic2">Generic 2</option>
+              <option value="generic3">Generic 3</option>
+              <option value="generic4">Generic 4</option>
+            </select>
+          </div>
+          <div class="panel-card">
+            <h4>Panel 4</h4>
+            <textarea class="panel-textarea" id="panel-4-text" placeholder="Panel 4 text..."></textarea>
+            <select class="scene-select" id="panel-4-scene">
+              <option value="empty">Empty</option>
+              <option value="forest">Forest</option>
+              <option value="house">House</option>
+              <option value="pond">Pond</option>
+              <option value="rabbit">Rabbit</option>
+              <option value="turtle">Turtle</option>
+              <option value="sun">Sun</option>
+              <option value="moon">Moon</option>
+              <option value="generic1">Generic 1</option>
+              <option value="generic2">Generic 2</option>
+              <option value="generic3">Generic 3</option>
+              <option value="generic4">Generic 4</option>
+            </select>
+          </div>
+        </div>
+        
         <div class="actions">
           <button id="copy-button" class="action-button primary">Copy Comic</button>
           <button id="export-image-btn" class="action-button">Export as PNG</button>
+          <button id="copy-embed-btn" class="action-button">Copy Embed Code</button>
         </div>
       </div>
       
