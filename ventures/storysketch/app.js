@@ -6,7 +6,26 @@ class StorySketch {
     this.previewArea = document.getElementById('preview-area');
     this.copyButton = document.getElementById('copy-button');
     this.exportImageBtn = document.getElementById('export-image-btn');
+    this.copyEmbedBtn = document.getElementById('copy-embed-btn');
+    this.panelEditor = document.getElementById('panel-editor');
     this.sampleStory = "Once upon a time, a little rabbit named Luna loved to explore. One sunny morning, she hopped into the forest and found a sparkling pond. As she gazed at her reflection, a wise old turtle appeared. He smiled and said, 'The greatest adventures begin with a single hop.' Luna smiled back and hopped home, feeling brave.";
+    
+    // Panel editor elements
+    this.panelTextareas = [
+      document.getElementById('panel-1-text'),
+      document.getElementById('panel-2-text'),
+      document.getElementById('panel-3-text'),
+      document.getElementById('panel-4-text')
+    ];
+    
+    this.sceneSelects = [
+      document.getElementById('panel-1-scene'),
+      document.getElementById('panel-2-scene'),
+      document.getElementById('panel-3-scene'),
+      document.getElementById('panel-4-scene')
+    ];
+    
+    this.currentPanels = [];
     
     this.init();
   }
@@ -44,6 +63,25 @@ class StorySketch {
         this.exportAsImage();
       });
     }
+    
+    if (this.copyEmbedBtn) {
+      this.copyEmbedBtn.addEventListener('click', () => {
+        this.copyEmbedCode();
+      });
+    }
+
+    // Panel editor event listeners
+    this.panelTextareas.forEach((textarea, index) => {
+      textarea.addEventListener('input', () => {
+        this.updatePanelFromEditor(index);
+      });
+    });
+    
+    this.sceneSelects.forEach((select, index) => {
+      select.addEventListener('change', () => {
+        this.updatePanelFromEditor(index);
+      });
+    });
   }
 
   debounceTimer = null;
@@ -63,10 +101,13 @@ class StorySketch {
     }
 
     // Split into 4 panels
-    const panels = this.splitIntoPanels(storyText);
+    this.currentPanels = this.splitIntoPanels(storyText);
+    
+    // Update panel editor
+    this.updatePanelEditor();
     
     // Generate SVG for each panel
-    this.renderComic(panels);
+    this.renderComic(this.currentPanels);
   }
 
   splitIntoPanels(text) {
@@ -259,6 +300,35 @@ class StorySketch {
       .replace(/'/g, "&#039;");
   }
 
+  updatePanelEditor() {
+    // Show the panel editor
+    this.panelEditor.style.display = 'grid';
+    
+    // Update panel editor fields with current panel data
+    this.currentPanels.forEach((panel, index) => {
+      if (this.panelTextareas[index]) {
+        this.panelTextareas[index].value = panel.text;
+      }
+      if (this.sceneSelects[index]) {
+        this.sceneSelects[index].value = panel.scene;
+      }
+    });
+  }
+
+  updatePanelFromEditor(panelIndex) {
+    // Update the panel data from editor inputs
+    const newText = this.panelTextareas[panelIndex].value;
+    const newScene = this.sceneSelects[panelIndex].value;
+    
+    this.currentPanels[panelIndex] = {
+      text: newText,
+      scene: newScene
+    };
+    
+    // Re-render the comic with updated panels
+    this.renderComic(this.currentPanels);
+  }
+
   copyComic() {
     const svgElement = this.previewArea.querySelector('svg');
     if (!svgElement) return;
@@ -286,6 +356,33 @@ class StorySketch {
       document.execCommand("copy");
       document.body.removeChild(textArea);
       this.showNotification("Comic copied to clipboard!");
+    }
+  }
+
+  copyEmbedCode() {
+    const svgElement = this.previewArea.querySelector('svg');
+    if (!svgElement) return;
+
+    const svgData = new XMLSerializer().serializeToString(svgElement);
+    const encodedSvg = encodeURIComponent(svgData);
+    const embedCode = `<img src="data:image/svg+xml,${encodedSvg}" alt="StorySketch Comic" />`;
+    
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(embedCode).then(() => {
+        this.showNotification("Embed code copied to clipboard!");
+      }).catch(err => {
+        console.error('Failed to copy: ', err);
+        this.showNotification("Failed to copy embed code");
+      });
+    } else {
+      // Fallback for older browsers
+      const textArea = document.createElement("textarea");
+      textArea.value = embedCode;
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      this.showNotification("Embed code copied to clipboard!");
     }
   }
 
