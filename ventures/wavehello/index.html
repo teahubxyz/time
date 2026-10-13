@@ -131,8 +131,16 @@
             background-color: #f1f5f9;
         }
 
+        .file-input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip: rect(0 0 0 0);
+        }
+
         .visualization {
-            margin: 2rem 0;
+            margin: 2rem 0 0.5rem;
             min-height: 200px;
             display: flex;
             align-items: center;
@@ -142,10 +150,23 @@
         .waveform {
             width: 100%;
             height: 200px;
-            background-color: #f1f5f9;
+            background-color: transparent;
             border-radius: 0.5rem;
             position: relative;
             overflow: hidden;
+        }
+
+        .waveform canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+        }
+
+        .wave-readout {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            min-height: 1.2em;
+            margin-bottom: 1rem;
         }
 
         .controls {
@@ -324,15 +345,6 @@
                 padding: 1rem;
             }
         }
-        
-        .loading {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            height: 100%;
-            font-style: italic;
-            color: var(--text-secondary);
-        }
     </style>
 </head>
 <body>
@@ -355,17 +367,17 @@
             <h2>Create Your Soundwave Art</h2>
             <p>Record a message or drop an audio file to generate beautiful soundwave art</p>
             
-            <button class="record-button" id="recordButton">●</button>
+            <button class="record-button" id="recordButton" type="button" aria-label="Record">●</button>
             <div class="drop-area" id="dropArea">
                 <p>Or drop an audio file here</p>
                 <p class="note">(MP3, WAV, or any audio format)</p>
+                <input class="file-input" id="fileInput" type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm" aria-label="Choose an audio file">
             </div>
             
             <div class="visualization">
-                <div class="waveform" id="waveform">
-                    <div class="loading">Loading sample audio...</div>
-                </div>
+                <div class="waveform" id="waveform">Decoding the sample voicemail…</div>
             </div>
+            <p class="wave-readout" id="waveReadout"></p>
             
             <div class="controls">
                 <div class="control-group">
@@ -388,7 +400,7 @@
                 </div>
             </div>
             
-            <button class="download-button" id="downloadButton">Download PNG</button>
+            <button class="download-button" id="downloadButton" type="button">Download PNG</button>
         </div>
     </section>
 
