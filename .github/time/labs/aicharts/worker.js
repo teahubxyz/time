@@ -162,7 +162,7 @@ export function normalizeSpec(spec) {
 // Plain prompt first: the prompt's grammar and example steer small models better than a constrained decoder does (a
 // one-size schema for every step made them drop agg and by). JSON mode only when no object came back at all.
 async function model(env, messages) {
-  const input = { messages, max_tokens: 700, temperature: 0.1 };
+  const input = { messages, max_tokens: 900, temperature: 0.1 };
   const text = (out) => out?.response ?? out?.choices?.[0]?.message?.content ?? "";
   let raw = text(await env.AI.run(env.AI_MODEL, input));
   if (!firstObject(raw)) {
