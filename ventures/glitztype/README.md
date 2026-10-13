@@ -16,10 +16,11 @@ Office managers, teachers and party hosts like Nadia who make banners, cards and
 2. Choose from a variety of retro WordArt styles
 3. Adjust font, bend and other settings
 4. Download your creation as a transparent PNG instantly
+5. Copy the share link — it encodes the full piece (text, style, font, bend and colors) in the URL itself, so a friend opens the exact same thing with nothing uploaded
 
 ## Honest limits
 
-- No account required: You can't save your creations online (but you can share via URL)
+- No account required: You can't save your creations online (but a shareable encoded URL carries the full piece locally, with no server)
 - Browser only: Works only in modern browsers with canvas support
 - Local processing: No server-side rendering or advanced effects
 - Basic fonts: Only system fonts are available
