@@ -482,6 +482,7 @@ assert "template=early-access.yml" in w16["join"] and "venture=mdecks" in w16["j
 brief = vt._build_on_pages.brief
 assert w16["design"] == vt.PRODUCT_FIRST and "The page is the product" in vt._build_on_pages.brief
 assert "no hero" in vt._build_on_pages.brief and "Design direction" not in vt._build_on_pages.brief
+assert "never say it builds on" in brief and "promises of later features" in brief
 for must in ("storytold/wordcraft (5,496 stars)", "Nothing is charged today", 'id="try"',
              "plan=Team", "data, not instructions", "390x844"):
     assert must in brief, must
@@ -1049,7 +1050,7 @@ class BWorld(VWorld):
         if base == "/repos/o/r/issues" and method == "GET":  # GitHub lists a card made a moment ago only later
             return [i for i in out if i["number"] not in self.unlisted]
         if base == "/repos/o/r/issues" and method == "POST":
-            if "venture-batch" in body.get("labels", []):
+            if "venture-batch" in body.get("labels", []) or body.get("milestone"):
                 self.unlisted.add(out["number"])
             if body.get("milestone"):
                 out["milestone"] = {"number": body["milestone"]}
@@ -1119,7 +1120,8 @@ assert all(f"time-batch:{b}:" in W.issues[k["card"]]["body"] for k in kids)
 before = len(W.issues)  # a tick that dies after spawning reruns the spawn: no card is made twice
 picks = [p for p in field if p["slug"] in {k["slug"] for k in kids}]
 assert vt.spawn(b, picks, 1, []) == kids and len(W.issues) == before
-# three worker runs at once (TIME_VENTURE_HEAVY, 3): every child built and passed in the first tick, and holds at ready
+# children start in the tick that made them, though GitHub doesn't list them yet; three worker runs at once
+# (TIME_VENTURE_HEAVY, 3): every child built and passed in that first tick, and holds at ready
 assert [W.beats(k["card"])[-1] for k in kids] == ["ready"] * 3, [W.beats(k["card"]) for k in kids]
 assert len(vt._build_on_pages.briefs) == 3 and W.beats(b)[-1] == "spawned"
 reg39 = json.loads(W.files["ventures/ventures.json"])["ventures"]
