@@ -17,6 +17,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let mediaRecorder = null;
     let audioChunks = [];
     
+    // Check for Time library features
+    checkTimeFeatures();
+    
     // Initialize with sample data
     initializeSample();
     
@@ -30,6 +33,24 @@ document.addEventListener('DOMContentLoaded', () => {
     downloadButton.addEventListener('click', downloadPNG);
     
     // Functions
+    function checkTimeFeatures() {
+        // Check if Time.accounts is available and show sign-in option if so
+        if (typeof Time !== 'undefined' && Time.accounts) {
+            // In a full implementation, we would add sign-in UI here
+            console.log('Time accounts feature is available');
+        }
+        
+        // Check for shared data
+        if (typeof Time !== 'undefined') {
+            const sharedData = Time.load();
+            if (sharedData) {
+                // Load shared creation if present
+                console.log('Loading shared data:', sharedData);
+                // In a full implementation, we would load the shared creation here
+            }
+        }
+    }
+    
     function initializeSample() {
         // Create a sample visualization on load
         createSampleVisualization();
@@ -228,6 +249,23 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
             visualizeAudioBuffer(audioBuffer);
+            
+            // Save creation using Time library if available
+            if (typeof Time !== 'undefined') {
+                const creationData = {
+                    style: styleSelect.value,
+                    color: colorPicker.value,
+                    caption: captionInput.value,
+                    // In a full implementation, we would include audio data or a reference
+                };
+                
+                // Try to save the creation
+                const shareLink = Time.save(creationData);
+                if (shareLink) {
+                    console.log('Creation saved with share link:', shareLink);
+                    // In a full implementation, we would show the share link to the user
+                }
+            }
         } catch (error) {
             console.error('Error decoding audio data:', error);
             alert('Could not decode the audio data. Please try another file.');
