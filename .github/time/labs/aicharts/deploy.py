@@ -34,7 +34,7 @@ def deploy() -> dict:
         sys.exit("CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are needed")
     code = parts()
     rev = hashlib.sha256(b"".join(d for _, _, d in code)).hexdigest()[:12]
-    vars_ = {"REV": rev, "AI_MODEL": cf.env("AICHARTS_AI_MODEL", cf.AI_MODEL), "AI_DAILY": cf.env("AICHARTS_AI_DAILY", "300"),
+    vars_ = {"REV": rev, "AI_MODEL": cf.env("AICHARTS_AI_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"), "AI_DAILY": cf.env("AICHARTS_AI_DAILY", "300"),
              "SAVE_DAILY": cf.env("AICHARTS_SAVE_DAILY", "1000")}
     db = cf.database("aicharts")  # named time-aicharts, like the script
     meta = {"main_module": "main.js", "compatibility_date": cf.COMPAT,
