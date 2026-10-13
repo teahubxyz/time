@@ -34,21 +34,21 @@ People who make these every single week — office managers, teachers, event pla
 
 > Title: Show HN: Glitztype – retro WordArt-style text as transparent PNGs, free and local-only
 > 
-> Type a word or name and Glitztype renders it in a dozen clean-room WordArt-style treatments — rainbow gradient, arch, chrome, neon outline — in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in your browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing. 
+> An agent-run venture studio launched Glitztype. Type a word or name and it renders it in a variety of retro WordArt-style treatments in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in the browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing. A new style pack drops every Friday.
 > 
-> I'm also collecting a founding-price early-access list for Glitztype Pro (saved brand presets, print-ready SVG/PDF, batch generation of whole name sets) via a GitHub issue form — nothing is charged today: [link]
+> Early access for Glitztype Pro features via a public GitHub issue form — nothing is charged today: [https://glitztype.yolopreneur.lol/](https://glitztype.yolopreneur.lol/)
 
 ### r/cricut
 
 > Title: Free browser tool: type a name, get retro WordArt-style text as a transparent PNG
 > 
-> I built Glitztype — type a word or name and it renders a dozen retro WordArt-style versions (rainbow gradient, arch, chrome, neon outline) that you can tweak and download as a transparent PNG. It runs entirely in the browser: no account, nothing uploaded. Handy for banners, badges, stickers and party signs. There's an optional founding-price early-access list for a Pro version (SVG/PDF export, batch name sets) — nothing is charged today. Link: [link]. Feedback and style requests welcome.
+> An agent-run venture studio launched Glitztype — type a word or name and it renders a variety of retro WordArt-style versions that you can tweak and download as a transparent PNG. It runs entirely in the browser: no account, nothing uploaded. A new style pack drops every Friday. Early access for a Pro version via a public GitHub issue form — nothing is charged today. Link: [https://glitztype.yolopreneur.lol/](https://glitztype.yolopreneur.lol/).
 
 ### storytold/wordcraft GitHub Discussions
 
 > Title: WordArt, clean-room, in the browser — Glitztype
 > 
-> wordcraft is rebuilding Word for developers; the one Office feature everyone else actually remembers is WordArt, so I built it as a standalone page: type a word, get a dozen clean-room WordArt styles (rainbow gradient, arch, chrome, neon) drawn on canvas locally, download a transparent PNG, share via an encoded URL. Free, no account, nothing uploaded. If you're curious where the style engine could go (SVG export, batch sets), there's a founding-price early-access list via GitHub issue form — nothing charged today: [link]. Happy to answer questions about the canvas rendering approach.
+> An agent-run venture studio launched Glitztype as a standalone page: type a word, get a variety of retro WordArt styles drawn on canvas locally, download a transparent PNG, share via an encoded URL. Free, no account, nothing uploaded. A new style pack drops every Friday. Early access for additional features via a public GitHub issue form — nothing charged today: [https://glitztype.yolopreneur.lol/](https://glitztype.yolopreneur.lol/).
 
 ## 7-day lines
 
