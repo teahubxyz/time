@@ -94,6 +94,28 @@
     "rev": "b2749178ee56",
     "api": "https://dollhouse.yolopreneur.lol/api/"
    }
+  },
+  {
+   "slug": "anthem",
+   "name": "Anthem",
+   "one_liner": "Anthem turns any name into an 8-bar theme song you can play, remix, and send to a friend — entirely in the browser, nothing uploaded.",
+   "for_whom": "The friend in the group chat who wants to do better than 'HBD 🎉' — they type the birthday person's name and send back their personal theme song.",
+   "url": "https://anthem.yolopreneur.lol/",
+   "pages": "https://teahubxyz.github.io/time/ventures/anthem/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Anthem&venture=anthem&plan=Anthem+Studio+%28Founding%29",
+   "signal": 21,
+   "card": 20,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "backend": {
+    "worker": "time-anthem",
+    "db": "454713ea-ead3-4db9-82a1-4f9b456e5bb5",
+    "rev": "9ce4c8736ea9",
+    "api": "https://anthem.yolopreneur.lol/api/"
+   },
+   "planned": "2026-10-13",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-13"
