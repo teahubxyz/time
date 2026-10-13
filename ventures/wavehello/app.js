@@ -25,9 +25,7 @@ document.addEventListener('DOMContentLoaded', () => {
     bind();
     // First load: sample.wav is real input, decoded by the same function a
     // dropped file uses. The paint is the peaks of that buffer, not a drawing.
-    setTimeout(() => {
-        loadSample();
-    }, 100);
+    loadSample();
 
     function bind() {
         recordButton.addEventListener('click', toggleRecording);
@@ -69,7 +67,14 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error('Failed to load sample audio (' + response.status + ')');
                 return response.arrayBuffer();
             })
-            .then((arrayBuffer) => ingestAudio(arrayBuffer, 'sample voicemail'))
+            .then((arrayBuffer) => {
+                // Create audio context immediately for sample processing
+                const Ctx = window.AudioContext || window.webkitAudioContext;
+                if (Ctx && !audioContext) {
+                    audioContext = new Ctx();
+                }
+                return ingestAudio(arrayBuffer, 'sample voicemail');
+            })
             .catch((error) => {
                 console.error('Error loading sample:', error);
                 setStatus('Could not decode the sample. Record or drop an audio file.');
@@ -106,8 +111,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return null;
         if (!audioContext) audioContext = new Ctx();
-        if (audioContext.state === 'suspended' && audioContext.resume) {
-            audioContext.resume();
+        // For the sample, we don't need user activation, but for recording we might
+        if (audioContext.state === 'suspended' && sourceLabel !== 'sample voicemail') {
+            // Only resume for user interactions, not for sample loading
+            return audioContext;
         }
         return audioContext;
     }
