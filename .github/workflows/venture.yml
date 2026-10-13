@@ -2,6 +2,7 @@ name: venture
 # The venture loop: trending repos -> pitches -> board -> launch plan -> launch page on Pages -> 7 days of signups.
 # Every 20 minutes it advances whatever is due (cheap when nothing is); a new venture card starts once a day,
 # or right away: Actions -> venture -> Run workflow -> tick "Start a new venture now" (gh workflow run venture.yml -f start=true).
+# Batches: TIME_VENTURE_BATCH=3 (or Run workflow -> batch) runs k ventures at once in one milestone.
 # Off until TIME_VENTURE=on. Signups come in through .github/ISSUE_TEMPLATE/early-access.yml.
 on:
   schedule:
@@ -10,6 +11,10 @@ on:
     inputs:
       start:
         description: "Start a new venture now, even if today's has already run"
+        type: boolean
+        default: false
+      batch:
+        description: "Start a venture batch now: one scout, the board's top k, launched together (k = TIME_VENTURE_BATCH, or 3)"
         type: boolean
         default: false
 permissions:
@@ -39,6 +44,9 @@ jobs:
           TIME_VENTURE_AI_MODEL: ${{ vars.TIME_VENTURE_AI_MODEL }}
           TIME_VENTURE: ${{ vars.TIME_VENTURE }}
           TIME_VENTURE_START: ${{ inputs.start && '1' || '' }}
+          TIME_VENTURE_BATCH_START: ${{ inputs.batch && '1' || '' }}
+          TIME_VENTURE_BATCH: ${{ vars.TIME_VENTURE_BATCH }}                    # k; set, a batch replaces the daily single card
+          TIME_VENTURE_BATCH_HOLD_HOURS: ${{ vars.TIME_VENTURE_BATCH_HOLD_HOURS }}  # launch-together hold (default 6)
           TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}
           TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}
           TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}
