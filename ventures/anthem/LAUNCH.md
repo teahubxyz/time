@@ -30,33 +30,25 @@ The free page stays free forever — it is the proof and the distribution, since
 
 ## Launch channels (drafts; nothing is sent)
 
-### Show HN (news.ycombinator.com)
+### [Show HN (news.ycombinator.com)]
 
 > Show HN: Anthem — type a name, get an 8-bar theme song, entirely in your browser
 > 
-> Hi HN — I built Anthem, a single web page that turns any name (or word) into an 8-bar theme song. The letters deterministically seed the melody, so 'Maya' always sounds like 'Maya'. Three style dials — chiptune, lo-fi, fanfare — remix it live over an animated title card.
+> An agent-run studio built Anthem, a single web page that turns any name (or word) into an 8-bar theme song. The letters deterministically seed the melody, so the same name always produces the same song. Three style options — chiptune, lo-fi, fanfare — are available over an animated title card.
 > 
-> Everything is synthesized with WebAudio on your device: no account, no upload, no backend. One button copies a share link with the name encoded in the URL so the song plays instantly for whoever opens it; there's also a WAV download.
+> Everything is synthesized with WebAudio on the device: no account, no upload, no backend. One button copies a share link with the name encoded in the URL so the song plays instantly for whoever opens it; a WAV download is also available.
 > 
-> I built it for the group-chat moment when 'HBD 🎉' feels too lazy — type your friend's name, send back their theme.
+> It was built for the group-chat moment when a generic message feels insufficient — type a name and send the theme.
 > 
-> I'm also collecting early-access signups for Anthem Studio (minute-long arrangements, instrument packs, stem exports with a commercial license) via a GitHub issue form — founding price, nothing charged today.
+> Early access for a future Studio version (minute-long arrangements, instrument packs, stem exports with a commercial license) is collected via a public GitHub issue form at founding price, with nothing charged today.
 > 
-> Link: [URL] — feedback very welcome, especially on the melody-seeding approach.
+> Link: https://anthem.yolopreneur.lol/ — feedback welcome on the melody-seeding approach.
 
-### r/InternetIsBeautiful
+### [r/InternetIsBeautiful]
 
 > Type any name and this site plays that name's personal theme song — synthesized live in your browser, nothing uploaded
 > 
-> I made a page where you type a name (or any word) and it plays an 8-bar theme song seeded by the letters, so the same name always makes the same song. You can remix it live with chiptune / lo-fi / fanfare dials over an animated title card, then copy a link that plays it instantly for a friend. No account, no upload — everything runs on your device with WebAudio. I made it for birthdays in group chats, when 'HBD 🎉' feels too lazy. [URL]
-
-### r/podcasting
-
-> Feedback wanted: would a generated, name-seeded theme work as your show's signature sound?
-> 
-> I built Anthem, a free browser toy that turns any word into an 8-bar theme song (WebAudio, nothing uploaded — try it at [URL]). I'm exploring a Studio version aimed at podcasters and streamers: minute-long arrangements, instrument packs, and WAV/stem exports with a commercial license, at a founding price. Nothing is charged today — it's just an early-access list via a GitHub issue form.
-> 
-> Before I build it, I'd genuinely like to know: would a signature theme seeded by your show's name — so it's recognizably 'yours' every time — be useful as an intro, outro, or segment sting? What would it need to include to be worth paying for? Happy to answer any questions.
+> A page lets you type a name (or any word) and plays an 8-bar theme song seeded by the letters, so the same name always produces the same song. You can select chiptune, lo-fi, or fanfare over an animated title card, then copy a link that plays it instantly for others. No account or upload is required — everything runs on the device with WebAudio. Link: https://anthem.yolopreneur.lol/
 
 ## 7-day lines
 
