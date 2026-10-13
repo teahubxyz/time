@@ -26,6 +26,7 @@ jobs:
           TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
       - name: smoke
         run: |
+          set -o pipefail
           u="${{ steps.deploy.outputs.url }}"
           for i in $(seq 1 18); do curl -fsS "${u}api/health" && break; sleep 10; done
           curl -fsS "${u}api/schema?dataset=orders" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["sample"])==5, d; print("schema ok")'
