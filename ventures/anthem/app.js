@@ -280,9 +280,132 @@ function stopPlayback() {
 
 // Generate WAV file
 function generateWAV() {
-  // In a real implementation, this would generate actual audio data
-  // For now, we'll just simulate the download
-  alert('In a complete implementation, this would download a WAV file of your theme song.');
+  // Create audio context for offline rendering
+  const sampleRate = 44100;
+  const tempo = 120; // BPM
+  const secondsPerBeat = 60 / tempo;
+  const duration = 8 * secondsPerBeat; // 8 beats total
+  
+  const offlineContext = new (window.OfflineAudioContext || window.webkitOfflineAudioContext)(
+    1, // mono
+    sampleRate * duration,
+    sampleRate
+  );
+  
+  // Schedule notes for offline rendering
+  const startTime = 0.1;
+  
+  for (let i = 0; i < 8; i++) {
+    const charIndex = i % currentState.name.length;
+    const charCode = currentState.name.charCodeAt(charIndex);
+    const noteIndex = charCode % NOTE_MAPPING.length;
+    const note = NOTE_MAPPING[noteIndex];
+    const frequency = OCTAVE_NOTES[note];
+    
+    const noteTime = startTime + i * secondsPerBeat;
+    scheduleOfflineNote(offlineContext, frequency, noteTime, secondsPerBeat * 0.8);
+  }
+  
+  // Render the audio
+  offlineContext.startRendering().then(function(renderedBuffer) {
+    // Convert to WAV format
+    const wavBlob = audioBufferToWav(renderedBuffer);
+    
+    // Create download link
+    const url = URL.createObjectURL(wavBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${currentState.name}-theme-song.wav`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }).catch(function(err) {
+    console.error('Error rendering audio:', err);
+    alert('Error generating WAV file');
+  });
+}
+
+// Schedule a note for offline rendering
+function scheduleOfflineNote(offlineContext, frequency, startTime, duration) {
+  const oscillator = offlineContext.createOscillator();
+  const gainNode = offlineContext.createGain();
+  
+  oscillator.connect(gainNode);
+  gainNode.connect(offlineContext.destination);
+  
+  // Set oscillator type based on style
+  switch (currentState.style) {
+    case STYLES.CHIPTUNE:
+      oscillator.type = 'square';
+      break;
+    case STYLES.LOFI:
+      oscillator.type = 'sawtooth';
+      gainNode.gain.value = 0.3; // Lower volume for lo-fi
+      break;
+    case STYLES.FANFARE:
+      oscillator.type = 'triangle';
+      break;
+  }
+  
+  oscillator.frequency.value = frequency;
+  
+  // Apply envelope
+  gainNode.gain.setValueAtTime(0, startTime);
+  gainNode.gain.linearRampToValueAtTime(currentState.volume, startTime + 0.01);
+  gainNode.gain.linearRampToValueAtTime(0, startTime + duration);
+  
+  oscillator.start(startTime);
+  oscillator.stop(startTime + duration);
+}
+
+// Convert AudioBuffer to WAV format
+function audioBufferToWav(buffer) {
+  const length = buffer.length;
+  const numberOfChannels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const arrayBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2);
+  const view = new DataView(arrayBuffer);
+  
+  // Write WAV header
+  writeString(view, 0, 'RIFF');
+  view.setUint32(4, 36 + length * numberOfChannels * 2, true);
+  writeString(view, 8, 'WAVE');
+  writeString(view, 12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, numberOfChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * numberOfChannels * 2, true);
+  view.setUint16(32, numberOfChannels * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(view, 36, 'data');
+  view.setUint32(40, length * numberOfChannels * 2, true);
+  
+  // Write PCM samples
+  const channelData = [];
+  for (let i = 0; i < numberOfChannels; i++) {
+    channelData[i] = buffer.getChannelData(i);
+  }
+  
+  let offset = 44;
+  for (let i = 0; i < length; i++) {
+    for (let channel = 0; channel < numberOfChannels; channel++) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][i]));
+      const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+  
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+// Helper function to write string to DataView
+function writeString(view, offset, string) {
+  for (let i = 0; i < string.length; i++) {
+    view.setUint8(offset + i, string.charCodeAt(i));
+  }
 }
 
 // Initialize when page loads
