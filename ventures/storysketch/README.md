@@ -4,7 +4,7 @@ Create custom illustrated bedtime stories in under a minute. Type a short story 
 
 ## What is StorySketch?
 
-StorySketch is a free web tool that turns up to 150 words of a bedtime story into a four-panel illustrated comic. It automatically splits your text into panels, draws simple matching SVG scenes, and lets you edit any panel's text or swap its scene — the comic updates instantly. One click copies the finished comic as an image or as embed code.
+StorySketch is a free web tool that turns up to 150 words of a bedtime story into a four-panel illustrated comic. It automatically splits your text into panels, draws simple matching SVG scenes, and lets you edit any panel's text or swap its scene — the comic updates instantly. One click copies the finished comic as a PNG image, or copies embed code for that same image.
 
 ## Who is it for?
 
@@ -23,7 +23,7 @@ StorySketch is built for parents who want a quick custom bedtime story with pict
 - **Free to use** - No account or payment required
 - **Instant results** - See your comic update live as you type
 - **Editable panels** - Change any panel's text or illustration
-- **One-click sharing** - Copy as image or get embed code
+- **One-click sharing** - Copy the finished comic as a PNG image, or copy embed code for that image
 - **Works in browser** - No installation needed
 
 ## Honest limits
@@ -32,7 +32,7 @@ StorySketch is built for parents who want a quick custom bedtime story with pict
 - Only 4 panels maximum in the free version
 - Basic SVG illustrations (not photorealistic)
 - Stories limited to 150 words
-- No offline mode (requires internet connection)
+- Copy as image needs a browser that can put a PNG on the clipboard; otherwise the same PNG downloads
 
 ## StorySketch Plus (Paid Version)
 
