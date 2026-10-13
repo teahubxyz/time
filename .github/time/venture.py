@@ -639,6 +639,18 @@ def upsert(reg: dict, entry: dict) -> None:
     reg["ventures"].append(entry)
 
 
+REGISTRY_LOCK = threading.RLock()
+
+
+def record(entry: dict, message: str) -> None:
+    """Upsert one venture into ventures.json, read fresh under the lock: cards advance in parallel, and a registry read
+    before a slow step (a plan round, a build) would otherwise write back over a sibling's entry."""
+    with REGISTRY_LOCK:
+        reg = registry()
+        upsert(reg, entry)
+        save_registry(reg, message)
+
+
 def save_registry(reg: dict, message: str) -> None:
     put_pages("ventures/ventures.json", json.dumps(reg, indent=1, ensure_ascii=False), message)
     put_pages("ventures/index.html", index_html(reg), message)
@@ -1297,8 +1309,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             if w.get("backend"):
                 entry["backend"] = w["backend"]
             entry.update({"planned": today(), "status": "building", "signups": 0} if version == 1 else {"status": "iterating"})
-            upsert(reg, entry)
-            save_registry(reg, f"ventures: plan {w['slug']}")
+            record(entry, f"ventures: plan {w['slug']}")
             say(plan_summary(w, plan, plans, chair) + backend_note, {"beat": "planned", "winner": w, "plan": plan})
         elif stage == "planned":
             if not heavy_ok:
@@ -1387,11 +1398,9 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
 
 
 def launch(n: int, w: dict, plan: dict, keep: dict, shot: str | None, note: str, say) -> None:
-    reg = registry()
     since = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    upsert(reg, {"slug": w["slug"], "status": "live", "launched": today(), "card": n,
-                 "signups": count_signups(w, since if int(w.get("version", 1)) > 1 else None)[0]})
-    save_registry(reg, f"ventures: launch {w['slug']}")
+    record({"slug": w["slug"], "status": "live", "launched": today(), "card": n,
+            "signups": count_signups(w, since if int(w.get("version", 1)) > 1 else None)[0]}, f"ventures: launch {w['slug']}")
     say(launch_post(w, plan, shot, note), {"beat": "launched", **keep, "shot": shot, "since": since})
 
 
@@ -1405,7 +1414,6 @@ def measure(n: int, st: dict, say) -> None:
     plan = st.get("plan") or normalize_plan({}, w)
     count, asks = count_signups(w, st.get("since") if int(w.get("version", 1)) > 1 else None)
     line = f"{count} signup(s) (success at ≥{plan['success_signups']}, kill at ≤{plan['kill_signups']})"
-    reg = registry()
     if count >= plan["success_signups"]:
         nxt = next_version(w, asks, n)
         status, text = "iterating", (f"📈 {line}. Success: **{w['name']} v{int(w.get('version', 1)) + 1}** is planned on #{nxt}, "
@@ -1416,15 +1424,13 @@ def measure(n: int, st: dict, say) -> None:
             tm.comment(w["signal"], f"Closed: {line} after the measuring window. Thank you to everyone who weighed in.", {"venture": True})
             tm.gh("PATCH", f"/repos/{REPO}/issues/{w['signal']}", {"state": "closed"})
     elif not st.get("extended"):
-        upsert(reg, {"slug": w["slug"], "signups": count})
-        save_registry(reg, f"ventures: {w['slug']} measured")
+        record({"slug": w["slug"], "signups": count}, f"ventures: {w['slug']} measured")
         say(f"⏳ {line}. Between the lines: watching one more week.",
             {"beat": "launched", "winner": w, "plan": plan, "extended": True, "since": st.get("since")})
         return
     else:
         status, text = "parked", f"🅿️ {line}. Still between the lines after another week: parked. The signal issue stays open."
-    upsert(reg, {"slug": w["slug"], "status": status, "signups": count})
-    save_registry(reg, f"ventures: {w['slug']} {status}")
+    record({"slug": w["slug"], "status": status, "signups": count}, f"ventures: {w['slug']} {status}")
     say(text, {"beat": "done", "winner": w, "signups": count, "outcome": status})
     tm.gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
 
@@ -1727,7 +1733,7 @@ def tick() -> int:
             cm = comments_of(b["number"])
             if advance_batch(b, cm, tm.beats_of(cm)) != "ok" or stage_of(tm.beats_of(comments_of(b["number"]))) in ("spawned", "done"):
                 break
-    heavy_left, skip = 1, set()
+    heavy_left, skip, ran = int(float(env("TIME_VENTURE_HEAVY", "3"))), set(), set()
     while time.monotonic() - t0 < budget:
         due = []
         cards = venture_cards()
@@ -1743,12 +1749,23 @@ def tick() -> int:
         if not due:
             break
         due.sort(key=lambda x: -priority(x[2]))  # the card furthest along first; fix rounds yield to first builds
-        c, cm, b = due[0]
-        out = advance(c, cm, b, heavy_ok=heavy_left > 0 and time.monotonic() - t0 < heavy_until)
-        if out == "heavy":
-            heavy_left -= 1
-        elif out in ("wait", "error"):
-            skip.add(c["number"])
+        # one wave: the top cards at once. Worker runs (a build, a fix round) are handed out in priority order, at most
+        # heavy_left of them; a card that needs one and didn't get one waits for the next tick.
+        wave = due[:max(1, heavy_left)]
+        early = time.monotonic() - t0 < heavy_until
+        grant, given = [], 0
+        for c, cm, b in wave:
+            ok = early and given < heavy_left and stage_of(b) in ("planned", "built") and c["number"] not in ran
+            given += ok
+            grant.append(ok)
+        with cf.ThreadPoolExecutor(max_workers=len(wave)) as ex:
+            outs = list(ex.map(lambda x: advance(x[0][0], x[0][1], x[0][2], heavy_ok=x[1]), zip(wave, grant)))
+        for (c, _, _), out in zip(wave, outs):
+            if out == "heavy":
+                heavy_left -= 1
+                ran.add(c["number"])  # one worker run per card per tick; its cheap stages (the checks) go on
+            elif out in ("wait", "error"):
+                skip.add(c["number"])
     print(f"venture tick done in {time.monotonic() - t0:.0f}s")
     return 0
 
@@ -1762,34 +1779,27 @@ def _build_on_pages(card: dict, done: str, spec: str, root: str = "") -> dict:
     """venice_work, but the hands work on gh-pages and never open a PR: ventures ship by landing on the Pages branch.
     With a root (ventures/<slug>/) the hands write only inside it: the Pages branch also carries the studio's own site and
     every other venture, and a fix round once wrote its page over the site's front page."""
-    hands_cls = tm.Hands
-    orig_init, orig_call = hands_cls.__init__, hands_cls.call
+    class PagesHands(tm.Hands):  # one class per build: parallel builds each keep their own folder
+        def __init__(self, n, branch):
+            super().__init__(n, PAGES_BRANCH)
 
-    def init(self, n, branch):
-        orig_init(self, n, PAGES_BRANCH)
-
-    def call(self, name, a):
-        if name == "open_pr":
-            self.pr = -1  # truthy sentinel: nothing to open, the page is live on the branch
-            return "done: the page is on the Pages branch, no PR needed"
-        if root and name == "write_file" and os.path.normpath(str(a.get("path") or "")) == os.path.normpath(root + "time.js"):
-            self.steps += 1
-            return "refused: time.js is Time's backend client and stays as it is; load it, don't write it"
-        if root and name == "write_file" and not _inside(a.get("path"), root):
-            self.steps += 1
-            return f"refused: this build writes only under {root} (not {a.get('path')!r}); write the file there"
-        if root and name == "run" and a.get("keep"):
-            out_of = [k for k in a["keep"] if not _inside(k, root)]
-            if out_of:
-                res = orig_call(self, name, {**a, "keep": [k for k in a["keep"] if _inside(k, root)]})
-                return f"{res}\nnot kept, outside {root}: {', '.join(map(str, out_of))}"
-        return orig_call(self, name, a)
-    hands_cls.__init__, hands_cls.call = init, call
-    try:
-        return tm.venice_work(card, done, spec)
-    finally:
-        hands_cls.__init__, hands_cls.call = orig_init, orig_call
-
+        def call(self, name, a):
+            if name == "open_pr":
+                self.pr = -1  # truthy sentinel: nothing to open, the page is live on the branch
+                return "done: the page is on the Pages branch, no PR needed"
+            if root and name == "write_file" and os.path.normpath(str(a.get("path") or "")) == os.path.normpath(root + "time.js"):
+                self.steps += 1
+                return "refused: time.js is Time's backend client and stays as it is; load it, don't write it"
+            if root and name == "write_file" and not _inside(a.get("path"), root):
+                self.steps += 1
+                return f"refused: this build writes only under {root} (not {a.get('path')!r}); write the file there"
+            if root and name == "run" and a.get("keep"):
+                out_of = [k for k in a["keep"] if not _inside(k, root)]
+                if out_of:
+                    res = super().call(name, {**a, "keep": [k for k in a["keep"] if _inside(k, root)]})
+                    return f"{res}\nnot kept, outside {root}: {', '.join(map(str, out_of))}"
+            return super().call(name, a)
+    return tm.venice_work(card, done, spec, hands_cls=PagesHands)
 
 if __name__ == "__main__":
     sys.exit({"tick": tick}[sys.argv[1] if len(sys.argv) > 1 else "tick"]())
