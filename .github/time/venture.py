@@ -1348,7 +1348,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 say(f"🔧 The checks found {len(problems)} problem(s); fix round {fixes + 1}:\n\n{bullets}",
                     {"beat": "built", **keep, "fixes": fixes, "problems": problems})
                 # cost cascade: the cheap worker gets the first round; a failed round escalates to a stronger model
-                spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", "venice:grok 4.7")
+                spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", "venice:kimi code")
                 r = _build_on_pages({"number": n, "title": f"Fix the {w['name']} launch page",
                                      "body": FIX_BODY.format(name=w["name"], slug=w["slug"], problems=bullets, page=w.get("page", ""),
                                                              join=w["join"], signal=signal_url(w))},
