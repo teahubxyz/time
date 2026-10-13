@@ -1,6 +1,7 @@
 """Compare AICharts brains on one fixed question set against the live demo.
 
     python3 bench.py https://aicharts.yolopreneur.lol [brain ...]      (default brains: llm jev clef)
+    python3 bench.py <url> clef@0                                      Clef with the fallback off (calibration)
 
 Each question lists what a right chart must have; a spec scores 1 when it has all of it. Reports, per brain: right
 answers, median and p90 latency (as the browser sees it), and how often a decision brain handed off to the LLM.
@@ -67,8 +68,10 @@ def misses(spec, want):
 
 
 def ask(url, prompt, brain):
-    body = json.dumps({"dataset": "orders", "prompt": prompt, "brain": brain}).encode()
-    req = urllib.request.Request(url.rstrip("/") + "/api/spec", data=body, headers={"content-type": "application/json"})
+    name, _, floor = brain.partition("@")  # "clef@0" = Clef with no fallback: its own answers, for calibration
+    body = json.dumps({"dataset": "orders", "prompt": prompt, "brain": name, **({"floor": float(floor)} if floor else {})}).encode()
+    req = urllib.request.Request(url.rstrip("/") + "/api/spec", data=body,  # Cloudflare turns away Python's default agent
+                                 headers={"content-type": "application/json", "user-agent": "aicharts-bench/1"})
     t0 = time.time()
     try:
         with urllib.request.urlopen(req, timeout=90) as r:
@@ -87,8 +90,9 @@ def main():
             out, ms = ask(url, prompt, brain)
             m = misses(out["spec"], want) if out.get("spec") else [out.get("error", "no spec")]
             rows.append({"q": prompt, "ok": not m, "ms": ms, "via": out.get("brain"), "handoff": (out.get("handoff") or {}).get("reason"),
-                         "confidence": out.get("confidence"), "misses": m})
-            print(f"[{brain}] {'ok ' if not m else 'MISS'} {ms:>6} ms via {out.get('brain')}: {prompt}" + (f"  -- {'; '.join(m)}" if m else "")
+                         "confidence": out.get("confidence"), "confidences": out.get("confidences"), "misses": m})
+            print(f"[{brain}] {'ok ' if not m else 'MISS'} {ms:>6} ms via {out.get('brain')} conf {out.get('confidence')}: {prompt}"
+                  + (f"  -- {'; '.join(m)}" if m else "")
                   + (f"  (handoff: {rows[-1]['handoff']})" if rows[-1]["handoff"] else ""), flush=True)
         lat = sorted(r["ms"] for r in rows)
         report[brain] = {"right": sum(r["ok"] for r in rows), "of": len(rows), "median_ms": int(statistics.median(lat)),

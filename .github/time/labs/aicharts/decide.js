@@ -100,12 +100,13 @@ export function assemble(answers, info) {
   const only = transform.filter((s) => s.op === "filter").map((s) => s.eq);
   spec.title = mark === "scatter" ? `${spec.y} vs ${x}` : `${what} by ${x}${series ? ` and ${series}` : ""}${only.length ? ` (${only.join(", ")})` : ""}`;
 
-  const weakest = Math.min(...gating.map((k) => conf[k] ?? 0));
+  const weakestOn = gating.reduce((lo, k) => ((conf[k] ?? 0) < (conf[lo] ?? 0) ? k : lo), gating[0]);
+  const weakest = conf[weakestOn] ?? 0;
   // other chart types the model rated close behind: cheap to offer, already the same data
   const probs = answers.mark?.probabilities || {};
   const alternatives = Object.entries(probs).filter(([m, p]) => m !== mark && p >= 0.15).sort((a, b) => b[1] - a[1]).slice(0, 2)
     .map(([m, p]) => ({ mark: m, p: Math.round(p * 100) / 100 }));
-  return { spec, confidence: conf, weakest: Math.round(weakest * 100) / 100, alternatives };
+  return { spec, confidence: conf, weakest: Math.round(weakest * 100) / 100, weakestOn, alternatives };
 }
 
 export async function decide(env, model, info, prompt, prior) {
