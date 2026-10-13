@@ -1,5 +1,5 @@
 name: labs-aicharts
-# Deploy the AICharts demo Worker (workers.dev, one D1, Workers AI), then smoke-test it. Manual only.
+# Deploy the AICharts demo Worker (aicharts.<venture domain>, one D1, Workers AI), then smoke-test it. Manual only.
 on: workflow_dispatch
 permissions:
   contents: read
@@ -17,15 +17,17 @@ jobs:
       - run: node .github/time/labs/aicharts/test_aicharts.mjs
       - id: deploy
         run: |
+          set -o pipefail
           python3 .github/time/labs/aicharts/deploy.py | tee out.json
           echo "url=$(python3 -c 'import json; print(json.load(open("out.json"))["url"])')" >> "$GITHUB_OUTPUT"
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
       - name: smoke
         run: |
           u="${{ steps.deploy.outputs.url }}"
-          for i in 1 2 3 4 5 6; do curl -fsS "${u}api/health" && break; sleep 10; done
+          for i in $(seq 1 18); do curl -fsS "${u}api/health" && break; sleep 10; done
           curl -fsS "${u}api/schema?dataset=orders" | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["sample"])==5, d; print("schema ok")'
           curl -fsS -X POST "${u}api/spec" -H 'content-type: application/json' \
             -d '{"dataset":"orders","prompt":"total revenue by region"}' | tee spec.json

@@ -1,9 +1,10 @@
-"""Deploy the AICharts demo: one Worker (`time-aicharts`), one D1 database, Workers AI, on workers.dev only.
+"""Deploy the AICharts demo: one Worker (`time-aicharts`), one D1 database, Workers AI.
 
     python3 .github/time/labs/aicharts/deploy.py           # prints {url, worker, db, rev}
 
-Reuses cloudflare.py (token, account, database, workers.dev). No DNS and no custom domain. Idempotent: the same
-database is reused and the script is replaced in place.
+Reuses cloudflare.py. Lives where ventures live: aicharts.<TIME_VENTURE_DOMAIN> when that is set (a Workers custom
+domain; Cloudflare adds the record and the cert), the account's workers.dev otherwise. Idempotent: the same database is
+reused and the script is replaced in place.
 """
 from __future__ import annotations
 
@@ -41,7 +42,8 @@ def deploy() -> dict:
             + [{"type": "plain_text", "name": k, "text": str(v)} for k, v in vars_.items()]}
     data, ctype = cf.multipart([("metadata", "application/json", json.dumps(meta).encode()), *code])
     cf.cf("PUT", f"{cf.account()}/workers/scripts/{NAME}", data=data, ctype=ctype)
-    return {"url": cf.workers_dev(NAME), "worker": NAME, "db": db, "rev": rev}
+    hostname = cf.host("aicharts")
+    return {"url": cf.attach(NAME, hostname) if hostname else cf.workers_dev(NAME), "worker": NAME, "db": db, "rev": rev}
 
 
 if __name__ == "__main__":
