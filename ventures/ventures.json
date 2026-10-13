@@ -160,8 +160,9 @@
     "api": "https://storysketch.yolopreneur.lol/api/"
    },
    "planned": "2026-10-13",
-   "status": "building",
-   "signups": 0
+   "status": "live",
+   "signups": 0,
+   "launched": "2026-10-13"
   },
   {
    "slug": "glitztype",
