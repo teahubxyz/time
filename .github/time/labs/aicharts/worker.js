@@ -287,8 +287,8 @@ h2{font-size:18px;margin:28px 0 8px}.row{display:flex;flex-wrap:wrap;gap:8px;ali
 </style></head><body><main>
 <h1>AICharts</h1>
 <p class="lede">Ask for a chart in plain words. The model writes a small spec that is checked before anything draws, and never sees the rows: only column names, five sample rows and value ranges. Data: a sample tea shop, 24 months of orders.</p>
-<div class="row"><div class="chips" id="chips"></div><label class="brain">Brain <select id="brain"><option value="">default</option><option value="jev">Jev</option><option value="clef">Clef</option><option value="llm">LLM</option></select></label></div>
-<ai-chart dataset="orders"></ai-chart>
+<div class="row"><div class="chips" id="chips"></div><label class="brain">Brain <select id="brain"><option value="fast" selected>Fast (Clef, LLM checks)</option><option value="clef">Clef only</option><option value="jev">Jev</option><option value="llm">LLM only</option></select></label></div>
+<ai-chart dataset="orders" brain="fast"></ai-chart>
 <div class="meta" id="meta"></div>
 <details><summary>Spec</summary><pre id="spec">Ask something first.</pre></details>
 <h2>Saved charts</h2><ul id="saved"><li>None yet.</li></ul>
@@ -310,7 +310,8 @@ brainSel.onchange = () => brainSel.value ? el.setAttribute("brain", brainSel.val
 el.addEventListener("spec", (e) => {
   const { spec, info = {} } = e.detail;
   document.getElementById("spec").textContent = JSON.stringify({ ...info, spec }, null, 2);
-  const bits = [info.brain && "via " + info.brain + (info.handoff ? " (handed off: " + info.handoff.reason + ")" : ""),
+  const stage = { fast: "first draw", confirmed: "LLM agrees", corrected: "corrected by the LLM" }[info.stage];
+  const bits = [stage, info.brain && "via " + info.brain + (info.handoff ? " (handed off: " + info.handoff.reason + ")" : ""),
                 info.ms != null && info.ms + " ms", info.confidence != null && "confidence " + info.confidence].filter(Boolean);
   meta.replaceChildren(document.createTextNode(bits.join(" · ")));
   for (const alt of info.alternatives || []) {

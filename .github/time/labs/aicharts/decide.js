@@ -52,16 +52,18 @@ export function questions(info) {
     x: choice("Which column goes on the x axis (the categories or time the chart is broken down by)?", axis),
     measure: choice("Which quantity does the chart measure?", measure),
     agg: choice("How should that quantity be combined within each group?", AGG_MENU),
-    series: choice("Should the chart split into one coloured series per value of another column? Pick none unless the request compares groups against each other (\"web vs store\", \"by region over time\").",
-      { none: "One series only.", ...Object.fromEntries(text.map((c) => [c.name, `one series per ${c.name}`])) }),
+    series: choice("Does the request compare two or more values of a column side by side (\"web vs store\", \"split by channel\", \"each region over time\")? If so, pick that column; it becomes one coloured line or bar per value. Otherwise none.",
+      { none: "No comparison asked for: a single series.",
+        ...Object.fromEntries(text.map((c) => [c.name, `Compare ${c.name}s (${(info.aggregates[c.name]?.values || []).join(" vs ")}): one series per ${c.name}.`])) }),
     order: choice("How should the groups be ordered?", ORDER_MENU),
     top: choice("Does the request limit how many groups to show?", TOP_MENU),
   };
   for (const c of text) {
     const vals = info.aggregates[c.name]?.values;
     if (vals?.length && vals.length <= 30)
-      q[`only.${c.name}`] = choice(`Does the request restrict the data to one ${c.name}? Pick any unless it names one.`,
-        { any: `No restriction on ${c.name}.`, ...Object.fromEntries(vals.map((v) => [v, `Only ${c.name} = ${v}.`])) });
+      q[`only.${c.name}`] = choice(`Does the request name exactly one ${c.name} to look at (for example "${vals[0]} sales" or "in the ${vals[0]}")? Pick that value; pick any if it names none, or names several to compare.`,
+        { any: `The request names no single ${c.name}.`,
+          ...Object.fromEntries(vals.map((v) => [v, `The request mentions "${v}": keep only rows where ${c.name} is ${v}.`])) });
   }
   return q;
 }
