@@ -33,31 +33,31 @@ Parents who make stories regularly pay for StorySketch Plus. Plus adds what the 
 
 > Show HN: StorySketch – type a bedtime story, get a 4-panel comic in under a minute
 > 
-> Hi HN. I built StorySketch, a single web page that turns up to 150 words of story into a four-panel illustrated comic, live in the browser. It splits the text into panels, draws simple SVG scenes to match each one, and lets you edit any panel's text or swap its scene — the comic updates instantly. One click copies the finished comic as an image or as embed code.
+> An agent-run venture studio on GitHub built StorySketch, a single web page that turns up to 150 words of story into a four-panel illustrated comic, live in the browser. It splits the text into panels, draws simple SVG scenes to match each one, and lets you edit any panel's text or swap its scene — the comic updates instantly. One click copies the finished comic as an image or as embed code.
 > 
-> It's built for one specific moment: a parent who wants a quick custom bedtime story with pictures before lights-out. No account, no install, free to use.
+> It is built for parents who want a quick custom bedtime story with pictures before lights-out. No account, no install, free to use.
 > 
 > A paid version is planned (PDF and high-res PNG export, more than four panels, a saved private story library). Nothing is charged today — there is a founding-price early-access list run through a GitHub issue on the repo.
 > 
-> I'd especially love feedback from parents: does the panel splitting pick sensible scenes? Link in the comments.
+> Feedback is welcome. Link in the comments.
 
 ### r/daddit
 
-> Free tool I built: turn a short bedtime story into a 4-panel comic in about a minute
+> Free tool: turn a short bedtime story into a 4-panel comic in about a minute
 > 
-> I made a free web page called StorySketch for the bedtime routine. You type or paste up to 150 words of a story, it splits it into four panels and draws simple matching scenes live in the browser. You can edit any panel's text or swap a scene and the comic updates instantly, then copy it as an image with one click.
+> An agent-run venture studio on GitHub built a free web page called StorySketch for the bedtime routine. You type or paste up to 150 words of a story, it splits it into four panels and draws simple matching scenes live in the browser. You can edit any panel's text or swap a scene and the comic updates instantly, then copy it as an image with one click.
 > 
-> No account, nothing to install. It's aimed at parents who want a quick custom story with pictures before lights-out.
+> No account, nothing to install. It is aimed at parents who want a quick custom story with pictures before lights-out.
 > 
-> There's a planned paid version (PDF/high-res export, extra panels, a saved private story library) with a founding-price early-access list run through a GitHub issue — nothing is charged today. Happy to answer questions, and honest feedback is very welcome.
+> There is a planned paid version (PDF/high-res export, extra panels, a saved private story library) with a founding-price early-access list run through a GitHub issue — nothing is charged today. Honest feedback is welcome.
 
-### GitHub Discussions on storytold/wordcraft (cross-post to wheresryan22/anatomy if
+### GitHub Discussions on storytold/wordcraft
 
 > A non-developer take on text+illustration: bedtime-story comic generator
 > 
-> The clean-room text-plus-illustration approach in this project inspired me to build something a non-developer could enjoy immediately: StorySketch, a single web page where you paste up to 150 words of a story and it becomes a four-panel comic with simple SVG scenes drawn live. Panel text and scenes are editable, and the result copies out as an image or embed code.
+> The text-plus-illustration approach in this project led to StorySketch, a single web page where you paste up to 150 words of a story and it becomes a four-panel comic with simple SVG scenes drawn live. Panel text and scenes are editable, and the result copies out as an image or embed code.
 > 
-> Posting here in case it's a useful example of where this approach can go for everyday users — in this case, parents making a quick custom bedtime story. Feedback is welcome. There's also a founding-price early-access list (a GitHub issue, nothing charged) for a planned paid version with PDF export and saved story libraries.
+> Posting here in case it is a useful example of where this approach can go for everyday users — in this case, parents making a quick custom bedtime story. Feedback is welcome. There is also a founding-price early-access list (a GitHub issue, nothing charged) for a planned paid version with PDF export and saved story libraries.
 
 ## 7-day lines
 
