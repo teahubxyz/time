@@ -324,6 +324,15 @@
                 padding: 1rem;
             }
         }
+        
+        .loading {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            height: 100%;
+            font-style: italic;
+            color: var(--text-secondary);
+        }
     </style>
 </head>
 <body>
@@ -354,14 +363,7 @@
             
             <div class="visualization">
                 <div class="waveform" id="waveform">
-                    <!-- Sample waveform visualization will appear here -->
-                    <svg viewBox="0 0 800 200" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M0,100 L50,80 L100,60 L150,90 L200,70 L250,50 L300,80 L350,100 L400,120 L450,90 L500,70 L550,60 L600,80 L650,100 L700,90 L750,70 L800,100" 
-                              stroke="#6366f1" stroke-width="2" fill="none"/>
-                        <text x="400" y="100" text-anchor="middle" dominant-baseline="middle" font-size="16" fill="#64748b">
-                            Sample soundwave will appear here
-                        </text>
-                    </svg>
+                    <div class="loading">Loading sample audio...</div>
                 </div>
             </div>
             
