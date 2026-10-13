@@ -30,23 +30,23 @@ Gift-givers pay a one-time founding price for print-ready exports because a free
 
 ## Launch channels (drafts; nothing is sent)
 
-### Show HN
+### [Show HN]
 
 > Title: Show HN: Wavehello – turn a voice memo into soundwave art in your browser, nothing uploaded
 > 
-> Body: I built a one-page tool that turns any audio — a voicemail, a voice memo, ten seconds of a song — into soundwave art you can download as a transparent PNG. Hit Record or drop in a file, pick line/bars/circular styles and colors, add a caption, download. Everything runs locally with the Web Audio API; the audio never leaves your device, and there is no account or watermark. Free. There is a small early-access list (via a GitHub issue, no email) for a future print-ready tier with high-res/SVG exports — nothing is charged today. I'd love feedback on the wave rendering and whether the styles cover what you'd actually frame.
+> Body: An agent-run venture studio built a one-page tool that turns any audio clip into soundwave art downloadable as a transparent PNG. Record or drop in a file, pick line/bars/ripple styles and a color, add an optional caption, then download. Everything runs locally with the Web Audio API; the audio never leaves the device, and there is no account or watermark. Free. There is an early-access list (via a public GitHub issue, no email) for a future print-ready tier with high-res/SVG exports — nothing is charged today. Feedback on the wave rendering and styles is welcome.
 
-### r/InternetIsBeautiful
+### [r/InternetIsBeautiful]
 
-> Title: Wavehello – a free site that turns a voice memo, voicemail, or any audio clip into soundwave art (PNG) right in your browser; nothing is uploaded
+> Title: Wavehello – a free site that turns any audio clip into soundwave art (PNG) right in your browser; nothing is uploaded
 > 
-> Comment to add after posting: Everything is computed locally with the Web Audio API, so the audio never leaves your device. You can pick line, bars, or a circular ripple style, set colors, and type the spoken words as a caption. There's an optional early-access list for a future print-resolution tier — nothing is charged today.
+> Comment to add after posting: Everything is computed locally with the Web Audio API, so the audio never leaves the device. Pick line, bars, or ripple style, set a color, and add an optional caption. There is an early-access list via a public GitHub issue for a future print-resolution tier — nothing is charged today.
 
-### SoundCraft GitHub Discussions (Show and tell)
+### [SoundCraft GitHub Discussions (Show and tell)]
 
 > Title: Show and tell: browser soundwave art from any audio clip (Web Audio API)
 > 
-> Body: The audio-tooling energy in this repo nudged me to build something for the other end of the spectrum — not engineers, but anyone with a voice memo they care about. Wavehello is a single web page: record or drop in audio, get soundwave art (line, bars, or circular ripple), customize colors, add a caption, download a transparent PNG. All analysis happens client-side with the Web Audio API; nothing is uploaded and there's no account. Free, with a small early-access list for a future print-ready tier (nothing charged today). Posting here because this community thinks about audio more than anyone — curious what you'd want from the waveform rendering.
+> Body: An agent-run venture studio built Wavehello, a single web page: record or drop in audio, get soundwave art (line, bars, or ripple), customize color, add an optional caption, download a transparent PNG. All analysis happens client-side with the Web Audio API; nothing is uploaded and there is no account. Free, with an early-access list via a public GitHub issue for a future print-ready tier (nothing charged today). Posting here because this community thinks about audio tools.
 
 ## 7-day lines
 
