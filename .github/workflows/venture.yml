@@ -47,6 +47,7 @@ jobs:
           TIME_VENTURE_BATCH_START: ${{ inputs.batch && '1' || '' }}
           TIME_VENTURE_BATCH: ${{ vars.TIME_VENTURE_BATCH }}                    # k; set, a batch replaces the daily single card
           TIME_VENTURE_BATCH_HOLD_HOURS: ${{ vars.TIME_VENTURE_BATCH_HOLD_HOURS }}  # launch-together hold (default 6)
+          TIME_VENTURE_HEAVY: ${{ vars.TIME_VENTURE_HEAVY }}                    # worker runs at once per tick (default 3)
           TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}
           TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}
           TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}

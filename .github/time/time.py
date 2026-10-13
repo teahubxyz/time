@@ -42,7 +42,15 @@ def http(method: str, url: str, token: str, body=None, timeout: float = 120.0):
 
 
 def gh(method: str, path: str, body=None):
-    return http(method, f"{GH}{path}", os.environ["GITHUB_TOKEN"], body)
+    for attempt in range(5):
+        try:
+            return http(method, f"{GH}{path}", os.environ["GITHUB_TOKEN"], body)
+        except RuntimeError as e:
+            # parallel writers on one branch: a contents PUT loses the race for the branch head with a 409; the file's own
+            # sha is still right, so the same write goes through on a retry
+            if method != "PUT" or "/contents/" not in path or "-> 409" not in str(e) or attempt == 4:
+                raise
+            time.sleep(0.5 * (attempt + 1))
 
 
 def comment(issue: int, text: str, meta: dict) -> None:
@@ -523,7 +531,7 @@ def worker_seat_model(spec: str) -> tuple[str, str, str | None]:
     return seat, model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"], effort
 
 
-def venice_work(card: dict, done: str, spec: str) -> dict:
+def venice_work(card: dict, done: str, spec: str, hands_cls=None) -> dict:
     """Run one card with a Venice seat as the worker. Returns {pr, steps, seat, model}.
     TIME_WORKER_FALLBACK (default `grok build`, `off` to disable) takes over if the worker's model stays overloaded."""
     seat, model, effort = worker_seat_model(spec)
@@ -532,7 +540,7 @@ def venice_work(card: dict, done: str, spec: str) -> dict:
     key = os.environ.get("VENICE_API_KEY")
     if not key:
         raise LookupError("no VENICE_API_KEY secret on this repo yet")
-    hands = Hands(card["number"], f"time/card-{card['number']}")
+    hands = (hands_cls or Hands)(card["number"], f"time/card-{card['number']}")
     msgs = [{"role": "system", "content": WORKER_RULES.format(n=card["number"], repo=REPO, title=card["title"],
              body=(card.get("body") or "")[:20000], branch=hands.branch, done=done)},
             {"role": "user", "content": "Begin. Look at the repository first."}]

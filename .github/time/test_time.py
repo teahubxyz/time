@@ -1,5 +1,6 @@
 """Offline tests for time.py: fake GitHub + fake Cursor, whole card lifecycle. Run: python3 .github/time/test_time.py"""
 import importlib.util, json, os, sys, datetime as dt
+import concurrent.futures as cf
 
 os.environ.update(GITHUB_REPOSITORY="o/r", GITHUB_TOKEN="gh")
 os.environ.pop("GITHUB_STEP_SUMMARY", None)  # keep fake doctor output out of the run summary
@@ -799,8 +800,8 @@ def http34(method, url, token, body=None, timeout=0):
     return W.http(method, url, token, body, timeout)
 vt.tm.http = http34
 seen34 = []
-def work34(card, done, spec):
-    h = vt.tm.Hands(card["number"], "card-7")
+def work34(card, done, spec, hands_cls=None):
+    h = (hands_cls or vt.tm.Hands)(card["number"], "card-7")
     seen34.append(h.branch)
     for path in ("index.html", "ventures/mdecks/../../index.html", "/ventures/mdecks/index.html", "ventures/other/index.html",
                  "ventures/mdecks-2/index.html", "ventures/mdecks/index.html"):
@@ -1007,7 +1008,7 @@ class FakeHands:
     def call(self, name, a): calls.append(a.get("path")); return "wrote"
 real_hands, real_work = tm.Hands, tm.venice_work
 tm.Hands = FakeHands
-tm.venice_work = lambda card, done, spec: {"refusals": [tm.Hands(1, "x").call("write_file", {"path": p, "content": "x"})
+tm.venice_work = lambda card, done, spec, hands_cls=None: {"refusals": [(hands_cls or tm.Hands)(1, "x").call("write_file", {"path": p, "content": "x"})
                                                          for p in ("ventures/s/time.js", "ventures/s/./time.js", "ventures/s/app.js")]}
 # vt._build_on_pages is a scripted Worker here: load a fresh venture.py for the real one
 vspec2 = importlib.util.spec_from_file_location("vt2", Path(__file__).resolve().parent / "venture.py")
@@ -1111,12 +1112,12 @@ assert all(f"time-batch:{b}:" in W.issues[k["card"]]["body"] for k in kids)
 before = len(W.issues)  # a tick that dies after spawning reruns the spawn: no card is made twice
 picks = [p for p in field if p["slug"] in {k["slug"] for k in kids}]
 assert vt.spawn(b, picks, 1, []) == kids and len(W.issues) == before
-# one worker run per tick: the first child built and passed, and holds at ready; its siblings are planned
-stages = [W.beats(k["card"])[-1] for k in kids]
-assert sorted(stages) == ["planned", "planned", "ready"], stages
-assert json.loads(W.files["ventures/ventures.json"])["ventures"][0]["status"] == "building", "ready is not live yet"
-btick(); btick()
-assert [W.beats(k["card"])[-1] for k in kids] == ["ready"] * 3 and W.beats(b)[-1] == "spawned"
+# three worker runs at once (TIME_VENTURE_HEAVY, 3): every child built and passed in the first tick, and holds at ready
+assert [W.beats(k["card"])[-1] for k in kids] == ["ready"] * 3, [W.beats(k["card"]) for k in kids]
+assert len(vt._build_on_pages.briefs) == 3 and W.beats(b)[-1] == "spawned"
+reg39 = json.loads(W.files["ventures/ventures.json"])["ventures"]
+assert sorted(v["slug"] for v in reg39) == ["groka", "kimia", "qwena"], "parallel cards keep each other's registry entries"
+assert {v["status"] for v in reg39} == {"building"}, "ready is not live yet"
 btick()  # every child settled: the batch releases and they launch in the same tick
 assert W.beats(b)[-1] == "launched" and [W.beats(k["card"])[-1] for k in kids] == ["launched"] * 3
 assert {v["status"] for v in json.loads(W.files["ventures/ventures.json"])["ventures"]} == {"live"}
@@ -1133,16 +1134,16 @@ kids = {k["slug"]: k["card"] for k in kids_of(b)}
 # the hold is 0h: the first ready child released the batch; stragglers launched alone once they passed
 assert W.beats(b)[-1] == "launched" and "launch alone" in W.text(b)
 assert W.beats(kids["qwena"])[-1] == "launched" and W.beats(kids["kimia"])[-1] == "launched"
-for _ in range(6):
-    if "held" in W.beats(kids["groka"]) and W.beats(kids["groka"]).count("held") >= 1:
+for _ in range(12):  # the andon holds it, the batch (not a human) gives it one more go, the andon holds it again
+    if W.beats(kids["groka"]).count("held") == 2:
         break
     btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})
-assert W.beats(kids["groka"])[-1] == "held", W.beats(kids["groka"])
-btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})  # the batch, not a human, gives it one more go
-assert "Batch #1 retry: no child left behind" in W.text(kids["groka"]) and "needs-human" not in W.issues[kids["groka"]]["labels"]
-for _ in range(6):
+gb = W.beats(kids["groka"])
+assert gb.count("held") == 2 and gb[-1] == "held" and gb[gb.index("held") + 1] == "built", gb
+assert "Batch #1 retry: no child left behind" in W.text(kids["groka"])
+for _ in range(2):
     btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})
-assert W.beats(kids["groka"]).count("held") == 2 and W.beats(kids["groka"])[-1] == "held"
+assert W.beats(kids["groka"])[-1] == "held", "dead stays dead: one batch retry, not one per tick"
 # day 7 (window 0 here): the launched children are measured; the dead one is not waited on; the retro closes the batch
 btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0", "TIME_VENTURE_MEASURE_DAYS": "0"})
 assert W.beats(kids["qwena"])[-1] == "done" and W.beats(kids["kimia"])[-1] == "done"
@@ -1152,6 +1153,78 @@ retro = W.text(b).split("Batch retro")[1]
 assert "2 of 3 launched" in retro and "#4" in retro and "after its batch retry" in retro and "killed" in retro, retro
 assert W.issues[kids["groka"]]["state"] == "open", "a dead child stays open: a human can still /time retry it"
 print("ALL OK 39")
+
+
+# 40 parallel work: builds overlap in time, each build's folder lock holds under threads, and a contents PUT that loses
+# the race for the branch head (409) is retried
+import threading as _th, time as _t  # noqa: E402
+
+
+class SlowWorker(Worker):
+    def __init__(self):
+        super().__init__()
+        self.live, self.peak, self.lock = 0, 0, _th.Lock()
+
+    def __call__(self, card, done, spec, root=""):
+        with self.lock:
+            self.live += 1
+            self.peak = max(self.peak, self.live)
+        _t.sleep(0.4)
+        try:
+            return super().__call__(card, done, spec, root)
+        finally:
+            with self.lock:
+                self.live -= 1
+
+
+W = BWorld()
+ROUNDS.clear()
+vt._build_on_pages = SlowWorker()
+t0 = _t.monotonic()
+btick()
+assert vt._build_on_pages.peak == 3, f"three builds at once, saw at most {vt._build_on_pages.peak}"
+assert _t.monotonic() - t0 < 1.1, "the three 0.4s builds overlapped"
+W = BWorld()
+ROUNDS.clear()
+vt._build_on_pages = SlowWorker()
+btick({"TIME_VENTURE_HEAVY": "1"})
+assert vt._build_on_pages.peak == 1 and len(vt._build_on_pages.briefs) == 1, "TIME_VENTURE_HEAVY=1 is the old one-at-a-time"
+
+# the folder lock under threads: two builds at once, each refused outside its own folder
+seen40 = []
+class FakeHands40:
+    def __init__(self, n, branch): self.steps = 0
+    def call(self, name, a): return "wrote"
+def work40(card, done, spec, hands_cls=None):
+    h = hands_cls(card["number"], "x")
+    _t.sleep(0.2)  # both builds hold their hands at once
+    seen40.append((card["number"], h.call("write_file", {"path": "ventures/a/i.html"}), h.call("write_file", {"path": "ventures/b/i.html"})))
+    return {}
+real40 = (vt2.tm.Hands, vt2.tm.venice_work)
+vt2.tm.Hands, vt2.tm.venice_work = FakeHands40, work40
+with cf.ThreadPoolExecutor(2) as ex:
+    list(ex.map(lambda nr: vt2._build_on_pages({"number": nr[0]}, "d", "venice:qwen", root=nr[1]), [(1, "ventures/a/"), (2, "ventures/b/")]))
+vt2.tm.Hands, vt2.tm.venice_work = real40
+got = dict((n, (x, y)) for n, x, y in seen40)
+assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].startswith("refused") and got[2][1] == "wrote", got
+
+# 409 on a contents PUT is retried; other errors are not
+tries = []
+def flaky(method, url, token, body=None, timeout=0):
+    tries.append(url)
+    if len(tries) < 3:
+        raise RuntimeError(f"{method} {url} -> 409: is at abc but expected def")
+    return {"ok": True}
+real_http, real_sleep = tm.http, tm.time.sleep
+tm.http, tm.time.sleep = flaky, lambda s: None
+assert tm.gh("PUT", "/repos/o/r/contents/ventures/a/i.html", {}) == {"ok": True} and len(tries) == 3
+tries.clear()
+try:
+    tm.gh("POST", "/repos/o/r/issues", {}); raise AssertionError("a POST 409 must not be retried")
+except RuntimeError:
+    assert len(tries) == 1
+tm.http, tm.time.sleep = real_http, real_sleep
+print("ALL OK 40")
 
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
