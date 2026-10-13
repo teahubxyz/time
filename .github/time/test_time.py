@@ -1026,6 +1026,133 @@ W.files["ventures/q/time.js"] = cfb.client("https://q.yolo.lol/api/") * 3
 assert any("no working product" in p for p in vt.check_page(wq, {"pricing": []}))
 print("ALL OK 34")
 
+
+# 39 a batch: one scout, a field of pitches, the board's top 3 become cards in a milestone; built side by side, they wait
+# at `ready` and launch together; a child the andon holds gets one batch retry, then is counted dead; the retro closes it
+class BWorld(VWorld):
+    def __init__(self):
+        super().__init__()
+        self.milestones = {}
+
+    def http(self, method, url, token, body=None, timeout=0):
+        base = url.replace(tm.GH, "").partition("?")[0]
+        if base == "/repos/o/r/milestones":
+            if method == "POST":
+                m = len(self.milestones) + 1
+                self.milestones[m] = {"number": m, "state": "open", **body}
+                return self.milestones[m]
+            return list(self.milestones.values())
+        if base.startswith("/repos/o/r/milestones/"):
+            self.milestones[int(base.rsplit("/", 1)[1])].update(body); return {}
+        out = super().http(method, url, token, body, timeout)
+        if base == "/repos/o/r/issues" and method == "POST" and body.get("milestone"):
+            out["milestone"] = {"number": body["milestone"]}
+        return out
+
+
+ROUNDS = {}
+
+
+def batch_brain(seat, model, effort, system, user):
+    if "Pitch ONE venture" in user:
+        r = ROUNDS[seat] = ROUNDS.get(seat, 0) + 1
+        name = f"{seat.capitalize()}{'abc'[r - 1]}"
+        assert r == 1 or "(pitched today)" in user, "later rounds see the field so far"
+        return json.dumps({"slug": name.lower(), "name": name, "title": f"{name} tool", "one_liner": "Type it, see it.",
+                           "for_whom": "weekly deck makers", "why_now": "rides storytold/wordcraft", "page": "textarea to slides",
+                           "next": f"{name} Pro"})
+    if "voting on the board" in user:
+        slugs = re.findall(r"^### (\S+) \(by", user, re.M)
+        return json.dumps({"ranking": slugs[:3], "reason": "the first three"})
+    return seat_brain(seat, model, effort, system, user)
+
+
+class PickyWorker(Worker):
+    """A good worker, except for one venture's page, which never gets pricing right."""
+    def __init__(self, sick):
+        super().__init__()
+        self.sick = sick
+
+    def __call__(self, card, done, spec, root=""):
+        slug = re.search(r"ventures/([a-z0-9-]+)/", card["body"]).group(1)
+        self.bad = 1 if slug == self.sick else 0
+        return super().__call__(card, done, spec, root)
+
+
+def btick(env=None):
+    for k in ("TIME_VENTURE_BATCH", "TIME_VENTURE_BATCH_HOLD_HOURS", "TIME_VENTURE_BATCH_START", "TIME_VENTURE_START"):
+        os.environ.pop(k, None)
+    for k in ("TIME_VENTURE", "TIME_VENTURE_FIXES", "TIME_VENTURE_MEASURE_DAYS"):
+        os.environ.pop(k, None)
+    os.environ.update({"VENICE_API_KEY": "vk", "TIME_VENTURE": "on", "TIME_VENTURE_BATCH": "3", **(env or {})})
+    vt.tm.http, vt.tm.think = W.http, batch_brain
+    vt.tick()
+
+
+def kids_of(b):
+    return tm.beats_of(W.comments[b])[-1].get("kids") or []
+
+
+W = BWorld()
+ROUNDS.clear()
+vt.browser_check = lambda slug: ([], b"\x89PNG", "checked")
+vt._build_on_pages = PickyWorker(sick="kimib")
+btick()
+batch = next(i for i in W.issues.values() if "venture-batch" in i["labels"])
+b = batch["number"]
+assert W.beats(b) == ["scouted", "pitched", "spawned"], W.beats(b)
+assert not [i for i in W.issues.values() if i["title"].startswith("Venture 20")], "a batch day makes no single card"
+field = tm.beats_of(W.comments[b])[1]["pitches"]
+assert len(field) == 6 and len({p["slug"] for p in field}) == 6, [p["slug"] for p in field]  # two rounds for k=3
+kids = kids_of(b)
+assert [k["slug"] for k in kids] == ["qwena", "kimia", "groka"], kids
+assert W.milestones[1]["title"] == batch["title"] and all(W.issues[k["card"]]["milestone"] == {"number": 1} for k in kids)
+assert all(f"time-batch:{b}:" in W.issues[k["card"]]["body"] for k in kids)
+before = len(W.issues)  # a tick that dies after spawning reruns the spawn: no card is made twice
+picks = [p for p in field if p["slug"] in {k["slug"] for k in kids}]
+assert vt.spawn(b, picks, 1, []) == kids and len(W.issues) == before
+# one worker run per tick: the first child built and passed, and holds at ready; its siblings are planned
+stages = [W.beats(k["card"])[-1] for k in kids]
+assert sorted(stages) == ["planned", "planned", "ready"], stages
+assert json.loads(W.files["ventures/ventures.json"])["ventures"][0]["status"] == "building", "ready is not live yet"
+btick(); btick()
+assert [W.beats(k["card"])[-1] for k in kids] == ["ready"] * 3 and W.beats(b)[-1] == "spawned"
+btick()  # every child settled: the batch releases and they launch in the same tick
+assert W.beats(b)[-1] == "launched" and [W.beats(k["card"])[-1] for k in kids] == ["launched"] * 3
+assert {v["status"] for v in json.loads(W.files["ventures/ventures.json"])["ventures"]} == {"live"}
+assert "launch together" in W.text(b)
+
+# the andon and the batch retry: kimib (kimi's second-round pitch) is the sick one; board picks it with the hold at 0h
+W = BWorld()
+ROUNDS.clear()
+vt._build_on_pages = PickyWorker(sick="groka")
+for _ in range(4):
+    btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})
+b = next(i["number"] for i in W.issues.values() if "venture-batch" in i["labels"])
+kids = {k["slug"]: k["card"] for k in kids_of(b)}
+# the hold is 0h: the first ready child released the batch; stragglers launched alone once they passed
+assert W.beats(b)[-1] == "launched" and "launch alone" in W.text(b)
+assert W.beats(kids["qwena"])[-1] == "launched" and W.beats(kids["kimia"])[-1] == "launched"
+for _ in range(6):
+    if "held" in W.beats(kids["groka"]) and W.beats(kids["groka"]).count("held") >= 1:
+        break
+    btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})
+assert W.beats(kids["groka"])[-1] == "held", W.beats(kids["groka"])
+btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})  # the batch, not a human, gives it one more go
+assert "Batch #1 retry: no child left behind" in W.text(kids["groka"]) and "needs-human" not in W.issues[kids["groka"]]["labels"]
+for _ in range(6):
+    btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0"})
+assert W.beats(kids["groka"]).count("held") == 2 and W.beats(kids["groka"])[-1] == "held"
+# day 7 (window 0 here): the launched children are measured; the dead one is not waited on; the retro closes the batch
+btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0", "TIME_VENTURE_MEASURE_DAYS": "0"})
+assert W.beats(kids["qwena"])[-1] == "done" and W.beats(kids["kimia"])[-1] == "done"
+btick({"TIME_VENTURE_BATCH_HOLD_HOURS": "0", "TIME_VENTURE_MEASURE_DAYS": "0"})  # batches run first: the retro is next tick
+assert W.beats(b)[-1] == "done" and W.issues[b]["state"] == "closed" and W.milestones[1]["state"] == "closed"
+retro = W.text(b).split("Batch retro")[1]
+assert "2 of 3 launched" in retro and "#4" in retro and "after its batch retry" in retro and "killed" in retro, retro
+assert W.issues[kids["groka"]]["state"] == "open", "a dead child stays open: a human can still /time retry it"
+print("ALL OK 39")
+
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
 if _sh.which("node"):

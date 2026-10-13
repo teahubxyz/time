@@ -17,6 +17,8 @@ Backend (optional, CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID): each venture a
 Signup: a GitHub issue form (.github/ISSUE_TEMPLATE/early-access.yml) prefilled with the venture and the plan.
 Measure: after 7 days, distinct people who signed up or 👍'd the signal issue, against the plan's success and kill
   lines: iterate (a v2 card), kill, or watch one more week and then park.
+Batch (TIME_VENTURE_BATCH=k): one card scouts and pitches a field, the board's top k become cards in one milestone,
+  launched together after a hold, with one batch retry for a held child and a cohort retro (see "batches" below).
 Nothing is posted outside the repo: launch posts are drafts for the chair.
 """
 from __future__ import annotations
@@ -50,7 +52,7 @@ _spec.loader.exec_module(cfb)
 REPO = tm.REPO
 PAGES_BRANCH = "gh-pages"
 FORM = "early-access.yml"
-STAGES = ["new", "scouted", "pitched", "picked", "planned", "built", "launched"]
+STAGES = ["new", "scouted", "pitched", "picked", "planned", "built", "ready", "launched"]
 TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
 FIELDS = {"venture": "Venture", "plan": "Plan", "use": "What would you use it for?"}  # labels in the issue form
 
@@ -271,10 +273,12 @@ def pitch(repos: list[dict], seats: list[str], studio: str = "- (none yet)") -> 
     return out
 
 
-def board(pitches: list[dict], seats: list[str], studio: str = "- (none yet)") -> tuple[str | None, dict]:
+def votes_for(pitches: list[dict], seats: list[str], studio: str = "- (none yet)") -> dict:
+    """Every seat ranks up to three pitches at once; Borda 3/2/1. Returns {"votes", "score", "backers"}."""
     text = "\n\n".join(f"### {p['slug']} (by {p['by']})\n{p['title']}: {p.get('one_liner', '')}\nFor: {p.get('for_whom', '')}\n"
                        f"Why now: {p.get('why_now', '')}\n{p.get('page', '')}\nNext: {p.get('next', '')}" for p in pitches)
     score, votes = {p["slug"]: 0 for p in pitches}, {}
+    backers = {p["slug"]: 0 for p in pitches}
     results = each(seats, lambda s: ask_json(s, f"You are `{s}`.", VOTE.format(seat=s, pitches=text, have=studio, playbook=PLAYBOOK)))
     for s, v in zip(seats, results):
         if not v:
@@ -287,12 +291,26 @@ def board(pitches: list[dict], seats: list[str], studio: str = "- (none yet)") -
         v["ranking"] = seen
         for pts, slug in zip((3, 2, 1), seen):
             score[slug] += pts
-    if not any(score.values()):
-        return None, {"votes": votes, "score": score}
-    winner = max(score, key=lambda k: (score[k], -[p["slug"] for p in pitches].index(k)))
-    if sum(1 for v in votes.values() if winner in v["ranking"]) < 2:
-        return None, {"votes": votes, "score": score}  # no quorum: at least two seats must want it
-    return winner, {"votes": votes, "score": score}
+            backers[slug] += 1
+    return {"votes": votes, "score": score, "backers": backers}
+
+
+def top(pitches: list[dict], meta: dict, k: int) -> list[str]:
+    """The k best pitches by Borda, ties to the earlier pitch, each wanted by at least two seats (the quorum)."""
+    order = [p["slug"] for p in pitches]
+    ranked = sorted((s for s in order if meta["score"][s] > 0), key=lambda s: (-meta["score"][s], order.index(s)))
+    return [s for s in ranked if meta["backers"][s] >= 2][:k]
+
+
+def board(pitches: list[dict], seats: list[str], studio: str = "- (none yet)") -> tuple[str | None, dict]:
+    meta = votes_for(pitches, seats, studio)
+    order = [p["slug"] for p in pitches]
+    if not any(meta["score"].values()):
+        return None, meta
+    winner = max(order, key=lambda k: (meta["score"][k], -order.index(k)))
+    if meta["backers"][winner] < 2:
+        return None, meta  # no quorum: at least two seats must want it
+    return winner, meta
 
 
 def _s(v, n: int = 600) -> str:
@@ -1117,6 +1135,15 @@ def rank(stage: str) -> int:
     return STAGES.index("built") if stage == "held" else (STAGES.index(stage) if stage in STAGES else -1)
 
 
+def priority(beats: list[dict]) -> float:
+    """Furthest along first, except that a card in fix rounds waits behind cards still due their first build: the one
+    worker run per tick is shared, and a page that keeps failing must not starve its siblings (in a batch, or not)."""
+    st = beats[-1] if beats else {"beat": "new"}
+    if st["beat"] == "built" and (st.get("problems") or int(st.get("fixes", 0)) or st.get("retry")):
+        return STAGES.index("planned") - 0.5
+    return rank(st["beat"])
+
+
 def first(beats: list[dict], name: str) -> dict:
     return next((b for b in reversed(beats) if b["beat"] == name), {})
 
@@ -1192,7 +1219,7 @@ def next_version(w: dict, asks: list[str], card: int) -> int:
     """Success: a new card that plans and builds the next version on the same page, shaped by what signups asked for."""
     v2 = {**w, "version": int(w.get("version", 1)) + 1, "prior": f"ventures/{w['slug']}/index.html", "asks": asks[:12],
           "page": f"{w.get('page', '')} Next: {w.get('next', '')}"}
-    for k in ("join", "signal", "card", "url"):
+    for k in ("join", "signal", "card", "url", "batch"):  # a v2 is its own venture, not held for its first batch
         v2.pop(k, None)
     c = new_card(f"Venture {today()}: {w['name']} v{v2['version']}")
     tm.comment(c["number"], f"📈 {w['name']} cleared its success line on #{card}. Planning v{v2['version']} from what signups asked for.",
@@ -1324,12 +1351,16 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 res = put_pages(f"ventures/{w['slug']}/shots/sheet.png", sheet, f"venture {w['slug']}: screenshots")
                 ref = (res.get("commit") or {}).get("sha") or PAGES_BRANCH
                 shot = f"https://raw.githubusercontent.com/{REPO}/{ref}/ventures/{w['slug']}/shots/sheet.png"
-            reg = registry()
-            since = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-            upsert(reg, {"slug": w["slug"], "status": "live", "launched": today(), "card": n,
-                         "signups": count_signups(w, since if int(w.get("version", 1)) > 1 else None)[0]})
-            save_registry(reg, f"ventures: launch {w['slug']}")
-            say(launch_post(w, plan, shot, note), {"beat": "launched", **keep, "shot": shot, "since": since})
+            if w.get("batch") and not batch_released(int(w["batch"])):
+                say(f"✅ Checks pass. Ready, held for batch #{w['batch']} so its ventures launch together "
+                    f"(at most {batch_hold_hours():g}h after the first of them is ready).",
+                    {"beat": "ready", **keep, "shot": shot, "note": note})
+                return "ok"
+            launch(n, w, plan, keep, shot, note, say)
+        elif stage == "ready":
+            if not batch_released(int(st["winner"]["batch"])):
+                return "wait"
+            launch(n, st["winner"], st["plan"], keep, st.get("shot"), st.get("note", ""), say)
         elif stage == "held":
             try:
                 tm.gh("DELETE", f"/repos/{REPO}/issues/{n}/labels/needs-human")
@@ -1353,6 +1384,15 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
         else:
             say(f"⚠️ {stage} failed ({errs}/3): `{str(e)[:300]}`. Retrying next tick.", {**st, "errors": errs})
         return "error"
+
+
+def launch(n: int, w: dict, plan: dict, keep: dict, shot: str | None, note: str, say) -> None:
+    reg = registry()
+    since = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    upsert(reg, {"slug": w["slug"], "status": "live", "launched": today(), "card": n,
+                 "signups": count_signups(w, since if int(w.get("version", 1)) > 1 else None)[0]})
+    save_registry(reg, f"ventures: launch {w['slug']}")
+    say(launch_post(w, plan, shot, note), {"beat": "launched", **keep, "shot": shot, "since": since})
 
 
 def transient(e: Exception) -> bool:
@@ -1433,6 +1473,222 @@ def refresh_backends(reg: dict, limit: int = 2) -> None:
         save_registry(reg, "ventures: backends on Cloudflare")
 
 
+# ---------- batches: one milestone, k ventures at once (multi-ceremony) ----------
+# A batch card (label `venture-batch`) scouts once, has the seats pitch twice over, and lets the board rank the whole
+# field; the top k (each wanted by two seats) become child venture cards in the batch's milestone, starting at
+# `picked`. Children run the ordinary loop above; the cheap stages move together, builds take one worker run per tick.
+# Launch together: a child whose checks pass waits at `ready` until every sibling is settled (ready, launched, done, or
+# dead) or the hold runs out, then the batch releases them all and stragglers launch alone when they pass.
+# No child left behind: a child the andon holds gets one batch retry (fresh fix rounds); held again, it is counted
+# dead, with its reason, in the retro. The retro compares the cohort once every child has been measured.
+
+BATCH_STAGES = ["new", "scouted", "pitched", "spawned", "launched"]
+
+
+def batch_size() -> int:
+    return max(0, int(float(env("TIME_VENTURE_BATCH", "0") or 0)))
+
+
+def batch_hold_hours() -> float:
+    return float(env("TIME_VENTURE_BATCH_HOLD_HOURS", "6"))
+
+
+def batch_cards(state: str = "open", n: int = 30) -> list[dict]:
+    return [i for i in tm.gh("GET", f"/repos/{REPO}/issues?state={state}&labels=venture-batch&per_page={n}") if "pull_request" not in i]
+
+
+BATCH_BODY = ("A venture batch: one scout pass, the seats pitch, the board ranks the whole field and the top {k} become "
+              "venture cards in this card's milestone. They are built side by side, launch together, and are measured as "
+              "a cohort. No child left behind: every child ends with a receipt, launched or dead with its reason.\n\n"
+              "DONE: a retro on this card comparing the cohort's signups against each plan's lines.")
+
+
+def new_batch(title: str, k: int) -> dict:
+    return tm.gh("POST", f"/repos/{REPO}/issues", {"title": title, "body": BATCH_BODY.format(k=k), "labels": ["venture-batch"]})
+
+
+def milestone_for(title: str) -> int:
+    """The batch's milestone, made once; due at the end of the build day plus the measuring window."""
+    for m in tm.gh("GET", f"/repos/{REPO}/milestones?state=all&per_page=100"):
+        if m["title"] == title:
+            return m["number"]
+    due = (dt.datetime.now(dt.timezone.utc) + dt.timedelta(days=measure_days() + 1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return tm.gh("POST", f"/repos/{REPO}/milestones",
+                 {"title": title, "due_on": due, "description": "A venture batch: its cards are built, launched and measured together."})["number"]
+
+
+def pitch_field(repos: list[dict], seats: list[str], studio: str, k: int) -> list[dict]:
+    """Enough pitches for the board to choose k from: rounds of one pitch per seat, each round told what is already
+    pitched so it pitches something else, until there are 2k or three rounds have run."""
+    field: list[dict] = []
+    for _ in range(3):
+        pitched = "".join(f"\n- {p.get('name') or p['title']}: {p.get('one_liner', '')} (pitched today)" for p in field)
+        for p in pitch(repos, seats, studio + pitched):
+            names = set().union(set(), *[_forms(q.get(x)) for q in field for x in ("slug", "name", "title")])
+            if repeats(p, names):
+                continue  # the same idea again, from another seat or another round
+            while p["slug"] in {q["slug"] for q in field}:
+                p["slug"] += "-2"
+            field.append(p)
+        if len(field) >= 2 * k:
+            break
+    return field
+
+
+def child_marker(batch: int, slug: str) -> str:
+    return f"<!-- time-batch:{batch}:{slug} -->"
+
+
+def spawn(n: int, picks: list[dict], milestone: int, repos: list[dict]) -> list[dict]:
+    """A venture card per pick, in the milestone, already at `picked`. Safe to rerun: a pick that already has its card
+    (found by the marker in the card's body) is not made twice."""
+    existing = venture_cards("all", 100)
+    kids = []
+    for w in picks:
+        mark = child_marker(n, w["slug"])
+        card = next((c for c in existing if mark in (c.get("body") or "")), None)
+        if not card:
+            card = tm.gh("POST", f"/repos/{REPO}/issues",
+                         {"title": f"Venture {w.get('name') or w['title']} (batch #{n})", "labels": ["venture"],
+                          "milestone": milestone, "body": f"{CARD_BODY}\n\nPart of batch #{n}.\n\n{mark}"})
+            w = {**w, "batch": n, "rides": rides(repos, w)}
+            tm.comment(card["number"], f"🗳️ Picked by batch #{n}'s board: **{w.get('name') or w['title']}** (`{w['slug']}`).",
+                       {"venture": True, "beat": "picked", "winner": w})
+        kids.append({"card": card["number"], "slug": w["slug"]})
+    return kids
+
+
+def batch_released(b: int) -> bool:
+    issue = tm.gh("GET", f"/repos/{REPO}/issues/{b}")
+    return issue.get("state") == "closed" or stage_of(tm.beats_of(comments_of(b))) in ("launched", "done")
+
+
+def child_state(kid: dict, retried: list[int]) -> dict:
+    """Where one child stands: its stage, whether it is settled for the launch, and if it is dead, why."""
+    issue = tm.gh("GET", f"/repos/{REPO}/issues/{kid['card']}")
+    beats = tm.beats_of(comments_of(kid["card"]))
+    st = beats[-1] if beats else {"beat": "new"}
+    out = {**kid, "stage": st["beat"], "st": st, "ready_at": first(beats, "ready").get("at")}
+    if st["beat"] == "done" and st.get("stuck"):
+        out["dead"] = f"stuck at `{st['stuck']}`"
+    elif st["beat"] == "held" and kid["card"] in retried:
+        out["dead"] = "held by the andon after its batch retry: " + "; ".join(st.get("problems", []))[:300]
+    elif issue.get("state") == "closed" and st["beat"] != "done":
+        out["dead"] = "closed by hand"
+    out["settled"] = bool(out.get("dead")) or st["beat"] in ("ready", "launched", "done")
+    return out
+
+
+def leave_none_behind(n: int, states: list[dict], retried: list[int]) -> bool:
+    """A child the andon holds gets one more go, on the batch: fresh fix rounds. Held again, child_state counts it dead.
+    Appends to `retried`; True when it retried anyone."""
+    did = False
+    for c in states:
+        if c["stage"] == "held" and c["card"] not in retried:
+            try:
+                tm.gh("DELETE", f"/repos/{REPO}/issues/{c['card']}/labels/needs-human")
+            except RuntimeError:
+                pass
+            keep = {x: c["st"][x] for x in ("winner", "plan") if x in c["st"]}
+            tm.comment(c["card"], f"🔁 Batch #{n} retry: no child left behind. Fresh fix rounds; held again, it is counted "
+                       f"dead in the batch retro.", {"venture": True, "beat": "built", **keep, "fixes": 0, "retry": True})
+            retried.append(c["card"])
+            did = True
+    return did
+
+
+def retro(n: int, kids: list[dict], say) -> None:
+    reg = {v["slug"]: v for v in registry()["ventures"]}
+    rows, shipped = [], 0
+    for k in kids:
+        v, st = reg.get(k["slug"], {}), k["st"]
+        plan = st.get("plan") or {}
+        lines = f"≥{plan['success_signups']} / ≤{plan['kill_signups']}" if "success_signups" in plan else "-"
+        outcome = k.get("dead") or st.get("outcome") or v.get("status") or k["stage"]
+        shipped += 1 if v.get("launched") else 0
+        rows.append(f"| [{v.get('name') or k['slug']}]({v.get('url', '')}) | #{k['card']} | {v.get('signups', st.get('signups', 0))} "
+                    f"| {lines} | {outcome} |")
+    say(f"🧾 Batch retro: {shipped} of {len(kids)} launched.\n\n| venture | card | signups | success / kill | outcome |\n"
+        f"|---|---|---|---|---|\n" + "\n".join(rows), {"beat": "done", "kids": [{"card": k["card"], "slug": k["slug"]} for k in kids]})
+
+
+def advance_batch(card: dict, comments: list[dict], beats: list[dict]) -> str:
+    n = card["number"]
+    st = beats[-1] if beats else {"beat": "new"}
+    stage, k = st["beat"], int(st.get("k") or batch_size() or 3)
+    say = lambda text, meta: tm.comment(n, text, {"venture": True, "k": k, **meta})
+    print(f"batch #{n} stage={stage}")
+    try:
+        if stage == "new":
+            repos = scout()
+            say("🔭 Batch scout: the repos that gained the most stars this week.\n\n" + radar(repos), {"beat": "scouted", "repos": repos})
+        elif stage == "scouted":
+            reg = registry()
+            field = [p for p in pitch_field(st["repos"], seat_list("TIME_VENTURE_PITCH", "qwen,kimi,grok"), have(reg), k)
+                     if not repeats(p, taken(reg))]
+            if not field:
+                raise RuntimeError("no fresh pitches")
+            text = "\n\n".join(f"**{p.get('name') or p['title']}** (`{p['slug']}`) by `{p['by']}`: {p.get('one_liner', '')}" for p in field)
+            say(f"💡 The field, {len(field)} pitches:\n\n{text}", {"beat": "pitched", "repos": st["repos"], "pitches": field})
+        elif stage == "pitched":
+            meta = votes_for(st["pitches"], seat_list("TIME_VENTURE_BOARD", "grok,kimi,qwen"), have(registry()))
+            slugs = top(st["pitches"], meta, k)
+            if not slugs:
+                raise RuntimeError(f"no pitch reached a quorum of two seats (Borda {meta['score']})")
+            picks = [next(p for p in st["pitches"] if p["slug"] == s) for s in slugs]
+            kids = spawn(n, picks, milestone_for(card["title"]), st["repos"])
+            reasons = "\n".join(f"- `{s}`: {v.get('ranking')} ({v.get('reason', '')})" for s, v in meta["votes"].items())
+            listing = "\n".join(f"- #{c['card']} `{c['slug']}` (Borda {meta['score'][c['slug']]})" for c in kids)
+            short = f" (only {len(kids)} reached the quorum)" if len(kids) < k else ""
+            say(f"🗳️ The board ranks the field; the top {len(kids)}{short} start now:\n\n{listing}\n\n{reasons}",
+                {"beat": "spawned", "kids": kids, "retried": [], "score": meta["score"]})
+        elif stage in ("spawned", "launched"):
+            retried = list(st.get("retried", []))
+            states = [child_state(c, retried) for c in st["kids"]]
+            if leave_none_behind(n, states, retried):
+                say(f"🔁 No child left behind: retrying {', '.join(f'#{r}' for r in retried if r not in st.get('retried', []))} "
+                    f"for the batch.", {**{x: st[x] for x in ("kids", "score") if x in st}, "beat": stage, "retried": retried})
+                return "ok"
+        if stage == "spawned":
+            ready = [c["ready_at"] for c in states if c["ready_at"]]
+            waited = ready and age_days(min(ready)) * 24 >= batch_hold_hours()
+            if all(c["settled"] for c in states) or waited:
+                live = [c for c in states if c["stage"] in ("ready", "launched", "done") and not c.get("dead")]
+                rest = [c for c in states if not c["settled"]]
+                dead = [c for c in states if c.get("dead")]
+                text = f"🚀 Batch release: {len(live)} venture(s) launch together: " + ", ".join(f"#{c['card']}" for c in live)
+                if rest:
+                    text += f"\n\nThe hold ran out ({batch_hold_hours():g}h); still in flight, they launch alone when they pass: " \
+                            + ", ".join(f"#{c['card']} (`{c['stage']}`)" for c in rest)
+                if dead:
+                    text += "\n\nDead: " + "; ".join(f"#{c['card']} {c['dead']}" for c in dead)
+                say(text, {"beat": "launched", "kids": st["kids"], "retried": retried})
+                return "ok"
+            return "wait"
+        elif stage == "launched":
+            if not all(c.get("dead") or c["stage"] == "done" for c in states):
+                return "wait"
+            retro(n, states, say)
+            tm.gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
+            if card.get("milestone"):
+                tm.gh("PATCH", f"/repos/{REPO}/milestones/{card['milestone']['number']}", {"state": "closed"})
+            else:
+                for m in tm.gh("GET", f"/repos/{REPO}/milestones?state=open&per_page=100"):
+                    if m["title"] == card["title"]:
+                        tm.gh("PATCH", f"/repos/{REPO}/milestones/{m['number']}", {"state": "closed"})
+        return "ok"
+    except Exception as e:  # noqa: BLE001
+        if transient(e):
+            return "error"
+        errs = int(st.get("errors", 0)) + 1
+        if errs >= 3:
+            say(f"🧭 Batch stuck at `{stage}` after 3 tries: {str(e)[:300]}. Closing.", {"beat": "done", "stuck": stage})
+            tm.gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
+        else:
+            say(f"⚠️ batch {stage} failed ({errs}/3): `{str(e)[:300]}`. Retrying next tick.", {**st, "errors": errs})
+        return "error"
+
+
 # ---------- the tick ----------
 
 def tick() -> int:
@@ -1446,11 +1702,31 @@ def tick() -> int:
         refresh_backends(reg)
     except Exception as e:  # noqa: BLE001  chores never block the cards
         print("chores failed:", e)
-    fresh = []
+    fresh, yes = [], ("1", "true", "yes")
     if env("TIME_VENTURE", "off") == "on":
-        titles = {c["title"] for c in venture_cards("all")}
-        if f"Venture {today()}" not in titles or env("TIME_VENTURE_START", "").lower() in ("1", "true", "yes"):
-            fresh.append(new_card(next_title(titles)))  # once a day on the schedule; any time someone asks for one
+        asked_batch = env("TIME_VENTURE_BATCH_START", "").lower() in yes
+        if batch_size() or asked_batch:  # batches replace the daily single card
+            titles = {c["title"] for c in batch_cards("all")}
+            if f"Batch {today()}" not in titles or asked_batch:
+                t, j = f"Batch {today()}", 2
+                while t in titles:
+                    t, j = f"Batch {today()} ({j})", j + 1
+                fresh.append(new_batch(t, batch_size() or 3))
+        else:
+            titles = {c["title"] for c in venture_cards("all")}
+            if f"Venture {today()}" not in titles or env("TIME_VENTURE_START", "").lower() in yes:
+                fresh.append(new_card(next_title(titles)))  # once a day on the schedule; any time someone asks for one
+        if env("TIME_VENTURE_START", "").lower() in yes and (batch_size() or asked_batch):
+            fresh.append(new_card(next_title({c["title"] for c in venture_cards("all")})))
+    # batches first: they are cheap between their own stages, and a release lets ready children launch in this tick
+    bfresh = [c for c in fresh if "venture-batch" in c["labels"]]
+    fresh = [c for c in fresh if "venture-batch" not in c["labels"]]
+    blisted = batch_cards()
+    for b in blisted + [c for c in bfresh if c["number"] not in {x["number"] for x in blisted}]:
+        for _ in range(len(BATCH_STAGES)):
+            cm = comments_of(b["number"])
+            if advance_batch(b, cm, tm.beats_of(cm)) != "ok" or stage_of(tm.beats_of(comments_of(b["number"]))) in ("spawned", "done"):
+                break
     heavy_left, skip = 1, set()
     while time.monotonic() - t0 < budget:
         due = []
@@ -1466,7 +1742,7 @@ def tick() -> int:
                 due.append((c, cm, b))
         if not due:
             break
-        due.sort(key=lambda x: -rank(stage_of(x[2])))  # the card furthest along first
+        due.sort(key=lambda x: -priority(x[2]))  # the card furthest along first; fix rounds yield to first builds
         c, cm, b = due[0]
         out = advance(c, cm, b, heavy_ok=heavy_left > 0 and time.monotonic() - t0 < heavy_until)
         if out == "heavy":
