@@ -117,6 +117,28 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13"
+  },
+  {
+   "slug": "wavehello",
+   "name": "Wavehello",
+   "one_liner": "Record a laugh, a voicemail, or an 'I love you' and get beautiful soundwave art as a PNG in seconds — free, no account, nothing uploaded.",
+   "for_whom": "Someone hunting for a gift no store sells — a partner, a new parent, a grandkid — who has a voice memo that matters and wishes it could hang on a wall.",
+   "url": "https://wavehello.yolopreneur.lol/",
+   "pages": "https://teahubxyz.github.io/time/ventures/wavehello/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Wavehello&venture=wavehello&plan=Print+%28founding%29",
+   "signal": 30,
+   "card": 28,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "backend": {
+    "worker": "time-wavehello",
+    "db": "411c2120-e4c4-451a-9a86-09903ddd4a41",
+    "rev": "0a0d13538c49",
+    "api": "https://wavehello.yolopreneur.lol/api/"
+   },
+   "planned": "2026-10-13",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-13"
