@@ -144,7 +144,7 @@ async function fetchSpec(endpoint, body) {
     body: JSON.stringify(body) });
   const out = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(out.error || `the chart service answered ${r.status}`);
-  return out.spec;
+  return out; // { spec, brain?, model?, ms?, confidence?, alternatives?, handoff? }
 }
 
 // Drive an existing Chart.js chart. `data` stays in the browser; only `schema` (plus a sample and aggregates the server
@@ -152,8 +152,8 @@ async function fetchSpec(endpoint, body) {
 export function attach(chart, { data, schema, endpoint, dataset }) {
   let last;
   return {
-    async ask(prompt, prior = last) {
-      const spec = await fetchSpec(endpoint, { dataset, prompt, prior });
+    async ask(prompt, prior = last, brain) {
+      const { spec } = await fetchSpec(endpoint, { dataset, prompt, prior, ...(brain ? { brain } : {}) });
       const v = validateSpec(spec, schema);
       if (!v.ok) throw new Error("the spec failed validation: " + v.errors.join("; "));
       const cfg = chartConfig(applySpec(data, spec), spec);
@@ -169,7 +169,7 @@ export function attach(chart, { data, schema, endpoint, dataset }) {
 
 const Base = globalThis.HTMLElement ?? class {};
 
-// <ai-chart endpoint="https://..." dataset="orders"></ai-chart>
+// <ai-chart endpoint="https://..." dataset="orders" brain="jev"></ai-chart>   brain: llm | jev | clef (server default if unset)
 // Needs Chart.js on the page (window.Chart). Fires "spec" after each answer and "save" when Save is pressed; set
 // element.onSave = async ({ spec, prompt, dataset }) => ... to store charts yourself (the demo stores them in D1).
 export class AiChart extends Base {
@@ -201,9 +201,10 @@ export class AiChart extends Base {
     this._msg.textContent = "Thinking…";
     try {
       await this.load();
-      const spec = await fetchSpec(this.endpoint, { dataset: this.dataset, prompt, prior: this._spec });
-      this.render(spec, prompt);
-      this.dispatchEvent(new CustomEvent("spec", { detail: { spec, prompt } }));
+      const brain = this.getAttribute("brain");
+      const { spec, ...info } = await fetchSpec(this.endpoint, { dataset: this.dataset, prompt, prior: this._spec, ...(brain ? { brain } : {}) });
+      await this.render(spec, prompt);
+      this.dispatchEvent(new CustomEvent("spec", { detail: { spec, prompt, info } }));
     } catch (e) {
       this._msg.textContent = String(e.message || e);
     }
