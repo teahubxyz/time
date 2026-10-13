@@ -25,7 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     bind();
     // First load: sample.wav is real input, decoded by the same function a
     // dropped file uses. The paint is the peaks of that buffer, not a drawing.
-    loadSample();
+    setTimeout(() => {
+        loadSample();
+    }, 100);
 
     function bind() {
         recordButton.addEventListener('click', toggleRecording);
@@ -104,7 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return null;
         if (!audioContext) audioContext = new Ctx();
-        if (audioContext.state === 'suspended' && audioContext.resume) audioContext.resume();
+        if (audioContext.state === 'suspended' && audioContext.resume) {
+            audioContext.resume();
+        }
         return audioContext;
     }
 
