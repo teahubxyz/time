@@ -176,7 +176,7 @@ async function model(env, messages) {
 // brain: "llm" writes the spec; "jev" / "clef" answer choice questions and decide.js assembles it. A decision that
 // fails validation, or whose weakest needed answer is under FLOOR, goes to the LLM: the cage with a door.
 export const BRAINS = ["llm", "jev", "clef"];
-async function specVia(env, dataset, prompt, prior, brain) {
+async function specVia(env, dataset, prompt, prior, brain, floorAsked) {
   const info = describe(await rows(env), DATASETS[dataset].columns);
   const schema = { columns: info.columns };
   const t0 = Date.now();
@@ -185,10 +185,14 @@ async function specVia(env, dataset, prompt, prior, brain) {
     const model = brain === "jev" ? env.JEV_MODEL || "typesafe/jev" : env.CLEF_MODEL || "@cf/cloudflare/clef-flash";
     try {
       const d = await decide(env, model, info, prompt, prior && validateSpec(prior, schema).ok ? prior : undefined);
-      const v = validateSpec(d.spec, schema), floor = Number(env.FLOOR || 0.5);
+      // a caller may lower or raise the bar for itself (benchmarks; a page that prefers speed); it only changes cost
+      const floor = Number.isFinite(floorAsked) && floorAsked >= 0 && floorAsked <= 1 ? floorAsked : Number(env.FLOOR || 0.5);
+      const v = validateSpec(d.spec, schema);
+      const confidences = Object.fromEntries(Object.entries(d.confidence).map(([k, c]) => [k, Math.round(c * 100) / 100]));
       if (v.ok && d.weakest >= floor)
-        return { spec: d.spec, brain, model: d.model, ms: d.ms, confidence: d.weakest, alternatives: d.alternatives };
-      handoff = { reason: v.ok ? `low confidence (${d.weakest})` : "decision failed checks: " + v.errors[0], decided: d.spec, ms: d.ms };
+        return { spec: d.spec, brain, model: d.model, ms: d.ms, confidence: d.weakest, confidences, alternatives: d.alternatives };
+      handoff = { reason: v.ok ? `low confidence (${d.weakest} on ${d.weakestOn})` : "decision failed checks: " + v.errors[0],
+                  decided: d.spec, ms: d.ms, confidences };
     } catch (e) {
       handoff = { reason: "decision model error: " + String(e.message || e).slice(0, 160) };
     }
@@ -240,7 +244,7 @@ async function api(req, env, url) {
       if (!prompt) return json({ error: "ask a question" }, 400);
       if (!(await spend(env, "ai", await who(req), 60, Number(env.AI_DAILY || 300)))) return json({ error: "over today's limit, try tomorrow" }, 429);
       const brain = BRAINS.includes(body.brain) ? body.brain : BRAINS.includes(env.BRAIN) ? env.BRAIN : "llm";
-      const out = await specVia(env, ds, prompt, body.prior, brain);
+      const out = await specVia(env, ds, prompt, body.prior, brain, body.floor == null ? undefined : Number(body.floor));
       return json(out, out.spec ? 200 : 422);
     }
     const v = validateSpec(body.spec, { columns: DATASETS[ds].columns });

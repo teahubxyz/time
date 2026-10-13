@@ -208,15 +208,21 @@ decided.push({ answers: { ...westTop3, x: ans("product", 0.31) } });
 answers.push({ response: good });
 body = await (await post("/api/spec", { dataset: "orders", prompt: "hmm", brain: "jev" })).json();
 assert.equal(body.brain, "llm");
-assert.match(body.handoff.reason, /low confidence \(0.31\)/);
+assert.match(body.handoff.reason, /low confidence \(0.31 on x\)/);
+assert.equal(body.handoff.confidences.x, 0.31);
 assert.deepEqual(body.spec, good);
+// the same answer with the caller's own lower bar is accepted, with every confidence shown
+decided.push({ answers: { ...westTop3, x: ans("product", 0.31) } });
+body = await (await post("/api/spec", { dataset: "orders", prompt: "hmm", brain: "jev", floor: 0.2 })).json();
+assert.equal(body.brain, "jev");
+assert.equal(body.confidences.x, 0.31);
 // decision model down -> the door too
 decided.push(new Error("no such model"));
 answers.push({ response: good });
 body = await (await post("/api/spec", { dataset: "orders", prompt: "hmm", brain: "jev" })).json();
 assert.match(body.handoff.reason, /decision model error: no such model/);
 // the server default brain, and an unknown brain falls back to it
-env.BRAIN = "jev"; decided.push({ answers: westTop3 });
+resetQuota(); env.BRAIN = "jev"; decided.push({ answers: westTop3 });
 assert.equal((await (await post("/api/spec", { prompt: "q", brain: "gpt" })).json()).brain, "jev");
 delete env.BRAIN; resetQuota();
 
