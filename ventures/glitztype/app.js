@@ -508,59 +508,81 @@
 
   // Setup event listeners
   function setupEventListeners() {
-    document.getElementById("textInput").addEventListener("input", function (e) {
-      currentText = clampText(e.target.value) || " ";
-      renderStyleGrid();
-      renderPreview();
-      writeUrl();
-    });
-
-    document.getElementById("fontSelect").addEventListener("change", function (e) {
-      currentFont = clampFont(e.target.value);
-      renderStyleGrid();
-      renderPreview();
-      writeUrl();
-    });
-
-    document.getElementById("bendSlider").addEventListener("input", function (e) {
-      currentBend = clampBend(e.target.value);
-      renderStyleGrid();
-      renderPreview();
-      writeUrl();
-    });
-
-    document.getElementById("colorPicker").addEventListener("input", function (e) {
-      const picked = hexColor(e.target.value, "#ff0000");
-      if (currentStyle === "rainbow") {
-        currentColors.rainbow = rainbowFrom(picked);
-      } else {
-        currentColors[currentStyle] = picked;
-      }
-      renderStyleGrid();
-      renderPreview();
-      writeUrl();
-    });
-
-    document.getElementById("downloadBtn").addEventListener("click", downloadPNG);
-    document.getElementById("shareLink").addEventListener("click", function (e) {
-      e.preventDefault();
-      copyShareURL();
-    });
-
-    document.getElementById("styleGrid").addEventListener("click", function (e) {
-      const el = e.target.closest(".style-option");
-      if (!el) return;
-      document.querySelectorAll(".style-option").forEach(function (node) {
-        node.classList.remove("selected");
-        node.setAttribute("aria-pressed", "false");
+    const textInput = document.getElementById("textInput");
+    if (textInput) {
+      textInput.addEventListener("input", function (e) {
+        currentText = clampText(e.target.value) || " ";
+        renderStyleGrid();
+        renderPreview();
+        writeUrl();
       });
-      el.classList.add("selected");
-      el.setAttribute("aria-pressed", "true");
-      currentStyle = clampStyle(el.dataset.style);
-      document.getElementById("colorPicker").value = pickerValue();
-      renderPreview();
-      writeUrl();
-    });
+    }
+
+    const fontSelect = document.getElementById("fontSelect");
+    if (fontSelect) {
+      fontSelect.addEventListener("change", function (e) {
+        currentFont = clampFont(e.target.value);
+        renderStyleGrid();
+        renderPreview();
+        writeUrl();
+      });
+    }
+
+    const bendSlider = document.getElementById("bendSlider");
+    if (bendSlider) {
+      bendSlider.addEventListener("input", function (e) {
+        currentBend = clampBend(e.target.value);
+        renderStyleGrid();
+        renderPreview();
+        writeUrl();
+      });
+    }
+
+    const colorPicker = document.getElementById("colorPicker");
+    if (colorPicker) {
+      colorPicker.addEventListener("input", function (e) {
+        const picked = hexColor(e.target.value, "#ff0000");
+        if (currentStyle === "rainbow") {
+          currentColors.rainbow = rainbowFrom(picked);
+        } else {
+          currentColors[currentStyle] = picked;
+        }
+        renderStyleGrid();
+        renderPreview();
+        writeUrl();
+      });
+    }
+
+    const downloadBtn = document.getElementById("downloadBtn");
+    if (downloadBtn) {
+      downloadBtn.addEventListener("click", downloadPNG);
+    }
+
+    const shareLink = document.getElementById("shareLink");
+    if (shareLink) {
+      shareLink.addEventListener("click", function (e) {
+        e.preventDefault();
+        copyShareURL();
+      });
+    }
+
+    const styleGrid = document.getElementById("styleGrid");
+    if (styleGrid) {
+      styleGrid.addEventListener("click", function (e) {
+        const el = e.target.closest(".style-option");
+        if (!el) return;
+        document.querySelectorAll(".style-option").forEach(function (node) {
+          node.classList.remove("selected");
+          node.setAttribute("aria-pressed", "false");
+        });
+        el.classList.add("selected");
+        el.setAttribute("aria-pressed", "true");
+        currentStyle = clampStyle(el.dataset.style);
+        document.getElementById("colorPicker").value = pickerValue();
+        renderPreview();
+        writeUrl();
+      });
+    }
   }
 
   function rainbowFrom(hex) {
@@ -621,7 +643,20 @@
     if (!canvas) return;
     const text = currentText || " ";
     const fontSize = text.length > 16 ? 56 : text.length > 10 ? 72 : 84;
-    paintStyle(canvas, currentStyle, text, fontSize);
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = `bold ${fontSize}px ${currentFont}`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const draw = styles[currentStyle] ? styles[currentStyle].draw : styles.rainbow.draw;
+    ctx.save();
+    if (currentBend !== 0 && currentStyle !== "arch" && currentStyle !== "wave") {
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate(currentBend * Math.PI / 180);
+      ctx.translate(-canvas.width / 2, -canvas.height / 2);
+    }
+    draw(ctx, text, canvas.width / 2, canvas.height / 2, fontSize);
+    ctx.restore();
   }
 
   // Download a transparent PNG of the same canvas the preview just drew.
