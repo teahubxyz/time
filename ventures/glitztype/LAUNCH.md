@@ -20,7 +20,7 @@ People who make these every single week — office managers, teachers, event pla
 
 | Tier | Price | For | Includes |
 |---|---|---|---|
-| Free | $0 | anyone who needs one great-looking name or word right now — a banner, slide title, sticker or party sign | the full live grid of clean-room WordArt styles, color/bend/font tweaks, transparent PNG download, shareable encoded URL, new style pack every Friday |
+| Free | $0 | anyone who needs one great-looking name or word right now — a banner, slide title, sticker or party sign | the full live grid of clean-room WordArt styles, color/bend/font tweaks, transparent PNG download, shareable encoded URL |
 | Glitztype Pro | $5/mo founding price | office managers, teachers and planners who make these every week | saved brand presets, print-ready SVG/PDF export, batch generation of whole name sets |
 | Glitztype Team | $12/mo founding price | small offices, schools and print shops with more than one maker | everything in Pro, shared preset libraries, seats for the whole team |
 
@@ -34,7 +34,7 @@ People who make these every single week — office managers, teachers, event pla
 
 > Title: Show HN: Glitztype – retro WordArt-style text as transparent PNGs, free and local-only
 > 
-> Type a word or name and Glitztype renders it in a dozen clean-room WordArt-style treatments — rainbow gradient, arch, chrome, neon outline — in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in your browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing. A new style pack drops every Friday.
+> Type a word or name and Glitztype renders it in a dozen clean-room WordArt-style treatments — rainbow gradient, arch, chrome, neon outline — in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in your browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing. 
 > 
 > I'm also collecting a founding-price early-access list for Glitztype Pro (saved brand presets, print-ready SVG/PDF, batch generation of whole name sets) via a GitHub issue form — nothing is charged today: [link]
 
@@ -129,7 +129,7 @@ Glitztype or 👍'd the signal issue. Between the lines, the studio watches one 
    "tier": "Free",
    "price": "$0",
    "for": "anyone who needs one great-looking name or word right now — a banner, slide title, sticker or party sign",
-   "includes": "the full live grid of clean-room WordArt styles, color/bend/font tweaks, transparent PNG download, shareable encoded URL, new style pack every Friday"
+   "includes": "the full live grid of clean-room WordArt styles, color/bend/font tweaks, transparent PNG download, shareable encoded URL"
   },
   {
    "tier": "Glitztype Pro",
@@ -148,7 +148,7 @@ Glitztype or 👍'd the signal issue. Between the lines, the studio watches one 
  "launch_channels": [
   {
    "channel": "Show HN (news.ycombinator.com)",
-   "draft": "Title: Show HN: Glitztype – retro WordArt-style text as transparent PNGs, free and local-only\n\nType a word or name and Glitztype renders it in a dozen clean-room WordArt-style treatments — rainbow gradient, arch, chrome, neon outline — in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in your browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing. A new style pack drops every Friday.\n\nI'm also collecting a founding-price early-access list for Glitztype Pro (saved brand presets, print-ready SVG/PDF, batch generation of whole name sets) via a GitHub issue form — nothing is charged today: [link]"
+   "draft": "Title: Show HN: Glitztype – retro WordArt-style text as transparent PNGs, free and local-only\n\nType a word or name and Glitztype renders it in a dozen clean-room WordArt-style treatments — rainbow gradient, arch, chrome, neon outline — in a live grid. Click a style to tweak colors, bend and font. Everything draws on canvas in your browser: no account, nothing uploaded. One button downloads a transparent PNG; a share link encodes the piece so a friend opens the exact same thing.\n\nI'm also collecting a founding-price early-access list for Glitztype Pro (saved brand presets, print-ready SVG/PDF, batch generation of whole name sets) via a GitHub issue form — nothing charged today: [link]"
   },
   {
    "channel": "r/cricut",
