@@ -6,6 +6,9 @@
 - A venture build writes only inside its own `ventures/<slug>/` folder on the Pages branch, which also carries the studio's site and every other venture: a fix round once wrote its page over the site's front page.
 - The Venice worker's shell no longer sees secrets: its environment drops tokens and keys, its checkout keeps no token in `.git/config`, and the workflows check out without persisted credentials.
 
+### Changed
+- The second fix round escalates to Kimi's code model (`venice:kimi code`) instead of grok 4.7: still a different model from the first round, at a fraction of the cost. `TIME_VENTURE_ESCALATE` overrides it.
+
 ### Added
 - A batch's children start in the tick that spawned them (GitHub lists a card made a moment ago only later, so they used to wait a tick).
 - Build briefs keep claims to what the code does: no promised features or schedules, and the trending repos are the wave a venture rides, never something it "builds on". Fix rounds take a failing claim off the page rather than building a feature in a hurry. In the first live batch, every fix round was a claim the code didn't back.

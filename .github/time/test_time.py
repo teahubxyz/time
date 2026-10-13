@@ -707,10 +707,10 @@ W.say(c28, f"x\n\n{tm.MARK}" + json.dumps({"venture": True, "beat": "built", "wi
 W.files["ventures/mdecks/index.html"] = "<html>thin</html>"
 specs, roots = [], []
 def spy(card, done, spec, root=""):
-    specs.append(spec); roots.append(root); return {"pr": -1, "steps": 3, "seat": "grok", "model": "grok-4-7"}
+    specs.append(spec); roots.append(root); return {"pr": -1, "steps": 3, "seat": "kimi", "model": "kimi-k2-7-code"}
 vt._build_on_pages = spy
 vtick()
-assert specs == ["venice:grok 4.7"] and "(grok-4-7)" in W.text(c28), (specs, W.text(c28)[-200:])
+assert specs == ["venice:kimi code"] and "(kimi-k2-7-code)" in W.text(c28), (specs, W.text(c28)[-200:])
 assert roots == ["ventures/mdecks/"], roots
 print("ALL OK 20")
 
