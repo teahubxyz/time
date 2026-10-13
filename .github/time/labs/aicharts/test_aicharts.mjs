@@ -112,26 +112,29 @@ const seeded = env.DB.writes.filter((w) => w.startsWith("INSERT OR IGNORE INTO o
 await call("/api/data");
 assert.equal(env.DB.writes.filter((w) => w.startsWith("INSERT OR IGNORE INTO orders")).length, seeded, "seeding happens once");
 
-// a spec: structured output first; the system prompt carries schema + sample, never all rows
+// a spec: plain prompt; the system prompt carries schema + sample, never all rows
 const good = { title: "Revenue by region", mark: "bar", x: "region", y: "value",
   transform: [{ op: "group", by: ["region"], agg: "sum", field: "amount", as: "value" }] };
 answers.push({ response: good });
 r = await post("/api/spec", { dataset: "orders", prompt: "revenue by region" });
 assert.equal(r.status, 200);
 assert.deepEqual((await r.json()).spec, good);
-assert.ok(calls[0].response_format, "asks for structured output");
+assert.equal(calls.length, 1);
+assert.equal(calls[0].response_format, undefined, "plain prompt first");
 const sys = calls[0].messages[0].content;
 assert.ok(sys.includes("region (string)") && sys.includes('"North"'));
 assert.ok(sys.length < 4000 && !sys.includes(`"id":${data.length}`), "the prompt has a sample, not the table");
 
-// a model without response_format, prose around the JSON, a bad first answer, then the fix
-answers.push(new Error("response_format unsupported"), { response: 'Here: {"mark": "bar", "x": "month", "y": "amount", "transform": [{"op": "group", "by": ["region"], "agg": "sum", "field": "amount"}]}' },
-             { choices: [{ message: { content: JSON.stringify({ ...good, mark: "line", x: "region" }) } }] });
+// no JSON at all -> JSON mode; prose around JSON is fine; a bad answer gets one repair round with the errors
+answers.push({ response: "I think a line chart would be nice." },
+             { response: '{"mark": "bar", "x": "month", "y": "amount", "transform": [{"op": "group", "by": ["region"], "agg": "sum", "field": "amount"}]}' },
+             { choices: [{ message: { content: "Fixed: " + JSON.stringify({ ...good, mark: "line", x: "region" }) } }] });
 calls.length = 0;
 r = await post("/api/spec", { dataset: "orders", prompt: "trend", prior: good });
 assert.equal(r.status, 200);
 assert.equal((await r.json()).spec.mark, "line");
-assert.ok(calls[1].messages.some((m) => m.content.includes("Current chart spec")), "the prior chart is context");
+assert.deepEqual(calls.map((c) => c.response_format?.type ?? null), [null, "json_object", null]);
+assert.ok(calls[0].messages.some((m) => m.content.includes("Current chart spec")), "the prior chart is context");
 assert.ok(calls.at(-1).messages.at(-1).content.includes("fails these checks"), "one repair round with the errors");
 
 // two bad answers: a 422 with the reasons, nothing drawn

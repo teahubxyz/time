@@ -10,7 +10,7 @@
 //
 // Read-only except saved_charts and quota. Bindings: DB (D1), AI (Workers AI). Vars: AI_MODEL, AI_DAILY, SAVE_DAILY, REV.
 // deploy.py uploads main.js, which hands this module the library source: export default make(src).
-import { validateSpec, MARKS, AGGS, OPS } from "./aicharts.js";
+import { validateSpec, MARKS, AGGS } from "./aicharts.js";
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, date TEXT, month TEXT, region TEXT, product TEXT, channel TEXT, units INTEGER, amount REAL)",
@@ -97,18 +97,6 @@ export function describe(data, columns) {
   return { columns, sample: data.slice(0, 5), aggregates, rows: data.length };
 }
 
-const SPEC_SCHEMA = {
-  type: "object", required: ["mark", "x", "y"],
-  properties: {
-    title: { type: "string" }, mark: { type: "string", enum: MARKS }, x: { type: "string" }, y: { type: "string" },
-    series: { type: "string" },
-    transform: { type: "array", maxItems: 8, items: { type: "object", required: ["op"], properties: {
-      op: { type: "string", enum: OPS }, field: { type: "string" }, by: { type: "array", items: { type: "string" } },
-      agg: { type: "string", enum: AGGS }, as: { type: "string" }, order: { type: "string", enum: ["asc", "desc"] },
-      eq: {}, in: { type: "array" }, gte: {}, lte: {}, step: { type: "number" }, n: { type: "integer" } } } },
-  },
-};
-
 export function systemPrompt(dataset, info) {
   return `You turn a question about a table into a chart spec. Answer with ONE JSON object and nothing else.
 Table "${dataset}" (${info.rows} rows). Columns: ${info.columns.map((c) => `${c.name} (${c.type})`).join(", ")}.
@@ -171,15 +159,15 @@ export function normalizeSpec(spec) {
   return out;
 }
 
+// Plain prompt first: the prompt's grammar and example steer small models better than a constrained decoder does (a
+// one-size schema for every step made them drop agg and by). JSON mode only when no object came back at all.
 async function model(env, messages) {
   const input = { messages, max_tokens: 700, temperature: 0.1 };
-  let out;
-  try {
-    out = await env.AI.run(env.AI_MODEL, { ...input, response_format: { type: "json_schema", json_schema: SPEC_SCHEMA } });
-  } catch {
-    out = await env.AI.run(env.AI_MODEL, input); // not every model takes response_format
+  const text = (out) => out?.response ?? out?.choices?.[0]?.message?.content ?? "";
+  let raw = text(await env.AI.run(env.AI_MODEL, input));
+  if (!firstObject(raw)) {
+    try { raw = text(await env.AI.run(env.AI_MODEL, { ...input, response_format: { type: "json_object" } })); } catch { /* model has no JSON mode */ }
   }
-  const raw = out?.response ?? out?.choices?.[0]?.message?.content ?? "";
   return { spec: normalizeSpec(firstObject(raw)), raw: typeof raw === "string" ? raw : JSON.stringify(raw) };
 }
 
