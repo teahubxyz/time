@@ -1249,3 +1249,12 @@ if _sh.which("node"):
     res = _sp.run(["node", str(Path(__file__).resolve().parent / "cloudflare" / "test_auth.mjs")], capture_output=True, text=True, timeout=120)
     assert res.returncode == 0 and ("AUTH OK" in res.stdout or "AUTH SKIPPED" in res.stdout), res.stdout[-2000:] + res.stderr[-2000:]
     print("ALL OK 36" if "AUTH OK" in res.stdout else "skipped the passkey test: no node:sqlite")
+
+# the AICharts lab: spec validator, fixed operations and the demo Worker against SQLite (needs node:sqlite)
+if _sh.which("node"):
+    res = _sp.run(["node", str(Path(__file__).resolve().parent / "labs" / "aicharts" / "test_aicharts.mjs")], capture_output=True, text=True, timeout=60)
+    if "node:sqlite" in res.stderr and "ERR_UNKNOWN_BUILTIN_MODULE" in res.stderr:
+        print("skipped the aicharts test: no node:sqlite")
+    else:
+        assert res.returncode == 0 and "aicharts: all good" in res.stdout, res.stdout[-2000:] + res.stderr[-2000:]
+        print("ALL OK 41")
