@@ -169,7 +169,8 @@ export function attach(chart, { data, schema, endpoint, dataset }) {
 
 const Base = globalThis.HTMLElement ?? class {};
 
-// <ai-chart endpoint="https://..." dataset="orders" brain="jev"></ai-chart>   brain: llm | jev | clef (server default if unset)
+// <ai-chart endpoint="https://..." dataset="orders" brain="fast"></ai-chart>
+//   brain: fast (decision model first, LLM checks) | llm | jev | clef (server default if unset)
 // Needs Chart.js on the page (window.Chart). Fires "spec" after each answer and "save" when Save is pressed; set
 // element.onSave = async ({ spec, prompt, dataset }) => ... to store charts yourself (the demo stores them in D1).
 export class AiChart extends Base {
@@ -202,12 +203,37 @@ export class AiChart extends Base {
     try {
       await this.load();
       const brain = this.getAttribute("brain");
-      const { spec, ...info } = await fetchSpec(this.endpoint, { dataset: this.dataset, prompt, prior: this._spec, ...(brain ? { brain } : {}) });
+      const body = { dataset: this.dataset, prompt, prior: this._spec };
+      if (brain === "fast") return await this.askFast(body);
+      const { spec, ...info } = await fetchSpec(this.endpoint, { ...body, ...(brain ? { brain } : {}) });
       await this.render(spec, prompt);
       this.dispatchEvent(new CustomEvent("spec", { detail: { spec, prompt, info } }));
     } catch (e) {
       this._msg.textContent = String(e.message || e);
     }
+  }
+
+  // brain="fast": a decision model draws first (under a second), an LLM answers in the background, and the chart is
+  // redrawn only if the LLM's chart differs. Whichever comes back alone still draws.
+  async askFast(body) {
+    const ask = ++this._asks || (this._asks = 1);
+    const current = () => ask === this._asks;
+    const same = (a, b) => JSON.stringify({ ...a, title: 0 }) === JSON.stringify({ ...b, title: 0 });
+    const llm = fetchSpec(this.endpoint, { ...body, brain: "llm" }).catch((e) => ({ error: e }));
+    let drawn = null;
+    try {
+      const { spec, ...info } = await fetchSpec(this.endpoint, { ...body, brain: "clef", floor: 0 });
+      if (!current()) return;
+      await this.render(spec, body.prompt);
+      drawn = spec;
+      this.dispatchEvent(new CustomEvent("spec", { detail: { spec, prompt: body.prompt, info: { ...info, stage: "fast" } } }));
+    } catch { /* the LLM will answer */ }
+    const out = await llm;
+    if (!current() || out.error) { if (!drawn && out.error) throw out.error; return; }
+    const { spec, ...info } = out;
+    const changed = !drawn || !same(drawn, spec);
+    if (changed) await this.render(spec, body.prompt);
+    this.dispatchEvent(new CustomEvent("spec", { detail: { spec, prompt: body.prompt, info: { ...info, stage: drawn ? (changed ? "corrected" : "confirmed") : "llm" } } }));
   }
 
   async render(spec, prompt) {
