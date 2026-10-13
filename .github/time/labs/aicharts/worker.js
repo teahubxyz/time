@@ -147,6 +147,30 @@ export function firstObject(text) {
   return null;
 }
 
+// Small models drift on spelling, not meaning: "SUM", "mean", "aggregate", "groupBy": "region". Fix the spelling, then
+// the validator decides. Nothing here invents a field or an operation.
+const AGG_ALIAS = { average: "avg", mean: "avg", total: "sum", minimum: "min", maximum: "max", cnt: "count" };
+export function normalizeSpec(spec) {
+  if (!spec || typeof spec !== "object" || Array.isArray(spec)) return spec;
+  const low = (v) => (typeof v === "string" ? v.trim().toLowerCase() : v);
+  const out = { ...spec, mark: low(spec.mark) };
+  if (spec.chart && !spec.mark) out.mark = low(spec.chart.type ?? spec.chart);
+  if (Array.isArray(spec.transform)) out.transform = spec.transform.map((s0) => {
+    if (!s0 || typeof s0 !== "object") return s0;
+    const s = { ...s0, op: low(s0.op ?? s0.type) };
+    if (s.op === "groupby" || s.op === "aggregate") s.op = "group";
+    if (s.aggregate != null && s.agg == null) s.agg = s.aggregate;
+    if (s.groupby != null && s.by == null) s.by = s.groupby;
+    if (s.groupBy != null && s.by == null) s.by = s.groupBy;
+    if (typeof s.by === "string") s.by = [s.by];
+    if (s.agg != null) { s.agg = low(s.agg); s.agg = AGG_ALIAS[s.agg] ?? s.agg; }
+    if (s.order != null) s.order = low(s.order);
+    delete s.type; delete s.aggregate; delete s.groupby; delete s.groupBy;
+    return s;
+  });
+  return out;
+}
+
 async function model(env, messages) {
   const input = { messages, max_tokens: 700, temperature: 0.1 };
   let out;
@@ -155,7 +179,8 @@ async function model(env, messages) {
   } catch {
     out = await env.AI.run(env.AI_MODEL, input); // not every model takes response_format
   }
-  return firstObject(out?.response ?? out?.choices?.[0]?.message?.content ?? "");
+  const raw = out?.response ?? out?.choices?.[0]?.message?.content ?? "";
+  return { spec: normalizeSpec(firstObject(raw)), raw: typeof raw === "string" ? raw : JSON.stringify(raw) };
 }
 
 // Ask, check, and give the model one chance to fix what the validator found.
@@ -166,14 +191,15 @@ async function specFor(env, dataset, prompt, prior) {
   if (prior && validateSpec(prior, schema).ok)
     messages.push({ role: "user", content: "Current chart spec (change it if the question builds on it): " + JSON.stringify(prior) });
   messages.push({ role: "user", content: prompt });
-  let spec = await model(env, messages), v = validateSpec(spec, schema);
+  let { spec, raw } = await model(env, messages), v = validateSpec(spec, schema);
   if (!v.ok) {
-    messages.push({ role: "assistant", content: JSON.stringify(spec) },
+    messages.push({ role: "assistant", content: raw.slice(0, 2000) },
                   { role: "user", content: `That spec fails these checks: ${v.errors.join("; ")}. Answer with the corrected JSON object only.` });
-    spec = await model(env, messages);
+    ({ spec, raw } = await model(env, messages));
     v = validateSpec(spec, schema);
   }
-  return v.ok ? { spec } : { error: "couldn't turn that into a valid chart: " + v.errors.slice(0, 3).join("; ") };
+  // On failure the model's own answer comes back too: it is shown, never run.
+  return v.ok ? { spec } : { error: "couldn't turn that into a valid chart: " + v.errors.slice(0, 3).join("; "), model_said: raw.slice(0, 800) };
 }
 
 const newId = () => [...crypto.getRandomValues(new Uint8Array(6))].map((b) => b.toString(36).padStart(2, "0")).join("").slice(0, 10);

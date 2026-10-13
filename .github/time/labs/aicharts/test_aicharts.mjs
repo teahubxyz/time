@@ -61,6 +61,10 @@ assert.deepEqual(sent.at(-1).body.prior, bySum, "follow-ups carry the last chart
 assert.deepEqual(W.firstObject('Sure!\n```json\n{"a": {"b": "}"}}\n```'), { a: { b: "}" } });
 assert.deepEqual(W.firstObject('Sure! {"mark": "bar", "x": "a"} trailing {'), { mark: "bar", x: "a" });
 assert.equal(W.firstObject("no json"), null);
+assert.deepEqual(W.normalizeSpec({ mark: "Bar", x: "region", y: "value",
+  transform: [{ type: "groupBy", groupBy: "region", aggregate: "SUM", field: "amount", as: "value" }, { op: "sort", field: "value", order: "DESC" }] }),
+  { mark: "bar", x: "region", y: "value", transform: [{ op: "group", by: ["region"], agg: "sum", field: "amount", as: "value" }, { op: "sort", field: "value", order: "desc" }] });
+assert.equal(W.normalizeSpec({ mark: "bar", transform: [{ op: "group", agg: "mean" }] }).transform[0].agg, "avg");
 
 class D1 {
   constructor() { this.db = new DatabaseSync(":memory:"); this.writes = []; }
@@ -134,7 +138,9 @@ assert.ok(calls.at(-1).messages.at(-1).content.includes("fails these checks"), "
 answers.push({ response: "{}" }, { response: '{"mark": "pie"}' });
 r = await post("/api/spec", { dataset: "orders", prompt: "nonsense" });
 assert.equal(r.status, 422);
-assert.match((await r.json()).error, /valid chart/);
+const failed = await r.json();
+assert.match(failed.error, /valid chart/);
+assert.equal(failed.model_said, '{"mark": "pie"}', "the model's answer is shown on failure");
 
 // limits: AI_DAILY=5 overall; we've used 3
 answers.push({ response: good }, { response: good });
