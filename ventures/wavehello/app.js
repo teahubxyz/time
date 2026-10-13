@@ -51,9 +51,31 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    function initializeSample() {
-        // Create a sample visualization on load
-        createSampleVisualization();
+    async function initializeSample() {
+        try {
+            // Fetch the sample audio file
+            const response = await fetch('sample.wav');
+            if (!response.ok) {
+                throw new Error('Failed to load sample audio');
+            }
+            
+            const arrayBuffer = await response.arrayBuffer();
+            
+            // Create audio context if needed
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            
+            // Decode the audio data
+            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            
+            // Visualize the audio buffer
+            visualizeAudioBuffer(audioBuffer);
+        } catch (error) {
+            console.error('Error loading sample:', error);
+            // Fallback to sample visualization if loading fails
+            createSampleVisualization();
+        }
     }
     
     function createSampleVisualization() {
