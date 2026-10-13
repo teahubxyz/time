@@ -85,7 +85,10 @@ class D1 {
 const answers = [];
 const calls = [];
 const env = { DB: new D1(), REV: "r1", AI_MODEL: "@cf/test/m", AI_DAILY: "5", SAVE_DAILY: "100",
-  AI: { async run(model, input) { calls.push(input); const a = answers.shift(); if (a instanceof Error) throw a; return a; } } };
+  AI: { async run(model, input) {
+    if (input.questions) { decisions.push({ model, input }); const d = decided.shift(); if (d instanceof Error) throw d; return d; }
+    calls.push(input); const a = answers.shift(); if (a instanceof Error) throw a; return a; } } };
+const decisions = [], decided = [];
 const worker = W.make(src);
 const call = (path, init = {}, ip = "1.1.1.1") =>
   worker.fetch(new Request("https://aicharts.t.workers.dev" + path, { ...init, headers: { "cf-connecting-ip": ip, ...(init.headers || {}) } }), env);
@@ -151,6 +154,71 @@ assert.equal((await post("/api/spec", { prompt: "a" }, "2.2.2.2")).status, 200);
 assert.equal((await post("/api/spec", { prompt: "b" }, "2.2.2.2")).status, 200);
 assert.equal((await post("/api/spec", { prompt: "c" }, "3.3.3.3")).status, 429);
 assert.equal((await post("/api/spec", { prompt: "" })).status, 400);
+
+// ---------- decision brains (Jev / Clef): choice answers -> spec, LLM only as the door ----------
+const D = await import(join(here, "decide.js"));
+const ans = (choice, confidence = 0.9, probabilities) => ({ type: "choice", choice, confidence, probabilities: probabilities || { [choice]: confidence } });
+const westTop3 = { mark: ans("bar", 0.8, { bar: 0.8, pie: 0.17, line: 0.03 }), x: ans("product"), measure: ans("amount"), agg: ans("sum"), series: ans("none"),
+  order: ans("value_desc"), top: ans("3"), "only.region": ans("West", 0.95), "only.product": ans("any"), "only.channel": ans("any") };
+const infoNow = W.describe(data, sch.schema.columns);
+const qs = D.questions(infoNow);
+assert.deepEqual(Object.keys(qs).sort(), ["agg", "mark", "measure", "only.channel", "only.product", "only.region", "order", "series", "top", "x"]);
+assert.ok(!("id" in qs.x.criteria), "id is never an axis");
+assert.ok("rows" in qs.measure.criteria && "amount" in qs.measure.criteria && !("region" in qs.measure.criteria));
+assert.deepEqual(Object.keys(qs["only.region"].criteria).sort(), ["East", "North", "South", "West", "any"]);
+const asm = D.assemble(westTop3, infoNow);
+assert.deepEqual(asm.spec.transform, [{ op: "filter", field: "region", eq: "West" },
+  { op: "group", by: ["product"], agg: "sum", field: "amount", as: "value" }, { op: "sort", field: "value", order: "desc" }, { op: "limit", n: 3 }]);
+assert.equal(asm.spec.title, "Total amount by product (West)");
+assert.ok(lib.validateSpec(asm.spec, sch.schema).ok);
+assert.equal(lib.applySpec(data, asm.spec).length, 3);
+assert.deepEqual(asm.alternatives, [{ mark: "pie", p: 0.17 }]);
+assert.equal(asm.weakest, 0.8);
+// time on x sorts by time; a series only when asked; count needs no field
+const monthly = D.assemble({ ...westTop3, mark: ans("line"), x: ans("month"), measure: ans("rows"), agg: ans("avg", 0.1), series: ans("channel"),
+  order: ans("natural"), top: ans("all"), "only.region": ans("any") }, infoNow);
+assert.deepEqual(monthly.spec.transform, [{ op: "group", by: ["month", "channel"], agg: "count", as: "value" }, { op: "sort", field: "month", order: "asc" }]);
+assert.equal(monthly.spec.series, "channel");
+assert.equal(monthly.weakest, 0.9, "agg doesn't gate when counting rows");
+assert.ok(lib.validateSpec(monthly.spec, sch.schema).ok);
+assert.equal(D.assemble({ ...westTop3, mark: ans("pie"), series: ans("channel") }, infoNow).spec.series, undefined, "no series on a pie");
+
+// through the worker: a confident Jev answer is the spec, no LLM call
+const resetQuota = () => env.DB.db.exec("DELETE FROM quota");
+resetQuota(); calls.length = 0;
+decided.push({ model: "jev-1", answers: westTop3, usage: {} });
+r = await post("/api/spec", { dataset: "orders", prompt: "top 3 products in the West by revenue", brain: "jev" });
+let body = await r.json();
+assert.equal(r.status, 200, JSON.stringify(body));
+assert.equal(body.brain, "jev");
+assert.equal(decisions.at(-1).model, "typesafe/jev");
+assert.equal(decisions.at(-1).input.state.user_request, "top 3 products in the West by revenue");
+const toJev = JSON.stringify(decisions.at(-1).input), mid = data[200];
+assert.ok(!toJev.includes(mid.date) && !toJev.includes(String(mid.amount)) && !("sample" in decisions.at(-1).input.state),
+          "rows never reach the decision model");
+assert.equal(calls.length, 0);
+assert.deepEqual(body.spec, asm.spec);
+// Clef names its variant in the input
+decided.push({ answers: westTop3 });
+await post("/api/spec", { dataset: "orders", prompt: "x", brain: "clef" });
+assert.equal(decisions.at(-1).model, "@cf/cloudflare/clef-flash");
+assert.equal(decisions.at(-1).input.model, "clef-flash");
+// unsure -> the door: the LLM answers, and the response says why
+decided.push({ answers: { ...westTop3, x: ans("product", 0.31) } });
+answers.push({ response: good });
+body = await (await post("/api/spec", { dataset: "orders", prompt: "hmm", brain: "jev" })).json();
+assert.equal(body.brain, "llm");
+assert.match(body.handoff.reason, /low confidence \(0.31\)/);
+assert.deepEqual(body.spec, good);
+// decision model down -> the door too
+decided.push(new Error("no such model"));
+answers.push({ response: good });
+body = await (await post("/api/spec", { dataset: "orders", prompt: "hmm", brain: "jev" })).json();
+assert.match(body.handoff.reason, /decision model error: no such model/);
+// the server default brain, and an unknown brain falls back to it
+env.BRAIN = "jev"; decided.push({ answers: westTop3 });
+assert.equal((await (await post("/api/spec", { prompt: "q", brain: "gpt" })).json()).brain, "jev");
+delete env.BRAIN; resetQuota();
 
 // save, list, load; only valid specs are stored
 r = await post("/api/charts", { dataset: "orders", prompt: "revenue by region", spec: good });

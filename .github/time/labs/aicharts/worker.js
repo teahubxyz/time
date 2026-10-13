@@ -11,6 +11,7 @@
 // Read-only except saved_charts and quota. Bindings: DB (D1), AI (Workers AI). Vars: AI_MODEL, AI_DAILY, SAVE_DAILY, REV.
 // deploy.py uploads main.js, which hands this module the library source: export default make(src).
 import { validateSpec, MARKS, AGGS } from "./aicharts.js";
+import { decide } from "./decide.js";
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY, date TEXT, month TEXT, region TEXT, product TEXT, channel TEXT, units INTEGER, amount REAL)",
@@ -172,8 +173,32 @@ async function model(env, messages) {
 }
 
 // Ask, check, and give the model one chance to fix what the validator found.
-async function specFor(env, dataset, prompt, prior) {
+// brain: "llm" writes the spec; "jev" / "clef" answer choice questions and decide.js assembles it. A decision that
+// fails validation, or whose weakest needed answer is under FLOOR, goes to the LLM: the cage with a door.
+export const BRAINS = ["llm", "jev", "clef"];
+async function specVia(env, dataset, prompt, prior, brain) {
   const info = describe(await rows(env), DATASETS[dataset].columns);
+  const schema = { columns: info.columns };
+  const t0 = Date.now();
+  let handoff;
+  if (brain !== "llm") {
+    const model = brain === "jev" ? env.JEV_MODEL || "typesafe/jev" : env.CLEF_MODEL || "@cf/cloudflare/clef-flash";
+    try {
+      const d = await decide(env, model, info, prompt, prior && validateSpec(prior, schema).ok ? prior : undefined);
+      const v = validateSpec(d.spec, schema), floor = Number(env.FLOOR || 0.5);
+      if (v.ok && d.weakest >= floor)
+        return { spec: d.spec, brain, model: d.model, ms: d.ms, confidence: d.weakest, alternatives: d.alternatives };
+      handoff = { reason: v.ok ? `low confidence (${d.weakest})` : "decision failed checks: " + v.errors[0], decided: d.spec, ms: d.ms };
+    } catch (e) {
+      handoff = { reason: "decision model error: " + String(e.message || e).slice(0, 160) };
+    }
+  }
+  const out = await specFor(env, dataset, prompt, prior, info);
+  return { ...out, brain: "llm", model: env.AI_MODEL, ms: Date.now() - t0, ...(handoff ? { handoff } : {}) };
+}
+
+async function specFor(env, dataset, prompt, prior, known) {
+  const info = known || describe(await rows(env), DATASETS[dataset].columns);
   const schema = { columns: info.columns };
   const messages = [{ role: "system", content: systemPrompt(dataset, info) }];
   if (prior && validateSpec(prior, schema).ok)
@@ -213,8 +238,9 @@ async function api(req, env, url) {
     if (path === "/api/spec") {
       if (!env.AI) return json({ error: "no AI here" }, 501);
       if (!prompt) return json({ error: "ask a question" }, 400);
-      if (!(await spend(env, "ai", await who(req), 30, Number(env.AI_DAILY || 300)))) return json({ error: "over today's limit, try tomorrow" }, 429);
-      const out = await specFor(env, ds, prompt, body.prior);
+      if (!(await spend(env, "ai", await who(req), 60, Number(env.AI_DAILY || 300)))) return json({ error: "over today's limit, try tomorrow" }, 429);
+      const brain = BRAINS.includes(body.brain) ? body.brain : BRAINS.includes(env.BRAIN) ? env.BRAIN : "llm";
+      const out = await specVia(env, ds, prompt, body.prior, brain);
       return json(out, out.spec ? 200 : 422);
     }
     const v = validateSpec(body.spec, { columns: DATASETS[ds].columns });
@@ -251,12 +277,15 @@ button{padding:10px 14px;border:0;border-radius:8px;background:var(--accent);col
 .aic-msg{min-height:24px;margin:10px 0;color:var(--mute)}.aic-canvas{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px}
 .aic-save{margin-top:10px}.chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0}.chips button{background:var(--card);color:var(--fg);border:1px solid var(--line);padding:6px 10px;font-size:14px}
 details{margin-top:16px}pre{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:12px;overflow:auto;font-size:13px}
-h2{font-size:18px;margin:28px 0 8px}ul{padding-left:18px}a{color:var(--accent)}
+h2{font-size:18px;margin:28px 0 8px}.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:space-between}
+.brain{font-size:14px;color:var(--mute)}.brain select{font:inherit;padding:4px;border-radius:6px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px;font-size:14px;color:var(--mute)}.meta button{padding:4px 10px;font-size:14px;background:var(--card);color:var(--fg);border:1px solid var(--line)}ul{padding-left:18px}a{color:var(--accent)}
 </style></head><body><main>
 <h1>AICharts</h1>
 <p class="lede">Ask for a chart in plain words. The model writes a small spec that is checked before anything draws, and never sees the rows: only column names, five sample rows and value ranges. Data: a sample tea shop, 24 months of orders.</p>
-<div class="chips" id="chips"></div>
+<div class="row"><div class="chips" id="chips"></div><label class="brain">Brain <select id="brain"><option value="">default</option><option value="jev">Jev</option><option value="clef">Clef</option><option value="llm">LLM</option></select></label></div>
 <ai-chart dataset="orders"></ai-chart>
+<div class="meta" id="meta"></div>
 <details><summary>Spec</summary><pre id="spec">Ask something first.</pre></details>
 <h2>Saved charts</h2><ul id="saved"><li>None yet.</li></ul>
 <h2>Use it on your page</h2>
@@ -272,7 +301,20 @@ for (const q of ["Revenue by region", "Monthly revenue, web vs store", "Share of
   const b = document.createElement("button"); b.textContent = q; b.onclick = () => { el.querySelector("input").value = q; el.ask(q); };
   document.getElementById("chips").append(b);
 }
-el.addEventListener("spec", (e) => { document.getElementById("spec").textContent = JSON.stringify(e.detail.spec, null, 2); });
+const brainSel = document.getElementById("brain"), meta = document.getElementById("meta");
+brainSel.onchange = () => brainSel.value ? el.setAttribute("brain", brainSel.value) : el.removeAttribute("brain");
+el.addEventListener("spec", (e) => {
+  const { spec, info = {} } = e.detail;
+  document.getElementById("spec").textContent = JSON.stringify({ ...info, spec }, null, 2);
+  const bits = [info.brain && "via " + info.brain + (info.handoff ? " (handed off: " + info.handoff.reason + ")" : ""),
+                info.ms != null && info.ms + " ms", info.confidence != null && "confidence " + info.confidence].filter(Boolean);
+  meta.replaceChildren(document.createTextNode(bits.join(" · ")));
+  for (const alt of info.alternatives || []) {
+    const b = document.createElement("button"); b.textContent = "or as " + alt.mark + " (" + Math.round(alt.p * 100) + "%)";
+    b.onclick = () => el.render({ ...spec, mark: alt.mark }, e.detail.prompt).catch((err) => { meta.append(" " + err.message); });
+    meta.append(b);
+  }
+});
 el.onSave = async (d) => {
   const r = await fetch("/api/charts", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(d) });
   const out = await r.json(); if (!r.ok) throw new Error(out.error); history.replaceState(null, "", "?c=" + out.id); await refresh();

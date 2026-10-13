@@ -26,6 +26,7 @@ def parts() -> list[tuple[str, str, bytes]]:
     return [("main.js", "application/javascript+module", MAIN),
             ("worker.js", "application/javascript+module", (HERE / "worker.js").read_bytes()),
             ("aicharts.js", "application/javascript+module", lib),
+            ("decide.js", "application/javascript+module", (HERE / "decide.js").read_bytes()),
             ("aicharts.txt", "text/plain", lib)]
 
 
@@ -35,7 +36,8 @@ def deploy() -> dict:
     code = parts()
     rev = hashlib.sha256(b"".join(d for _, _, d in code)).hexdigest()[:12]
     vars_ = {"REV": rev, "AI_MODEL": cf.env("AICHARTS_AI_MODEL", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"), "AI_DAILY": cf.env("AICHARTS_AI_DAILY", "300"),
-             "SAVE_DAILY": cf.env("AICHARTS_SAVE_DAILY", "1000")}
+             "SAVE_DAILY": cf.env("AICHARTS_SAVE_DAILY", "1000"),
+             "BRAIN": cf.env("AICHARTS_BRAIN", "llm"), "FLOOR": cf.env("AICHARTS_FLOOR", "0.5")}
     db = cf.database("aicharts")  # named time-aicharts, like the script
     meta = {"main_module": "main.js", "compatibility_date": cf.COMPAT,
             "bindings": [{"type": "d1", "name": "DB", "id": db}, {"type": "ai", "name": "AI"}]
