@@ -1033,7 +1033,7 @@ print("ALL OK 34")
 class BWorld(VWorld):
     def __init__(self):
         super().__init__()
-        self.milestones = {}
+        self.milestones, self.unlisted = {}, set()
 
     def http(self, method, url, token, body=None, timeout=0):
         base = url.replace(tm.GH, "").partition("?")[0]
@@ -1046,8 +1046,14 @@ class BWorld(VWorld):
         if base.startswith("/repos/o/r/milestones/"):
             self.milestones[int(base.rsplit("/", 1)[1])].update(body); return {}
         out = super().http(method, url, token, body, timeout)
-        if base == "/repos/o/r/issues" and method == "POST" and body.get("milestone"):
-            out["milestone"] = {"number": body["milestone"]}
+        if base == "/repos/o/r/issues" and method == "GET":  # GitHub lists a card made a moment ago only later
+            return [i for i in out if i["number"] not in self.unlisted]
+        if base == "/repos/o/r/issues" and method == "POST":
+            if "venture-batch" in body.get("labels", []):
+                self.unlisted.add(out["number"])
+            if body.get("milestone"):
+                out["milestone"] = {"number": body["milestone"]}
+            out = {**out, "labels": [{"name": lb} for lb in out["labels"]]}  # as GitHub returns them: objects, not names
         return out
 
 
@@ -1088,6 +1094,7 @@ def btick(env=None):
     os.environ.update({"VENICE_API_KEY": "vk", "TIME_VENTURE": "on", "TIME_VENTURE_BATCH": "3", **(env or {})})
     vt.tm.http, vt.tm.think = W.http, batch_brain
     vt.tick()
+    W.unlisted.clear()  # listed by the next tick
 
 
 def kids_of(b):

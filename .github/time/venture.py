@@ -1491,6 +1491,11 @@ def refresh_backends(reg: dict, limit: int = 2) -> None:
 BATCH_STAGES = ["new", "scouted", "pitched", "spawned", "launched"]
 
 
+def label_names(issue: dict) -> set[str]:
+    """GitHub returns labels as objects ({"name": ...}); accept plain names too."""
+    return {lb["name"] if isinstance(lb, dict) else lb for lb in issue.get("labels") or []}
+
+
 def batch_size() -> int:
     return max(0, int(float(env("TIME_VENTURE_BATCH", "0") or 0)))
 
@@ -1725,8 +1730,8 @@ def tick() -> int:
         if env("TIME_VENTURE_START", "").lower() in yes and (batch_size() or asked_batch):
             fresh.append(new_card(next_title({c["title"] for c in venture_cards("all")})))
     # batches first: they are cheap between their own stages, and a release lets ready children launch in this tick
-    bfresh = [c for c in fresh if "venture-batch" in c["labels"]]
-    fresh = [c for c in fresh if "venture-batch" not in c["labels"]]
+    bfresh = [c for c in fresh if "venture-batch" in label_names(c)]
+    fresh = [c for c in fresh if "venture-batch" not in label_names(c)]
     blisted = batch_cards()
     for b in blisted + [c for c in bfresh if c["number"] not in {x["number"] for x in blisted}]:
         for _ in range(len(BATCH_STAGES)):
