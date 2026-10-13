@@ -139,6 +139,28 @@
    "planned": "2026-10-13",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "storysketch",
+   "name": "StorySketch",
+   "one_liner": "Type a short story and watch it become a clean illustrated comic you can tweak and share in under a minute.",
+   "for_whom": "A parent who wants to make a quick custom bedtime story with pictures for their child before lights-out.",
+   "url": "https://storysketch.yolopreneur.lol/",
+   "pages": "https://teahubxyz.github.io/time/ventures/storysketch/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus",
+   "signal": 31,
+   "card": 29,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "backend": {
+    "worker": "time-storysketch",
+    "db": "bbffb5ad-cf16-4e9b-ad1f-9803b3124682",
+    "rev": "172ee02b79e2",
+    "api": "https://storysketch.yolopreneur.lol/api/"
+   },
+   "planned": "2026-10-13",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-13"
