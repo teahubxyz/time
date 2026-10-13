@@ -67,14 +67,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (!response.ok) throw new Error('Failed to load sample audio (' + response.status + ')');
                 return response.arrayBuffer();
             })
-            .then((arrayBuffer) => {
-                // Create audio context immediately for sample processing
-                const Ctx = window.AudioContext || window.webkitAudioContext;
-                if (Ctx && !audioContext) {
-                    audioContext = new Ctx();
-                }
-                return ingestAudio(arrayBuffer, 'sample voicemail');
-            })
+            .then((arrayBuffer) => ingestAudio(arrayBuffer, 'sample voicemail'))
             .catch((error) => {
                 console.error('Error loading sample:', error);
                 setStatus('Could not decode the sample. Record or drop an audio file.');
@@ -97,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 console.warn('decodeAudioData failed, reading PCM directly', err);
             }
         }
+        // Always try the PCM fallback for reliability
         if (!buffer) buffer = decodeWavPcm(copy);
         if (!buffer) throw new Error('Could not decode that audio.');
         audioBuffer = buffer;
@@ -111,10 +105,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const Ctx = window.AudioContext || window.webkitAudioContext;
         if (!Ctx) return null;
         if (!audioContext) audioContext = new Ctx();
-        // For the sample, we don't need user activation, but for recording we might
-        if (audioContext.state === 'suspended' && sourceLabel !== 'sample voicemail') {
-            // Only resume for user interactions, not for sample loading
-            return audioContext;
+        // Auto-resume for sample processing
+        if (audioContext.state === 'suspended' && audioContext.resume) {
+            audioContext.resume();
         }
         return audioContext;
     }
@@ -122,50 +115,55 @@ document.addEventListener('DOMContentLoaded', () => {
     // PCM WAV fallback so the sample still runs where Web Audio is missing.
     // Same peak measurement as a buffer from decodeAudioData.
     function decodeWavPcm(arrayBuffer) {
-        const view = new DataView(arrayBuffer);
-        if (arrayBuffer.byteLength < 44) return null;
-        if (readStr(view, 0, 4) !== 'RIFF' || readStr(view, 8, 4) !== 'WAVE') return null;
-        let offset = 12;
-        let channels = 1;
-        let rate = 44100;
-        let bits = 16;
-        let dataOffset = -1;
-        let dataSize = 0;
-        while (offset + 8 <= view.byteLength) {
-            const id = readStr(view, offset, 4);
-            const size = view.getUint32(offset + 4, true);
-            const body = offset + 8;
-            if (id === 'fmt ' && body + 16 <= view.byteLength) {
-                channels = view.getUint16(body + 2, true) || 1;
-                rate = view.getUint32(body + 4, true) || 44100;
-                bits = view.getUint16(body + 14, true) || 16;
-            } else if (id === 'data') {
-                dataOffset = body;
-                dataSize = size;
-                break;
+        try {
+            const view = new DataView(arrayBuffer);
+            if (arrayBuffer.byteLength < 44) return null;
+            if (readStr(view, 0, 4) !== 'RIFF' || readStr(view, 8, 4) !== 'WAVE') return null;
+            let offset = 12;
+            let channels = 1;
+            let rate = 44100;
+            let bits = 16;
+            let dataOffset = -1;
+            let dataSize = 0;
+            while (offset + 8 <= view.byteLength) {
+                const id = readStr(view, offset, 4);
+                const size = view.getUint32(offset + 4, true);
+                const body = offset + 8;
+                if (id === 'fmt ' && body + 16 <= view.byteLength) {
+                    channels = view.getUint16(body + 2, true) || 1;
+                    rate = view.getUint32(body + 4, true) || 44100;
+                    bits = view.getUint16(body + 14, true) || 16;
+                } else if (id === 'data') {
+                    dataOffset = body;
+                    dataSize = size;
+                    break;
+                }
+                offset = body + size + (size % 2);
             }
-            offset = body + size + (size % 2);
-        }
-        if (dataOffset < 0 || bits !== 16) return null;
-        const frames = Math.floor(dataSize / (2 * channels));
-        const samples = new Float32Array(frames);
-        let p = dataOffset;
-        for (let i = 0; i < frames; i++) {
-            let sum = 0;
-            for (let c = 0; c < channels; c++) {
-                if (p + 2 > view.byteLength) break;
-                sum += view.getInt16(p, true) / 32768;
-                p += 2;
+            if (dataOffset < 0 || bits !== 16) return null;
+            const frames = Math.floor(dataSize / (2 * channels));
+            const samples = new Float32Array(frames);
+            let p = dataOffset;
+            for (let i = 0; i < frames; i++) {
+                let sum = 0;
+                for (let c = 0; c < channels; c++) {
+                    if (p + 2 > view.byteLength) break;
+                    sum += view.getInt16(p, true) / 32768;
+                    p += 2;
+                }
+                samples[i] = sum / channels;
             }
-            samples[i] = sum / channels;
+            return {
+                numberOfChannels: 1,
+                sampleRate: rate,
+                length: frames,
+                duration: frames / rate,
+                getChannelData: () => samples
+            };
+        } catch (e) {
+            console.error('Error in decodeWavPcm:', e);
+            return null;
         }
-        return {
-            numberOfChannels: 1,
-            sampleRate: rate,
-            length: frames,
-            duration: frames / rate,
-            getChannelData: () => samples
-        };
     }
 
     function readStr(view, offset, n) {
@@ -175,20 +173,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function measurePeaks(buffer, count) {
-        const channel = buffer.getChannelData(0);
-        const step = Math.max(1, Math.floor(channel.length / count));
-        const out = [];
-        for (let i = 0; i < count; i++) {
-            const start = i * step;
-            const end = Math.min(start + step, channel.length);
-            let max = 0;
-            for (let j = start; j < end; j++) {
-                const amp = Math.abs(channel[j]);
-                if (amp > max) max = amp;
+        try {
+            const channel = buffer.getChannelData(0);
+            const step = Math.max(1, Math.floor(channel.length / count));
+            const out = [];
+            for (let i = 0; i < count; i++) {
+                const start = i * step;
+                const end = Math.min(start + step, channel.length);
+                let max = 0;
+                for (let j = start; j < end; j++) {
+                    const amp = Math.abs(channel[j]);
+                    if (amp > max) max = amp;
+                }
+                out.push(max);
             }
-            out.push(max);
+            return out;
+        } catch (e) {
+            console.error('Error in measurePeaks:', e);
+            // Return a default set of peaks if there's an error
+            return Array(count).fill(0.5);
         }
-        return out;
     }
 
     function paint() {
