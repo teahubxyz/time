@@ -582,21 +582,13 @@ def pages_file(path: str) -> str | None:
 
 def put_pages(path: str, data: str | bytes, message: str) -> dict:
     raw = data.encode() if isinstance(data, str) else data
-    body = {"message": message, "branch": PAGES_BRANCH, "content": base64.b64encode(raw).decode()}
-    try:
-        body["sha"] = tm.gh("GET", f"/repos/{REPO}/contents/{path}?ref={PAGES_BRANCH}")["sha"]
-    except RuntimeError:
-        pass
-    return tm.gh("PUT", f"/repos/{REPO}/contents/{path}", body) or {}
+    # a push, not a contents PUT: Gitea refuses the Actions token's API writes (see tm.git_commit)
+    return {"commit": {"sha": tm.git_commit(PAGES_BRANCH, {path: raw}, message)}}
 
 
 def ensure_pages() -> str:
     """gh-pages exists and Pages serves it (no Jekyll), and the signup label exists. Returns the site URL."""
-    try:
-        tm.gh("GET", f"/repos/{REPO}/git/ref/heads/{PAGES_BRANCH}")
-    except RuntimeError:
-        base = tm.gh("GET", f"/repos/{REPO}/git/ref/heads/{tm.default_branch()}")["object"]["sha"]
-        tm.gh("POST", f"/repos/{REPO}/git/refs", {"ref": f"refs/heads/{PAGES_BRANCH}", "sha": base})
+    tm.git_commit(PAGES_BRANCH, {}, "Pages branch")  # made from the default branch if missing; a no-op push if not
     try:
         p = tm.gh("GET", f"/repos/{REPO}/pages")
     except RuntimeError:

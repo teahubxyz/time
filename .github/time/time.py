@@ -12,7 +12,7 @@ so every event-driven workflow filters on the author.
 Forge notes (Gitea 1.24 vs GitHub): `limit` not `per_page`; no `sort` on issues; the `pull_request` key is always
 present (null on issues); labels are removed by id and set on creation by id; no `author_association` (trust = the
 collaborator permission endpoint); no check-runs (commit statuses only); merge is POST .../merge {"Do": "squash"};
-branches are made with POST .../branches; the diff is GET .../pulls/N.diff.
+writes go over git (git_commit): the API's own writes are refused for the Actions token; the diff is GET .../pulls/N.diff.
 """
 from __future__ import annotations
 
@@ -280,21 +280,11 @@ def flush_ledger() -> None:
     usd = sum(r["usd"] or 0 for r in rows)
     for month in sorted({r["at"][:7] for r in rows}):
         mine = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in rows if r["at"].startswith(month))
-        for attempt in range(2):
-            try:
-                old, sha = _ledger_files[month] if month in _ledger_files and attempt == 0 else _read_ledger(month)
-                text = "".join(json.dumps(r, separators=(",", ":")) + "\n" for r in old) + mine
-                body = {"message": f"ledger: {len(rows)} calls, ${usd:.2f}", "content": base64.b64encode(text.encode()).decode()}
-                if sha:
-                    body["sha"] = sha
-                gh("PUT", f"/repos/{REPO}/contents/{ledger_path(month)}", body)
-                _ledger_files.pop(month, None)
-                break
-            except Exception as e:  # noqa: BLE001
-                if attempt == 0 and re.search(r"-> (409|422)\b", str(e)):
-                    continue  # someone else committed the file first: re-read and append to theirs
-                print(f"ledger flush failed: {str(e)[:200]}")
-                break
+        try:  # an append on a fresh clone: a racing writer is handled by git_commit's pull --rebase
+            git_commit(default_branch(), {}, f"ledger: {len(rows)} calls, ${usd:.2f}", append={ledger_path(month): mine.encode()})
+            _ledger_files.pop(month, None)
+        except Exception as e:  # noqa: BLE001
+            print(f"ledger flush failed: {str(e)[:200]}")
 
 
 def spend(prefix: str) -> float:
@@ -632,6 +622,7 @@ def land(card: dict, last: dict) -> None:
             comment(n, f"⏱️ Time: approved, but checks are failing on PR #{pr['number']}. Waiting for a fix.",
                     {"beat": "checks-failed", "pr": pr["number"]})
         return
+    # risk: an API merge as the Actions token may hit the same pre-receive refusal as the contents API (see git_commit)
     gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True})
     if gh("GET", f"/repos/{REPO}/issues/{n}")["state"] == "open":
         gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
@@ -694,23 +685,73 @@ def docker_ok() -> bool:
     return _DOCKER
 
 
+def _git_url(token: bool) -> str:
+    # file:// (tests) has no credentials to carry
+    if token and not SERVER.startswith("file:"):
+        return SERVER.replace("://", f"://x-access-token:{os.environ['GITHUB_TOKEN']}@", 1) + f"/{REPO}.git"
+    return f"{SERVER}/{REPO}.git"
+
+
+def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, base: str | None = None,
+               append: dict[str, bytes] | None = None) -> str:
+    """Commit files (None deletes; `append` adds bytes to the end) to branch and push; returns the new sha.
+    Gitea 1.24 refuses the Actions token's API writes in the pre-receive hook (no GITEA_ACTION_PERM on the internal
+    push), but git over HTTP with the same token has write. So every write Time makes is a push. A missing branch is
+    made from `base` (default branch); no files and a missing branch just creates it."""
+    token = os.environ.get("GITHUB_TOKEN") or ""
+    url = _git_url(True)
+    d = tempfile.mkdtemp(prefix="time-git-")
+
+    def git(*args, check=True):
+        p = subprocess.run(["git", *args], cwd=d, capture_output=True, text=True)
+        if check and p.returncode:
+            err = (p.stderr or p.stdout)[-400:]
+            raise RuntimeError(f"git {args[0]} failed: {err.replace(token, '***') if token else err}")
+        return p
+    try:
+        if git("clone", "-q", "--depth", "1", "--branch", branch, url, ".", check=False).returncode:
+            git("clone", "-q", "--depth", "1", "--branch", base or default_branch(), url, ".")
+            git("checkout", "-q", "-b", branch)
+        git("remote", "set-url", "origin", _git_url(False))  # the token must not stay in .git/config
+        paths = []
+        for rel, data in list((files or {}).items()) + [(k, ("+", v)) for k, v in (append or {}).items()]:
+            full = os.path.join(d, rel)
+            if data is None:
+                if os.path.exists(full):
+                    os.remove(full)
+            else:
+                os.makedirs(os.path.dirname(full), exist_ok=True)
+                with open(full, "ab" if isinstance(data, tuple) else "wb") as f:
+                    f.write(data[1] if isinstance(data, tuple) else data)
+            paths.append(rel)
+        if paths:
+            git("add", "-A", "--", *paths)
+        host = re.sub(r"^\w+://", "", SERVER).split("/")[0] or "localhost"
+        if git("diff", "--cached", "--quiet", check=False).returncode:
+            git("-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", "commit", "-q", "-m", message)
+        for attempt in range(2):
+            p = git("push", "-q", url, f"HEAD:refs/heads/{branch}", check=attempt == 1)
+            if not p.returncode:
+                break
+            # someone pushed first: replay ours on theirs once (appends to the ledger rebase cleanly)
+            git("-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", "pull", "-q", "--rebase", url, branch)
+        return git("rev-parse", "HEAD").stdout.strip()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 class Hands:
     def __init__(self, n: int, branch: str):
         self.n, self.branch, self.pr, self.steps = n, branch, None, 0
         self.label = "a seat"  # venice_work names the seat for the PR footer
-        try:
-            gh("POST", f"/repos/{REPO}/branches", {"new_branch_name": branch, "old_branch_name": default_branch()})
-        except RuntimeError as e:
-            if "409" not in str(e):  # already there: resume on it
-                raise
+        git_commit(branch, {}, f"card #{n}: branch")  # already there: resume on it (nothing to commit, push is a no-op)
         self.checkout = None
 
     def _checkout(self) -> str:
         d = tempfile.mkdtemp(prefix="time-worker-")
-        url = SERVER.replace("://", f"://x-access-token:{os.environ['GITHUB_TOKEN']}@", 1) + f"/{REPO}.git"
-        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", self.branch, url, d], check=True, capture_output=True)
+        subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", self.branch, _git_url(True), d], check=True, capture_output=True)
         # the token must not stay in .git/config, where a `run` command could read it
-        subprocess.run(["git", "remote", "set-url", "origin", f"{SERVER}/{REPO}.git"], cwd=d, check=True, capture_output=True)
+        subprocess.run(["git", "remote", "set-url", "origin", _git_url(False)], cwd=d, check=True, capture_output=True)
         return d
 
     def call(self, name: str, a: dict) -> str:
@@ -729,13 +770,7 @@ class Hands:
         if name == "write_file":
             if a["path"].startswith((".github/workflows", ".gitea/workflows")):
                 return "refused: workflow files are a human's to change"
-            body = {"message": a.get("message") or f"card #{self.n}: update {a['path']}", "branch": self.branch,
-                    "content": base64.b64encode(a["content"].encode()).decode()}
-            try:
-                body["sha"] = gh("GET", f"/repos/{REPO}/contents/{a['path']}?ref={self.branch}")["sha"]
-            except RuntimeError:
-                pass
-            gh("PUT", f"/repos/{REPO}/contents/{a['path']}", body)
+            git_commit(self.branch, {a["path"]: a["content"].encode()}, a.get("message") or f"card #{self.n}: update {a['path']}")
             self.checkout = None
             return f"wrote {a['path']}"
         if name == "run":
@@ -755,7 +790,7 @@ class Hands:
             except subprocess.TimeoutExpired:  # a server or watcher never exits: tell the model, don't crash the card
                 return (f"timed out after {limit}s and was stopped. Servers and watchers never exit; run one-shot commands "
                         f"(a parser, a test script, node -e '...') instead")
-            kept = []
+            kept, keep = [], {}
             root = os.path.realpath(self.checkout)
             for rel in (a.get("keep") or [])[:10]:
                 full = os.path.realpath(os.path.join(root, str(rel)))
@@ -767,13 +802,10 @@ class Hands:
                 if len(data) > 2_000_000:
                     kept.append(f"{rel}: too big to keep")
                     continue
-                body = {"message": f"card #{self.n}: {rel} (generated)", "branch": self.branch, "content": base64.b64encode(data).decode()}
-                try:
-                    body["sha"] = gh("GET", f"/repos/{REPO}/contents/{rel}?ref={self.branch}")["sha"]
-                except RuntimeError:
-                    pass
-                gh("PUT", f"/repos/{REPO}/contents/{rel}", body)
+                keep[rel] = data
                 kept.append(f"{rel}: kept")
+            if keep:  # one commit for the lot
+                git_commit(self.branch, keep, f"card #{self.n}: kept {', '.join(keep)} (generated)")
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
             # the worker's own test run is recorded as a commit status; land() sees it but never merges on it alone.
             gh("POST", f"/repos/{REPO}/statuses/{sha}", {"state": "success" if p.returncode == 0 else "failure",

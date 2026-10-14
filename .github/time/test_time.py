@@ -9,6 +9,23 @@ spec = importlib.util.spec_from_file_location("tm", Path(__file__).resolve().par
 tm = importlib.util.module_from_spec(spec); spec.loader.exec_module(tm)
 real_think = tm.think  # some checks stub it; the Claude checks need the real one
 
+
+real_git_commit = tm.git_commit
+def fake_git_commit(branch, files, message, *, base=None, append=None):
+    """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to."""
+    w = getattr(tm.http, "__self__", None)
+    if w is None: return "sha"
+    if not files and not append: w.branches = getattr(w, "branches", []) + [branch]
+    for fp, data in (files or {}).items():
+        if hasattr(w, "writes"): w.writes.append((fp, "s" if fp in w.files else None))
+        if data is None: w.files.pop(fp, None)
+        else: w.files[fp] = data.decode()
+    for fp, data in (append or {}).items():
+        w.files[fp] = w.files.get(fp, "") + data.decode()
+    w.commits = getattr(w, "commits", []) + [(branch, files, append, message)]
+    return "sha"
+tm.git_commit = fake_git_commit
+
 NOW = dt.datetime.now(dt.timezone.utc)
 iso = lambda h=0: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -377,6 +394,31 @@ w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_
 assert "ANTHROPIC_API_KEY" in w.posted[-1][1], "missing key -> blocked"
 tm.LEDGER.clear(); tm._ledger_files.clear()  # nothing for atexit to flush into a fake
 print("ALL OK 52")
+
+# git_commit against a real bare repo: create a branch, write, append twice; no token in .git/config or errors
+import subprocess as _gsp, tempfile as _gtf
+_g = _gtf.mkdtemp(); _env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+_gsp.run(["git", "init", "-q", "--bare", "-b", "main", f"{_g}/o/r.git"], check=True)
+_gsp.run(["git", "clone", "-q", f"{_g}/o/r.git", f"{_g}/seed"], check=True, capture_output=True)
+Path(f"{_g}/seed/README.md").write_text("hi\n")
+for c in (["add", "."], ["commit", "-qm", "seed"], ["push", "-q", "origin", "HEAD:main"]):
+    _gsp.run(["git", *c], cwd=f"{_g}/seed", check=True, env=_env, capture_output=True)
+_saved = tm.SERVER, tm.REPO, tm.default_branch
+tm.SERVER, tm.REPO, tm.default_branch = f"file://{_g}", "o/r", lambda: "main"
+show = lambda ref: _gsp.run(["git", "--git-dir", f"{_g}/o/r.git", "show", ref], capture_output=True, text=True).stdout
+s0 = real_git_commit("time/card-9", {}, "branch")
+assert s0 == show("main").split()[1] and show("time/card-9:README.md") == "hi\n"
+s1 = real_git_commit("time/card-9", {"src/a.py": b"x = 1\n"}, "card #9: a")
+assert show("time/card-9:src/a.py") == "x = 1\n" and s1 != s0
+real_git_commit("main", {}, "ledger 1", append={"time/ledger/m.jsonl": b"one\n"})
+real_git_commit("main", {}, "ledger 2", append={"time/ledger/m.jsonl": b"two\n"})
+assert show("main:time/ledger/m.jsonl") == "one\ntwo\n"
+log = _gsp.run(["git", "--git-dir", f"{_g}/o/r.git", "log", "--format=%s|%an", "main"], capture_output=True, text=True).stdout.split("\n")
+assert log[:3] == ["ledger 2|Time", "ledger 1|Time", "seed|t"], log
+assert real_git_commit("time/card-9", {"src/a.py": None}, "rm") and "src/a.py" not in _gsp.run(
+    ["git", "--git-dir", f"{_g}/o/r.git", "ls-tree", "-r", "--name-only", "time/card-9"], capture_output=True, text=True).stdout
+tm.SERVER, tm.REPO, tm.default_branch = _saved
+print("ALL OK 53")
 
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
