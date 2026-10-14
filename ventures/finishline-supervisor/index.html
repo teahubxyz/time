@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="A repo-local evidence card for coding-agent work. Read the task, check scope, run acceptance checks: DONE, WAIT, or ANDON.">
+<title>Finishline Supervisor · notplanned</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f2ec;--fg:#111;--muted:#6a6861;--line:#cbc7bd;--card:#fbfaf6;--hot:#ff5a1f}
+@media(prefers-color-scheme:dark){:root{--bg:#10100f;--fg:#f3f0e8;--muted:#aaa69d;--line:#393732;--card:#171715;--hot:#ff7a45}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace}.wrap{width:min(980px,calc(100% - 36px));margin:auto}a{color:inherit;text-underline-offset:4px}a:focus-visible{outline:3px solid var(--hot);outline-offset:5px}header{min-height:78px;display:flex;align-items:center;justify-content:space-between;gap:18px;border-bottom:1px solid var(--line)}.brand{font-weight:800;letter-spacing:-.04em}.tiny,.label{font-size:12px;color:var(--muted)}.label{text-transform:uppercase;letter-spacing:.1em}.hero{padding:84px 0 48px}h1{font-size:clamp(46px,8.5vw,88px);line-height:.96;letter-spacing:-.075em;margin:20px 0 28px}h1 span{color:var(--hot)}h2{font-family:ui-sans-serif,system-ui,sans-serif;font-size:30px;line-height:1.1;letter-spacing:-.04em;margin:0 0 18px}p,li{font-family:ui-sans-serif,system-ui,sans-serif;line-height:1.55;font-size:17px}.lead{max-width:760px;font-size:clamp(20px,3vw,28px);line-height:1.25}.actions{display:flex;gap:12px;flex-wrap:wrap;margin:28px 0}.button{display:inline-block;padding:13px 18px;border:1px solid var(--fg);border-radius:999px;text-decoration:none;font-size:14px;font-family:ui-sans-serif,system-ui,sans-serif;cursor:pointer}.primary{background:var(--fg);color:var(--bg)}.signals{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:60px}.card{border:1px solid var(--line);background:var(--card);padding:24px;border-radius:18px}.card strong{font-size:25px}.card p{font-size:16px;color:var(--muted);margin-bottom:0}.andon{border-color:var(--hot)}section{margin-bottom:60px}.split{display:grid;grid-template-columns:1.1fr 1fr;gap:24px}pre{overflow:auto;white-space:pre;max-width:100%;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:22px;font-size:13px;line-height:1.6}code{font-family:inherit}p code,li code{font-family:ui-monospace,monospace;font-size:.9em}.note{color:var(--muted);font-size:15px}footer{border-top:1px solid var(--line);padding:26px 0 42px;color:var(--muted);font-size:12px;line-height:1.7}
+.join{border:1px solid var(--line);background:var(--card);border-radius:18px;padding:26px;margin:30px 0}.join-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}.join-row input[type=email],.join-row select{flex:1 1 180px;min-width:0;padding:12px 14px;border:1px solid var(--line);border-radius:999px;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px}.join-note{width:100%;padding:12px 14px;border:1px solid var(--line);border-radius:14px;background:var(--bg);color:var(--fg);font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px;margin-bottom:4px}.join .thanks{display:none;font-family:ui-sans-serif,system-ui,sans-serif;font-size:16px}.join.joined .thanks{display:block}.join.joined .join-form{display:none}.secondary-actions{display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 6px;font-family:ui-sans-serif,system-ui,sans-serif;font-size:14px}.pricing{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:60px}.plan{border:1px solid var(--line);background:var(--card);padding:22px;border-radius:18px;display:flex;flex-direction:column}.plan .tier{font-family:ui-sans-serif,system-ui,sans-serif;font-weight:800;font-size:18px;margin-bottom:4px}.plan .price{color:var(--hot);font-weight:800;font-size:15px;margin-bottom:12px}.plan .for{color:var(--muted);font-size:13px;margin-bottom:10px}.plan ul{margin:0 0 14px;padding-left:18px;font-size:14px}.plan li{margin-bottom:4px}.plan .source{margin-top:auto;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em}
+@media(max-width:700px){.hero{padding-top:55px}.signals,.split,.pricing{grid-template-columns:1fr}header{flex-wrap:wrap;padding:16px 0}pre{padding:16px;font-size:12px}}
+</style>
+</head>
+<body><div class="wrap">
+<header><a class="brand" href="/">notplanned</a><span class="tiny">venture 001 · finishline-supervisor</span></header>
+<main>
+<section class="hero">
+<div class="label">one task. one card. fresh evidence.</div>
+<h1>Make “done”<br><span>show its work.</span></h1>
+<p class="lead">Stop trusting an agent's own "I'm done." Read <code>task.md</code>, diff it against Git, run your acceptance checks — get DONE, WAIT, or ANDON you can inspect.</p>
+<div id="join" class="join">
+<p class="thanks">Thanks — you're on the list. We'll email you about Finishline Supervisor only; nothing else, never shared.</p>
+<form class="join-form" action="/api/signup" method="post" enctype="application/x-www-form-urlencoded">
+<input type="hidden" name="venture" value="finishline-supervisor">
+<input type="hidden" name="website" value="">
+<div class="join-row">
+<input type="email" name="email" required placeholder="you@repo.dev" aria-label="Email address">
+<select name="plan" aria-label="Plan" required>
+<option value="setup_pilot">Setup Pilot — $99 founding price</option>
+<option value="team_early_access">Team Early Access — $9/seat/mo (waitlist)</option>
+<option value="updates_only">Just the free CLI, send updates</option>
+</select>
+<button class="button primary" type="submit">Join early access</button>
+</div>
+<input class="join-note" type="text" name="note" placeholder="Optional: which repo, or what you need">
+</form>
+</div>
+<p class="secondary-actions"><a href="finishline.py" download>Download the free CLI ↓</a><a href="README.md">Read the limits</a></p>
+<p class="note">Python 3.9+ · Git · macOS/Linux · no dependencies · no model calls · no payment processor yet — signing up expresses interest, it never charges you · we only email you about this tool, never shared</p>
+</section>
+<div class="signals" aria-label="Exit signals">
+<article class="card"><strong>WAIT <small>1</small></strong><p>The checklist is incomplete, or fresh checks have not been run.</p></article>
+<article class="card andon"><strong>ANDON <small>2</small></strong><p>Stop and inspect: a check failed, scope drifted, or the task definition changed.</p></article>
+<article class="card"><strong>DONE <small>0</small></strong><p>Checklist complete. Scope fits. Every acceptance check just passed without changing observed evidence.</p></article>
+</div>
+<section><div class="label">pricing</div><h2>Free forever. Paid tiers are early-access, not a checkout.</h2>
+<div class="pricing">
+<article class="plan"><div class="tier">Local</div><div class="price">$0</div><div class="for">Any dev comfortable writing their own checks</div><ul><li>Full CLI, example task card, runnable demo</li><li>Local evidence, no account, no telemetry</li></ul><div class="source">source: codex + claude</div></article>
+<article class="plan"><div class="tier">Setup Pilot</div><div class="price">$99 one-time, founding price</div><div class="for">Small teams wanting a reliable agent handoff on one repo</div><ul><li>One task-contract template</li><li>Up to 3 acceptance checks</li><li>One setup review</li></ul><div class="source">source: codex</div></article>
+<article class="plan"><div class="tier">Team Early Access</div><div class="price">$9/seat/mo, planned</div><div class="for">Teams running agents across multiple repos</div><ul><li>Hosted card-history dashboard</li><li>GitHub PR status check gating merge on DONE</li><li>Slack alert on ANDON</li></ul><div class="source">source: claude</div></article>
+</div>
+<p class="note">Join above and pick a plan — this is a waitlist, not billing. <a href="LAUNCH.md">Full launch plan and synthesis →</a></p>
+</section>
+<section class="split">
+<div><div class="label">why this exists</div><h2>The task survives the handoff.</h2><p>A new agent session can read the same <code>finishline.json</code>: pinned task definition, base commit, allowed paths, acceptance commands, and the last 20 evidence runs.</p><p>Inspired by <a href="https://github.com/anthropics/claude-code/issues/79948">anthropics/claude-code#79948</a>, a request for an accountability layer closed as <em>not planned</em>.</p><p class="note">This implements a small repo-local slice of that request. It cannot provide the native, unbypassable enforcement boundary the issue asks for.</p></div>
+<div><div class="label">a real three-run task</div><h2>Build. Check. Finish.</h2><p>We dogfooded the wrapper on a disposable Git repo: build a greeting CLI, verify its exact output, document usage. The first output was <code>almost</code>; the required output was <code>finish line</code>.</p><p><a href="demo-evidence.json">Inspect the full recorded evidence →</a><br><a href="demo.txt">Read the recorded terminal output →</a></p></div>
+</section>
+<section><div class="label">recorded CLI output · runnable demo included in source</div><pre aria-label="Recorded three-run terminal session"><code>run 1: WAIT (exit 1)
+  task checklist is incomplete
+  checks not executed; pass --run-checks after reviewing argv
+  evidence: task.md#L1, task.md#L2, task.md#L3
+run 2: ANDON (exit 2)
+  task checklist is incomplete
+  acceptance check failed
+  acceptance exit: 1
+  evidence: task.md#L1, task.md#L2, task.md#L3
+run 3: DONE (exit 0)
+  acceptance exit: 0
+  evidence: task.md#L1, task.md#L2, task.md#L3</code></pre><p class="note">Run 1 built the CLI. Run 2 added documentation and exposed the wrong output. Run 3 repaired the output and completed verification. Signals came from three separate CLI invocations, not an agent's narrative.</p></section>
+<section id="use"><div class="label">start small</div><h2>Your task, your definition of done.</h2><p>Keep the downloaded script in a trusted location. In a Git repository with at least one commit, create <code>task.md</code>:</p><pre><code>- [ ] Build a greeting CLI
+- [ ] Verify its exact output
+- [ ] Document usage</code></pre><p>Pin the task before work starts. The check below actually runs <code>app.py</code> and verifies its output. Review the argv in the generated card before opting into execution.</p><pre><code>python3 /path/to/finishline.py init \
+  --allow task.md --allow app.py --allow README.md \
+  --check '["python3","-c","import subprocess; assert subprocess.check_output([\"python3\",\"app.py\"], text=True).strip() == \"finish line\""]'
+
+# Observe without running commands:
+python3 /path/to/finishline.py check
+
+# After reviewing the commands:
+python3 /path/to/finishline.py check --run-checks</code></pre><p>Mark checklist items <code>[x]</code> as you finish them. Run again at each handoff. A prior passing run never counts as a fresh check. ANDON exits 2, WAIT exits 1, DONE exits 0.</p></section>
+<section class="card"><div class="label">honest limits</div><h2>Evidence, with a trust boundary you supply.</h2><ul><li>Anyone who can edit the card, script, or checks can bypass this wrapper. It is not a sandbox or native agent enforcement.</li><li>Checks execute local programs with your permissions and environment. They can have side effects; there is no rollback. No automatic merge, deploy, or agent orchestration.</li><li>Scope covers current tracked and untracked Git changes relative to the base. Ignored files, external state, reverted changes, and the card itself are excluded.</li><li>DONE is only as strong as your acceptance checks. A deployment needs its own check. Command output is discarded; evidence contains exit codes and paths. Keep secrets out of task text, filenames, and argv.</li></ul><p class="note">Verified on the local Mac/Python host and in the existing Colima Linux runner container: 14 tests and the three-run demo passed in both. The CLI has not been tested on Fly or Boring.</p></section>
+</main><footer>notplanned · build what fell off the roadmap<br>Pure wrapper. No Codex or Claude changes. No telemetry on the CLI. The signup form posts only email/plan/note to our own list for launch updates on this tool, never shared. <a href="README.md">Full usage and limits</a>.</footer>
+</div>
+<script>if(new URLSearchParams(location.search).get("joined")==="1"){var j=document.getElementById("join");if(j)j.classList.add("joined");}</script>
+</body></html>

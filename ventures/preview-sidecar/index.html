@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="preview-sidecar: a localhost port watcher that opens a preview the moment your dev server binds, and stamps a timestamped screenshot receipt on demand.">
+<title>preview-sidecar · notplanned</title>
+<style>
+:root{
+  --counter:#1d1915; --counter-2:#272019;
+  --paper:#faf6ec; --paper-2:#f2ecdd;
+  --ink:#231f19; --fade:#8d8371; --line:#c9bfa8;
+  --stamp:#a8392b; --ok:#3c6e4f;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--counter);color:var(--ink);overflow-x:hidden}
+body{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+  background:
+    radial-gradient(1200px 500px at 50% -10%, var(--counter-2), transparent),
+    var(--counter);
+  padding:48px 14px 80px;
+}
+a{color:inherit}
+a.plain{text-decoration-color:var(--fade)}
+.receipt{
+  position:relative;
+  max-width:420px;
+  margin:0 auto;
+  background:var(--paper);
+  background-image:repeating-linear-gradient(0deg, rgba(0,0,0,.015) 0 1px, transparent 1px 3px);
+  color:var(--ink);
+  padding:34px 26px 26px;
+  box-shadow:0 30px 60px -20px rgba(0,0,0,.65), 0 2px 0 rgba(0,0,0,.2);
+  -webkit-mask-image:
+    radial-gradient(circle 7px at 10px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 30px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 50px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 70px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 90px 0, transparent 7px, #000 7.5px);
+  mask-image:
+    radial-gradient(circle 7px at 10px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 30px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 50px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 70px 0, transparent 7px, #000 7.5px),
+    radial-gradient(circle 7px at 90px 0, transparent 7px, #000 7.5px);
+}
+.torn{
+  position:relative; height:16px; margin:0 -26px 18px;
+  background:
+    linear-gradient(135deg, var(--paper) 25%, transparent 25.5%) 0 0,
+    linear-gradient(-135deg, var(--paper) 25%, transparent 25.5%) 0 0;
+  background-size:16px 16px; background-position:0 0, 0 0;
+  filter:drop-shadow(0 -2px 0 rgba(0,0,0,0));
+}
+.torn.bottom{margin:18px -26px 0;transform:scaleY(-1)}
+header.shop{text-align:center;margin-bottom:14px}
+header.shop .name{font-weight:800;letter-spacing:.14em;font-size:15px}
+header.shop .tag{color:var(--fade);font-size:11px;letter-spacing:.08em;margin-top:4px}
+.rule{border:0;border-top:1px dashed var(--line);margin:18px 0}
+.rule.bold{border-top-style:solid;border-top-width:2px;border-color:var(--ink)}
+.stamp{
+  position:absolute; top:20px; right:16px;
+  width:82px;height:82px;border-radius:50%;
+  border:2px dashed var(--stamp); color:var(--stamp);
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:8.3px;font-weight:800;letter-spacing:.03em;line-height:1.4;
+  transform:rotate(-12deg);
+  opacity:.9; mix-blend-mode:multiply;
+  animation:thud .4s ease-out both;
+}
+@keyframes thud{0%{transform:rotate(-12deg) scale(1.5)}100%{transform:rotate(-12deg) scale(1)}}
+.title{text-align:center;margin:6px 0 2px}
+.title h1{
+  font-size:26px;letter-spacing:.02em;margin:0;
+  text-transform:uppercase;
+}
+.title p{color:var(--fade);font-size:12.5px;margin:8px 0 0;line-height:1.5}
+.meta{font-size:11px;color:var(--fade);line-height:1.9;overflow-wrap:break-word}
+.meta b{color:var(--ink);font-weight:700}
+.cta{margin:20px 0 6px}
+.cta .label{font-size:11px;letter-spacing:.14em;color:var(--fade);text-align:center;margin-bottom:10px}
+form.join{display:flex;flex-direction:column;gap:8px}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:10px;letter-spacing:.08em;color:var(--fade)}
+input[type=email],input[type=text],select,textarea{
+  font-family:inherit;font-size:13px;padding:10px 10px;
+  border:1px solid var(--ink);background:var(--paper-2);color:var(--ink);
+  border-radius:0;
+}
+textarea{resize:vertical;min-height:44px}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+button.buy{
+  margin-top:4px;padding:13px 10px;border:2px solid var(--ink);background:var(--ink);
+  color:var(--paper);font-family:inherit;font-weight:800;letter-spacing:.1em;font-size:12.5px;
+  text-transform:uppercase;cursor:pointer;
+}
+button.buy:hover{background:var(--stamp);border-color:var(--stamp)}
+.snip{display:flex;align-items:center;gap:8px;color:var(--fade);font-size:11px;margin:16px 0 2px}
+.snip .dash{flex:1;border-top:1px dashed var(--fade)}
+.thanks{display:none;text-align:center;padding:16px 8px;border:1px dashed var(--ok);color:var(--ok);font-size:12.5px}
+.receipt.joined .thanks{display:block}
+.receipt.joined form.join{display:none}
+.receipt.joined .cta .label{display:none}
+.items{font-size:12.5px;line-height:2}
+.item{display:flex;gap:8px;align-items:baseline}
+.item>span:first-child{min-width:0}
+.item .dots{flex:1;border-bottom:1px dotted var(--line);transform:translateY(-3px)}
+.item .ok{color:var(--ok);font-weight:800}
+h2.sec{font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin:0 0 10px;text-align:center;color:var(--fade)}
+.ba{display:grid;grid-template-columns:1fr;gap:10px;margin-bottom:4px}
+.ba pre{margin:0}
+.ba .cap{font-size:10px;letter-spacing:.1em;color:var(--fade);margin-bottom:4px}
+pre{
+  background:var(--paper-2);border:1px solid var(--line);padding:12px;
+  font-size:11.5px;line-height:1.55;overflow:auto;white-space:pre-wrap;word-break:break-word;
+  margin:0;
+}
+code{font-family:inherit}
+.exhibit{margin:14px 0 4px;text-align:center}
+.exhibit img{
+  max-width:88%;border:6px solid #fff;outline:1px solid var(--line);
+  box-shadow:0 10px 22px -10px rgba(0,0,0,.45);transform:rotate(-1.3deg);
+}
+.exhibit .cap{font-size:10.5px;color:var(--fade);margin-top:10px;letter-spacing:.03em}
+.exhibit .cap code{font-size:9.5px}
+.totals{font-size:12.5px;line-height:1.9}
+.trow{display:flex;gap:8px;align-items:baseline}
+.trow>span:first-child{min-width:0}
+.trow .dots{flex:1;border-bottom:1px dotted var(--line);transform:translateY(-3px)}
+.trow .price{font-weight:800}
+.tfoot{display:flex;justify-content:space-between;font-weight:800;border-top:2px solid var(--ink);margin-top:8px;padding-top:8px}
+.fineprint{font-size:10.5px;color:var(--fade);margin-top:8px;line-height:1.6}
+ul.limits{margin:0;padding-left:16px;font-size:11.5px;line-height:1.75;color:var(--ink)}
+ul.limits li{margin-bottom:6px}
+.barcode{height:36px;margin:18px 0 8px;background:repeating-linear-gradient(90deg,var(--ink) 0 2px, transparent 2px 3px, var(--ink) 3px 4px, transparent 4px 7px, var(--ink) 7px 8px, transparent 8px 11px)}
+.barnum{text-align:center;font-size:10px;letter-spacing:.3em;color:var(--fade)}
+footer.shop{text-align:center;margin-top:16px;font-size:10.5px;color:var(--fade);line-height:1.8}
+footer.shop a{text-decoration-color:var(--fade)}
+@media(max-width:480px){
+  body{padding:28px 8px 56px}
+  .receipt{padding:28px 16px 20px}
+  .torn,.torn.bottom{margin-left:-16px;margin-right:-16px}
+  .stamp{top:16px;right:10px;width:70px;height:70px;font-size:7px}
+}
+</style>
+</head>
+<body>
+<div class="receipt" id="join">
+  <div class="torn" aria-hidden="true"></div>
+  <div class="stamp">UPSTREAM<br>#53997<br>NOT&nbsp;PLANNED</div>
+
+  <header class="shop">
+    <div class="name">NOTPLANNED &amp; CO.</div>
+    <div class="tag">venture 002 · localhost tooling</div>
+  </header>
+
+  <hr class="rule bold">
+
+  <div class="title">
+    <h1>preview&#8209;sidecar</h1>
+    <p>Your dev server just bound a port. This notices, opens a preview, and<br>stamps a dated screenshot receipt — without touching your agent CLI.</p>
+  </div>
+
+  <div class="meta">
+    <div>REF &nbsp;<b>github.com/anthropics/claude-code#53997</b></div>
+    <div>ITEM &nbsp;<b>Bring back local preview for agent-built apps</b></div>
+    <div>STATUS &nbsp;<b>closed · not planned</b> &nbsp;→&nbsp; <b>built anyway</b></div>
+  </div>
+
+  <hr class="rule">
+
+  <div class="cta">
+    <div class="label">✂ – – – – – join early access – – – – – ✂</div>
+    <form class="join" action="/api/signup" method="post" enctype="application/x-www-form-urlencoded">
+      <input type="hidden" name="venture" value="preview-sidecar">
+      <input class="hp" type="text" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="field">
+        <label for="email">email</label>
+        <input id="email" type="email" name="email" required placeholder="you@localhost">
+      </div>
+      <div class="field">
+        <label for="plan">plan</label>
+        <select id="plan" name="plan" required>
+          <option value="free">Free — just the CLI</option>
+          <option value="early_access">Early Access — $7/mo, founding price</option>
+          <option value="team">Team — $29/mo, founding price</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="note">note (optional)</label>
+        <textarea id="note" name="note" placeholder="what are you previewing? vite, next, rails..."></textarea>
+      </div>
+      <button class="buy" type="submit">Join early access →</button>
+    </form>
+    <div class="thanks">✓ RECEIVED — thanks, you're on the list.<br>We'll only email you about preview-sidecar. Never shared.</div>
+  </div>
+
+  <p class="fineprint" style="text-align:center">One line on your email: used only to reach you about preview-sidecar, never sold, never shared.</p>
+
+  <hr class="rule">
+
+  <h2 class="sec">itemized</h2>
+  <div class="items">
+    <div class="item"><span>detect newly bound localhost port</span><span class="dots"></span><span class="ok">✓</span></div>
+    <div class="item"><span>auto-open preview pane (iframe)</span><span class="dots"></span><span class="ok">✓</span></div>
+    <div class="item"><span>one-click screenshot receipt</span><span class="dots"></span><span class="ok">✓</span></div>
+    <div class="item"><span>standalone CLI, zero deps</span><span class="dots"></span><span class="ok">✓</span></div>
+    <div class="item"><span>no Claude Code changes</span><span class="dots"></span><span class="ok">✓</span></div>
+  </div>
+
+  <hr class="rule">
+
+  <h2 class="sec">before / after</h2>
+  <div class="ba">
+    <div>
+      <div class="cap">BEFORE</div>
+      <pre><code>$ npm run dev
+  ready on http://localhost:5173
+(you alt-tab, guess the port,
+ open it yourself, no record
+ of what it looked like)</code></pre>
+    </div>
+    <div>
+      <div class="cap">AFTER</div>
+      <pre><code>$ npm run dev
+  ready on http://localhost:5173
+[preview-sidecar] detected
+  127.0.0.1:5173 at 17:29:17Z
+  -> preview pane opened
+  -> receipt: receipt-5173-*.png</code></pre>
+    </div>
+  </div>
+
+  <h2 class="sec" style="margin-top:16px">real run, recorded</h2>
+  <pre><code>$ python3 demo.py
+$ (throwaway dev server on 127.0.0.1:61125)
+$ python3 sidecar.py watch --ports 61125 \
+    --interval 0.3 --max-cycles 3 --no-open
+[preview-sidecar] detected 127.0.0.1:61125
+  at 2026-10-10T17:29:17Z -> preview-61125...html
+$ python3 sidecar.py screenshot --port 61125
+{
+  "url": "http://127.0.0.1:61125",
+  "bytes": 16208,
+  "sha256": "6e13265f215eb1e3..."
+}</code></pre>
+  <p class="fineprint">Full transcript: <a class="plain" href="demo.txt">demo.txt</a> · full receipt: <a class="plain" href="demo-receipt.json">demo-receipt.json</a></p>
+
+  <div class="exhibit">
+    <img src="demo-receipt.png" alt="Actual headless-Chrome screenshot of the throwaway dev server page captured by sidecar.py screenshot, reading Hello from dev server / Started by preview-sidecar demo.py">
+    <div class="cap">EXHIBIT A — real capture of <code>127.0.0.1:61125</code><br>sha256 6e13265f215e… · 2026&#8209;10&#8209;10T17:29:17Z</div>
+  </div>
+
+  <hr class="rule">
+
+  <h2 class="sec">how to use it</h2>
+  <pre><code>python3 sidecar.py watch
+python3 sidecar.py watch --ports 3000,5173
+python3 sidecar.py screenshot --port 3000</code></pre>
+  <p class="fineprint">Python 3.9+, no installs. <code>watch</code> polls a bounded port list with a plain TCP connect and opens a preview the moment one answers. <code>screenshot</code> needs a Chromium‑family browser already on the machine.</p>
+
+  <hr class="rule">
+
+  <h2 class="sec">bill of goods</h2>
+  <div class="totals">
+    <div class="trow"><span>FREE · the CLI, forever</span><span class="dots"></span><span class="price">$0</span></div>
+    <div class="trow"><span>EARLY ACCESS · hosted receipt gallery</span><span class="dots"></span><span class="price">$7/mo*</span></div>
+    <div class="trow"><span>TEAM · PR auto-receipts, shared history</span><span class="dots"></span><span class="price">$29/mo*</span></div>
+    <div class="tfoot"><span>TOTAL DUE TODAY</span><span>$0.00</span></div>
+  </div>
+  <p class="fineprint">*founding price, early access — there is no checkout yet, joining only reserves the rate. The CLI stays free no matter what you pick above.</p>
+
+  <hr class="rule">
+
+  <h2 class="sec">honest limits</h2>
+  <ul class="limits">
+    <li>Watches a bounded candidate port list (≤200 ports), not every socket on the machine — it can't see which process owns a port.</li>
+    <li>Polling means a detection delay, and a port that opens and closes between polls is missed.</li>
+    <li>A dev server's own X‑Frame‑Options/CSP can block the preview iframe; every preview page also has a plain "open in new tab" link.</li>
+    <li>Screenshots need Chrome/Chromium/Edge already installed — not bundled, and a clear error if none is found.</li>
+    <li>Loopback only. No remote tunneling, no multi‑port orchestration — one detected port gets one preview.</li>
+  </ul>
+  <p class="fineprint"><a class="plain" href="README.md">Full README →</a></p>
+
+  <div class="barcode" aria-hidden="true"></div>
+  <div class="barnum">5 3 9 9 7 · N O T · P L A N N E D</div>
+
+  <footer class="shop">
+    THANK YOU FOR YOUR VISIT<br>
+    <a class="plain" href="sidecar.py" download>download the free CLI ↓</a> ·
+    <a class="plain" href="https://github.com/anthropics/claude-code/issues/53997">upstream issue</a> ·
+    <a class="plain" href="/">notplanned</a>
+  </footer>
+
+  <div class="torn bottom" aria-hidden="true"></div>
+</div>
+<script>
+if(new URLSearchParams(location.search).get("joined")==="1"){
+  var r=document.getElementById("join");
+  if(r){r.classList.add("joined");}
+}
+</script>
+</body>
+</html>

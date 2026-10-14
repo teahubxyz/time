@@ -1,0 +1,82 @@
+{
+  "scenario": "Three-step greeting CLI, three separate supervisor invocations",
+  "runs": [
+    {
+      "at": "2026-10-10T03:24:40.081191+00:00",
+      "head": "d5e4d8a80a91bcc784333207ace1bf4935324c38",
+      "task_sha256": "00b0c9d722db57e6094762e2baa5fa6a7fe3a65941bbd6b6bcf501fc2c6028ce",
+      "status": "WAIT",
+      "reasons": [
+        "task checklist is incomplete",
+        "checks not executed; pass --run-checks after reviewing argv"
+      ],
+      "evidence": [
+        "task.md#L1",
+        "task.md#L2",
+        "task.md#L3"
+      ],
+      "changed": [
+        "app.py",
+        "task.md"
+      ],
+      "checks": []
+    },
+    {
+      "at": "2026-10-10T03:24:40.156618+00:00",
+      "head": "d5e4d8a80a91bcc784333207ace1bf4935324c38",
+      "task_sha256": "49ef3ee174c281ea60a5493131e3bec5228e24efd039eb4c6fcc722f0b227eb9",
+      "status": "ANDON",
+      "reasons": [
+        "task checklist is incomplete",
+        "acceptance check failed"
+      ],
+      "evidence": [
+        "task.md#L1",
+        "task.md#L2",
+        "task.md#L3"
+      ],
+      "changed": [
+        "README.md",
+        "app.py",
+        "task.md"
+      ],
+      "checks": [
+        {
+          "argv": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "-c",
+            "import subprocess,sys; assert subprocess.check_output([sys.executable,\"app.py\"], text=True).strip() == \"finish line\""
+          ],
+          "exit": 1
+        }
+      ]
+    },
+    {
+      "at": "2026-10-10T03:24:40.441378+00:00",
+      "head": "d5e4d8a80a91bcc784333207ace1bf4935324c38",
+      "task_sha256": "1706e7c498b2f84f5d702c308e5526ab5335eea6c54be881e5fc2443ae236c2e",
+      "status": "DONE",
+      "reasons": [],
+      "evidence": [
+        "task.md#L1",
+        "task.md#L2",
+        "task.md#L3"
+      ],
+      "changed": [
+        "README.md",
+        "app.py",
+        "task.md"
+      ],
+      "checks": [
+        {
+          "argv": [
+            "/Library/Developer/CommandLineTools/usr/bin/python3",
+            "-c",
+            "import subprocess,sys; assert subprocess.check_output([sys.executable,\"app.py\"], text=True).strip() == \"finish line\""
+          ],
+          "exit": 0
+        }
+      ]
+    }
+  ]
+}

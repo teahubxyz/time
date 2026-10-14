@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "title": "Demo: investigating a stale preview",
+  "messages": [
+    {"id":"m1","role":"system","content":"Work in the preview repository. Preserve user edits. Run the existing tests before proposing a fix."},
+    {"id":"m2","role":"user","content":"The preview still shows yesterday's headline after an editor saves. Find the cause; keep the public response shape unchanged."},
+    {"id":"m3","role":"assistant","content":"First hypothesis: the editor is not writing the new headline. Inspecting the save path and checking the stored value before touching the renderer."},
+    {"id":"m4","role":"tool","content":"save_headline('A better morning') -> 200. SELECT headline FROM articles WHERE id=42 -> 'A better morning'. Storage is correct. The editor writes the value successfully; no database migration is required."},
+    {"id":"m5","role":"assistant","content":"Second hypothesis: the browser caches the HTML. Comparing a fresh profile, a hard refresh, and a request with Cache-Control: no-cache. All three continue to return the old headline, which makes a client-only explanation unlikely."},
+    {"id":"m6","role":"tool","content":"GET /preview/42 -> 200, headline 'Yesterday'. Fresh browser -> 'Yesterday'. Request with no-cache -> 'Yesterday'. The response headers contain no shared cache directives. The stale result is already in the server response."},
+    {"id":"m7","role":"assistant","content":"Third hypothesis: a second database connection reads a replica. Checked connection configuration and request logs. Both save and preview use the same primary database. Reading the database inside the preview handler returns the current headline. Inspect the in-process memoization layer next."},
+    {"id":"m8","role":"tool","content":"preview_cache key: article_id only. Cached entries have no expiry. Save path updates the article but never invalidates preview_cache. Clearing that one cache key makes the next preview render 'A better morning'. Root cause reproduced without modifying the database."},
+    {"id":"m9","role":"user","content":"Now implement invalidation after a successful save. Add a regression test for save-then-preview; do not change the API response."}
+  ]
+}

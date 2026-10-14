@@ -1,0 +1,345 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="description" content="codex-goal: a small wrapper that remembers one objective per project across separate codex exec runs, and injects it back in every time. Free CLI, no account.">
+<title>codex-goal · notplanned</title>
+<style>
+@font-face{
+  font-family:"DSEG7";
+  src:url("fonts/DSEG7Classic-Bold.woff2") format("woff2");
+  font-weight:700;font-style:normal;font-display:swap;
+}
+:root{
+  --court:#0a0e14; --court-2:#0f151e;
+  --panel:#141b26; --panel-line:#232e3f;
+  --ink:#eef3fa; --mute:#8a97ab;
+  --amber:#ffb400; --amber-dim:#5a4418;
+  --green:#28e07a; --green-dim:#123321;
+  --red:#ff4d5e; --red-dim:#3a1218;
+  --blue:#39c3ff; --blue-dim:#0f2c3a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--court);color:var(--ink);overflow-x:hidden}
+body{
+  font-family:ui-sans-serif,system-ui,"Helvetica Neue",Arial,sans-serif;
+  background-image:
+    radial-gradient(900px 420px at 15% -8%, rgba(255,180,0,.08), transparent),
+    radial-gradient(900px 420px at 110% 10%, rgba(57,195,255,.08), transparent),
+    repeating-linear-gradient(0deg, rgba(255,255,255,.015) 0 1px, transparent 1px 34px),
+    var(--court);
+}
+a{color:inherit;text-decoration-color:var(--mute)}
+.wrap{width:min(1040px,calc(100% - 28px));margin:0 auto}
+.tag{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--mute)}
+.led{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--green);box-shadow:0 0 10px var(--green);animation:blink 1.6s step-end infinite}
+@keyframes blink{0%,49%{opacity:1}50%,100%{opacity:.25}}
+@media (prefers-reduced-motion:reduce){.led{animation:none}}
+
+header.bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px 14px;padding:18px 0;border-bottom:1px solid var(--panel-line)}
+header.bar .brand{font-weight:900;letter-spacing:-.02em;font-size:15px;text-transform:uppercase}
+header.bar .brand span{color:var(--amber)}
+header.bar .ticker{display:flex;align-items:center;gap:8px;max-width:100%;overflow-wrap:anywhere}
+
+.marquee{padding:52px 0 18px}
+.kicker{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--panel-line);background:var(--panel);border-radius:999px;padding:7px 14px;font-size:11.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin-bottom:22px;max-width:100%;overflow-wrap:anywhere}
+h1.title{
+  font-size:clamp(38px,6.6vw,74px);line-height:.98;letter-spacing:-.03em;margin:0 0 20px;
+  text-transform:uppercase;font-weight:900;
+}
+h1.title .hl{color:var(--court);background:var(--amber);padding:0 .12em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+h1.title .hl2{color:var(--court);background:var(--green);padding:0 .12em;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+p.lead{max-width:640px;font-size:clamp(16px,2vw,19px);line-height:1.5;color:#c7d0dd;margin:0 0 30px}
+p.lead code{background:var(--panel);border:1px solid var(--panel-line);border-radius:5px;padding:1px 6px;font-size:.92em}
+
+.scorerow{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:0 0 34px}
+.scorecell{background:#000;border:2px solid var(--panel-line);border-radius:10px;padding:14px 10px;text-align:center;position:relative;overflow:hidden}
+.scorecell::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.03) 0 2px,transparent 2px 4px);pointer-events:none}
+.scorecell .digits{font-family:"DSEG7",ui-monospace,monospace;font-weight:700;font-size:clamp(26px,4.2vw,40px);letter-spacing:.04em;line-height:1}
+.scorecell.amber .digits{color:var(--amber);text-shadow:0 0 14px rgba(255,180,0,.65)}
+.scorecell.green .digits{color:var(--green);text-shadow:0 0 14px rgba(40,224,122,.65)}
+.scorecell.blue .digits{color:var(--blue);text-shadow:0 0 14px rgba(57,195,255,.65)}
+.scorecell .caption{margin-top:8px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--mute)}
+
+.panel{background:var(--panel);border:1px solid var(--panel-line);border-radius:16px}
+.join-panel{padding:26px;margin-bottom:46px;border-top:4px solid var(--amber)}
+.join-panel .label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--amber);font-weight:800;margin-bottom:12px}
+form.join{display:grid;grid-template-columns:1.3fr 1fr auto;gap:10px;align-items:start}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+input[type=email],input[type=text],select{
+  width:100%;font-family:inherit;font-size:14px;padding:11px 12px;border-radius:9px;
+  border:1px solid var(--panel-line);background:var(--court-2);color:var(--ink);
+}
+input::placeholder{color:#55606f}
+.note-row{grid-column:1/-1}
+.hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+button.cta{
+  align-self:end;padding:12px 20px;border-radius:9px;border:0;background:var(--amber);color:#201400;
+  font-weight:800;letter-spacing:.03em;font-size:14px;cursor:pointer;white-space:nowrap;
+}
+button.cta:hover{background:#ffc83d}
+.fineprint{font-size:11.5px;color:var(--mute);margin:12px 0 0;grid-column:1/-1}
+.thanks{display:none;font-size:15px;font-weight:700;color:var(--green)}
+.thanks small{display:block;margin-top:6px;font-weight:400;color:var(--mute);font-size:12px}
+.join-panel.joined form.join,.join-panel.joined .label{display:none}
+.join-panel.joined .thanks{display:block}
+
+section{margin:54px 0}
+h2.h{font-size:clamp(22px,3vw,30px);text-transform:uppercase;letter-spacing:-.01em;font-weight:900;margin:0 0 6px}
+p.sub{color:var(--mute);font-size:14.5px;margin:0 0 22px;max-width:620px}
+
+.matchup{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.team{border-radius:14px;padding:20px;border:1px solid var(--panel-line)}
+.team.lose{background:var(--red-dim);border-color:#5c1f29}
+.team.win{background:var(--green-dim);border-color:#1d5a3b}
+.team .score{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.team .name{font-weight:900;text-transform:uppercase;font-size:13.5px;letter-spacing:.05em}
+.team.lose .name{color:#ff8a94}
+.team.win .name{color:#7cf0ad}
+.team .result{font-weight:900;font-size:13px;letter-spacing:.08em;padding:3px 9px;border-radius:5px}
+.team.lose .result{color:var(--red);background:rgba(255,77,94,.15);border:1px solid #5c1f29}
+.team.win .result{color:var(--green);background:rgba(40,224,122,.15);border:1px solid #1d5a3b}
+.team pre{margin:0;background:#000;border:1px solid rgba(255,255,255,.08);border-radius:9px;padding:12px;font-size:12.3px;line-height:1.55;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#d9e2ee}
+.team p.cap{font-size:11.5px;color:var(--mute);margin:10px 0 0}
+
+.replay{position:relative;border-radius:16px;overflow:hidden;border:1px solid var(--panel-line);background:#05070a}
+.replay .crt-head{display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--court-2);border-bottom:1px solid var(--panel-line);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.replay .crt-head .dot{width:9px;height:9px;border-radius:50%}
+.replay .crt-head .dot.r{background:var(--red)}.replay .crt-head .dot.y{background:var(--amber)}.replay .crt-head .dot.g{background:var(--green)}
+.replay pre{margin:0;padding:18px;font-size:12.3px;line-height:1.6;overflow:auto;white-space:pre-wrap;word-break:break-word;color:#bfe8c9;max-height:420px}
+.replay pre .fx{color:var(--amber)}
+.replay::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(180deg,rgba(255,255,255,.025) 0 1px,transparent 1px 3px);pointer-events:none}
+
+ul.rules{margin:0;padding-left:0;list-style:none;display:grid;gap:10px}
+ul.rules li{display:flex;gap:10px;padding:12px 14px;background:var(--panel);border:1px solid var(--panel-line);border-radius:10px;font-size:13.8px;line-height:1.5;color:#d4dce7}
+ul.rules li .flag{flex:0 0 auto;font-weight:900;color:var(--red);font-size:11px;letter-spacing:.06em;text-transform:uppercase;border:1px solid #5c1f29;background:var(--red-dim);padding:2px 7px;border-radius:5px;height:fit-content}
+ul.rules li .desc{flex:1 1 auto;min-width:0}
+
+ul.howitworks{margin:0;padding-left:0;list-style:none;display:grid;gap:9px}
+ul.howitworks li{display:flex;gap:10px;align-items:flex-start;font-size:14px;line-height:1.55;color:#d4dce7}
+ul.howitworks li .pt{flex:0 0 auto;font-family:"DSEG7",ui-monospace,monospace;color:var(--green);font-size:15px;min-width:30px}
+ul.howitworks li .desc{flex:1 1 auto;min-width:0}
+
+.passes{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+.pass{border-radius:14px;padding:22px;border:1px solid var(--panel-line);background:var(--panel);display:flex;flex-direction:column}
+.pass .tier{font-weight:900;text-transform:uppercase;font-size:14px;letter-spacing:.04em;margin-bottom:6px}
+.pass.free{border-top:4px solid var(--blue)}
+.pass.early{border-top:4px solid var(--amber)}
+.pass.team{border-top:4px solid var(--green)}
+.pass .price{font-size:26px;margin-bottom:4px;font-weight:800}
+.pass .price .cur{font-family:inherit}
+.pass .price .num{font-family:"DSEG7",ui-monospace,monospace;font-weight:700}
+.pass .price .per{font-family:inherit;font-size:14px;font-weight:600;color:var(--mute);margin-left:2px}
+.pass.free .price .num{color:var(--blue)}
+.pass.early .price .num{color:var(--amber)}
+.pass.team .price .num{color:var(--green)}
+.pass .for{color:var(--mute);font-size:12.5px;margin-bottom:12px}
+.pass ul{margin:0 0 0;padding-left:16px;font-size:13.3px;line-height:1.65;color:#d4dce7}
+.pass .founding{margin-top:12px;font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--mute)}
+
+footer.bar{border-top:1px solid var(--panel-line);padding:26px 0 44px;margin-top:60px}
+footer.bar .links{display:flex;gap:18px;flex-wrap:wrap;font-size:13px;color:var(--mute);margin-bottom:14px}
+footer.bar .score-tape{display:flex;gap:2px;height:7px;margin-bottom:10px}
+footer.bar .score-tape span{flex:1;background:var(--panel-line)}
+footer.bar .score-tape span:nth-child(3n){background:var(--amber);opacity:.5}
+footer.bar .fine{font-size:11px;color:#5c6779;line-height:1.6}
+
+@media (max-width:760px){
+  form.join{grid-template-columns:1fr}
+  button.cta{width:100%}
+  .scorerow{grid-template-columns:1fr 1fr}
+  .matchup{grid-template-columns:1fr}
+  .passes{grid-template-columns:1fr}
+}
+@media (max-width:480px){
+  .marquee{padding:34px 0 10px}
+  .scorerow{grid-template-columns:1fr}
+  h1.title{font-size:clamp(30px,9.5vw,74px)}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="bar">
+  <div class="brand">NOTPLANNED <span>ARCADE</span></div>
+  <div class="ticker tag"><span class="led" aria-hidden="true"></span> VENTURE 004 · LIVE</div>
+</header>
+
+<main>
+<section class="marquee">
+  <div class="kicker">upstream call: openai/codex#26966 · closed &middot; not planned</div>
+  <h1 class="title">don't let the agent forget <span class="hl">the&nbsp;goal.</span></h1>
+  <p class="lead"><code>codex exec</code> resumes a transcript but never restates <em>why</em>. codex&#8209;goal is a small wrapper that stores one objective per project outside Codex's own workspace, and hands it back as plain context on every new or resumed run &mdash; <span class="hl2">built anyway</span> after upstream closed the request.</p>
+
+  <div class="scorerow" aria-label="Recorded demo tally">
+    <div class="scorecell amber"><div class="digits">02</div><div class="caption">codex exec runs</div></div>
+    <div class="scorecell green"><div class="digits">01</div><div class="caption">goal, both runs</div></div>
+    <div class="scorecell blue"><div class="digits">100</div><div class="caption">% intact after kill -9</div></div>
+  </div>
+
+  <div class="panel join-panel" id="join">
+    <div class="label">&#9733; join the roster &mdash; be first when hosted tiers ship</div>
+    <form class="join" action="/api/signup" method="post" enctype="application/x-www-form-urlencoded">
+      <input type="hidden" name="venture" value="codex-goal">
+      <input class="hp" type="text" name="website" value="" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="field">
+        <label for="email">email</label>
+        <input id="email" type="email" name="email" required placeholder="you@yourteam.dev">
+      </div>
+      <div class="field">
+        <label for="plan">plan</label>
+        <select id="plan" name="plan" required>
+          <option value="free">Free &mdash; just the CLI</option>
+          <option value="early_access">Early Access &mdash; $6/mo, founding price</option>
+          <option value="team">Team &mdash; $24/mo, founding price</option>
+        </select>
+      </div>
+      <button class="cta" type="submit">Draft me &rarr;</button>
+      <div class="note-row field">
+        <label for="note">note (optional)</label>
+        <input id="note" type="text" name="note" placeholder="what are you running codex on?">
+      </div>
+    </form>
+    <div class="thanks">&#10003; ON THE ROSTER &mdash; thanks, you're in.<small>We'll only email you about codex-goal. Never shared.</small></div>
+    <p class="fineprint">One line on your email: used only to reach you about codex-goal, never sold, never shared. The CLI below stays free no matter what you pick.</p>
+  </div>
+</section>
+
+<section>
+  <h2 class="h">the matchup</h2>
+  <p class="sub">Same two commands, two sessions apart. One remembers the assignment; one doesn't.</p>
+  <div class="matchup">
+    <div class="team lose">
+      <div class="score"><span class="name">Stock codex exec</span><span class="result">LOST</span></div>
+      <pre>$ codex exec "migrate billing to new schema"
+&hellip; session ends, summarized &hellip;
+
+$ codex exec resume --last "continue"
+&gt; continuing. what's the task again?
+  (transcript survived. the <em>point</em> of it didn't.)</pre>
+      <p class="cap">Resume brings back messages, not the objective that framed them.</p>
+    </div>
+    <div class="team win">
+      <div class="score"><span class="name">codex&#8209;goal run</span><span class="result">WON</span></div>
+      <pre>$ codex_goal.py set "migrate billing to new schema"
+$ codex_goal.py run
+&gt; [codex-goal] persisted objective: migrate billing&hellip;
+
+&hellip; session ends &hellip;
+
+$ codex_goal.py run --last
+&gt; [codex-goal] persisted objective: migrate billing&hellip;
+  (re-injected before Codex sees anything else.)</pre>
+      <p class="cap">Every new or resumed run gets the same goal text, re-stated, every time.</p>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="h">instant replay</h2>
+  <p class="sub">Real, runnable output from <code>demo.py</code> &mdash; a disposable project dir, a disposable <code>$CODEX_GOAL_HOME</code>, and a deterministic stand-in for the real <code>codex</code> binary (no network, no account, nothing billed). Two separate process runs see the same goal; a <code>kill -9</code> mid-run doesn't touch it.</p>
+  <div class="replay">
+    <div class="crt-head"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span> demo.py &mdash; full output in demo.txt</div>
+    <pre><code>$ python3 codex_goal.py set -C $PROJECT 'Ship codex-goal&#39;s two-run persistence demo'
+codex-goal: saved goal g-a2c8350ac309 for myapp-58cda05ecfff4ec2
+[exit 0] goal saved
+
+$ python3 codex_goal.py run -C $PROJECT --codex-bin tests/fake_codex.py
+[exit 0] run 1 done              <span class="fx">&larr; fresh session, goal injected</span>
+
+$ python3 codex_goal.py run -C $PROJECT --last --codex-bin tests/fake_codex.py
+[exit 0] run 2 done              <span class="fx">&larr; resumed, SAME goal injected again</span>
+
+$ (background run) ; kill -9 35478
+[killed] simulated crash          <span class="fx">&larr; mid-run, hard kill</span>
+
+$ python3 codex_goal.py show -C $PROJECT --json
+{
+  "current": {
+    "text": "Ship codex-goal's two-run persistence demo",
+    "goal_id": "g-a2c8350ac309"
+  }
+}
+ASSERTION PASSED: goal text identical before and after the crash.</code></pre>
+  </div>
+  <p class="fineprint" style="margin-top:12px">Full transcript: <a href="demo.txt">demo.txt</a> &middot; run it yourself: <a href="README.md">README</a></p>
+</section>
+
+<section>
+  <h2 class="h">how it scores</h2>
+  <ul class="howitworks">
+    <li><span class="pt">01</span> <span class="desc">Goal state lives under <code>~/.codex-goal</code> &mdash; outside the directory Codex's own sandbox lets it write to. <code>set</code> is a human command; the wrapper never calls it on Codex's behalf.</span></li>
+    <li><span class="pt">02</span> <span class="desc">Every <code>set</code> is versioned: the previous goal moves to a capped history instead of being silently overwritten.</span></li>
+    <li><span class="pt">03</span> <span class="desc">Writes are atomic (temp file + rename) under an exclusive file lock &mdash; a crash mid-write can't leave torn JSON.</span></li>
+    <li><span class="pt">04</span> <span class="desc"><code>run</code> never edits the goal. It only appends one line to a separate run-log, after the child exits, with the real exit code.</span></li>
+    <li><span class="pt">05</span> <span class="desc">Codex is spawned via an argv list, never a shell string &mdash; a goal containing <code>; rm -rf / #</code> is one opaque argument, not a command.</span></li>
+    <li><span class="pt">06</span> <span class="desc">Ctrl&#8209;C / SIGTERM sent to the wrapper is forwarded to the Codex child, so cancellation behaves exactly like calling <code>codex</code> directly. The wrapper's exit code is the child's.</span></li>
+  </ul>
+</section>
+
+<section>
+  <h2 class="h">game passes</h2>
+  <p class="sub">Free tier works offline, forever. Paid tiers are founding-price early access &mdash; there is no checkout yet.</p>
+  <div class="passes">
+    <div class="pass free">
+      <div class="tier">Free</div>
+      <div class="price"><span class="cur">$</span><span class="num">0</span></div>
+      <div class="for">anyone with their own Codex auth</div>
+      <ul><li>Full CLI, source, tests, demo</li><li>Unlimited local projects</li><li>No account, no telemetry</li></ul>
+      <div class="founding">forever free</div>
+    </div>
+    <div class="pass early">
+      <div class="tier">Early Access</div>
+      <div class="price"><span class="cur">$</span><span class="num">6</span><span class="per">/mo</span></div>
+      <div class="for">solo devs juggling several agent projects</div>
+      <ul><li>Hosted goal + run-log viewer</li><li>Cross-machine goal sync</li><li>Email digest on run failures</li></ul>
+      <div class="founding">founding price &middot; waitlist, not billed yet</div>
+    </div>
+    <div class="pass team">
+      <div class="tier">Team</div>
+      <div class="price"><span class="cur">$</span><span class="num">24</span><span class="per">/mo</span></div>
+      <div class="for">teams sharing Codex objectives across a repo</div>
+      <ul><li>Shared goals, per-teammate run history</li><li>Slack alert when a run fails</li><li>Audit log export</li></ul>
+      <div class="founding">founding price &middot; waitlist, not billed yet</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2 class="h">rules of the game</h2>
+  <ul class="rules">
+    <li><span class="flag">1 goal</span> <span class="desc">One objective per project at a time. Not a task list, not a scheduler, not a replacement for your issue tracker.</span></li>
+    <li><span class="flag">no force</span> <span class="desc">The injected text is plain, visible user context &mdash; it carries no special authority inside Codex. A model can still choose to ignore it, same as any other instruction.</span></li>
+    <li><span class="flag">no grading</span> <span class="desc">This only guarantees the goal is faithfully re-stated every run. It does not inspect diffs or grade progress &mdash; pair it with <a href="/v/finishline-supervisor/">finishline-supervisor</a> for that.</span></li>
+    <li><span class="flag">plain json</span> <span class="desc"><code>$CODEX_GOAL_HOME</code> is ordinary local storage with your file permissions, no encryption. Don't put secrets in goal text.</span></li>
+    <li><span class="flag">local lock</span> <span class="desc">Locking is advisory and local-filesystem only &mdash; it doesn't coordinate over NFS/SMB or across machines.</span></li>
+    <li><span class="flag">your flags</span> <span class="desc"><code>run</code> forwards whatever <code>codex exec</code> flags you give it, including dangerous ones if you ask for them. This wrapper adds or removes none of Codex's own safety behavior.</span></li>
+  </ul>
+</section>
+</main>
+
+<footer class="bar">
+  <div class="score-tape" aria-hidden="true">
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <div class="links">
+    <a href="codex_goal.py" download>download the free CLI &darr;</a>
+    <a href="https://github.com/openai/codex/issues/26966">upstream issue #26966</a>
+    <a href="README.md">full README</a>
+    <a href="/">notplanned</a>
+  </div>
+  <p class="fine">codex-goal is an independent wrapper around the <code>codex</code> CLI. Not affiliated with or endorsed by OpenAI. "Codex" is referenced only to describe compatibility. DSEG7 Classic font &copy; keshikan, SIL Open Font License 1.1 (<a href="fonts/OFL.txt">license</a>).</p>
+</footer>
+</div>
+<script>
+if(new URLSearchParams(location.search).get("joined")==="1"){
+  var j=document.getElementById("join");
+  if(j){j.classList.add("joined");}
+}
+</script>
+</body>
+</html>

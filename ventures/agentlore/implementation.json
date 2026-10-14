@@ -1,0 +1,38 @@
+{
+  "iteration": "AgentLore 02 / #87 follow-up",
+  "components": [
+    {
+      "name": "button",
+      "registry": "https://ui.shadcn.com/r/styles/new-york/button.json",
+      "sha256": "c2b999a96781e6c932632bd089095368e973bf5602e1b1a62156b7d2b43f1e84",
+      "runtime": "Used in src/main.tsx; Tabs and Checkbox use Radix UI behavior."
+    },
+    {
+      "name": "tabs",
+      "registry": "https://ui.shadcn.com/r/styles/new-york/tabs.json",
+      "sha256": "d41aded0394298102614635e15d709369c6bdae8fe79b918b8341ef39407ee03",
+      "runtime": "Used in src/main.tsx; Tabs and Checkbox use Radix UI behavior."
+    },
+    {
+      "name": "checkbox",
+      "registry": "https://ui.shadcn.com/r/styles/new-york/checkbox.json",
+      "sha256": "c9e19d480a43172f9504ac9b22f4a9c149de1d916162f24c62395533b7be19f6",
+      "runtime": "Used in src/main.tsx; Tabs and Checkbox use Radix UI behavior."
+    },
+    {
+      "name": "textarea",
+      "registry": "https://ui.shadcn.com/r/styles/new-york/textarea.json",
+      "sha256": "ec7c92aaed80f6923a7caa4bfe4eead395b50a7001504fd7fbb0b9381804dae9",
+      "runtime": "Used in src/main.tsx; Tabs and Checkbox use Radix UI behavior."
+    },
+    {
+      "name": "badge",
+      "registry": "https://ui.shadcn.com/r/styles/new-york/badge.json",
+      "sha256": "dab689d836ad3292b41e7f4986b4e68e5d45c6903e4aeaae8972a82d4aebec29",
+      "runtime": "Used in src/main.tsx; Tabs and Checkbox use Radix UI behavior."
+    }
+  ],
+  "theme": "Ink / parchment / violet; custom shadcn CSS variables",
+  "source": "agentlore-source.tgz",
+  "repositoryWrites": false
+}

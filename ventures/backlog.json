@@ -1,0 +1,105 @@
+{
+ "source": "notplanned",
+ "updated_by": "scout",
+ "opportunities": [
+  {
+   "heat": "hot",
+   "repo": "openai/codex",
+   "issue": 40046,
+   "name": "Browser Upload Bridge",
+   "title": "Hidden file-input fallback for agent browsers",
+   "thesis": "Agents still hit browser flows where the native file chooser never fires. Ship a tiny browser/MCP bridge that can target hidden file inputs directly and hand the agent a deterministic upload primitive.",
+   "signal": "Recent Codex request closed as not planned; the underlying Playwright primitive already exists.",
+   "move": "Wrap setInputFiles behind one safe tool + demo it against 5 common upload flows.",
+   "source": "https://github.com/openai/codex/issues/40046"
+  },
+  {
+   "heat": "hot",
+   "repo": "openai/codex",
+   "issue": 46025,
+   "name": "Codex KeepWarm",
+   "title": "Tool calls stall after idle gaps on Windows",
+   "thesis": "If idle transitions are the trigger, a tiny watchdog/keepalive sidecar may remove minutes of dead time without changing Codex itself.",
+   "signal": "September blocker report; every post-idle tool call reportedly incurs ~30s latency and upstream closed it as not planned.",
+   "move": "Reproduce, then test whether a low-cost heartbeat prevents the stall. Kill immediately if it does not.",
+   "source": "https://github.com/openai/codex/issues/46025"
+  },
+  {
+   "heat": "warm",
+   "repo": "openai/codex",
+   "issue": 26966,
+   "name": "Goalkeeper",
+   "title": "Persist goals across codex exec sessions",
+   "thesis": "A wrapper can own the durable goal, inject it into new/resumed runs, and expose goal state programmatically without waiting for first-class CLI support.",
+   "signal": "Two closely related programmatic-goal requests were closed as not planned.",
+   "move": "Build codex-goal with set/show/run; dogfood it on a multi-run task.",
+   "source": "https://github.com/openai/codex/issues/26966"
+  },
+  {
+   "heat": "warm",
+   "repo": "openai/codex",
+   "issue": 14747,
+   "name": "Context Curator",
+   "title": "Scoped compaction for exploratory phases",
+   "thesis": "Treat transcripts as editable context: preserve conclusions, compress dead ends, and emit a clean continuation packet for the next agent/session.",
+   "signal": "Users explicitly want selective rather than whole-history compaction; Claude Code users are asking for priority-aware compaction too.",
+   "move": "Take a real long transcript, select one noisy span, produce a resumable compacted version, measure token savings.",
+   "source": "https://github.com/openai/codex/issues/14747"
+  },
+  {
+   "heat": "warm",
+   "repo": "anthropics/claude-code",
+   "issue": 79948,
+   "name": "Finishline",
+   "title": "The project-management layer coding agents are missing",
+   "thesis": "External supervisor that tracks objective \u2192 evidence \u2192 acceptance, catches unfinished work, and refuses to equate agent completion with done.",
+   "signal": "The request is unusually explicit about sprawl, verification, multi-tier workflow, and agents claiming completion without evidence.",
+   "move": "Ship a repo-local supervisor card that reads task + git state + acceptance checks and produces DONE/WAIT/ANDON.",
+   "source": "https://github.com/anthropics/claude-code/issues/79948"
+  },
+  {
+   "heat": "warm",
+   "repo": "anthropics/claude-code",
+   "issue": 53997,
+   "name": "Preview Sidecar",
+   "title": "Bring back local preview for agent-built apps",
+   "thesis": "A tiny localhost/port discovery sidecar can surface the app the agent is building without requiring the coding product itself to own preview UX.",
+   "signal": "Users describe preview removal as a major regression and specifically want localhost surfaced again.",
+   "move": "Detect active localhost ports and expose one-click preview + screenshot receipt.",
+   "source": "https://github.com/anthropics/claude-code/issues/53997"
+  },
+  {
+   "heat": "warm",
+   "repo": "anthropics/claude-code",
+   "issue": 78197,
+   "name": "Context Priority",
+   "title": "Let users mark low-priority context before compaction",
+   "thesis": "A context sidecar can assign priority to transcript segments and generate a compacted continuation packet that preserves high-value state first.",
+   "signal": "Same underlying pain as scoped compaction, now expressed as explicit message-level priority.",
+   "move": "Prototype priority annotations + deterministic compaction on exported sessions.",
+   "source": "https://github.com/anthropics/claude-code/issues/78197"
+  },
+  {
+   "heat": "warm",
+   "repo": "anthropics/claude-code",
+   "issue": 83489,
+   "name": "Model Presets",
+   "title": "Named model + effort presets",
+   "thesis": "One-click named presets are externally solvable today with a wrapper/menu that atomically selects model and effort and persists the choice.",
+   "signal": "Current product exposes the pieces but not the composed action users want.",
+   "move": "Ship a 3-preset CLI/menu-bar prototype: fast / think / max.",
+   "source": "https://github.com/anthropics/claude-code/issues/83489"
+  },
+  {
+   "heat": "watch",
+   "repo": "vercel-labs/agent-browser",
+   "issue": 1184,
+   "name": "Browser Guardrail",
+   "title": "Per-task domain and form-submission constraints",
+   "thesis": "Put an authority layer in front of browser agents: task-scoped domains, submission policy, and receipts. The browser stays powerful; the delegation gets narrow.",
+   "signal": "The issue frames a real prompt-injection blast-radius problem and upstream closed the feature as not planned.",
+   "move": "Proxy three dangerous actions\u2014navigate, fill, submit\u2014through a task policy and prove denials are deterministic.",
+   "source": "https://github.com/vercel-labs/agent-browser/issues/1184"
+  }
+ ]
+}

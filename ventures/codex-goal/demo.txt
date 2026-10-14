@@ -1,0 +1,38 @@
+# 1. set + show
+$ python3 codex_goal.py set -C '$PROJECT' 'Ship codex-goal'"'"'s two-run persistence demo'
+codex-goal: saved goal g-a2c8350ac309 for myapp-58cda05ecfff4ec2
+[exit 0] goal saved
+
+$ python3 codex_goal.py show -C '$PROJECT'
+project   myapp-58cda05ecfff4ec2
+goal_id   g-a2c8350ac309
+updated   2026-10-10T20:16:17Z
+text      Ship codex-goal's two-run persistence demo
+[exit 0] goal shown
+
+# 2. run 1 -- fresh session (fake codex, exit 0)
+$ python3 codex_goal.py run -C '$PROJECT' --codex-bin tests/fake_codex.py
+[exit 0] run 1 done
+
+# 3. run 2 -- resume --last, in a *new* process, goal still there
+$ python3 codex_goal.py run -C '$PROJECT' --last --codex-bin tests/fake_codex.py
+[exit 0] run 2 done
+
+# 4. crash mid-run: kill -9 the wrapper while codex is 'working'
+$ (background run) ; kill -9 35478
+[killed] simulated crash
+
+# 5. show again -- goal survived the crash, byte for byte
+$ python3 codex_goal.py show -C '$PROJECT' --json
+{
+  "current": {
+    "created_at": "2026-10-10T20:16:17Z",
+    "goal_id": "g-a2c8350ac309",
+    "text": "Ship codex-goal's two-run persistence demo",
+    "updated_at": "2026-10-10T20:16:17Z"
+  },
+  "project_key": "myapp-58cda05ecfff4ec2"
+}
+[exit 0] goal after crash
+
+ASSERTION PASSED: goal text identical before and after the crash.

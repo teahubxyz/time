@@ -18,18 +18,19 @@
    "aliases": [
     "deck-preview"
    ],
-   "pages": "https://teahubxyz.github.io/time/ventures/mdecks/",
+   "pages": "https://yolopreneur.lol/mdecks/",
    "backend": {
     "worker": "time-mdecks",
     "db": "423fe9c1-97ea-49ee-b981-bd20be5651aa",
     "rev": "0118c84ad49f",
     "api": "https://mdecks.yolopreneur.lol/api/"
-   }
+   },
+   "source": "time"
   },
   {
    "slug": "docscope",
    "name": "Docscope",
-   "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside — author names, tracked deletions, embedded thumbnails, leftover comments — dissected live in your browser, nothing uploaded.",
+   "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside \u2014 author names, tracked deletions, embedded thumbnails, leftover comments \u2014 dissected live in your browser, nothing uploaded.",
    "for_whom": "Consultants, lawyers, journalists and developers who email Office files and want to know exactly what metadata and draft remnants they're about to leak (or need to parse).",
    "url": "https://docscope.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29",
@@ -41,18 +42,19 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-12",
-   "pages": "https://teahubxyz.github.io/time/ventures/docscope/",
+   "pages": "https://yolopreneur.lol/docscope/",
    "backend": {
     "worker": "time-docscope",
     "db": "d433b108-0af2-4017-8db5-c06a1298fca7",
     "rev": "94ced812eaa7",
     "api": "https://docscope.yolopreneur.lol/api/"
-   }
+   },
+   "source": "time"
   },
   {
    "slug": "doodleloop",
    "name": "Doodleloop",
-   "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute — no app, no account, nothing uploaded.",
+   "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute \u2014 no app, no account, nothing uploaded.",
    "for_whom": "A parent who just photographed their kid's latest crayon masterpiece taped to the fridge and wants to text the family a version where the rocket actually wiggles and the sun really shines.",
    "url": "https://doodleloop.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29",
@@ -64,13 +66,14 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-12",
-   "pages": "https://teahubxyz.github.io/time/ventures/doodleloop/",
+   "pages": "https://yolopreneur.lol/doodleloop/",
    "backend": {
     "worker": "time-doodleloop",
     "db": "6179f2d5-8f2d-49ec-9aca-3d1e6bc3ddca",
     "rev": "e251d8e5321f",
     "api": "https://doodleloop.yolopreneur.lol/api/"
-   }
+   },
+   "source": "time"
   },
   {
    "slug": "dollhouse",
@@ -87,21 +90,22 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-12",
-   "pages": "https://teahubxyz.github.io/time/ventures/dollhouse/",
+   "pages": "https://yolopreneur.lol/dollhouse/",
    "backend": {
     "worker": "time-dollhouse",
     "db": "d3fa15e7-4b61-4722-8263-0b9ff506b2c2",
     "rev": "b2749178ee56",
     "api": "https://dollhouse.yolopreneur.lol/api/"
-   }
+   },
+   "source": "time"
   },
   {
    "slug": "anthem",
    "name": "Anthem",
-   "one_liner": "Anthem turns any name into an 8-bar theme song you can play, remix, and send to a friend — entirely in the browser, nothing uploaded.",
-   "for_whom": "The friend in the group chat who wants to do better than 'HBD 🎉' — they type the birthday person's name and send back their personal theme song.",
+   "one_liner": "Anthem turns any name into an 8-bar theme song you can play, remix, and send to a friend \u2014 entirely in the browser, nothing uploaded.",
+   "for_whom": "The friend in the group chat who wants to do better than 'HBD \ud83c\udf89' \u2014 they type the birthday person's name and send back their personal theme song.",
    "url": "https://anthem.yolopreneur.lol/",
-   "pages": "https://teahubxyz.github.io/time/ventures/anthem/",
+   "pages": "https://yolopreneur.lol/anthem/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Anthem&venture=anthem&plan=Anthem+Studio+%28Founding%29",
    "signal": 21,
    "card": 20,
@@ -116,15 +120,16 @@
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-13"
+   "launched": "2026-10-13",
+   "source": "time"
   },
   {
    "slug": "wavehello",
    "name": "Wavehello",
-   "one_liner": "Record a laugh, a voicemail, or an 'I love you' and get beautiful soundwave art as a PNG in seconds — free, no account, nothing uploaded.",
-   "for_whom": "Someone hunting for a gift no store sells — a partner, a new parent, a grandkid — who has a voice memo that matters and wishes it could hang on a wall.",
+   "one_liner": "Record a laugh, a voicemail, or an 'I love you' and get beautiful soundwave art as a PNG in seconds \u2014 free, no account, nothing uploaded.",
+   "for_whom": "Someone hunting for a gift no store sells \u2014 a partner, a new parent, a grandkid \u2014 who has a voice memo that matters and wishes it could hang on a wall.",
    "url": "https://wavehello.yolopreneur.lol/",
-   "pages": "https://teahubxyz.github.io/time/ventures/wavehello/",
+   "pages": "https://yolopreneur.lol/wavehello/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Wavehello&venture=wavehello&plan=Print+%28founding%29",
    "signal": 30,
    "card": 28,
@@ -139,7 +144,8 @@
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-13"
+   "launched": "2026-10-13",
+   "source": "time"
   },
   {
    "slug": "storysketch",
@@ -147,7 +153,7 @@
    "one_liner": "Type a short story and watch it become a clean illustrated comic you can tweak and share in under a minute.",
    "for_whom": "A parent who wants to make a quick custom bedtime story with pictures for their child before lights-out.",
    "url": "https://storysketch.yolopreneur.lol/",
-   "pages": "https://teahubxyz.github.io/time/ventures/storysketch/",
+   "pages": "https://yolopreneur.lol/storysketch/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus",
    "signal": 31,
    "card": 29,
@@ -162,15 +168,16 @@
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-13"
+   "launched": "2026-10-13",
+   "source": "time"
   },
   {
    "slug": "glitztype",
    "name": "Glitztype",
-   "one_liner": "Type a name or a word and get gloriously retro WordArt — rainbow gradients, arches, chrome, neon — as a transparent PNG in seconds, free, no account, nothing uploaded.",
+   "one_liner": "Type a name or a word and get gloriously retro WordArt \u2014 rainbow gradients, arches, chrome, neon \u2014 as a transparent PNG in seconds, free, no account, nothing uploaded.",
    "for_whom": "Nadia, the office manager who makes every birthday banner, farewell card and break-room sign, and still misses the 1997 WordArt gallery.",
    "url": "https://glitztype.yolopreneur.lol/",
-   "pages": "https://teahubxyz.github.io/time/ventures/glitztype/",
+   "pages": "https://yolopreneur.lol/glitztype/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Glitztype&venture=glitztype&plan=Glitztype+Pro",
    "signal": 32,
    "card": 27,
@@ -185,7 +192,8 @@
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
-   "launched": "2026-10-13"
+   "launched": "2026-10-13",
+   "source": "time"
   },
   {
    "slug": "hearthframe",
@@ -193,7 +201,7 @@
    "one_liner": "Drop in photos, pick a frame style, and leave a cozy full-screen slideshow with a clock and caption on any tablet or old phone.",
    "for_whom": "The adult child who bought a consumer photo frame or has a spare tablet and wants to set up family photos for a parent without accounts, subscriptions, or tech-support calls.",
    "url": "https://hearthframe.yolopreneur.lol/",
-   "pages": "https://teahubxyz.github.io/time/ventures/hearthframe/",
+   "pages": "https://yolopreneur.lol/hearthframe/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29",
    "signal": 44,
    "card": 43,
@@ -207,6 +215,84 @@
    },
    "planned": "2026-10-14",
    "status": "building",
+   "signups": 0,
+   "source": "time"
+  },
+  {
+   "slug": "agentlore",
+   "name": "AgentLore",
+   "one_liner": "A home for project knowledge: research a public repo, review a source-backed instruction architecture, download proposed AGENTS.md and skill files.",
+   "url": "https://yolopreneur.lol/agentlore/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/agentlore/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "codex-goal",
+   "name": "codex-goal",
+   "one_liner": "A small wrapper that remembers one objective per project across separate codex exec runs and injects it back every time. Free CLI, no account.",
+   "url": "https://yolopreneur.lol/codex-goal/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/codex-goal/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "context-curator",
+   "name": "Context Curator",
+   "one_liner": "An offline editor for one exploratory span of an agent transcript. Keep the context, carry the conclusion.",
+   "url": "https://yolopreneur.lol/context-curator/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/context-curator/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "context-priority",
+   "name": "Context Priority",
+   "one_liner": "Pin the exchanges that matter: a local, deterministic context selector with a free CLI and a synthetic browser demo.",
+   "url": "https://yolopreneur.lol/context-priority/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/context-priority/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "finishline-supervisor",
+   "name": "Finishline Supervisor",
+   "one_liner": "A repo-local evidence card for coding-agent work: read the task, check scope, run acceptance checks. DONE, WAIT or ANDON.",
+   "url": "https://yolopreneur.lol/finishline-supervisor/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/finishline-supervisor/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "preview-sidecar",
+   "name": "preview-sidecar",
+   "one_liner": "A localhost port watcher that opens a preview the moment your dev server binds and stamps a timestamped screenshot receipt on demand.",
+   "url": "https://yolopreneur.lol/preview-sidecar/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/preview-sidecar/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
+   "signups": 0
+  },
+  {
+   "slug": "up-to-date",
+   "name": "UpToDate",
+   "one_liner": "Know what your stack needs next: a monitor for the versions and advisories behind a project.",
+   "url": "https://yolopreneur.lol/up-to-date/",
+   "status": "built",
+   "source": "notplanned",
+   "pages": "https://yolopreneur.lol/up-to-date/",
+   "repo": "https://teahub.xyz/teahubxyz/notplanned",
    "signups": 0
   }
  ],

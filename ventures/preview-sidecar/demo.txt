@@ -1,0 +1,27 @@
+$ python3 demo.py
+$ (throwaway dev server listening on 127.0.0.1:61125, serving a one-page site)
+$ python3 sidecar.py watch --ports 61125 --interval 0.3 --max-cycles 3 --no-open --out /tmp/preview-sidecar-out
+[preview-sidecar] watching 1 candidate ports on 127.0.0.1 every 0.3s: [61125]
+[preview-sidecar] detected 127.0.0.1:61125 at 2026-10-10T17:29:17Z -> /tmp/preview-sidecar-out/preview-61125-20261010T172917Z.html
+  preview pane written: preview-61125-20261010T172917Z.html (iframe -> http://127.0.0.1:61125)
+$ python3 sidecar.py screenshot --port 61125 --out /tmp/preview-sidecar-out --chrome '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+{
+  "url": "http://127.0.0.1:61125",
+  "host": "127.0.0.1",
+  "port": 61125,
+  "captured_at": "2026-10-10T17:29:17Z",
+  "chrome": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+  "png": "/tmp/preview-sidecar-out/receipt-61125-20261010T172915Z.png",
+  "sha256": "6e13265f215eb1e39245011165192d703d99501ffd9c08499b513b06682fb3d5",
+  "bytes": 16208,
+  "json": "/tmp/preview-sidecar-out/receipt-61125-20261010T172915Z.json"
+}
+  receipt verified: 16208 bytes, sha256=6e13265f215e...
+$ (dev server on 61125 stopped)
+
+$ python3 -m unittest discover -s ventures/preview-sidecar -p 'test_*.py' -v
+...
+----------------------------------------------------------------------
+Ran 16 tests in 0.003s
+
+OK

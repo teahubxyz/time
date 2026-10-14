@@ -1,0 +1,12 @@
+run 1: WAIT (exit 1)
+  task checklist is incomplete
+  checks not executed; pass --run-checks after reviewing argv
+  evidence: task.md#L1, task.md#L2, task.md#L3
+run 2: ANDON (exit 2)
+  task checklist is incomplete
+  acceptance check failed
+  acceptance exit: 1
+  evidence: task.md#L1, task.md#L2, task.md#L3
+run 3: DONE (exit 0)
+  acceptance exit: 0
+  evidence: task.md#L1, task.md#L2, task.md#L3
