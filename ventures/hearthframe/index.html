@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hearthframe - Turn any device into a family photo frame</title>
+    <script src="time.js"></script>
+    <style>
+        :root {
+            --primary: #8B4513;
+            --secondary: #D2B48C;
+            --light: #F5F5DC;
+            --dark: #3E2723;
+            --accent: #5D4037;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background-color: #f8f8f8;
+            min-height: 100vh;
+        }
+        
+        header {
+            background: var(--primary);
+            color: white;
+            padding: 1rem;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .header-content {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        .brand {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+        
+        .tagline {
+            font-size: 0.9rem;
+            opacity: 0.9;
+            margin-top: 0.25rem;
+        }
+        
+        .cta-button {
+            background: #fff;
+            color: var(--primary);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+            transition: all 0.2s ease;
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        
+        .cta-note {
+            font-size: 0.75rem;
+            opacity: 0.8;
+            margin-top: 0.5rem;
+            text-align: center;
+            width: 100%;
+        }
+        
+        #try {
+            min-height: calc(100vh - 80px);
+            display: flex;
+            flex-direction: column;
+            padding: 1rem;
+            background: white;
+        }
+        
+        .app-container {
+            max-width: 1200px;
+            width: 100%;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 2rem;
+        }
+        
+        @media (min-width: 768px) {
+            .app-container {
+                flex-direction: row;
+            }
+            
+            .controls {
+                width: 300px;
+            }
+            
+            .preview {
+                flex: 1;
+            }
+        }
+        
+        .section-title {
+            font-size: 1.25rem;
+            margin-bottom: 1rem;
+            color: var(--dark);
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 0.5rem;
+        }
+        
+        .control-group {
+            margin-bottom: 1.5rem;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            color: var(--dark);
+        }
+        
+        select, input, textarea {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: inherit;
+            font-size: 1rem;
+        }
+        
+        textarea {
+            min-height: 100px;
+            resize: vertical;
+        }
+        
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-size: 1rem;
+            font-weight: 600;
+            border-radius: 4px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 0.5rem;
+            transition: background 0.2s ease;
+        }
+        
+        .btn:hover {
+            background: var(--accent);
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #5a6268;
+        }
+        
+        .photo-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+        
+        .thumbnail {
+            width: 100%;
+            aspect-ratio: 1;
+            object-fit: cover;
+            border-radius: 4px;
+            border: 2px solid #eee;
+        }
+        
+        .slideshow-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        
+        .slideshow-frame {
+            width: 90vmin;
+            height: 90vmin;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+            border: solid 20px #8B4513;
+            background: #f5f5dc;
+        }
+        
+        .slideshow-photo-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        .slideshow-photo {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: opacity 0.5s ease;
+        }
+        
+        .slideshow-caption {
+            text-align: center;
+            padding: 10px;
+            font-size: 1.2em;
+            color: #333;
+        }
+        
+        .slideshow-clock {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 1em;
+            color: #333;
+            background: rgba(255, 255, 255, 0.7);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        
+        .slideshow-controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            gap: 1rem;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px;
+            border-radius: 20px;
+        }
+        
+        .control-btn {
+            background: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .close-slideshow {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        
+        .info-section {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, min-fit(300px, 1fr));
+            gap: 2rem;
+            margin-bottom: 3rem;
+        }
+        
+        .step {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        .step-number {
+            display: inline-block;
+            background: var(--primary);
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            text-align: center;
+            line-height: 30px;
+            margin-bottom: 1rem;
+        }
+        
+        .repos {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1rem;
+            margin: 2rem 0;
+        }
+        
+        .repo {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+        
+        .repo-link {
+            font-weight: 600;
+            color: var(--primary);
+            text-decoration: none;
+        }
+        
+        .repo-stars {
+            color: #f39c12;
+            font-weight: 600;
+        }
+        
+        #pricing {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .tiers {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+            margin: 2rem 0;
+        }
+        
+        .tier {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .tier-title {
+            font-size: 1.5rem;
+            margin-bottom: 1rem;
+            color: var(--dark);
+        }
+        
+        .tier-price {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            color: var(--primary);
+        }
+        
+        .tier-for {
+            font-style: italic;
+            margin-bottom: 1rem;
+            color: #666;
+        }
+        
+        .tier-includes {
+            flex: 1;
+            margin-bottom: 1.5rem;
+        }
+        
+        .tier-includes ul {
+            padding-left: 1.5rem;
+        }
+        
+        .tier-includes li {
+            margin-bottom: 0.5rem;
+        }
+        
+        .limits {
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 1rem;
+        }
+        
+        .limits ul {
+            padding-left: 1.5rem;
+            margin: 1rem 0;
+        }
+        
+        .limits li {
+            margin-bottom: 0.5rem;
+        }
+        
+        footer {
+            background: var(--dark);
+            color: white;
+            text-align: center;
+            padding: 2rem 1rem;
+            margin-top: 3rem;
+        }
+        
+        .footer-links {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+        
+        .footer-link {
+            color: var(--secondary);
+            text-decoration: none;
+        }
+        
+        .footer-link:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="brand">
+                <h1>Hearthframe</h1>
+                <div class="tagline">Turn any device into a family photo frame in one minute</div>
+            </div>
+            <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29" target="_blank" rel="noopener" class="cta-button">Join early access</a>
+        </div>
+        <div class="cta-note">Opens a public GitHub issue. No email, no payment.</div>
+    </header>
+
+    <section id="try">
+        <div class="app-container">
+            <div class="controls">
+                <h2 class="section-title">Create Your Frame</h2>
+                
+                <div class="control-group">
+                    <label for="photo-input">Add Photos</label>
+                    <input type="file" id="photo-input" accept="image/*" multiple>
+                    <div class="photo-grid" id="photo-container">
+                        <!-- Thumbnails will be added here -->
+                    </div>
+                </div>
+                
+                <div class="control-group">
+                    <label for="frame-style">Frame Style</label>
+                    <select id="frame-style">
+                        <option value="classic">Classic Wood</option>
+                        <option value="modern">Modern Black</option>
+                        <option value="vintage">Vintage Tan</option>
+                        <option value="minimalist">Minimalist White</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="clock-style">Clock Style</label>
+                    <select id="clock-style">
+                        <option value="digital">Digital Time</option>
+                        <option value="datetime">Date & Time</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="transition">Transition</label>
+                    <select id="transition">
+                        <option value="fade">Fade</option>
+                        <option value="slide">Slide</option>
+                        <option value="none">None</option>
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="caption">Caption</label>
+                    <textarea id="caption" placeholder="Add a caption to your slideshow...">Our family memories</textarea>
+                </div>
+                
+                <button id="preview-btn" class="btn">Preview Full Screen</button>
+                <button id="download-btn" class="btn btn-secondary">Download HTML File</button>
+            </div>
+            
+            <div class="preview">
+                <h2 class="section-title">Preview</h2>
+                <div class="slideshow-preview">
+                    <div class="slideshow-frame" style="max-width: 100%;">
+                        <div class="slideshow-photo-container">
+                            <img id="preview-image" src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+U2FtcGxlIFBob3RvIDE8L3RleHQ+PC9zdmc+" alt="Preview" style="max-width: 100%; max-height: 300px;">
+                        </div>
+                        <div class="slideshow-caption">Our family memories</div>
+                    </div>
+                </div>
+                
+                <div style="margin-top: 2rem;">
+                    <h3>How to use on a tablet:</h3>
+                    <ol>
+                        <li>Click "Preview Full Screen" and tap the browser's full-screen button</li>
+                        <li>To prevent sleep mode, adjust your device's screen timeout settings</li>
+                        <li>For continuous operation, enable "Stay Awake" in developer options</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </section>
+    
+    <div class="slideshow-container" id="slideshow">
+        <button class="close-slideshow" id="close-slideshow">×</button>
+        <div class="slideshow-frame" id="slideshow-frame">
+            <div class="slideshow-photo-container">
+                <img class="slideshow-photo" id="slideshow-image" src="" alt="Slideshow">
+            </div>
+            <div class="slideshow-caption" id="slideshow-caption"></div>
+            <div class="slideshow-clock" id="slideshow-clock"></div>
+            <div class="slideshow-controls">
+                <button class="control-btn" id="prev-btn">◀</button>
+                <button class="control-btn" id="play-btn">▶ Play</button>
+                <button class="control-btn" id="next-btn">▶</button>
+            </div>
+        </div>
+    </div>
+    
+    <section class="info-section">
+        <h2>How it works</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-number">1</div>
+                <h3>Drop in photos</h3>
+                <p>Drag photos directly from your device or click to select files. All processing happens locally.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">2</div>
+                <h3>Choose your style</h3>
+                <p>Pick a frame mat, clock style, and transition effect that matches your taste.</p>
+            </div>
+            <div class="step">
+                <div class="step-number">3</div>
+                <h3>Leave it running</h3>
+                <p>Preview full-screen on any device or download a self-contained HTML file to reopen later.</p>
+            </div>
+        </div>
+    </section>
+    
+    <section class="info-section">
+        <h2>Why this exists</h2>
+        <p>Hearthframe rides the wave of these repos, trending on GitHub this week:</p>
+        <div class="repos">
+            <div class="repo">
+                <a href="https://github.com/ARahim3/DigUp" class="repo-link" target="_blank" rel="noopener">ARahim3/DigUp</a>
+                <span class="repo-stars">2,362 stars</span>
+            </div>
+            <div class="repo">
+                <a href="https://github.com/noahdunnagan/fsearch" class="repo-link" target="_blank" rel="noopener">noahdunnagan/fsearch</a>
+                <span class="repo-stars">2,030 stars</span>
+            </div>
+            <div class="repo">
+                <a href="https://github.com/wesbos/photo-frame-dashboard" class="repo-link" target="_blank" rel="noopener">wesbos/photo-frame-dashboard</a>
+                <span class="repo-stars">1,073 stars</span>
+            </div>
+        </div>
+    </section>
+    
+    <section id="pricing">
+        <h2>Pricing</h2>
+        <p>Nothing is charged today.</p>
+        <div class="tiers">
+            <div class="tier">
+                <h3 class="tier-title">Free ($0)</h3>
+                <div class="tier-price">$0</div>
+                <div class="tier-for">for Anyone setting up a frame right now, on their own device</div>
+                <div class="tier-includes">
+                    <p>Includes:</p>
+                    <ul>
+                        <li>The full browser frame: drag-in photos, frame mats, clock styles, transitions, one caption</li>
+                        <li>Full-screen kiosk preview</li>
+                        <li>Downloadable self-contained HTML file</li>
+                        <li>Nothing uploaded, no account, no wat</li>
+                    </ul>
+                </div>
+                <a href="#try" class="btn">Use it free</a>
+            </div>
+            <div class="tier">
+                <h3 class="tier-title">Family (early access)</h3>
+                <div class="tier-price">$5/mo</div>
+                <div class="tier-for">for The adult child who wants the frame to update itself after setup day</div>
+                <div class="tier-includes">
+                    <p>Includes:</p>
+                    <ul>
+                        <li>Installable Android frame app</li>
+                        <li>One family album link relatives can add photos to</li>
+                        <li>Scheduled photo updates</li>
+                        <li>Remote captions sent to the frame</li>
+                    </ul>
+                </div>
+                <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29" target="_blank" rel="noopener" class="btn">Join early access</a>
+            </div>
+            <div class="tier">
+                <h3 class="tier-title">Caregiver (early access)</h3>
+                <div class="tier-price">$9/mo</div>
+                <div class="tier-for">for Someone keeping frames alive for more than one parent or grandparent</div>
+                <div class="tier-includes">
+                    <p>Includes:</p>
+                    <ul>
+                        <li>Everything in Family</li>
+                        <li>Multiple frames under one login</li>
+                        <li>Per-frame schedules</li>
+                        <li>Simple remote-caption queue for each frame</li>
+                    </ul>
+                </div>
+                <a href="https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Caregiver+%28early+access%29" target="_blank" rel="noopener" class="btn">Join early access</a>
+            </div>
+        </div>
+    </section>
+    
+    <section class="limits">
+        <h2>Honest limits</h2>
+        <ul>
+            <li>No automatic photo syncing - you need to manually update the frame</li>
+            <li>No cloud storage - all photos must be stored locally on the device</li>
+            <li>No multi-user collaboration - only one person can manage the frame</li>
+            <li>No advanced scheduling - photos rotate at fixed intervals</li>
+            <li>No mobile app - only browser-based solution currently available</li>
+        </ul>
+    </section>
+    
+    <footer>
+        <div class="footer-links">
+            <div>Built by <a href="https://github.com/teahubxyz/time" class="footer-link">Time, an agent-run venture studio on GitHub</a></div>
+            <div><a href="https://github.com/teahubxyz/time/issues/44" class="footer-link">Want the next version? 👍 the signal issue</a></div>
+        </div>
+    </footer>
+
+    <script src="app.js"></script>
+</body>
+</html>
