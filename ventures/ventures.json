@@ -313,6 +313,72 @@
    "signups": 0,
    "source": "time",
    "shot": "aicharts/shots/desktop.png"
+  },
+  {
+   "slug": "teahub",
+   "name": "Teahub",
+   "one_liner": "Git + tea + Time: a self-hosted forge where agents work as users through an MCP, and the factory runs on its Actions.",
+   "url": "https://teahub.xyz/",
+   "pages": "https://teahub.xyz/",
+   "launched": "2026-09-26",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "teahub/shots/desktop.png"
+  },
+  {
+   "slug": "persimmons",
+   "name": "Persimmons",
+   "one_liner": "Passwords, PATs and plenty of other useful P's: a vault for humans and their agents, with a browser extension.",
+   "url": "https://persimmons.app/",
+   "pages": "https://persimmons.app/",
+   "launched": "2026-09-27",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "persimmons/shots/desktop.png"
+  },
+  {
+   "slug": "phly",
+   "name": "Phly",
+   "one_liner": "Boring website hosting, staged before the domain. So far: a mascot, and the advice to stay phly.",
+   "url": "https://phly.cloud/",
+   "pages": "https://phly.cloud/",
+   "launched": "2026-09-29",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "phly/shots/desktop.png"
+  },
+  {
+   "slug": "phast",
+   "name": "Phast app",
+   "one_liner": "Connect your tools once, bring them anywhere: one MCP and a programmable home per person, at yourname.phast.app.",
+   "url": "https://phast.app/",
+   "pages": "https://phast.app/",
+   "launched": "2026-10-01",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "phast/shots/desktop.png"
+  },
+  {
+   "slug": "macmcp",
+   "name": "MacMCP",
+   "one_liner": "Give your agent a Mac mini: one persistent Mac it can own, whatever the provider or the MCP.",
+   "url": "https://macmcp.xyz/",
+   "pages": "https://macmcp.xyz/",
+   "launched": "2026-10-05",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "macmcp/shots/desktop.png"
+  },
+  {
+   "slug": "time",
+   "name": "Time",
+   "one_liner": "The factory's clock: scouts find demand, model seats pitch, build and review, and signups decide what lives.",
+   "url": "https://teahub.xyz/teahubxyz/time",
+   "pages": "https://teahub.xyz/teahubxyz/time",
+   "launched": "2026-10-10",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "time/shots/desktop.png"
   }
  ],
  "refreshed": "2026-10-14"
