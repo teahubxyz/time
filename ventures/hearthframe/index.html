@@ -197,6 +197,20 @@
             border: 2px solid #eee;
         }
         
+        .drop-zone {
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            padding: 2rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            transition: border-color 0.3s;
+        }
+        
+        .drop-zone.dragover {
+            border-color: var(--primary);
+            background-color: #f0f0f0;
+        }
+        
         .slideshow-container {
             position: fixed;
             top: 0;
@@ -232,7 +246,6 @@
             max-width: 100%;
             max-height: 100%;
             object-fit: contain;
-            transition: opacity 0.5s ease;
         }
         
         .slideshow-caption {
@@ -464,7 +477,10 @@
                 
                 <div class="control-group">
                     <label for="photo-input">Add Photos</label>
-                    <input type="file" id="photo-input" accept="image/*" multiple>
+                    <div class="drop-zone" id="drop-zone">
+                        <p>Drag & drop photos here<br>or click to select files</p>
+                        <input type="file" id="photo-input" accept="image/*" multiple style="display: none;">
+                    </div>
                     <div class="photo-grid" id="photo-container">
                         <!-- Thumbnails will be added here -->
                     </div>
