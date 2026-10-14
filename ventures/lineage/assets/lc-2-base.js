@@ -102,7 +102,7 @@ return r;
 var N = /* @__PURE__ */ (() => {
 try {
 let e = /* @__PURE__ */ new TextDecoder;
-return e.decode(Uint8Array.of(65, 48, 43, 127)) === "A0+" ? e : void 0;
+return e.decode(Uint8Array.of(65, 48, 43, 127)) === "A0+\x7f" ? e : void 0;
 } catch (e) {
 return;
 }
