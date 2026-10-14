@@ -302,6 +302,17 @@
    "signups": 0,
    "source": "yolopreneur",
    "shot": "lineage/shots/desktop.png"
+  },
+  {
+   "slug": "aicharts",
+   "name": "AICharts",
+   "one_liner": "Ask for a chart in plain words. The model writes a small checked spec, never code, and never sees your rows.",
+   "url": "https://aicharts.yolopreneur.lol/",
+   "pages": "https://aicharts.yolopreneur.lol/",
+   "launched": "2026-10-13",
+   "signups": 0,
+   "source": "time",
+   "shot": "aicharts/shots/desktop.png"
   }
  ],
  "refreshed": "2026-10-14"
