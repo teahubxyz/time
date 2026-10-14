@@ -186,6 +186,28 @@
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13"
+  },
+  {
+   "slug": "hearthframe",
+   "name": "Hearthframe",
+   "one_liner": "Drop in photos, pick a frame style, and leave a cozy full-screen slideshow with a clock and caption on any tablet or old phone.",
+   "for_whom": "The adult child who bought a consumer photo frame or has a spare tablet and wants to set up family photos for a parent without accounts, subscriptions, or tech-support calls.",
+   "url": "https://hearthframe.yolopreneur.lol/",
+   "pages": "https://teahubxyz.github.io/time/ventures/hearthframe/",
+   "join": "https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29",
+   "signal": 44,
+   "card": 43,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "backend": {
+    "worker": "time-hearthframe",
+    "db": "b460701b-5fa9-4fdf-a8ae-e9cb46c434d5",
+    "rev": "f122737e4ca6",
+    "api": "https://hearthframe.yolopreneur.lol/api/"
+   },
+   "planned": "2026-10-14",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-14"
