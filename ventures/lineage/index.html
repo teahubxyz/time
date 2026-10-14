@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
+<title>Lineage Key Tree</title>
+<meta name="description" content="One seed, one organization: legal control, treasury, identity, agents and machines, all derived in your browser from one BIP-39 seed.">
+<meta name="theme-color" content="#141414">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%23ffc21a'/%3E%3Cpath d='M5 3v10h7' stroke='%23141414' stroke-width='2.6' fill='none'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="assets/lineage.css">
+</head>
+<body>
+<header class="band">
+  <div class="band-in">
+    <div>
+      <h1 class="wordmark">Lineage</h1>
+      <p class="lede"><b>One seed, one organization.</b> Legal control, treasury, identity, agents and machines, all derived in this tab from the words below.</p>
+    </div>
+    <div class="flags">
+      <span class="flag hz">Demo keys</span>
+      <span class="flag">Sends nothing</span>
+      <span class="flag">Spec v0 draft</span>
+      <button class="flag" id="theme" type="button">Dark</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="blk" aria-labelledby="t-seed">
+    <h2 class="tab" id="t-seed">Seed <span class="sub" id="seed-sub">BIP-39</span></h2>
+    <div class="panel pad">
+      <ol class="words" id="words" aria-label="Seed words"></ol>
+      <div class="entry" id="entry" hidden>
+        <label class="lab" for="mn-in">Your words, in order <span>(12 or 24)</span></label>
+        <textarea id="mn-in" spellcheck="false" autocomplete="off" autocapitalize="off"></textarea>
+        <p class="msg" id="mn-msg" role="alert"></p>
+        <div class="controls">
+          <button class="btn primary" id="mn-use" type="button">Use these words</button>
+          <button class="btn" id="mn-cancel" type="button">Cancel</button>
+        </div>
+      </div>
+      <div class="controls" id="seed-ctl">
+        <button class="btn primary" id="new" type="button">New seed</button>
+        <label class="vsel"><span class="sr">Load a test vector</span>
+          <select id="vector">
+            <option value="">Load a test vector&#8230;</option>
+            <option value="bip84">abandon &#8230; about (BIP-84, ETH)</option>
+            <option value="nip06">leader monkey &#8230; bean (NIP-06)</option>
+          </select>
+        </label>
+        <button class="btn" id="enter" type="button">Enter words</button>
+        <button class="btn" id="hide" type="button" aria-pressed="false">Hide words</button>
+      </div>
+      <div class="inputs">
+        <div><label class="lab" for="pass">Passphrase <span>(optional 25th word)</span></label><input id="pass" type="text" spellcheck="false" autocomplete="off" autocapitalize="off"></div>
+        <div><label class="lab" for="org">Org <span>(name)</span></label><input id="org" type="text" value="lineage" spellcheck="false" autocomplete="off" autocapitalize="off"></div>
+        <div><label class="lab" for="domain">Domain <span>(for handles and mail)</span></label><input id="domain" type="text" value="lineage.llc" spellcheck="false" autocomplete="off" autocapitalize="off"></div>
+      </div>
+      <p class="status" id="status" role="status"></p>
+      <p class="warn"><b>Real keys, demo page.</b> Every key here is valid. Don't type a seed that guards real funds into any web page, this one included.</p>
+    </div>
+  </section>
+
+  <div class="main">
+    <section class="blk" aria-labelledby="t-tree">
+      <h2 class="tab" id="t-tree">Tree <span class="sub">select a node &#183; &#8593; &#8595; to move</span></h2>
+      <div class="panel"><div class="tree" id="tree"><p class="wait">Deriving keys&#8230;</p></div></div>
+    </section>
+    <section class="blk insp" id="insp-blk" aria-labelledby="t-insp">
+      <h2 class="tab" id="t-insp">Inspect <span class="sub" id="insp-sub"></span></h2>
+      <div class="panel" id="insp"></div>
+    </section>
+  </div>
+
+  <section class="blk" aria-labelledby="t-ex">
+    <h2 class="tab" id="t-ex">Publish <span class="sub">public halves only</span></h2>
+    <div class="panel">
+      <div class="tabs" role="tablist" aria-label="Files">
+        <button type="button" role="tab" id="ex-nostr" aria-selected="true" aria-controls="ex">nostr.json</button>
+        <button type="button" role="tab" id="ex-lineage" aria-selected="false" aria-controls="ex">lineage.json</button>
+        <button type="button" role="tab" id="ex-spec" aria-selected="false" aria-controls="ex">spec v0</button>
+      </div>
+      <div class="ex" id="ex" role="tabpanel"></div>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>Libraries: @noble/curves, @noble/hashes, @scure/bip32, @scure/bip39 and @scure/base 2.4.0, built from their tagged sources and served from this site. Once loaded, the page sends nothing: its Content-Security-Policy blocks every connection, so the browser enforces that.</p>
+    <p>Branch conventions match supertestnet's vanilla-js-browser-wallet (m/84'/0'/0') and vanilla-js-nostr (m/44'/1237'/0'/0/0). This page puts both on one seed and adds the rest.</p>
+    <p>No keys are stored. Reloading makes a new seed.</p>
+    <p>Part of the <a href="https://yolopreneur.lol/">yolopreneur.lol</a> portfolio.</p>
+  </footer>
+</main>
+
+<script src="assets/lc-1-hashes.js"></script>
+<script src="assets/lc-2-base.js"></script>
+<script src="assets/lc-3-curves.js"></script>
+<script src="assets/lc-4-keys.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
