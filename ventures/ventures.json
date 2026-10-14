@@ -379,6 +379,17 @@
    "signups": 0,
    "source": "yolopreneur",
    "shot": "time/shots/desktop.png"
+  },
+  {
+   "slug": "supertestnet",
+   "name": "Super Testnet",
+   "one_liner": "Your own little Bitcoin universe: mine fake coins, inscribe a thought and follow it into a block, all in the browser, with a test wallet or the Inscriboor extension.",
+   "url": "https://supertestnet.lol/",
+   "pages": "https://supertestnet.lol/",
+   "launched": "2026-10-04",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "supertestnet/shots/desktop.png"
   }
  ],
  "refreshed": "2026-10-14"
