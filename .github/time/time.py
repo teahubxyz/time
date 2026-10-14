@@ -94,17 +94,23 @@ _trust: dict[str, bool] = {}
 
 
 def trusted(login: str | None) -> bool:
-    """Write access to this repo (owner, org team, collaborator). Strangers on a public repo can comment; they can't
-    approve, object or retry. Time's own user never counts as a reviewer."""
+    """May this login approve, object, retry or spend seat credits? Yes for the repo's owner, for anyone listed in
+    TIME_TRUSTED (comma-separated logins; org owners go here, since the Actions token cannot read org membership),
+    and for repo collaborators. Strangers on a public repo can comment; none of that counts. Time's own user never
+    counts as a reviewer."""
     if not login or login == TIME_BOT:
         return False
     if login not in _trust:
-        try:
-            perm = gh("GET", f"/repos/{REPO}/collaborators/{login}/permission").get("permission")
-        except RuntimeError as e:
-            print(f"trust({login}): {e}")
-            perm = None
-        _trust[login] = perm in ("admin", "write", "owner")
+        names = {n.strip() for n in (os.environ.get("TIME_TRUSTED") or "").split(",") if n.strip()}
+        ok = login == REPO.split("/")[0] or login in names
+        if not ok:
+            try:
+                gh("GET", f"/repos/{REPO}/collaborators/{login}")  # 204 when a collaborator, 404 otherwise
+                ok = True
+            except RuntimeError as e:
+                if "-> 404" not in str(e):
+                    print(f"trust({login}): {e}")
+        _trust[login] = ok
     return _trust[login]
 
 

@@ -58,8 +58,9 @@ class World:
         path = url.replace(tm.GH, "")
         self.calls.append((method, path, body))
         if path.endswith("/branches") and method == "POST": self.branches = getattr(self, "branches", []) + [body["new_branch_name"]]; return {}
-        if "/collaborators/" in path and path.endswith("/permission"):
-            return {"permission": "write" if path.split("/")[-2] in self.trusted else "read"}
+        if "/collaborators/" in path:
+            if path.split("/")[-1] in self.trusted: return {}
+            raise RuntimeError(f"GET {path} -> 404: not a collaborator")
         if "/git/trees/" in path: return {"tree": [{"path": k, "type": "blob"} for k in self.files]}
         if "/contents/" in path:
             fp = path.split("/contents/")[1].split("?")[0]
