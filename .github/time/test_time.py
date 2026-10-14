@@ -80,6 +80,7 @@ class World:
             if path.split("/")[-1] in self.trusted: return {}
             raise RuntimeError(f"GET {path} -> 404: not a collaborator")
         if "/git/trees/" in path: return {"tree": [{"path": k, "type": "blob"} for k in self.files]}
+        if "/branches/" in path and method == "GET": return {"commit": {"id": "deadbeef"}}  # list_files resolves the ref
         if "/contents/" in path:
             fp = path.split("/contents/")[1].split("?")[0]
             if method == "GET":

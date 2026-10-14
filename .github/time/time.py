@@ -26,6 +26,7 @@ import re
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -757,7 +758,9 @@ class Hands:
     def call(self, name: str, a: dict) -> str:
         self.steps += 1
         if name == "list_files":
-            tree = gh("GET", f"/repos/{REPO}/git/trees/{self.branch}?recursive=true&per_page=1000").get("tree") or []
+            # the trees route takes a sha, not a ref with a slash in it (time/card-N)
+            sha = gh("GET", f"/repos/{REPO}/branches/{urllib.parse.quote(self.branch, safe='')}")["commit"]["id"]
+            tree = gh("GET", f"/repos/{REPO}/git/trees/{sha}?recursive=true&per_page=1000").get("tree") or []
             d = (a.get("dir") or "").strip("/")
             paths = [t["path"] for t in tree if t["type"] == "blob" and (not d or t["path"].startswith(d + "/"))]
             return "\n".join(paths[:400]) or "(empty)"
