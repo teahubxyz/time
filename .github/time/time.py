@@ -316,7 +316,7 @@ def verdict(pr: dict, since: str) -> str | None:
     found = []
     for c in gh("GET", f"/repos/{REPO}/issues/{pr['number']}/comments?per_page=100"):
         m = VERDICT.match(c.get("body") or "")
-        trusted = c["user"].get("type") == "Bot" or c.get("author_association") in TRUSTED  # public repos: strangers can comment
+        trusted = is_time(c) or c.get("author_association") in TRUSTED  # public repos: strangers (and their bots) can comment
         if m and trusted and c["created_at"] > since:
             found.append((c["created_at"], m.group(1).lower()))
     for r in gh("GET", f"/repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100"):
@@ -328,7 +328,16 @@ def verdict(pr: dict, since: str) -> str | None:
 
 def touches_protected(pr_number: int) -> list[str]:
     paths = [p.strip() for p in (os.environ.get("TIME_PROTECTED") or DEFAULT_PROTECTED).split(",") if p.strip()]
-    files = [f["filename"] for f in gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?per_page=100")]
+    files, page = [], 1
+    while True:  # every file, not the first 100; a rename counts under both names
+        batch = gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?per_page=100&page={page}")
+        for f in batch:
+            files.append(f["filename"])
+            if f.get("previous_filename"):
+                files.append(f["previous_filename"])
+        if len(batch) < 100:
+            break
+        page += 1
     return [f for f in files if any(f.startswith(p) or p in f for p in paths)]
 
 
@@ -398,6 +407,7 @@ def label(number: int, name: str) -> None:
 # itself. Same contract as the Cursor worker: a PR whose body says "Closes #N".
 
 import base64
+import shutil
 import subprocess
 import tempfile
 
@@ -431,6 +441,21 @@ your branch), open_pr. Work on the branch `{branch}`. Only two things reach it: 
 Read before you write. Always `run` the project's tests or checks before opening the PR (that run is the PR's check). When it is done and checked, call open_pr once
 with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows.
 The card's finish line is: DONE: {done}"""
+
+
+_DOCKER: bool | None = None
+
+
+def docker_ok() -> bool:
+    """Is a docker daemon reachable? Checked once per process."""
+    global _DOCKER
+    if _DOCKER is None:
+        try:
+            _DOCKER = bool(shutil.which("docker")) and subprocess.run(
+                ["docker", "version", "--format", "{{.Server.Version}}"], capture_output=True, timeout=15).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            _DOCKER = False
+    return _DOCKER
 
 
 class Hands:
@@ -482,8 +507,15 @@ class Hands:
             # Cards and venture inputs can carry third-party text, so the shell the model drives sees no secrets.
             clean = {k: v for k, v in os.environ.items() if not re.search(r"TOKEN|KEY|SECRET|PASSWORD|ACTIONS_", k, re.I)}
             limit = int(os.environ.get("TIME_RUN_TIMEOUT") or 180)
+            # A scrubbed env is not enough: the same uid can read the orchestrator's /proc/<pid>/environ. So the model's
+            # command runs in a container (the checkout mounted, nothing else) when TIME_RUN_IMAGE names an image and a
+            # docker daemon exists; the workflows set it on hosted runners. Unset (local runs, tests) means the host shell.
+            image = (os.environ.get("TIME_RUN_IMAGE") or "off").strip()
+            cmd = (["docker", "run", "--rm", "-v", f"{self.checkout}:/work", "-w", "/work", "-e", "HOME=/tmp", image,
+                    "bash", "-lc", a["command"]] if image != "off" and docker_ok()
+                   else ["bash", "-lc", a["command"]])
             try:
-                p = subprocess.run(["bash", "-lc", a["command"]], cwd=self.checkout, capture_output=True, text=True, timeout=limit, env=clean)
+                p = subprocess.run(cmd, cwd=self.checkout, capture_output=True, text=True, timeout=limit, env=clean)
             except subprocess.TimeoutExpired:  # a server or watcher never exits: tell the model, don't crash the card
                 return (f"timed out after {limit}s and was stopped. Servers and watchers never exit; run one-shot commands "
                         f"(a parser, a test script, node -e '...') instead")
@@ -582,12 +614,21 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None) -> dict:
 
 # ---------- heartbeat ----------
 
+TIME_BOT = "github-actions[bot]"
+
+
+def is_time(c: dict) -> bool:
+    """A comment Time itself wrote (through the Actions token). Anyone can paste the marker; only this author counts."""
+    u = c.get("user") or {}
+    return u.get("login") == TIME_BOT
+
+
 def beats_of(comments: list[dict]) -> list[dict]:
     """Time's own state comments on a card, oldest first, as {meta..., at}."""
     out = []
     for c in comments:
         b = c.get("body") or ""
-        if MARK in b and '"beat":' in b:
+        if is_time(c) and MARK in b and '"beat":' in b:
             try:
                 meta = json.loads(b.split(MARK, 1)[1].rsplit("-->", 1)[0])
             except ValueError:
@@ -597,8 +638,8 @@ def beats_of(comments: list[dict]) -> list[dict]:
 
 
 def retry_requested(comments: list[dict], since: str) -> bool:
-    return any(c["created_at"] >= since and c["user"].get("type") != "Bot" and "/time retry" in (c.get("body") or "")
-               for c in comments)  # >=: a retry typed in the same second as the beat still counts
+    return any(c["created_at"] >= since and c["user"].get("type") != "Bot" and c.get("author_association") in TRUSTED
+               and "/time retry" in (c.get("body") or "") for c in comments)  # strangers on a public repo can't respend  # >=: a retry typed in the same second as the beat still counts
 
 
 def linked_prs(prs: list[dict], n: int) -> list[dict]:

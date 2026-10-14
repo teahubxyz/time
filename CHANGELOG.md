@@ -3,6 +3,11 @@
 ## [Unreleased]
 
 ### Security
+- Time's state comments (`<!-- time {...} -->` beats) count only when written by `github-actions[bot]`; a pasted marker from anyone else is ignored. A stranger on a public repo could otherwise steer a card to merge a chosen PR or build a chosen page.
+- `/time retry` and "Approve"/"Object" comments count only from the owner, members, collaborators and Time itself; any other bot is a stranger too.
+- The protected-path check reads every file of a PR (not the first 100) and counts a rename under both names.
+- The browser pass clones the Pages branch, then drops `.git` (the clone URL carried the token), serves only the venture's own folder, and runs headless Chrome with no network except localhost, so a model-written page can't read or send anything.
+- The worker's `run` tool executes inside a throwaway container (`docker run`, the checkout mounted; the workflows set `TIME_RUN_IMAGE: node:22-bookworm`), so a command can't read the orchestrator's environment through `/proc`. Unset, or without a docker daemon, it is the host shell as before.
 - A venture build writes only inside its own `ventures/<slug>/` folder on the Pages branch, which also carries the studio's site and every other venture: a fix round once wrote its page over the site's front page.
 - The Venice worker's shell no longer sees secrets: its environment drops tokens and keys, its checkout keeps no token in `.git/config`, and the workflows check out without persisted credentials.
 
