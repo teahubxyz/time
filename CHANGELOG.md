@@ -3,6 +3,9 @@
 ## [Unreleased]
 
 ### Security
+- The worker's own commit status (`time/worker-run`) can fail or delay a merge but never earns one: with no other check on the PR head, Time dispatches the project's CI workflow on the PR branch (`TIME_CI_WORKFLOW`, default `ci.yml`, which must accept `workflow_dispatch`; GitHub skips `pull_request` runs for pushes made with the Actions token) and merges on that. `off` keeps the old "no checks" stop.
+- `.github/` is protected from auto-merge whatever `TIME_PROTECTED` says.
+- `labs-aicharts.yml` passes the deploy URL through `env` instead of interpolating it into the shell.
 - Time's state comments (`<!-- time {...} -->` beats) count only when written by `github-actions[bot]`; a pasted marker from anyone else is ignored. A stranger on a public repo could otherwise steer a card to merge a chosen PR or build a chosen page.
 - `/time retry` and "Approve"/"Object" comments count only from the owner, members, collaborators and Time itself; any other bot is a stranger too.
 - The protected-path check reads every file of a PR (not the first 100) and counts a rename under both names.

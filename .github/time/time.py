@@ -328,6 +328,7 @@ def verdict(pr: dict, since: str) -> str | None:
 
 def touches_protected(pr_number: int) -> list[str]:
     paths = [p.strip() for p in (os.environ.get("TIME_PROTECTED") or DEFAULT_PROTECTED).split(",") if p.strip()]
+    paths = list(dict.fromkeys([".github/", *paths]))  # workflows stay a human's merge whatever TIME_PROTECTED says
     files, page = [], 1
     while True:  # every file, not the first 100; a rename counts under both names
         batch = gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?per_page=100&page={page}")
@@ -341,16 +342,37 @@ def touches_protected(pr_number: int) -> list[str]:
     return [f for f in files if any(f.startswith(p) or p in f for p in paths)]
 
 
+WORKER_CONTEXT = "time/worker-run"
+
+
 def checks(sha: str) -> str:
-    """pass | pending | fail | none, over every check run on the PR head."""
+    """pass | pending | fail | none, over every check run on the PR head.
+
+    The worker's own status (WORKER_CONTEXT) can fail or delay a merge but never earns one: a model that chose the
+    command it ran is not a reviewer of it. Without any other check the answer is "none"."""
     runs = gh("GET", f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
     states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses", [])  # commit statuses count too
-    if not runs and not states:
-        return "none"
     if any(r["status"] != "completed" for r in runs) or any(st["state"] == "pending" for st in states):
         return "pending"
-    ok = all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) and all(st["state"] == "success" for st in states)
-    return "pass" if ok else "fail"
+    if not all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) or not all(st["state"] == "success" for st in states):
+        return "fail"
+    if not runs and not any(st.get("context") != WORKER_CONTEXT for st in states):
+        return "none"
+    return "pass"
+
+
+def dispatch_ci(pr: dict) -> bool:
+    """Run the project's CI on the PR branch by hand. GitHub skips pull_request workflows for pushes made with the
+    Actions token, so a worker's PR gets no checks unless Time asks; TIME_CI_WORKFLOW (default ci.yml) must accept
+    workflow_dispatch. Returns False when there is no such workflow."""
+    wf = (os.environ.get("TIME_CI_WORKFLOW") or "ci.yml").strip()
+    if wf == "off":
+        return False
+    try:
+        gh("POST", f"/repos/{REPO}/actions/workflows/{wf}/dispatches", {"ref": pr["head"]["ref"]})
+    except RuntimeError:
+        return False
+    return True
 
 
 def land(card: dict, last: dict) -> None:
@@ -382,9 +404,13 @@ def land(card: dict, last: dict) -> None:
     c = checks(pr["head"]["sha"])
     need = (os.environ.get("TIME_REQUIRE_CHECKS") or "on").strip() != "off"
     if c == "pending" or (c == "none" and need):
-        if c == "none" and last["beat"] != "no-checks":
-            comment(n, f"⏱️ Time: approved, but PR #{pr['number']} has no checks, and I only merge on green. Add a CI "
-                    "workflow (or set `TIME_REQUIRE_CHECKS=off`).", {"beat": "no-checks", "pr": pr["number"]})
+        if c == "none" and last["beat"] not in ("no-checks", "ci-dispatched"):
+            if dispatch_ci(pr):
+                comment(n, f"⏱️ Time: approved; running CI on PR #{pr['number']} before merging.",
+                        {"beat": "ci-dispatched", "pr": pr["number"]})
+            else:
+                comment(n, f"⏱️ Time: approved, but PR #{pr['number']} has no checks, and I only merge on green. Add a CI "
+                        "workflow that accepts workflow_dispatch (or set `TIME_REQUIRE_CHECKS=off`).", {"beat": "no-checks", "pr": pr["number"]})
         return
     if c == "fail":
         if last["beat"] != "checks-failed":
