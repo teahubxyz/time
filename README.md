@@ -1,3 +1,5 @@
+> **Moved.** Time now runs on Teahub prod: https://teahub.xyz/teahubxyz/time (Gitea). This GitHub copy was the proof of concept and is archived, read-only, 2026-10-14.
+
 # time
 
 A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are the clock (Time), the worker is a Venice seat with hands or a Cursor cloud agent, and chat is where you plan.
