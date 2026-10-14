@@ -101,7 +101,8 @@ def trusted(login: str | None) -> bool:
     if login not in _trust:
         try:
             perm = gh("GET", f"/repos/{REPO}/collaborators/{login}/permission").get("permission")
-        except RuntimeError:
+        except RuntimeError as e:
+            print(f"trust({login}): {e}")
             perm = None
         _trust[login] = perm in ("admin", "write", "owner")
     return _trust[login]
