@@ -997,6 +997,7 @@ def browser_check(slug: str) -> tuple[list[str], bytes | None, str]:
     try:
         url = f"https://x-access-token:{os.environ['GITHUB_TOKEN']}@github.com/{REPO}"
         subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", PAGES_BRANCH, url, d], check=True, capture_output=True)
+        shutil.rmtree(Path(d, ".git"), ignore_errors=True)  # the clone URL carried the token; the served tree must not
         folder = Path(d, "ventures", slug)
         if not (folder / "index.html").exists():
             return [f"ventures/{slug}/index.html is missing"], None, ""
@@ -1007,10 +1008,11 @@ def browser_check(slug: str) -> tuple[list[str], bytes | None, str]:
                          for n, (w, h) in SIZES.items())
         (folder / "_harness.html").write_text(HARNESS.format(frames=frames, names=json.dumps(list(SIZES))))
         (folder / "_sheet.html").write_text(SHEET.format(page="index.html"))
-        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(_Quiet, directory=d))
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(_Quiet, directory=str(folder)))
         threading.Thread(target=srv.serve_forever, daemon=True).start()
-        base = f"http://127.0.0.1:{srv.server_address[1]}/ventures/{slug}/"
+        base = f"http://127.0.0.1:{srv.server_address[1]}/"  # only the venture's own folder is served
         flags = [exe, "--headless=new", "--disable-gpu", "--no-sandbox", "--no-first-run", "--hide-scrollbars",
+                 "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE localhost",  # a model-written page gets no network
                  f"--user-data-dir={tempfile.mkdtemp(prefix='time-chrome-')}", "--virtual-time-budget=6000"]
         shot = Path(d, "sheet.png")
         try:

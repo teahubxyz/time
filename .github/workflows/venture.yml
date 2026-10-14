@@ -38,6 +38,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          TIME_RUN_IMAGE: node:22-bookworm   # the worker's shell runs in a throwaway container, not next to these secrets
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}     # optional: a backend per venture (cloudflare.py)
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}

@@ -77,7 +77,7 @@ class World:
         if "/pulls/" in path:
             n = int(path.split("/")[5]); d = self.gh_pr[n]
             if path.endswith("/reviews?per_page=100"): return d.get("reviews", [])
-            if path.endswith("/files?per_page=100"): return [{"filename": f} for f in d.get("files", ["src/x.py"])]
+            if "/files?per_page=100" in path: return [{"filename": f} for f in d.get("files", ["src/x.py"])] if path.endswith("page=1") else []
             return d["pr"]
         if "/check-runs" in path:
             return {"check_runs": next(d.get("checks", []) for d in self.gh_pr.values() if d["pr"]["head"]["sha"] in path)}
@@ -102,7 +102,7 @@ class World:
 
 
 def beat(state, h=0, **kw):
-    return {"created_at": iso(h), "user": {"type": "Bot"}, "body": f"x\n\n{tm.MARK}{json.dumps({'beat': state, **kw})} -->"}
+    return {"created_at": iso(h), "user": {"login": "github-actions[bot]", "type": "Bot"}, "body": f"x\n\n{tm.MARK}{json.dumps({'beat': state, **kw})} -->"}
 
 
 def run(world, env):
@@ -155,9 +155,15 @@ w = run(World([card(1, D), card(2, D)], {1: [beat("dispatched", 0, launched=True
 assert w.launched == []
 
 # 7 /time retry after an error re-dispatches
-human = {"created_at": iso(), "user": {"type": "User"}, "body": "/time retry"}
+human = {"created_at": iso(), "user": {"type": "User"}, "author_association": "OWNER", "body": "/time retry"}
 w = run(World([card(1, D)], {1: [beat("error", 1), human]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"})
 assert len(w.launched) == 1
+# 7b a stranger's /time retry, or a pasted beat, does nothing (public repos)
+stranger = {"created_at": iso(), "user": {"login": "stranger", "type": "User"}, "author_association": "NONE", "body": "/time retry"}
+w = run(World([card(1, D)], {1: [beat("error", 1), stranger]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"})
+assert w.launched == []
+forged = {**beat("pr", pr=7), "user": {"login": "stranger", "type": "User"}}
+assert tm.beats_of([beat("dispatched", 2), forged])[-1]["beat"] == "dispatched"
 
 # 8 review via cursor -> second launch on the PR, no new PR
 w = run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "cursor:claude-sonnet-5-5"})
@@ -206,7 +212,7 @@ def pr_world(verdict_body="**Approve** looks right", assoc="NONE", bot=True, che
     prd = {"number": 7, "state": "open", "merged_at": None, "head": {"sha": "abc"}, "html_url": "u", "created_at": iso(2)}
     issues = {2: {"number": 2, "title": "next", "body": "Depends on #1\n\nDONE: d", "state": "open", "labels": ["queued"]}}
     cm = {1: [beat("pr", 1, pr=7)],
-          7: [{"created_at": iso(), "author_association": assoc, "user": {"type": "Bot" if bot else "User"}, "body": verdict_body}]}
+          7: [{"created_at": iso(), "author_association": assoc, "user": {"login": "github-actions[bot]" if bot else "someone", "type": "Bot" if bot else "User"}, "body": verdict_body}]}
     return World([card(1, D)], cm, [], issues, {7: {"pr": prd, "checks": checks if checks is not None else
                                                      [{"status": "completed", "conclusion": "success"}], "files": files or ["src/a.py"]}})
 w = run(pr_world(), {**K, "TIME_AUTOMERGE": "on"})
