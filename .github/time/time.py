@@ -36,6 +36,7 @@ REPO = os.environ.get("GITHUB_REPOSITORY", "")
 SERVER = (os.environ.get("GITHUB_SERVER_URL") or "https://teahub.xyz").rstrip("/")
 GH = (os.environ.get("GITHUB_API_URL") or f"{SERVER}/api/v1").rstrip("/")
 TIME_BOT = os.environ.get("TIME_BOT") or "gitea-actions"  # the Actions token's user; Time's own comments
+TIME_USER = os.environ.get("TIME_USER") or "time"  # Time's own Gitea user (TIME_TOKEN): every write but comments and statuses
 VENICE = "https://api.venice.ai/api/v1"
 ANTHROPIC = "https://api.anthropic.com/v1"
 MARK = "<!-- time "
@@ -54,10 +55,14 @@ def http(method: str, url: str, token: str, body=None, timeout: float = 120.0):
         raise RuntimeError(f"{method} {url.split('?')[0]} -> {e.code}: {e.read().decode(errors='replace')[:200]}") from None
 
 
-def gh(method: str, path: str, body=None, *, as_time: bool = False):
-    """One API call. `as_time` uses TIME_TOKEN, the `time` bot's own token: Gitea lets the Actions identity comment and
-    label but not open or merge pull requests ("user must be a collaborator"), so those two go out as Time itself.
-    Without the secret the call falls back to the Actions token (GitHub, where it is enough)."""
+def gh(method: str, path: str, body=None, *, as_time: bool | None = None):
+    """One API call. Writes go out as Time's own user (`time`, TIME_TOKEN) by default: Gitea 1.24 refuses the Actions
+    identity any write whose service code re-checks the doer's permission (opening or merging a PR is a 403, removing
+    a label a 500). Comments and commit statuses stay with the Actions identity: those work, and Time's beats are the
+    comments `gitea-actions` wrote. `as_time` forces either way. Without the secret every call uses the Actions token
+    (GitHub, where it is enough)."""
+    if as_time is None:
+        as_time = method != "GET" and not re.search(r"/comments(/\d+)?$|/statuses/", path.split("?")[0])
     token = (os.environ.get("TIME_TOKEN") if as_time else None) or os.environ["GITHUB_TOKEN"]
     for attempt in range(5):
         try:
@@ -107,7 +112,7 @@ def trusted(login: str | None) -> bool:
     TIME_TRUSTED (comma-separated logins; org owners go here, since the Actions token cannot read org membership),
     and for repo collaborators. Strangers on a public repo can comment; none of that counts. Time's own user never
     counts as a reviewer."""
-    if not login or login == TIME_BOT:
+    if not login or login in (TIME_BOT, TIME_USER):  # Time never vouches for itself
         return False
     if login not in _trust:
         names = {n.strip() for n in (os.environ.get("TIME_TRUSTED") or "").split(",") if n.strip()}
@@ -358,7 +363,7 @@ def cmd_mention() -> int:
     issue = ev["issue"]
     src = ev.get("comment") or issue
     author = src["user"]
-    if author.get("login") == TIME_BOT or MARK in (src.get("body") or ""):
+    if author.get("login") in (TIME_BOT, TIME_USER) or MARK in (src.get("body") or ""):
         print("skip: Time's own comment")
         return 0
     if not trusted(author.get("login")):  # public repo: strangers can comment, but must not spend the seats' credits

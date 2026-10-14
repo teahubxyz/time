@@ -1038,7 +1038,7 @@ def form_fields(body: str) -> dict:
 
 def _person(user: dict | None) -> str | None:
     login = (user or {}).get("login", "")
-    if not login or user.get("type") == "Bot" or login.lower() == REPO.split("/")[0].lower():
+    if not login or user.get("type") == "Bot" or login.lower() in (REPO.split("/")[0].lower(), tm.TIME_USER):
         return None
     return login.lower()
 

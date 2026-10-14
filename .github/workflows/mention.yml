@@ -19,7 +19,8 @@ jobs:
     # author_association in the event.
     if: >-
       contains(github.event.comment.body || github.event.issue.body, '@') &&
-      (github.event.comment.user.login || github.event.issue.user.login) != 'gitea-actions'
+      (github.event.comment.user.login || github.event.issue.user.login) != 'gitea-actions' &&
+      (github.event.comment.user.login || github.event.issue.user.login) != 'time'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

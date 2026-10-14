@@ -421,6 +421,23 @@ assert real_git_commit("time/card-9", {"src/a.py": None}, "rm") and "src/a.py" n
 tm.SERVER, tm.REPO, tm.default_branch = _saved
 print("ALL OK 53")
 
+# writes go out as Time's own user, except comments and statuses (Gitea refuses the Actions identity the rest)
+_seen, _real_http, _gt = [], tm.http, os.environ.get("GITHUB_TOKEN")
+tm.http = lambda method, url, token, body=None, timeout=0: _seen.append(token) or {}
+os.environ["TIME_TOKEN"], os.environ["GITHUB_TOKEN"] = "tt", "gt"
+for _m, _p in [("DELETE", "/repos/o/r/issues/1/labels/3"), ("POST", "/repos/o/r/issues/1/labels"), ("POST", "/repos/o/r/issues"),
+               ("PATCH", "/repos/o/r/issues/1"), ("POST", "/repos/o/r/pulls"), ("POST", "/repos/o/r/issues/1/comments"),
+               ("PATCH", "/repos/o/r/issues/comments/9"), ("POST", "/repos/o/r/statuses/abc"), ("GET", "/repos/o/r/labels?limit=100")]:
+    tm.gh(_m, _p, {})
+assert _seen == ["tt"] * 5 + ["gt"] * 4, _seen
+os.environ.pop("TIME_TOKEN"); _seen.clear(); tm.gh("DELETE", "/repos/o/r/issues/1/labels/3")
+assert _seen == ["gt"], "no TIME_TOKEN: the Actions token, as on GitHub"
+assert not tm.trusted("time") and not tm.trusted(tm.TIME_BOT), "Time never vouches for itself"
+tm.http = _real_http
+if _gt is None: os.environ.pop("GITHUB_TOKEN", None)
+else: os.environ["GITHUB_TOKEN"] = _gt
+print("ALL OK 54")
+
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
 if _sh.which("node"):
