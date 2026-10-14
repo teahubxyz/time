@@ -2,6 +2,11 @@
 import importlib.util, json, os, sys, datetime as dt
 import concurrent.futures as cf
 
+# The suite assumes a clean environment: a worker's shell inherits the job's TIME_* settings and seat keys, so drop them
+# before time.py is imported and let each check set only what it needs. TIME_TEST_VENTURE is the suite's own opt-in switch, not config.
+for _k in [k for k in os.environ if k.startswith("TIME_") and k != "TIME_TEST_VENTURE"] + ["ANTHROPIC_API_KEY", "VENICE_API_KEY", "CURSOR_API_KEY"]:
+    os.environ.pop(_k, None)
+
 os.environ.update(GITHUB_REPOSITORY="o/r", GITHUB_TOKEN="gh", GITHUB_SERVER_URL="https://forge.test", GITHUB_API_URL="https://forge.test/api/v1")
 os.environ.pop("GITHUB_STEP_SUMMARY", None)  # keep fake doctor output out of the run summary
 from pathlib import Path
