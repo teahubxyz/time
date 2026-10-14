@@ -1068,15 +1068,17 @@ def cmd_doctor() -> int:
     cfs.loader.exec_module(cfb)
     good, detail = cfb.check()
     row("(optional) CLOUDFLARE_API_TOKEN (venture backends)", good, detail)
+    # the Cursor key is required only when Cursor is the worker; a seat worker makes it optional
+    cur = "CURSOR_API_KEY (worker)" if not seat_worker(os.environ.get("TIME_WORKER") or "cursor") else "(optional) CURSOR_API_KEY (worker)"
     try:
         models = cursor("GET", "/v1/models")
         items = models.get("models") or models.get("data") or models.get("items") or (models if isinstance(models, list) else [])
         names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
-        row("CURSOR_API_KEY (worker)", True, f"works; models: {', '.join(n for n in names[:12] if n) or 'listed'}")
+        row(cur, True, f"works; models: {', '.join(n for n in names[:12] if n) or 'listed'}")
     except LookupError:
-        row("CURSOR_API_KEY (worker)", False, "not set (repo/org Actions secret)")
+        row(cur, False, "not set (repo/org Actions secret)")
     except Exception as e:  # noqa: BLE001
-        row("CURSOR_API_KEY (worker)", False, f"set but failing: {str(e)[:160]}")
+        row(cur, False, f"set but failing: {str(e)[:160]}")
     report = "## Time doctor\n\n| | check | detail |\n|---|---|---|\n" + "\n".join(lines) + \
         "\n\nCursor cloud agents need a GitHub-hosted repo; on Gitea use TIME_WORKER=claude:sonnet (or venice:<seat>)."
     print(report)
