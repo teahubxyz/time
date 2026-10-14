@@ -1,0 +1,33 @@
+name: astra
+# The slow loop: once a day, one planning call (TIME_ASTRA_SEAT, default `opus`) reads the board and the ledger and
+# labels a few cards `ready` for the heartbeat. It writes its reasoning to the "Astra log" issue; reply there to steer it.
+# Guardrails are code: TIME_ASTRA_MAX_READY (2) / TIME_ASTRA_MAX_NEW (2) per day, nothing while an `andon` is open,
+# and the same spend caps as every other call. Off until TIME_ASTRA=on.
+on:
+  schedule:
+    - cron: "13 13 * * *"
+  workflow_dispatch:
+concurrency:
+  group: astra
+  cancel-in-progress: false
+jobs:
+  plan:
+    if: vars.TIME_ASTRA == 'on'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/time
+          persist-credentials: false
+      - run: python3 .github/time/astra.py tick
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          TIME_ASTRA_SEAT: ${{ vars.TIME_ASTRA_SEAT }}
+          TIME_ASTRA_MAX_READY: ${{ vars.TIME_ASTRA_MAX_READY }}
+          TIME_ASTRA_MAX_NEW: ${{ vars.TIME_ASTRA_MAX_NEW }}
+          TIME_SPINE: ${{ vars.TIME_SPINE }}
+          TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}
+          TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}
