@@ -85,8 +85,7 @@ footer{padding:20px 0 40px;border-top:1px solid #000;font-size:13px;display:flex
   const vs = (vd.ventures || []).slice();
   vs.sort((a, b) => (b.launched || b.planned || '').localeCompare(a.launched || a.planned || '') || a.slug.localeCompare(b.slug));
   const srcs = [...new Set(vs.map(v => v.source || 'time'))];
-  document.getElementById('count').innerHTML = [['ventures', vs.length], ['signups', vs.reduce((t, v) => t + (v.signups || 0), 0)],
-    ['scouts', srcs.length]].map(([k, v]) => `<span><b>${v}</b> ${k}</span>`).join('');
+  document.getElementById('count').innerHTML = [['ventures', vs.length], ['signups', vs.reduce((t, v) => t + (v.signups || 0), 0)]].map(([k, v]) => `<span><b>${v}</b> ${k}</span>`).join('');
   document.getElementById('grid').innerHTML = vs.map(v => {
     const open = abs(v.url) || abs(v.pages);
     const card = v.card && v.source !== 'notplanned' ? `https://teahub.xyz/teahubxyz/time/issues/${v.card}` : null;

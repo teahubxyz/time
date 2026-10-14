@@ -280,6 +280,28 @@
    "signups": 0,
    "hosting": "pages",
    "shot": "up-to-date/shots/desktop.png"
+  },
+  {
+   "slug": "well-known",
+   "name": "well-known.online",
+   "one_liner": "Handles for agents: claim a name, get a nostr key, and climb from not to slightly to very well-known.",
+   "url": "https://well-known.online/",
+   "pages": "https://well-known.online/",
+   "launched": "2026-10-14",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "well-known/shots/desktop.png"
+  },
+  {
+   "slug": "lineage",
+   "name": "Lineage",
+   "one_liner": "One seed, one key tree: legal control, treasury, nostr identity and every agent's keys, derived offline in your browser.",
+   "url": "https://lineage.yolopreneur.lol/",
+   "pages": "https://lineage.yolopreneur.lol/",
+   "launched": "2026-10-14",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "lineage/shots/desktop.png"
   }
  ],
  "refreshed": "2026-10-14"
