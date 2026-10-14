@@ -2,7 +2,7 @@
 document.addEventListener('DOMContentLoaded', function() {
   // Sample data for initial load
   const samplePhotos = [
-    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+U2FtcGxlIFBob3RvIDE8L3RleHQ+PC9zdmc+',
+    'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzaWxpbmU9Im1pZGRsZSI+U2FtcGxlIFBob3RvIDE8L3RleHQ+PC9zdmc+',
     'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjVmNWY1Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzaWxpbmU9Im1pZGRsZSI+U2FtcGxlIFBob3RvIDI8L3RleHQ+PC9zdmc+',
     'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjhmOGY4Ii8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzaWxpbmU9Im1pZGRsZSI+U2FtcGxlIFBob3RvIDM8L3RleHQ+PC9zdmc+'
   ];
@@ -23,6 +23,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const elements = {
     photoInput: document.getElementById('photo-input'),
     photoContainer: document.getElementById('photo-container'),
+    dropZone: document.getElementById('drop-zone'),
     frameSelect: document.getElementById('frame-style'),
     clockSelect: document.getElementById('clock-style'),
     transitionSelect: document.getElementById('transition'),
@@ -58,6 +59,10 @@ document.addEventListener('DOMContentLoaded', function() {
   // Set up event listeners
   function setupEventListeners() {
     elements.photoInput.addEventListener('change', handlePhotoUpload);
+    elements.dropZone.addEventListener('click', () => elements.photoInput.click());
+    elements.dropZone.addEventListener('dragover', handleDragOver);
+    elements.dropZone.addEventListener('dragleave', handleDragLeave);
+    elements.dropZone.addEventListener('drop', handleDrop);
     elements.frameSelect.addEventListener('change', updateFrameStyle);
     elements.clockSelect.addEventListener('change', updateClockStyle);
     elements.transitionSelect.addEventListener('change', updateTransition);
@@ -70,23 +75,53 @@ document.addEventListener('DOMContentLoaded', function() {
     elements.closeSlideshowBtn.addEventListener('click', closeSlideshow);
   }
 
+  // Handle drag over
+  function handleDragOver(event) {
+    event.preventDefault();
+    elements.dropZone.classList.add('dragover');
+  }
+
+  // Handle drag leave
+  function handleDragLeave(event) {
+    event.preventDefault();
+    elements.dropZone.classList.remove('dragover');
+  }
+
+  // Handle drop
+  function handleDrop(event) {
+    event.preventDefault();
+    elements.dropZone.classList.remove('dragover');
+    
+    const files = Array.from(event.dataTransfer.files);
+    processFiles(files);
+  }
+
   // Handle photo upload
   function handlePhotoUpload(event) {
     const files = Array.from(event.target.files);
-    const newPhotos = [];
+    processFiles(files);
+  }
+
+  // Process uploaded files
+  function processFiles(files) {
+    const imageFiles = files.filter(file => file.type.startsWith('image/'));
+    if (imageFiles.length === 0) return;
     
-    files.forEach(file => {
-      if (file.type.startsWith('image/')) {
-        const reader = new FileReader();
-        reader.onload = function(e) {
-          newPhotos.push(e.target.result);
-          if (newPhotos.length === files.length) {
-            state.photos = [...state.photos, ...newPhotos];
-            renderPhotoGrid();
-          }
-        };
-        reader.readAsDataURL(file);
-      }
+    const newPhotos = [];
+    let processedCount = 0;
+    
+    imageFiles.forEach(file => {
+      const reader = new FileReader();
+      reader.onload = function(e) {
+        newPhotos.push(e.target.result);
+        processedCount++;
+        
+        if (processedCount === imageFiles.length) {
+          state.photos = [...state.photos, ...newPhotos];
+          renderPhotoGrid();
+        }
+      };
+      reader.readAsDataURL(file);
     });
   }
 
@@ -113,8 +148,11 @@ document.addEventListener('DOMContentLoaded', function() {
   // Apply frame style to slideshow
   function applyFrameStyle() {
     const style = frameStyles[state.frameStyle];
-    elements.slideshowContainer.style.border = style.border;
-    elements.slideshowContainer.style.background = style.background;
+    const slideshowFrame = document.getElementById('slideshow-frame');
+    if (slideshowFrame) {
+      slideshowFrame.style.border = style.border;
+      slideshowFrame.style.background = style.background;
+    }
   }
 
   // Update clock style
@@ -157,17 +195,36 @@ document.addEventListener('DOMContentLoaded', function() {
     stopSlideshow();
   }
 
-  // Update slideshow display
+  // Update slideshow display with proper transitions
   function updateSlideshow() {
     if (state.photos.length > 0) {
       elements.slideshowImage.src = state.photos[state.currentIndex];
       elements.slideshowCaption.textContent = state.caption;
       
-      // Apply transition effect
-      elements.slideshowImage.style.opacity = '0';
-      setTimeout(() => {
-        elements.slideshowImage.style.opacity = '1';
-      }, 100);
+      // Apply transition effect based on selection
+      switch (state.transition) {
+        case 'fade':
+          elements.slideshowImage.style.opacity = '0';
+          elements.slideshowImage.style.transition = 'opacity 1s ease';
+          setTimeout(() => {
+            elements.slideshowImage.style.opacity = '1';
+          }, 50);
+          break;
+          
+        case 'slide':
+          elements.slideshowImage.style.transform = 'translateX(100%)';
+          elements.slideshowImage.style.transition = 'transform 0.5s ease';
+          setTimeout(() => {
+            elements.slideshowImage.style.transform = 'translateX(0)';
+          }, 50);
+          break;
+          
+        case 'none':
+          elements.slideshowImage.style.transition = 'none';
+          elements.slideshowImage.style.opacity = '1';
+          elements.slideshowImage.style.transform = 'none';
+          break;
+      }
     }
   }
 
