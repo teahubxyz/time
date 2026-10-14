@@ -33,8 +33,7 @@ h1{margin:0;font-weight:700;font-size:clamp(34px,5.5vw,72px);line-height:1;lette
 .body{padding:14px 16px 16px;display:grid;gap:8px;align-content:start}
 .row{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
 .name{margin:0;font-weight:700;font-size:20px;letter-spacing:-.02em}
-.st{font-size:11px;text-transform:uppercase;letter-spacing:.1em;white-space:nowrap}
-.st.live::before{content:"● "}.st.building::before{content:"◐ "}.st.built::before{content:"○ "}.st.killed::before{content:"× "}
+.st{font-size:11px;text-transform:uppercase;letter-spacing:.1em;white-space:nowrap;color:#444}
 .one{margin:0;font-size:15px}
 .links{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;text-transform:uppercase;letter-spacing:.08em}
 .links a{text-decoration:none;border-bottom:1px solid #000}
@@ -84,20 +83,18 @@ footer{padding:20px 0 40px;border-top:1px solid #000;font-size:13px;display:flex
   const abs = u => /^https?:/.test(u || '') ? u : null;
   const vd = await fetch('ventures.json').then(r => r.json()).catch(() => ({ventures: []}));
   const vs = (vd.ventures || []).slice();
-  const order = {live: 0, building: 1, built: 2, watch: 3, killed: 4};
-  vs.sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9) || (b.launched || b.planned || '').localeCompare(a.launched || a.planned || ''));
-  const n = s => vs.filter(v => v.status === s).length;
-  document.getElementById('count').innerHTML = [['ventures', vs.length], ['live', n('live')], ['building', n('building')], ['built, unlaunched', n('built')],
-    ['signups', vs.reduce((t, v) => t + (v.signups || 0), 0)]].map(([k, v]) => `<span><b>${v}</b> ${k}</span>`).join('');
+  vs.sort((a, b) => (b.launched || b.planned || '').localeCompare(a.launched || a.planned || '') || a.slug.localeCompare(b.slug));
+  const srcs = [...new Set(vs.map(v => v.source || 'time'))];
+  document.getElementById('count').innerHTML = [['ventures', vs.length], ['signups', vs.reduce((t, v) => t + (v.signups || 0), 0)],
+    ['scouts', srcs.length]].map(([k, v]) => `<span><b>${v}</b> ${k}</span>`).join('');
   document.getElementById('grid').innerHTML = vs.map(v => {
-    const st = v.status || 'built';
     const open = abs(v.url) || abs(v.pages);
     const card = v.card && v.source !== 'notplanned' ? `https://teahub.xyz/teahubxyz/time/issues/${v.card}` : null;
-    const when = v.launched ? `launched ${v.launched}` : v.planned ? `planned ${v.planned}` : (v.source === 'notplanned' ? 'from notplanned' : '');
+    const when = v.launched || v.planned ? `shipped ${v.launched || v.planned}` : '';
     return `<article class="card">
       <a class="shot" href="${e(open || '#')}">${v.shot ? `<img src="${e(v.shot)}" alt="${e(v.name)} — first screen" loading="lazy">` : ''}</a>
       <div class="body">
-        <div class="row"><h3 class="name">${e(v.name)}</h3><span class="st ${e(st)}">${e(st)}</span></div>
+        <div class="row"><h3 class="name">${e(v.name)}</h3><span class="st">${e(v.slug)}</span></div>
         <p class="one">${e(v.one_liner)}</p>
         <div class="links">
           ${open ? `<a href="${e(open)}">Open</a>` : ''}
