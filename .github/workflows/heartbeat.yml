@@ -35,7 +35,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # user-level secret on teahubxyz (docs/decisions.md on the spine)
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # the `time` bot: opens and merges PRs (Gitea denies that to the Actions identity)   # user-level secret on teahubxyz (docs/decisions.md on the spine)
           TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}   # org owners etc.; collaborators are trusted without being listed
           TIME_RUN_IMAGE: node:22-bookworm   # the worker's shell runs in a throwaway container, not next to these secrets
           TIME_MODE: ${{ vars.TIME_MODE }}

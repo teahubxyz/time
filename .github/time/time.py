@@ -54,10 +54,14 @@ def http(method: str, url: str, token: str, body=None, timeout: float = 120.0):
         raise RuntimeError(f"{method} {url.split('?')[0]} -> {e.code}: {e.read().decode(errors='replace')[:200]}") from None
 
 
-def gh(method: str, path: str, body=None):
+def gh(method: str, path: str, body=None, *, as_time: bool = False):
+    """One API call. `as_time` uses TIME_TOKEN, the `time` bot's own token: Gitea lets the Actions identity comment and
+    label but not open or merge pull requests ("user must be a collaborator"), so those two go out as Time itself.
+    Without the secret the call falls back to the Actions token (GitHub, where it is enough)."""
+    token = (os.environ.get("TIME_TOKEN") if as_time else None) or os.environ["GITHUB_TOKEN"]
     for attempt in range(5):
         try:
-            return http(method, f"{GH}{path}", os.environ["GITHUB_TOKEN"], body)
+            return http(method, f"{GH}{path}", token, body)
         except RuntimeError as e:
             # parallel writers on one branch: a contents PUT loses the race for the branch head with a 409; the file's own
             # sha is still right, so the same write goes through on a retry
@@ -623,8 +627,7 @@ def land(card: dict, last: dict) -> None:
             comment(n, f"⏱️ Time: approved, but checks are failing on PR #{pr['number']}. Waiting for a fix.",
                     {"beat": "checks-failed", "pr": pr["number"]})
         return
-    # risk: an API merge as the Actions token may hit the same pre-receive refusal as the contents API (see git_commit)
-    gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True})
+    gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True}, as_time=True)
     if gh("GET", f"/repos/{REPO}/issues/{n}")["state"] == "open":
         gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
     comment(n, f"⏱️ Time: approved and green, merged PR #{pr['number']}. Card done.", {"beat": "merged", "pr": pr["number"]})
@@ -818,7 +821,7 @@ class Hands:
             return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}{note}"
         if name == "open_pr":
             pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": default_branch(),
-                    "body": f"{a['summary']}\n\nCloses #{self.n}\n\n<sub>worker: {self.label} via Time</sub>"})
+                    "body": f"{a['summary']}\n\nCloses #{self.n}\n\n<sub>worker: {self.label} via Time</sub>"}, as_time=True)
             self.pr = pr["number"]
             return f"opened PR #{self.pr}"
         return f"unknown tool {name}"
