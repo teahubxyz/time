@@ -10,5 +10,9 @@
   "glm":      {"family": "glm",      "default": "z-ai-glm-5-3",           "label": "Zhipu GLM via Venice",
                "aliases": {"flash": "z-ai-glm-5-3-flash"}},
   "gemini":   {"family": "gemini",   "default": "gemini-3-1-pro-preview", "label": "Google Gemini via Venice",
-               "aliases": {"pro": "gemini-3-1-pro-preview", "flash": "gemini-3-8-flash"}}
+               "aliases": {"pro": "gemini-3-1-pro-preview", "flash": "gemini-3-8-flash"}},
+  "haiku":    {"family": "claude-haiku",  "default": "claude-haiku-5-5",  "label": "Claude Haiku (Anthropic)",  "provider": "anthropic", "price": [0.10, 0.50]},
+  "sonnet":   {"family": "claude-sonnet", "default": "claude-sonnet-5-5", "label": "Claude Sonnet (Anthropic)", "provider": "anthropic", "price": [2, 10]},
+  "opus":     {"family": "claude-opus",   "default": "claude-opus-5-5",   "label": "Claude Opus (Anthropic)",   "provider": "anthropic", "price": [4, 20]},
+  "fable":    {"family": "claude-fable",  "default": "claude-fable-5-1",  "label": "Claude Fable (Anthropic)",  "provider": "anthropic", "price": [10, 50]}
 }
