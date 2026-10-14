@@ -1,14 +1,16 @@
 """Astra: the factory's daily planner. One model call a day that reads the ledger and the board and decides what
 to work on next. It queues; it never spends on its own beyond its one call.
 
-    python3 .github/time/astra.py tick      # daily (astra.yml): read, decide, label up to a few cards `ready`
+    python3 .github/time/astra.py tick      # daily (astra.yml): read, decide, queue up to a few cards
 
 Luna is Time's deterministic tick (no model); Sol is the hourly heartbeat that executes cards with a seat; Astra is the
-slow outer loop that orients them. Guardrails are code, not prompt: at most TIME_ASTRA_MAX_READY cards labelled
-`ready` and TIME_ASTRA_MAX_NEW cards created per run; an issue is only made `ready` if it has a `DONE:` line and no
-`needs-human`/`andon` label; an open `andon` issue means Astra writes its note and queues nothing; the spend cap is
-checked by the engine like any other call. Everything Astra does is a comment on one issue, "Astra log", so a human
-can read the day's reasoning in one place and object there.
+slow outer loop that orients them. Astra labels its picks `queued`, never `ready`: the heartbeat's promote_next moves
+one queued card at a time to `ready` (oldest first, `Depends on #N` respected), so Astra's work lines up behind
+whatever is already queued instead of running beside it on the same files. Guardrails are code, not prompt: at most
+TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; an existing issue is only queued if it
+has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means Astra writes its note
+and queues nothing; the spend cap is checked by the engine like any other call. Everything Astra does is a comment on
+one issue, "Astra log", so a human can read the day's reasoning in one place and object there.
 """
 from __future__ import annotations
 
@@ -26,24 +28,26 @@ _spec.loader.exec_module(tm)
 
 SPINE = os.environ.get("TIME_SPINE") or "teahubxyz/teahub"   # where AGENTS.md and docs/decisions.md live
 LOG_TITLE = "Astra log"
+SKIP = {"queued", "ready", "needs-human", "andon", "astra"}   # already moving, a human's, or Astra's own log
 
 RULES = """You are Astra, the daily planner of a small, fully AI-run software factory (Teahub). Once a day you read the
-state below and decide what the factory should work on next. You do not do the work: a worker seat builds whatever is
-labelled `ready`; you only choose and write cards.
+state below and decide what the factory should work on next. You do not do the work: you queue cards, and a worker seat
+builds queued cards one at a time; you only choose and write cards.
 
 Rules:
-- Prefer finishing over starting. Unblock open PRs and half-done cards before opening new work.
+- Prefer finishing over starting. Unblock open PRs and half-done cards before opening new work. Cards already labelled
+  `queued` or `ready` are already lined up; don't queue them again.
 - A card is an issue with a clear list of changes and one `DONE:` line (what must be true for it to be finished, e.g.
   "DONE: PR open, tests green"). Small, one PR each, a worker can finish in one session.
 - Never touch workflows, secrets, variables, or anything under docs/decisions.md; those are a human's. Never queue
   anything that posts outside the repo.
-- Respect the budget: the day's cap is small. At most {max_ready} cards may be made ready and {max_new} created.
+- Respect the budget: the day's cap is small. At most {max_ready} cards may be queued and {max_new} created.
 - If nothing is worth doing, say so; an empty day is fine.
 
 Answer with JSON only, no prose around it:
 {{"note": "<3-6 sentences: what the factory did yesterday, what matters today, and why you chose these>",
-  "ready": [<existing open issue numbers to label `ready` now; they must already have a DONE: line>],
-  "new": [{{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>", "ready": true}}]}}"""
+  "queue": [<existing open issue numbers to queue now; they must already have a DONE: line>],
+  "new": [{{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>", "queue": true}}]}}"""
 
 
 def env_int(name: str, default: int) -> int:
@@ -93,7 +97,8 @@ def decide(state: dict, context: str, seat: str) -> dict:
         out = json.loads(m.group(0)) if m else {}
     except ValueError:
         out = {}
-    return {"note": str(out.get("note") or raw[:800]), "ready": [int(n) for n in out.get("ready") or [] if str(n).isdigit()],
+    picks = out.get("queue") if out.get("queue") is not None else out.get("ready")   # older answers said "ready"
+    return {"note": str(out.get("note") or raw[:800]), "queue": [int(n) for n in picks or [] if str(n).isdigit()],
             "new": [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]}
 
 
@@ -118,33 +123,33 @@ def tick() -> int:
         tm.comment(log, f"🔭 Astra: {e}. No plan today.", {"beat": "astra", "queued": 0, "capped": True})
         return 0
     by_n = {i["n"]: i for i in state["issues"]}
-    made_ready, created, skipped = [], [], []
-    for n in plan["ready"][:max_ready]:
+    queued, created, skipped = [], [], []
+    for n in plan["queue"][:max_ready]:
         i = by_n.get(n)
-        if not i or not i["has_done"] or {"needs-human", "andon", "ready", "astra"} & set(i["labels"]):
+        if not i or not i["has_done"] or SKIP & set(i["labels"]):
             skipped.append(n)
             continue
-        tm.label(n, "ready")
-        made_ready.append(n)
+        tm.label(n, "queued")
+        queued.append(n)
     for c in plan["new"][:max_new]:
         body = str(c.get("body") or "")
         if not re.search(r"^\s*DONE:", body, re.M | re.I):
             body += "\n\nDONE: PR open that does the above, tests green."
         issue = tm.new_issue(str(c["title"])[:200], body + "\n\n<sub>card written by Astra</sub>", [])
         created.append(issue["number"])
-        if c.get("ready", True) and len(made_ready) + len(created) <= max_ready:
-            tm.label(issue["number"], "ready")   # labelled after creation so the heartbeat's `labeled` event fires
+        if c.get("queue", c.get("ready", True)) and len(queued) + len(created) <= max_ready:
+            tm.label(issue["number"], "queued")   # the heartbeat promotes it when nothing else is in flight
     lines = [f"🔭 Astra ({seat}), spend ${state['spend']['today']:.2f} of ${state['spend']['daily_cap']:.2f} today:", "", plan["note"], ""]
-    if made_ready:
-        lines.append("Made ready: " + ", ".join(f"#{n}" for n in made_ready))
+    if queued:
+        lines.append("Queued: " + ", ".join(f"#{n}" for n in queued))
     if created:
         lines.append("New cards: " + ", ".join(f"#{n}" for n in created))
     if skipped:
-        lines.append("Skipped (no DONE line, or a human's): " + ", ".join(f"#{n}" for n in skipped))
-    if not (made_ready or created):
+        lines.append("Skipped (no DONE line, already moving, or a human's): " + ", ".join(f"#{n}" for n in skipped))
+    if not (queued or created):
         lines.append("Queued nothing today.")
-    tm.comment(log, "\n".join(lines), {"beat": "astra", "queued": len(made_ready) + len(created), "ready": made_ready, "new": created})
-    print(f"astra: ready={made_ready} new={created} skipped={skipped}")
+    tm.comment(log, "\n".join(lines), {"beat": "astra", "queued": len(queued) + len(created), "queue": queued, "new": created})
+    print(f"astra: queued={queued} new={created} skipped={skipped}")
     return 0
 
 
