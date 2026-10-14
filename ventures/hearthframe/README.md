@@ -2,11 +2,11 @@
 
 Turn any spare tablet or old phone into a cozy family photo frame with a clock and caption in one minute — no accounts, no uploads, no subscription.
 
-![Hearthframe Preview](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzaWxpbmU9Im1pZGRsZSI+SGVhcnRoZnJhbWUgUHJldmlldzwvdGV4dD48L3N2Zz4=)
+![Hearthframe Preview](data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAwIiBoZWlnaHQ9IjQwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZjBmMGYwIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtZmFtaWx5PSJBcmlhbCIgZm9udC1zaXplPSIxOCIgZmlsbD0iIzMzMyIgdGV4dC1hbmNob3I9Im1pZGRsZSIgZG9taW5hbnQtYmFzZWxpbmU9Im1pZGRsZSI+SGVhcnRoZnJhbWUgUHJldmlldzwvdGV4dD48L3N2Zz4=)
 
 ## What is Hearthframe?
 
-Hearthframe is a free, browser-based tool that transforms any device into a beautiful digital photo frame. Simply drop in photos from your device, choose a frame style, add a caption, and enjoy a full-screen slideshow with a clock display.
+Hearthframe is a free, browser-based tool that transforms any device into a beautiful digital photo frame. Simply drop in photos from your device, choose a frame style, add a caption, and enjoy a full-window slideshow with a clock display.
 
 Everything works entirely in your browser - no photos are uploaded to any server, no accounts are required, and no subscription is needed.
 
@@ -20,7 +20,7 @@ Hearthframe is designed for adult children setting up family photos for a parent
 2. Drag photos from your device or click to select files
 3. Choose a frame mat, clock style, and transition effect
 4. Add a caption for your slideshow
-5. Click "Preview Full Screen" and use your browser's full-screen mode
+5. Click "Preview" and use your browser's full-screen mode
 6. Adjust your device's settings to prevent sleep mode if needed
 
 For continuous operation on a tablet:
