@@ -35,10 +35,13 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # user-level secret on teahubxyz (docs/decisions.md on the spine)
           TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}   # org owners etc.; collaborators are trusted without being listed
           TIME_RUN_IMAGE: node:22-bookworm   # the worker's shell runs in a throwaway container, not next to these secrets
           TIME_MODE: ${{ vars.TIME_MODE }}
           TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
+          TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}       # spend governor: dollars per day (default 5) …
+          TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}   # … and per month (default 100); ledger in time/ledger/
           TIME_CURSOR_MODEL: ${{ vars.TIME_CURSOR_MODEL }}
           TIME_REVIEW: ${{ vars.TIME_REVIEW }}
           TIME_STUCK_HOURS: ${{ vars.TIME_STUCK_HOURS }}
