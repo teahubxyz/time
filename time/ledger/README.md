@@ -19,11 +19,11 @@ Example line:
 ## Who writes and reads it
 
 - **Written by Time itself.** At the end of each run, Time appends that run's calls to the current month's file in one `ledger:` commit.
-- **Read by the heartbeat.** It adds up `usd` for today and for the month and compares the totals with the caps `TIME_DAILY_USD` and `TIME_MONTHLY_USD`. A `null` counts as zero.
+- **Read before every model call.** Whichever workflow is about to call a model (heartbeat, mentions, venture loop, Astra) adds up `usd` for today and for the month and refuses the call if either total has reached its cap (`TIME_DAILY_USD`, `TIME_MONTHLY_USD`). A `null` counts as zero.
 
 ## When a cap trips
 
-Time stops calling models and opens an issue labelled `andon`. A monthly cap also sets `TIME_MODE=dry-run` until a human raises the cap. A daily cap clears itself at midnight UTC. Close the issue once it is handled.
+Time stops calling models. The next time the heartbeat has a card to run, it opens one issue labelled `andon` (never a second while that one is open). A monthly cap also switches `TIME_MODE` to `dry-run`, or says in the issue that it couldn't, until a human raises the cap. A daily cap clears itself at midnight UTC. Close the issue once it is handled.
 
 ## Don't edit it by hand
 
