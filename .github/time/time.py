@@ -934,6 +934,18 @@ def pr_diff(number: int, limit: int = 100_000) -> str:
         return r.read().decode(errors="replace")[:limit]
 
 
+def check_lines(sha: str | None) -> str:
+    """The PR head's commit statuses as `- context: state` lines (newest per context), for the reviewer's input."""
+    try:
+        states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses") or []
+        latest: dict[str, str] = {}
+        for st in states:
+            latest.setdefault(st.get("context") or "", (st.get("status") or st.get("state") or "").lower() or "unknown")
+        return "\n".join(f"- {c}: {v}" for c, v in latest.items()) or "(no checks reported)"
+    except Exception:  # noqa: BLE001 - a failed lookup must not stop the review
+        return "(checks unavailable)"
+
+
 def review(card: dict, pr: dict, done: str) -> dict:
     """TIME_REVIEW: off | venice:<seat> | claude:<seat> [model] [effort] | cursor[:<model id>]"""
     spec = (os.environ.get("TIME_REVIEW") or "off").strip()
@@ -950,10 +962,13 @@ def review(card: dict, pr: dict, done: str) -> dict:
         model, effort = mentions(f"@{rest}").get(seat, (None, None)) if seat in SEATS else (None, None)
         diff = pr_diff(pr["number"])
         user = (f"# Card #{card['number']}: {card['title']}\n{(card.get('body') or '')[:4000]}\n\n"
-                f"# PR #{pr['number']}: {pr['title']}\n{(pr.get('body') or '')[:3000]}\n\n# Diff\n{diff}")
+                f"# PR #{pr['number']}: {pr['title']}\n{(pr.get('body') or '')[:3000]}\n\n"
+                f"# Checks\n{check_lines((pr.get('head') or {}).get('sha'))}\n\n# Diff\n{diff}")
         system = (f"You are `{seat}`, reviewing a pull request made by another agent. "
                   + REVIEW_PROMPT.format(pr=pr["number"], repo=REPO, n=card["number"], title=card["title"], done=done)
-                  .replace("Leave one PR comment that", "Your reply is posted as the PR comment. It"))
+                  .replace("Leave one PR comment that", "Your reply is posted as the PR comment. It")
+                  + "\nThe checks listed under # Checks are the head commit's real statuses: evidence you can rely on "
+                    "(a success there means those tests or builds passed). A pending check is not yet evidence either way.")
         text = think(seat, model, effort, system, user)
         gh("POST", f"/repos/{REPO}/issues/{pr['number']}/comments",
            {"body": f"{text}\n\n<sub>review by {seat} · {model or SEATS[seat]['default']} · via Time</sub>"})

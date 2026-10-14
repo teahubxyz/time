@@ -212,6 +212,17 @@ tm.pr_diff = lambda n, limit=0: "diff --git a b"
 w = run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert w.posted[0][0] == 7 and w.posted[0][1].startswith("**Approve** (kimi)") and "`kimi` reviewed" in w.posted[1][1]
 
+# 9b the reviewer's input carries the head commit's statuses under # Checks, before the diff; a failed lookup says so
+seen = {}
+tm.think = lambda seat, model, effort, system, user: (seen.update(user=user, system=system), "**Approve** ok")[1]
+prh = {**pr, "head": {"sha": "abc"}}
+chk = {7: {"pr": {**prh, "state": "open"}, "statuses": [{"status": "pending", "context": "ci"}, {"status": "success", "context": "lint"}]}}
+run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh], None, chk), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
+assert "# Checks\n- ci: pending\n- lint: success\n\n# Diff" in seen["user"], seen["user"]
+assert "evidence you can rely on" in seen["system"] and "pending check is not yet evidence" in seen["system"]
+run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
+assert "# Checks\n(checks unavailable)\n\n# Diff" in seen["user"], seen["user"]
+
 # 10 doctor
 for k in ("VENICE_API_KEY", "CURSOR_API_KEY"): os.environ.pop(k, None)
 tm.http = World([]).http
