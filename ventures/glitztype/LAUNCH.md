@@ -3,10 +3,10 @@
 For office managers, teachers and party hosts like Nadia who make banners, cards and signs every week, Glitztype turns any name or word into gloriously retro WordArt as a transparent PNG in seconds — free, no account, nothing uploaded — instead of fighting Canva's paywalled transparent exports or mourning the 1997 WordArt gallery.
 
 - **Page:** https://glitztype.yolopreneur.lol/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Glitztype&venture=glitztype&plan=Glitztype+Pro) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/32 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Glitztype&venture=glitztype&plan=Glitztype+Pro) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/32 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/27 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/27 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

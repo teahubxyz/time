@@ -3,10 +3,10 @@
 For the group-chat friend who wants to do better than 'HBD 🎉', Anthem turns any name into a personal 8-bar theme song that plays instantly in the browser — no account, no upload, no music skill — instead of a generic GIF, an emoji, or a DAW they'd never open.
 
 - **Page:** https://anthem.yolopreneur.lol/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Anthem&venture=anthem&plan=Anthem+Studio+%28Founding%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/21 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Anthem&venture=anthem&plan=Anthem+Studio+%28Founding%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/21 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/20 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/20 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

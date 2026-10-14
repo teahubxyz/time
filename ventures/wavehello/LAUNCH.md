@@ -3,10 +3,10 @@
 For someone holding a voice memo that matters — a partner, a new parent, a grandkid — Wavehello turns it into frame-worthy soundwave art in seconds, free and entirely in the browser, unlike existing soundwave generators that require uploads, accounts, or watermarks.
 
 - **Page:** https://wavehello.yolopreneur.lol/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Wavehello&venture=wavehello&plan=Print+%28founding%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/30 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Wavehello&venture=wavehello&plan=Print+%28founding%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/30 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/28 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/28 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

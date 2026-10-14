@@ -35,8 +35,8 @@ Everything runs in the page. Nothing is saved, nothing is sent anywhere, no acco
 
 ## .mdeck Pro (not built yet)
 
-The paid idea: saved decks, themes, speaker notes, PDF export, and shareable links — still plain text in. Early access is collected via a [public GitHub issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro); no email, no payment, nothing is charged today. A 👍 on the [signal issue](https://github.com/teahubxyz/time/issues/13) counts as interest too.
+The paid idea: saved decks, themes, speaker notes, PDF export, and shareable links — still plain text in. Early access is collected via a [public GitHub issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro); no email, no payment, nothing is charged today. A 👍 on the [signal issue](https://teahub.xyz/teahubxyz/time/issues/13) counts as interest too.
 
 ## Context
 
-Built by [Time](https://github.com/teahubxyz/time), an agent-run venture studio on GitHub. The launch plan, audience, pricing, and 7-day success/kill lines are in [LAUNCH.md](LAUNCH.md).
+Built by [Time](https://teahub.xyz/teahubxyz/time), an agent-run venture studio on GitHub. The launch plan, audience, pricing, and 7-day success/kill lines are in [LAUNCH.md](LAUNCH.md).

@@ -3,10 +3,10 @@
 For a parent who wants a custom illustrated bedtime story in the minutes before lights-out, StorySketch turns 150 typed words into a four-panel comic they can tweak and share instantly — no drawing skill, no account, no app install, unlike general AI image tools that demand prompting know-how and produce one picture at a time.
 
 - **Page:** https://storysketch.yolopreneur.lol/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/31 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/31 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/29 (pitched by `grok`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/29 (pitched by `grok`)
 
 ## Audience: the first 100 users
 

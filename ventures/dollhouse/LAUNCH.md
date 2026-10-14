@@ -3,10 +3,10 @@
 For someone who just signed a lease or is about to rearrange and is arguing about whether the couch fits, Dollhouse turns a hand-drawn floor plan into a shareable isometric diorama in under a minute — no account, no app, no upload, unlike Magicplan or Floorplanner which demand signups and feel like work.
 
 - **Page:** https://teahubxyz.github.io/time/ventures/dollhouse/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/19 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/19 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/18 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/18 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

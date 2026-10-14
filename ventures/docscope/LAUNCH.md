@@ -3,10 +3,10 @@
 For lawyers and journalists who email Office files, Docscope shows hidden metadata, tracked changes and thumbnails via a client-side browser page so they avoid leaks without uploading files or using desktop tools.
 
 - **Page:** https://teahubxyz.github.io/time/ventures/docscope/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/14 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/14 (👍 = wants the next version)
 - **Design direction:** retro OS: a classic desktop-window metaphor (title bars, bevels, pixel accents) used with restraint
-- **Card:** https://github.com/teahubxyz/time/issues/12 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/12 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

@@ -3,10 +3,10 @@
 For a parent holding a phone photo of their kid's fridge drawing: turn it into a looping animated GIF in under a minute, in the browser, with no app, account, or upload — instead of texting another flat photo or wrestling a video editor they don't have.
 
 - **Page:** https://teahubxyz.github.io/time/ventures/doodleloop/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/17 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/17 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/15 (pitched by `kimi`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/15 (pitched by `kimi`)
 
 ## Audience: the first 100 users
 

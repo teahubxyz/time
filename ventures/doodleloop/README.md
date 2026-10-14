@@ -65,5 +65,5 @@ This project rides on the shoulders of giants:
 ## Links
 
 - [Live Demo](https://teahubxyz.github.io/time/ventures/doodleloop/)
-- [GitHub Repository](https://github.com/teahubxyz/time)
-- [Early Access Signup](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29)
+- [GitHub Repository](https://teahub.xyz/teahubxyz/time)
+- [Early Access Signup](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29)

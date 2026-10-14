@@ -3,10 +3,10 @@
 For an adult child setting up family photos for a parent, Hearthframe turns any spare tablet or old phone into a cozy photo frame with a clock and caption in one minute — no accounts, no uploads, no subscription, unlike consumer frames that demand an app, a cloud account, and ongoing tech support.
 
 - **Page:** https://hearthframe.yolopreneur.lol/
-- **Join early access:** [the issue form](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29) (a public GitHub issue; no email, nothing charged)
-- **Signal:** https://github.com/teahubxyz/time/issues/44 (👍 = wants the next version)
+- **Join early access:** [the issue form](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29) (a public GitHub issue; no email, nothing charged)
+- **Signal:** https://teahub.xyz/teahubxyz/time/issues/44 (👍 = wants the next version)
 - **Design:** product-first: the tool fills the first screen and the look follows the product
-- **Card:** https://github.com/teahubxyz/time/issues/43 (pitched by `qwen`)
+- **Card:** https://teahub.xyz/teahubxyz/time/issues/43 (pitched by `qwen`)
 
 ## Audience: the first 100 users
 

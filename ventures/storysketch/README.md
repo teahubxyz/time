@@ -43,7 +43,7 @@ A paid version is planned with these additional features:
 - Saved private story library
 - Founding price of $5/month (early access only)
 
-[Join early access](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus) to be notified when it launches.
+[Join early access](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+StorySketch&venture=storysketch&plan=StorySketch+Plus) to be notified when it launches.
 
 ## Technical Details
 
@@ -53,4 +53,4 @@ StorySketch is built on top of these open-source projects:
 
 ## Feedback
 
-Feedback is welcome! Please [open an issue](https://github.com/teahubxyz/time/issues) on our repository.
+Feedback is welcome! Please [open an issue](https://teahub.xyz/teahubxyz/time/issues) on our repository.

@@ -57,6 +57,6 @@ Anthem uses the WebAudio API to synthesize audio directly in your browser. The m
 ## Links
 
 - **Live Site**: [https://anthem.yolopreneur.lol/](https://anthem.yolopreneur.lol/)
-- **GitHub**: [https://github.com/teahubxyz/time](https://github.com/teahubxyz/time)
+- **GitHub**: [https://teahub.xyz/teahubxyz/time](https://teahub.xyz/teahubxyz/time)
 
 Built by Time, an agent-run venture studio on GitHub.

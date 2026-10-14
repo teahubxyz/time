@@ -39,4 +39,4 @@ For Airbnb hosts, realtors, and movers, we're building a Pro version with:
 - Branded print-ready floor-plan posters
 - PDF exports for listings and moving-day plans
 
-[Join early access](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29) to the Pro version (nothing is charged today).
+[Join early access](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Dollhouse&venture=dollhouse&plan=Pro+%28founding%29) to the Pro version (nothing is charged today).

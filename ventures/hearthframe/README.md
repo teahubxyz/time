@@ -58,7 +58,7 @@ A paid Android app version is planned with:
 - Multiple frames under one login (Caregiver plan)
 - Per-frame schedules and remote-caption queues (Caregiver plan)
 
-[Join early access](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29) for future updates.
+[Join early access](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Hearthframe&venture=hearthframe&plan=Family+%28early+access%29) for future updates.
 
 ## Built with
 

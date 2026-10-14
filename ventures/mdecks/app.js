@@ -60,7 +60,7 @@
     "# Your turn",
     "",
     "Select everything in the editor, delete it, and type your own.",
-    "Or [get early access to Pro](https://github.com/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro)."
+    "Or [get early access to Pro](https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro)."
   ].join("\n");
 
   function esc(s) {
