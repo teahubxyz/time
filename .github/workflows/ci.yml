@@ -4,6 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
+    paths-ignore: ["time/ledger/**"]   # Time appends its own spend ledger every run; that is not a code change
   workflow_dispatch:   # Time can run CI on a worker's PR branch by hand
 permissions:
   contents: read
