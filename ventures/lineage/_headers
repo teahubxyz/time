@@ -1,0 +1,12 @@
+# Orgchain (/orgchain/) gets Super Testnet's own headers, scoped to its folder. The key tree at / keeps its meta CSP.
+/orgchain/*
+  Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; frame-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'
+  X-Frame-Options: DENY
+  Referrer-Policy: no-referrer
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Cache-Control: no-cache
+/orgchain/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+/orgchain/recursive-preview.html
+  Content-Security-Policy: default-src 'none'; script-src 'nonce-local-ord-preview'; worker-src blob:; style-src 'unsafe-inline'; connect-src 'none'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'self'
+  X-Frame-Options: SAMEORIGIN
