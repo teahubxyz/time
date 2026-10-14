@@ -1,11 +1,17 @@
-"""Time: the clock for a GitHub-native agent factory. stdlib only; runs on GitHub-hosted runners.
+"""Time: the clock for a Gitea-native agent factory. stdlib only; runs on Gitea Actions (prod: teahub.xyz).
 
     python3 .github/time/time.py mention     # on issue/comment events: answer @seat [model] [effort]
     python3 .github/time/time.py heartbeat   # on schedule: plan specs, dispatch `ready` cards, merge approved PRs, pull the next card
 
-Ledger = this GitHub repo. Brains = Venice (VENICE_API_KEY secret). Seats and aliases: .github/time/seats.json.
-Loop guards: bots and Time's own comments never trigger replies; comments posted with GITHUB_TOKEN don't start
-workflows; the heartbeat has a daily cap.
+Ledger = this Gitea repo. Brains = Venice (VENICE_API_KEY secret). Seats and aliases: .github/time/seats.json.
+Loop guards: Time's own comments (author gitea-actions) never trigger replies or count as verdicts; the heartbeat
+has a daily cap and a concurrency group. Unlike GitHub, Gitea does fire events for the Actions token's own writes,
+so every event-driven workflow filters on the author.
+
+Forge notes (Gitea 1.24 vs GitHub): `limit` not `per_page`; no `sort` on issues; the `pull_request` key is always
+present (null on issues); labels are removed by id and set on creation by id; no `author_association` (trust = the
+collaborator permission endpoint); no check-runs (commit statuses only); merge is POST .../merge {"Do": "squash"};
+branches are made with POST .../branches; the diff is GET .../pulls/N.diff.
 """
 from __future__ import annotations
 
@@ -23,7 +29,9 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 SEATS = json.loads((HERE / "seats.json").read_text())
 REPO = os.environ.get("GITHUB_REPOSITORY", "")
-GH = "https://api.github.com"
+SERVER = (os.environ.get("GITHUB_SERVER_URL") or "https://teahub.xyz").rstrip("/")
+GH = (os.environ.get("GITHUB_API_URL") or f"{SERVER}/api/v1").rstrip("/")
+TIME_BOT = os.environ.get("TIME_BOT") or "gitea-actions"  # the Actions token's user; Time's own comments
 VENICE = "https://api.venice.ai/api/v1"
 MARK = "<!-- time "
 EFFORTS = {"low": "low", "med": "medium", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
@@ -32,7 +40,7 @@ EFFORTS = {"low": "low", "med": "medium", "medium": "medium", "high": "high", "x
 def http(method: str, url: str, token: str, body=None, timeout: float = 120.0):
     req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                                          "Accept": "application/vnd.github+json"})
+                                          "Accept": "application/json"})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             t = r.read()
@@ -51,6 +59,52 @@ def gh(method: str, path: str, body=None):
             if method != "PUT" or "/contents/" not in path or "-> 409" not in str(e) or attempt == 4:
                 raise
             time.sleep(0.5 * (attempt + 1))
+
+
+def issues(query: str) -> list[dict]:
+    """Open/closed issues (never PRs) of this repo; `query` is the Gitea query string without type/limit."""
+    return [i for i in gh("GET", f"/repos/{REPO}/issues?type=issues&limit=50&{query}") if not i.get("pull_request")]
+
+
+_label_ids: dict[str, int] | None = None
+
+
+def label_id(name: str) -> int:
+    global _label_ids
+    if _label_ids is None or name not in _label_ids:
+        _label_ids = {l["name"]: l["id"] for l in gh("GET", f"/repos/{REPO}/labels?limit=100")}
+    if name not in _label_ids:
+        _label_ids[name] = gh("POST", f"/repos/{REPO}/labels", {"name": name, "color": "#ededed"})["id"]
+    return _label_ids[name]
+
+
+def label(number: int, name: str) -> None:
+    gh("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": [label_id(name)]})
+
+
+def unlabel(number: int, name: str) -> None:
+    gh("DELETE", f"/repos/{REPO}/issues/{number}/labels/{label_id(name)}")
+
+
+def new_issue(title: str, body: str, labels: list[str]) -> dict:
+    return gh("POST", f"/repos/{REPO}/issues", {"title": title, "body": body, "labels": [label_id(l) for l in labels]})
+
+
+_trust: dict[str, bool] = {}
+
+
+def trusted(login: str | None) -> bool:
+    """Write access to this repo (owner, org team, collaborator). Strangers on a public repo can comment; they can't
+    approve, object or retry. Time's own user never counts as a reviewer."""
+    if not login or login == TIME_BOT:
+        return False
+    if login not in _trust:
+        try:
+            perm = gh("GET", f"/repos/{REPO}/collaborators/{login}/permission").get("permission")
+        except RuntimeError:
+            perm = None
+        _trust[login] = perm in ("admin", "write", "owner")
+    return _trust[login]
 
 
 def comment(issue: int, text: str, meta: dict) -> None:
@@ -140,7 +194,7 @@ def think(seat: str, model: str | None, effort: str | None, system: str, user: s
     return re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip() or "(empty reply)"
 
 
-RULES = """You were @mentioned in a GitHub issue or PR thread of a small agent factory. Reply as yourself, in the thread.
+RULES = """You were @mentioned in an issue or PR thread of a small agent factory. Reply as yourself, in the thread.
 Answer what was asked, concretely and briefly. You can't run code or browse; say so if the ask needs that.
 Never invent links, numbers or results. If you are only mentioned in passing, reply with exactly NO_REPLY."""
 
@@ -150,14 +204,17 @@ def cmd_mention() -> int:
     issue = ev["issue"]
     src = ev.get("comment") or issue
     author = src["user"]
-    if author.get("type") == "Bot" or MARK in (src.get("body") or ""):
-        print("skip: bot or Time's own comment")
+    if author.get("login") == TIME_BOT or MARK in (src.get("body") or ""):
+        print("skip: Time's own comment")
+        return 0
+    if not trusted(author.get("login")):  # public repo: strangers can comment, but must not spend the seats' credits
+        print("skip: not a collaborator")
         return 0
     found = mentions(src.get("body") or "")
     if not found:
         print("no seat mentioned")
         return 0
-    comments = gh("GET", f"/repos/{REPO}/issues/{issue['number']}/comments?per_page=30")
+    comments = gh("GET", f"/repos/{REPO}/issues/{issue['number']}/comments?limit=30")
     thread = [f"# {issue['title']}\n{(issue.get('body') or '')[:6000]}"]
     thread += [f"**{c['user']['login']}**: {(c.get('body') or '')[:3000]}" for c in comments[-20:]]
     for seat, (model, effort) in found.items():
@@ -181,7 +238,7 @@ def cmd_mention() -> int:
 
 # ---------- worker: Cursor cloud agents ----------
 # Docs: Cloud Agents API (POST /v1/agents, GET /v1/models). The agent opens a PR that says "Closes #N";
-# Time finds that PR on GitHub, so tracking never depends on fields of Cursor's responses.
+# Time finds that PR on the forge, so tracking never depends on fields of Cursor's responses.
 
 CURSOR = os.environ.get("CURSOR_API_BASE", "https://api.cursor.com")
 
@@ -194,7 +251,7 @@ def cursor(method: str, path: str, body=None):
 
 
 def repo_url() -> str:
-    return f"https://github.com/{REPO}"
+    return f"{SERVER}/{REPO}"
 
 
 def default_branch() -> str:
@@ -269,69 +326,67 @@ def plan_spec(spec: dict) -> None:
         comment(n, "⏱️ Time: I couldn't find cards in this spec. Write one line per card as `- title — DONE: what finished "
                 "means` (or `### title` sections with a `DONE:` line), or add VENICE_API_KEY so a seat can split it.",
                 {"beat": "plan-failed"})
-        gh("DELETE", f"/repos/{REPO}/issues/{n}/labels/spec")
+        unlabel(n, "spec")
         return
     made, prev = [], None
     for i, c in enumerate(cards, 1):
         body = (c.get("body") or "").strip() + f"\n\nPart of #{n} (step {i}/{len(cards)})." + \
             (f" Depends on #{prev}." if prev else "") + f"\n\nDONE: {c['done']}"
-        prev = gh("POST", f"/repos/{REPO}/issues", {"title": c["title"], "body": body.strip(), "labels": ["queued"]})["number"]
+        prev = new_issue(c["title"], body.strip(), ["queued"])["number"]
         made.append(prev)
     comment(n, "⏱️ Time: planned " + ", ".join(f"#{m}" for m in made) + ". They run one at a time: each starts when "
             "the one before it merges.", {"beat": "planned", "cards": made})
-    gh("DELETE", f"/repos/{REPO}/issues/{n}/labels/spec")
-    gh("POST", f"/repos/{REPO}/issues/{n}/labels", {"labels": ["planned"]})
+    unlabel(n, "spec")
+    label(n, "planned")
 
 
 def promote_next() -> int | None:
     """Label the oldest `queued` card whose dependencies are closed `ready`; at most TIME_PARALLEL cards in flight."""
-    ready = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=ready&per_page=50") if "pull_request" not in i]
+    ready = issues("state=open&labels=ready")
     if len(ready) >= int(os.environ.get("TIME_PARALLEL") or 1):
         return None
-    queued = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=queued&per_page=50&sort=created&direction=asc")
-              if "pull_request" not in i]
+    queued = issues("state=open&labels=queued")
     for card in sorted(queued, key=lambda i: i["number"]):
         deps = [int(d) for d in re.findall(r"Depends on #(\d+)", card.get("body") or "")]
         if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
             try:
-                gh("DELETE", f"/repos/{REPO}/issues/{card['number']}/labels/queued")
+                unlabel(card["number"], "queued")
             except RuntimeError as e:
                 if "404" in str(e):  # another beat promoted it first
                     continue
                 raise
-            gh("POST", f"/repos/{REPO}/issues/{card['number']}/labels", {"labels": ["ready"]})
+            label(card["number"], "ready")
             return card["number"]
     return None
 
 
 # ---------- landing: verdict -> merge (TIME_AUTOMERGE=on) ----------
 
-TRUSTED = ("OWNER", "MEMBER", "COLLABORATOR")
 VERDICT = re.compile(r"^[\s*_>#]*(approve|object)\b", re.I)
-DEFAULT_PROTECTED = ".github/,deploy,infra/,.env,secret"
+DEFAULT_PROTECTED = ".github/,.gitea/,deploy,infra/,.env,secret"
 
 
 def verdict(pr: dict, since: str) -> str | None:
-    """Latest reviewer verdict after `since`: a comment starting Approve/Object, or a GitHub review."""
+    """Latest reviewer verdict after `since`: a comment starting Approve/Object, or a PR review."""
     found = []
-    for c in gh("GET", f"/repos/{REPO}/issues/{pr['number']}/comments?per_page=100"):
+    for c in gh("GET", f"/repos/{REPO}/issues/{pr['number']}/comments?limit=100"):
         m = VERDICT.match(c.get("body") or "")
-        trusted = is_time(c) or c.get("author_association") in TRUSTED  # public repos: strangers (and their bots) can comment
-        if m and trusted and c["created_at"] > since:
+        ok = is_time(c) or trusted((c.get("user") or {}).get("login"))  # public repos: strangers can comment
+        if m and ok and c["created_at"] > since:
             found.append((c["created_at"], m.group(1).lower()))
-    for r in gh("GET", f"/repos/{REPO}/pulls/{pr['number']}/reviews?per_page=100"):
-        state = {"APPROVED": "approve", "CHANGES_REQUESTED": "object"}.get(r.get("state"))
-        if state and r.get("author_association") in TRUSTED and (r.get("submitted_at") or "") > since:
+    for r in gh("GET", f"/repos/{REPO}/pulls/{pr['number']}/reviews?limit=100"):
+        state = {"APPROVED": "approve", "REQUEST_CHANGES": "object", "CHANGES_REQUESTED": "object"}.get(r.get("state"))
+        if state and trusted((r.get("user") or {}).get("login")) and (r.get("submitted_at") or "") > since:
             found.append((r["submitted_at"], state))
     return max(found)[1] if found else None
 
 
 def touches_protected(pr_number: int) -> list[str]:
     paths = [p.strip() for p in (os.environ.get("TIME_PROTECTED") or DEFAULT_PROTECTED).split(",") if p.strip()]
-    paths = list(dict.fromkeys([".github/", *paths]))  # workflows stay a human's merge whatever TIME_PROTECTED says
+    paths = list(dict.fromkeys([".github/", ".gitea/", *paths]))  # workflows stay a human's merge whatever TIME_PROTECTED says
     files, page = [], 1
     while True:  # every file, not the first 100; a rename counts under both names
-        batch = gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?per_page=100&page={page}")
+        batch = gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?limit=100&page={page}")
         for f in batch:
             files.append(f["filename"])
             if f.get("previous_filename"):
@@ -346,25 +401,26 @@ WORKER_CONTEXT = "time/worker-run"
 
 
 def checks(sha: str) -> str:
-    """pass | pending | fail | none, over every check run on the PR head.
+    """pass | pending | fail | none, over the commit statuses on the PR head (Gitea Actions report as statuses).
 
     The worker's own status (WORKER_CONTEXT) can fail or delay a merge but never earns one: a model that chose the
     command it ran is not a reviewer of it. Without any other check the answer is "none"."""
-    runs = gh("GET", f"/repos/{REPO}/commits/{sha}/check-runs?per_page=100").get("check_runs", [])
-    states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses", [])  # commit statuses count too
-    if any(r["status"] != "completed" for r in runs) or any(st["state"] == "pending" for st in states):
+    states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses") or []
+    latest: dict[str, str] = {}
+    for st in states:  # one line per context, newest wins
+        latest.setdefault(st.get("context") or "", (st.get("status") or st.get("state") or "").lower())
+    if any(v == "pending" for v in latest.values()):
         return "pending"
-    if not all(r["conclusion"] in ("success", "neutral", "skipped") for r in runs) or not all(st["state"] == "success" for st in states):
+    if not all(v in ("success", "skipped") for v in latest.values()):
         return "fail"
-    if not runs and not any(st.get("context") != WORKER_CONTEXT for st in states):
+    if not any(ctx != WORKER_CONTEXT for ctx in latest):
         return "none"
     return "pass"
 
 
 def dispatch_ci(pr: dict) -> bool:
-    """Run the project's CI on the PR branch by hand. GitHub skips pull_request workflows for pushes made with the
-    Actions token, so a worker's PR gets no checks unless Time asks; TIME_CI_WORKFLOW (default ci.yml) must accept
-    workflow_dispatch. Returns False when there is no such workflow."""
+    """Run the project's CI on the PR branch by hand when the push did not start it. TIME_CI_WORKFLOW (default
+    ci.yml) must accept workflow_dispatch. Returns False when there is no such workflow."""
     wf = (os.environ.get("TIME_CI_WORKFLOW") or "ci.yml").strip()
     if wf == "off":
         return False
@@ -417,18 +473,14 @@ def land(card: dict, last: dict) -> None:
             comment(n, f"⏱️ Time: approved, but checks are failing on PR #{pr['number']}. Waiting for a fix.",
                     {"beat": "checks-failed", "pr": pr["number"]})
         return
-    gh("PUT", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"merge_method": "squash"})
+    gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True})
     if gh("GET", f"/repos/{REPO}/issues/{n}")["state"] == "open":
         gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
     comment(n, f"⏱️ Time: approved and green, merged PR #{pr['number']}. Card done.", {"beat": "merged", "pr": pr["number"]})
 
 
-def label(number: int, name: str) -> None:
-    gh("POST", f"/repos/{REPO}/issues/{number}/labels", {"labels": [name]})
-
-
 # ---------- worker: a Venice seat with hands ----------
-# TIME_WORKER=venice:<seat> [model] [effort]. The seat edits the repo on its own branch through the GitHub contents
+# TIME_WORKER=venice:<seat> [model] [effort]. The seat edits the repo on its own branch through the contents
 # API (the Actions token already has contents: write), runs shell steps on the runner's checkout, and opens the PR
 # itself. Same contract as the Cursor worker: a PR whose body says "Closes #N".
 
@@ -465,7 +517,7 @@ You have hands: list_files, read_file, write_file (one file per call, full conte
 your branch), open_pr. Work on the branch `{branch}`. Only two things reach it: write_file, and files a run lists in
 `keep` (for generated files, e.g. a sample built by a script). Anything else a run does is thrown away. Keep the change small and focused.
 Read before you write. Always `run` the project's tests or checks before opening the PR (that run is the PR's check). When it is done and checked, call open_pr once
-with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows.
+with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows or .gitea/workflows.
 The card's finish line is: DONE: {done}"""
 
 
@@ -487,26 +539,25 @@ def docker_ok() -> bool:
 class Hands:
     def __init__(self, n: int, branch: str):
         self.n, self.branch, self.pr, self.steps = n, branch, None, 0
-        base = gh("GET", f"/repos/{REPO}/git/ref/heads/{default_branch()}")["object"]["sha"]
         try:
-            gh("POST", f"/repos/{REPO}/git/refs", {"ref": f"refs/heads/{branch}", "sha": base})
+            gh("POST", f"/repos/{REPO}/branches", {"new_branch_name": branch, "old_branch_name": default_branch()})
         except RuntimeError as e:
-            if "422" not in str(e):
+            if "409" not in str(e):  # already there: resume on it
                 raise
         self.checkout = None
 
     def _checkout(self) -> str:
         d = tempfile.mkdtemp(prefix="time-worker-")
-        url = f"https://x-access-token:{os.environ['GITHUB_TOKEN']}@github.com/{REPO}"
+        url = SERVER.replace("://", f"://x-access-token:{os.environ['GITHUB_TOKEN']}@", 1) + f"/{REPO}.git"
         subprocess.run(["git", "clone", "-q", "--depth", "1", "--branch", self.branch, url, d], check=True, capture_output=True)
         # the token must not stay in .git/config, where a `run` command could read it
-        subprocess.run(["git", "remote", "set-url", "origin", f"https://github.com/{REPO}"], cwd=d, check=True, capture_output=True)
+        subprocess.run(["git", "remote", "set-url", "origin", f"{SERVER}/{REPO}.git"], cwd=d, check=True, capture_output=True)
         return d
 
     def call(self, name: str, a: dict) -> str:
         self.steps += 1
         if name == "list_files":
-            tree = gh("GET", f"/repos/{REPO}/git/trees/{self.branch}?recursive=1").get("tree", [])
+            tree = gh("GET", f"/repos/{REPO}/git/trees/{self.branch}?recursive=true&per_page=1000").get("tree") or []
             d = (a.get("dir") or "").strip("/")
             paths = [t["path"] for t in tree if t["type"] == "blob" and (not d or t["path"].startswith(d + "/"))]
             return "\n".join(paths[:400]) or "(empty)"
@@ -517,7 +568,7 @@ class Hands:
                 return f"error: {e}"
             return base64.b64decode(f["content"]).decode(errors="replace")[:60000]
         if name == "write_file":
-            if a["path"].startswith(".github/workflows"):
+            if a["path"].startswith((".github/workflows", ".gitea/workflows")):
                 return "refused: workflow files are a human's to change"
             body = {"message": a.get("message") or f"card #{self.n}: update {a['path']}", "branch": self.branch,
                     "content": base64.b64encode(a["content"].encode()).decode()}
@@ -550,7 +601,7 @@ class Hands:
             for rel in (a.get("keep") or [])[:10]:
                 full = os.path.realpath(os.path.join(root, str(rel)))
                 rel = os.path.relpath(full, root)
-                if not full.startswith(root + os.sep) or rel.startswith(".github/workflows") or not os.path.isfile(full):
+                if not full.startswith(root + os.sep) or rel.startswith((".github/workflows", ".gitea/workflows")) or not os.path.isfile(full):
                     kept.append(f"{rel}: refused or missing")
                     continue
                 data = open(full, "rb").read()
@@ -565,8 +616,7 @@ class Hands:
                 gh("PUT", f"/repos/{REPO}/contents/{rel}", body)
                 kept.append(f"{rel}: kept")
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
-            # GitHub does not run pull_request workflows for commits made with the Actions token, so the worker's own
-            # test run is recorded as a commit status; land() counts statuses as checks.
+            # the worker's own test run is recorded as a commit status; land() sees it but never merges on it alone.
             gh("POST", f"/repos/{REPO}/statuses/{sha}", {"state": "success" if p.returncode == 0 else "failure",
                "context": "time/worker-run", "description": a["command"][:100]})
             self.checkout = None if kept else self.checkout
@@ -640,8 +690,6 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None) -> dict:
 
 # ---------- heartbeat ----------
 
-TIME_BOT = "github-actions[bot]"
-
 
 def is_time(c: dict) -> bool:
     """A comment Time itself wrote (through the Actions token). Anyone can paste the marker; only this author counts."""
@@ -664,8 +712,9 @@ def beats_of(comments: list[dict]) -> list[dict]:
 
 
 def retry_requested(comments: list[dict], since: str) -> bool:
-    return any(c["created_at"] >= since and c["user"].get("type") != "Bot" and c.get("author_association") in TRUSTED
-               and "/time retry" in (c.get("body") or "") for c in comments)  # strangers on a public repo can't respend  # >=: a retry typed in the same second as the beat still counts
+    # >=: a retry typed in the same second as the beat still counts; strangers on a public repo can't re-spend
+    return any(c["created_at"] >= since and "/time retry" in (c.get("body") or "") and trusted((c.get("user") or {}).get("login"))
+               for c in comments)
 
 
 def linked_prs(prs: list[dict], n: int) -> list[dict]:
@@ -674,9 +723,8 @@ def linked_prs(prs: list[dict], n: int) -> list[dict]:
 
 
 def pr_diff(number: int, limit: int = 100_000) -> str:
-    req = urllib.request.Request(f"{GH}/repos/{REPO}/pulls/{number}",
-                                 headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}",
-                                          "Accept": "application/vnd.github.diff"})
+    req = urllib.request.Request(f"{GH}/repos/{REPO}/pulls/{number}.diff",
+                                 headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}"})
     with urllib.request.urlopen(req, timeout=60) as r:
         return r.read().decode(errors="replace")[:limit]
 
@@ -709,7 +757,7 @@ def review(card: dict, pr: dict, done: str) -> dict:
 
 
 def cmd_heartbeat() -> int:
-    for spec in [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=spec&per_page=10") if "pull_request" not in i]:
+    for spec in issues("state=open&labels=spec"):
         try:
             plan_spec(spec)
         except Exception as e:  # noqa: BLE001
@@ -731,12 +779,12 @@ def tick() -> None:
         f"Cursor cloud agent{f' ({worker_model})' if worker_model else ''}"
     now = dt.datetime.now(dt.timezone.utc)
     today = now.date().isoformat()
-    cards = [i for i in gh("GET", f"/repos/{REPO}/issues?state=open&labels=ready&per_page=50") if "pull_request" not in i]
-    prs = gh("GET", f"/repos/{REPO}/pulls?state=all&sort=updated&direction=desc&per_page=50")
+    cards = issues("state=open&labels=ready")
+    prs = gh("GET", f"/repos/{REPO}/pulls?state=all&sort=recentupdate&limit=50")
     launches_today = 0
     plan = []
     for card in cards:
-        cs = gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?per_page=100")
+        cs = gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?limit=100")
         beats = beats_of(cs)
         launches_today += sum(1 for b in beats if b.get("launched") and b["at"].startswith(today))
         real = [b for b in beats if b["beat"] != "blocked"]  # "blocked" = a key was missing; resume once it's added
@@ -819,15 +867,15 @@ def cmd_doctor() -> int:
         ok &= good or name.startswith("(optional)")
         lines.append(f"| {'✅' if good else '⚠️'} | {name} | {detail} |")
 
-    labels = [l["name"] for l in gh("GET", f"/repos/{REPO}/labels?per_page=100")]
-    row("label `ready`", "ready" in labels, "exists" if "ready" in labels else "missing: `gh label create ready`")
+    labels = [l["name"] for l in gh("GET", f"/repos/{REPO}/labels?limit=100")]
+    row("label `ready`", "ready" in labels, "exists" if "ready" in labels else "missing (Time creates labels it needs on first use)")
     row("TIME_MODE", True, os.environ.get("TIME_MODE") or "dry-run (default)")
     row("TIME_DAILY_CAP", True, os.environ.get("TIME_DAILY_CAP") or "5 (default)")
     row("TIME_WORKER", True, os.environ.get("TIME_WORKER") or "cursor (default); or venice:<seat> for a seat with hands")
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default)")
     row("TIME_AUTOMERGE", True, (os.environ.get("TIME_AUTOMERGE") or "off (default)") + "; merges on Approve + green checks")
     for name in ("queued", "spec", "needs-human"):
-        row(f"(optional) label `{name}`", name in labels, "exists" if name in labels else f"missing: `gh label create {name}`")
+        row(f"(optional) label `{name}`", name in labels, "exists" if name in labels else "missing (created on first use)")
     try:
         ids = [m["id"] for m in http("GET", f"{VENICE}/models?type=text", os.environ["VENICE_API_KEY"])["data"]] \
             if os.environ.get("VENICE_API_KEY") else None
@@ -845,11 +893,11 @@ def cmd_doctor() -> int:
         names = [m.get("id") if isinstance(m, dict) else str(m) for m in items]
         row("CURSOR_API_KEY (worker)", True, f"works; models: {', '.join(n for n in names[:12] if n) or 'listed'}")
     except LookupError:
-        row("CURSOR_API_KEY (worker)", False, "not set: `gh secret set CURSOR_API_KEY`")
+        row("CURSOR_API_KEY (worker)", False, "not set (repo/org Actions secret)")
     except Exception as e:  # noqa: BLE001
         row("CURSOR_API_KEY (worker)", False, f"set but failing: {str(e)[:160]}")
     report = "## Time doctor\n\n| | check | detail |\n|---|---|---|\n" + "\n".join(lines) + \
-        "\n\nThe Cursor GitHub app must also be installed on this repo for cloud agents to open PRs (not checkable from here)."
+        "\n\nCursor cloud agents need a GitHub-hosted repo; on Gitea use TIME_WORKER=venice:<seat>."
     print(report)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         Path(os.environ["GITHUB_STEP_SUMMARY"]).write_text(report)

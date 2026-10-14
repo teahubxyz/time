@@ -14,12 +14,12 @@ concurrency:
   cancel-in-progress: false
 jobs:
   reply:
-    # cheap filter before a runner spins up: a mention, not from a bot, and only from people with a say in this repo
-    # (public repo: strangers can comment, but must not be able to spend the seats' model credits)
+    # cheap filter before a runner spins up: a mention, and not Time's own comment (Gitea fires events for the Actions
+    # token's writes). Who may spend the seats' credits is checked in time.py (collaborator permission); Gitea has no
+    # author_association in the event.
     if: >-
       contains(github.event.comment.body || github.event.issue.body, '@') &&
-      (github.event.comment.user.type || github.event.issue.user.type) != 'Bot' &&
-      contains(fromJSON('["OWNER","MEMBER","COLLABORATOR"]'), github.event.comment.author_association || github.event.issue.author_association)
+      (github.event.comment.user.login || github.event.issue.user.login) != 'gitea-actions'
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:

@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches: [main]
-  workflow_dispatch:   # Time runs CI on a worker's PR branch by hand (pull_request skips token pushes)
+  workflow_dispatch:   # Time can run CI on a worker's PR branch by hand
 permissions:
   contents: read
 jobs:

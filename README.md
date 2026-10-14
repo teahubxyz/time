@@ -1,6 +1,6 @@
 # time
 
-A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are the clock (Time), the worker is a Venice seat with hands or a Cursor cloud agent, and chat is where you plan.
+A Gitea-native agent factory, running on Teahub prod (teahub.xyz). The Gitea repo is the ledger, Gitea Actions are the clock (Time), the worker is a Venice seat with hands or a Cursor cloud agent, and chat is where you plan.
 
 - **Cards**: an issue with a `DONE:` line, labelled `ready`.
 - **Heartbeat** (`heartbeat.yml`, hourly and whenever a card is labelled `ready`): moves cards forward. In `dry-run` (default) it only says what it would do; with `TIME_MODE=live` it dispatches each card to the worker (`TIME_WORKER`: a Venice seat such as `venice:kimi`, which edits the repo and opens the PR itself, or a Cursor cloud agent), which opens a PR that closes the card. An optional reviewer (`TIME_REVIEW`) checks the PR. At most `TIME_DAILY_CAP` launches a day.
@@ -13,6 +13,8 @@ A GitHub-native agent factory. GitHub is the ledger, GitHub-hosted runners are t
 - **Update** (`update.yml`, weekly or manual): opens a PR with the latest engine from teahubxyz/time, so every project stays on one Time instead of drifting copies.
 
 ## Setup
+
+Started on GitHub as a proof of concept (teahubxyz/time, now read-only); ported to Gitea 2026-10-14.
 
 Open this repo in Claude Code or Cursor and say "set up Time": the agent follows `.claude/skills/time/SKILL.md`. The quickest path needs one secret, `VENICE_API_KEY`: Venice seats plan, build and review (`TIME_WORKER=venice:qwen coder`, `TIME_REVIEW=venice:grok`). A Cursor cloud agent can be the worker instead if you have a Cursor API key. The landing page walks through it: https://teahubxyz.github.io/time/
 

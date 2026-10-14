@@ -11,21 +11,16 @@ on:
     types: [submitted]
   issue_comment:
     types: [created]
-permissions:
-  contents: write      # squash-merge approved, green PRs
-  issues: write
-  pull-requests: write
-  checks: read
-  statuses: write     # a Venice worker's test run is recorded as the PR's check
+# (GitHub-style `permissions:` are ignored by Gitea; the Actions token has write access to this repo)
 concurrency:
   group: heartbeat
   cancel-in-progress: false
 jobs:
   tick:
-    # issues: only `ready`/`spec` labels. comments: only on PRs, only a reviewer verdict (Approve/Object).
+    # issues: only `ready`/`spec` labels. comments: only on PRs, only a reviewer verdict (Approve/Object), never Time's own.
     if: >-
       (github.event_name != 'issues' || contains(fromJSON('["ready","spec"]'), github.event.label.name)) &&
-      (github.event_name != 'issue_comment' || (github.event.issue.pull_request &&
+      (github.event_name != 'issue_comment' || (github.event.issue.pull_request && github.event.comment.user.login != 'gitea-actions' &&
         (startsWith(github.event.comment.body, '**Approve') || startsWith(github.event.comment.body, 'Approve') ||
          startsWith(github.event.comment.body, '**Object') || startsWith(github.event.comment.body, 'Object'))))
     runs-on: ubuntu-latest
