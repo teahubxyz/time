@@ -19,13 +19,8 @@
     "deck-preview"
    ],
    "pages": "https://mdecks.yolopreneur.lol/",
-   "backend": {
-    "worker": "time-mdecks",
-    "db": "423fe9c1-97ea-49ee-b981-bd20be5651aa",
-    "rev": "0118c84ad49f",
-    "api": "https://mdecks.yolopreneur.lol/api/"
-   },
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "docscope",
@@ -43,13 +38,8 @@
    "signups": 0,
    "launched": "2026-10-12",
    "pages": "https://docscope.yolopreneur.lol/",
-   "backend": {
-    "worker": "time-docscope",
-    "db": "d433b108-0af2-4017-8db5-c06a1298fca7",
-    "rev": "94ced812eaa7",
-    "api": "https://docscope.yolopreneur.lol/api/"
-   },
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "doodleloop",
@@ -67,13 +57,8 @@
    "signups": 0,
    "launched": "2026-10-12",
    "pages": "https://doodleloop.yolopreneur.lol/",
-   "backend": {
-    "worker": "time-doodleloop",
-    "db": "6179f2d5-8f2d-49ec-9aca-3d1e6bc3ddca",
-    "rev": "e251d8e5321f",
-    "api": "https://doodleloop.yolopreneur.lol/api/"
-   },
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "dollhouse",
@@ -91,13 +76,8 @@
    "signups": 0,
    "launched": "2026-10-12",
    "pages": "https://dollhouse.yolopreneur.lol/",
-   "backend": {
-    "worker": "time-dollhouse",
-    "db": "d3fa15e7-4b61-4722-8263-0b9ff506b2c2",
-    "rev": "b2749178ee56",
-    "api": "https://dollhouse.yolopreneur.lol/api/"
-   },
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "anthem",
@@ -111,17 +91,12 @@
    "card": 20,
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
-   "backend": {
-    "worker": "time-anthem",
-    "db": "454713ea-ead3-4db9-82a1-4f9b456e5bb5",
-    "rev": "9ce4c8736ea9",
-    "api": "https://anthem.yolopreneur.lol/api/"
-   },
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13",
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "wavehello",
@@ -135,17 +110,12 @@
    "card": 28,
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
-   "backend": {
-    "worker": "time-wavehello",
-    "db": "411c2120-e4c4-451a-9a86-09903ddd4a41",
-    "rev": "0a0d13538c49",
-    "api": "https://wavehello.yolopreneur.lol/api/"
-   },
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13",
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "storysketch",
@@ -159,17 +129,12 @@
    "card": 29,
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
-   "backend": {
-    "worker": "time-storysketch",
-    "db": "bbffb5ad-cf16-4e9b-ad1f-9803b3124682",
-    "rev": "172ee02b79e2",
-    "api": "https://storysketch.yolopreneur.lol/api/"
-   },
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13",
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "glitztype",
@@ -183,17 +148,12 @@
    "card": 27,
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
-   "backend": {
-    "worker": "time-glitztype",
-    "db": "9407ab07-be05-468c-b33e-437f0deb0113",
-    "rev": "626c83c1a777",
-    "api": "https://glitztype.yolopreneur.lol/api/"
-   },
    "planned": "2026-10-13",
    "status": "live",
    "signups": 0,
    "launched": "2026-10-13",
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "hearthframe",
@@ -207,16 +167,11 @@
    "card": 43,
    "design": "product-first: the tool fills the first screen and the look follows the product",
    "version": 1,
-   "backend": {
-    "worker": "time-hearthframe",
-    "db": "b460701b-5fa9-4fdf-a8ae-e9cb46c434d5",
-    "rev": "f122737e4ca6",
-    "api": "https://hearthframe.yolopreneur.lol/api/"
-   },
    "planned": "2026-10-14",
    "status": "building",
    "signups": 0,
-   "source": "time"
+   "source": "time",
+   "hosting": "pages"
   },
   {
    "slug": "agentlore",
@@ -227,7 +182,8 @@
    "source": "notplanned",
    "pages": "https://agentlore.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "codex-goal",
@@ -238,7 +194,8 @@
    "source": "notplanned",
    "pages": "https://codex-goal.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "context-curator",
@@ -249,7 +206,8 @@
    "source": "notplanned",
    "pages": "https://context-curator.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "context-priority",
@@ -260,7 +218,8 @@
    "source": "notplanned",
    "pages": "https://context-priority.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "finishline-supervisor",
@@ -271,7 +230,8 @@
    "source": "notplanned",
    "pages": "https://finishline-supervisor.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "preview-sidecar",
@@ -282,7 +242,8 @@
    "source": "notplanned",
    "pages": "https://preview-sidecar.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   },
   {
    "slug": "up-to-date",
@@ -293,7 +254,8 @@
    "source": "notplanned",
    "pages": "https://up-to-date.yolopreneur.lol/",
    "repo": "https://teahub.xyz/teahubxyz/notplanned",
-   "signups": 0
+   "signups": 0,
+   "hosting": "pages"
   }
  ],
  "refreshed": "2026-10-14"
