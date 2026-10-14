@@ -7,6 +7,7 @@ os.environ.pop("GITHUB_STEP_SUMMARY", None)  # keep fake doctor output out of th
 from pathlib import Path
 spec = importlib.util.spec_from_file_location("tm", Path(__file__).resolve().parent / "time.py")
 tm = importlib.util.module_from_spec(spec); spec.loader.exec_module(tm)
+real_think = tm.think  # some checks stub it; the Claude checks need the real one
 
 NOW = dt.datetime.now(dt.timezone.utc)
 iso = lambda h=0: (NOW - dt.timedelta(hours=h)).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -306,6 +307,76 @@ except RuntimeError:
     assert len(tries) == 1
 tm.http, tm.time.sleep = real_http, real_sleep
 print("ALL OK 40")
+
+# Claude seats: routing, request shape, spend booked from usage
+assert tm.provider_of("claude-sonnet-5-5") == "anthropic" and tm.provider_of("kimi-k3") == "venice" and tm.provider_of("x") == "venice"
+assert tm.worker_seat_model("claude:sonnet") == ("sonnet", "claude-sonnet-5-5", None)
+assert tm.mentions("@sonnet what do you think?") == {"sonnet": (None, None)}
+sent = []
+class ClaudeWorld(World):
+    """World plus Anthropic's endpoint (answered by the scripted seat) and Actions variables."""
+    def __init__(self, *a, ledger=None, **kw):
+        super().__init__(*a, **kw); self.label_ids["andon"] = 99; self.vars = {}
+        if ledger: self.files[f"time/ledger/{NOW:%Y-%m}.jsonl"] = "".join(json.dumps(r) + "\n" for r in ledger)
+    def http(self, method, url, token, body=None, timeout=0):
+        if url.startswith(tm.ANTHROPIC):
+            sent.append((url, token, body)); out = self.venice(body); out["usage"] = {"prompt_tokens": 1000, "completion_tokens": 2000}; return out
+        if "/actions/variables/" in url:
+            self.vars[url.rsplit("/", 1)[1]] = (method, body["value"]); return {}
+        return super().http(method, url, token, body, timeout)
+def claude_env(w, env):
+    tm.LEDGER.clear(); tm._ledger_files.clear()
+    for k in ("ANTHROPIC_API_KEY", "TIME_WORKER", "TIME_DAILY_USD", "TIME_MONTHLY_USD"): os.environ.pop(k, None)
+    return run(w, {**K, "ANTHROPIC_API_KEY": "ak", **env})
+w = ClaudeWorld([]); tm.http = w.http; tm.LEDGER.clear(); tm._ledger_files.clear(); os.environ["ANTHROPIC_API_KEY"] = "ak"
+w.venice = lambda body: {"choices": [{"message": {"role": "assistant", "content": "<think>x</think>hi"}}]}
+tm.think = real_think
+assert tm.think("sonnet", None, "high", "sys", "u") == "hi"
+url, tok, body = sent[-1]
+assert url == "https://api.anthropic.com/v1/chat/completions" and tok == "ak" and body["model"] == "claude-sonnet-5-5"
+assert not {"temperature", "venice_parameters", "reasoning_effort", "top_p"} & set(body), body
+assert tm.LEDGER[-1]["in"] == 1000 and tm.LEDGER[-1]["out"] == 2000 and tm.LEDGER[-1]["usd"] == 0.022  # 1000*2 + 2000*10 per Mtok
+os.environ["VENICE_API_KEY"] = "vk"; w.venice = lambda body: {"choices": [{"message": {"content": "ok"}}]}
+assert tm.think("kimi", None, None, "s", "u") == "ok" and tm.LEDGER[-1]["usd"] is None and tm.LEDGER[-1]["in"] == 0  # unpriced, no usage
+# the ledger flushes as one appended commit
+tm._ledger_files.clear(); tm.flush_ledger()
+lines = w.files[f"time/ledger/{NOW:%Y-%m}.jsonl"].splitlines()
+assert len(lines) == 2 and tm.LEDGER == [] and json.loads(lines[0])["usd"] == 0.022
+# over the daily cap: Budget before any request
+sent.clear(); tm._ledger_files.clear()
+w.files[f"time/ledger/{NOW:%Y-%m}.jsonl"] = json.dumps({"at": iso(), "model": "claude-opus-5-5", "usd": 6}) + "\n"
+try:
+    tm.think("sonnet", None, None, "s", "u"); raise AssertionError("over the cap must raise")
+except tm.Budget as e:
+    assert "today's spend is $6.00 of the $5.00 cap" in str(e) and sent == []
+os.environ.pop("VENICE_API_KEY")
+print("ALL OK 50")
+
+# tick on a capped day: one "capped" beat per card, one andon issue, the mode stays; no repeat on the next beat
+over = [{"at": iso(), "model": "claude-opus-5-5", "usd": 5.5}]
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=over), {"TIME_WORKER": "claude:sonnet"})
+assert sent == [] and len(w.posted) == 1 and "Nothing is lost" in w.posted[0][1] and '"beat": "capped"' in w.posted[0][1].replace(":", ": ")
+andons = [i for i in w.issues.values() if "andon" in i["labels"]]
+assert len(andons) == 1 and andons[0]["title"].startswith("Spend cap reached: $5.50 today") and w.vars == {}
+w = claude_env(w, {"TIME_WORKER": "claude:sonnet"})
+assert len(w.posted) == 1 and len([i for i in w.issues.values() if "andon" in i["labels"]]) == 1, "said once, cord pulled once"
+# a monthly breach flips TIME_MODE to dry-run and says so
+old = [{"at": iso(), "model": "claude-opus-5-5", "usd": 120}]  # the daily cap is raised so only the monthly one trips
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=old), {"TIME_WORKER": "claude:sonnet", "TIME_DAILY_USD": "500"})
+assert w.vars == {"TIME_MODE": ("PUT", "dry-run")} and "dry-run" in next(i for i in w.issues.values() if "andon" in i["labels"])["body"]
+print("ALL OK 51")
+
+# TIME_WORKER=claude:sonnet: same hands, Claude's endpoint, the seat's label in the PR footer and the beats
+sent.clear()
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_WORKER": "claude:sonnet"})
+assert sent and all(u.startswith(tm.ANTHROPIC) and "temperature" not in b for u, _, b in sent)
+assert len(w.opened) == 1 and "<sub>worker: Claude Sonnet (Anthropic) via Time</sub>" in w.opened[0]["body"]
+assert "Claude Sonnet (Anthropic) is working" in w.posted[0][1] and '"worker":"anthropic"' in w.posted[0][1]
+assert "claude-sonnet-5-5" in w.posted[-1][1] and len(tm.LEDGER) == len(sent)
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_WORKER": "claude:sonnet", "ANTHROPIC_API_KEY": ""})
+assert "ANTHROPIC_API_KEY" in w.posted[-1][1], "missing key -> blocked"
+tm.LEDGER.clear(); tm._ledger_files.clear()  # nothing for atexit to flush into a fake
+print("ALL OK 52")
 
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
