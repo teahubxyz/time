@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orgchain · Lineage</title>
-<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make and trade items, publish keyrings, charter legal forms, send test BTC, graduate and close, one beat at a time. Test coins only.">
+<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make items, buy and sell items and orgs, publish keyrings, charter legal forms, send test BTC, graduate and close, one beat at a time. Test coins only.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <script src="./theme.js"></script>
-  <script type="module" crossorigin src="./assets/index-DXb8Kdrd.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DwOZaPY4.css">
+  <script type="module" crossorigin src="./assets/index-Ox6KvI0i.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DqzJ8wiA.css">
 </head>
 <body>
 <header class="band">
@@ -17,7 +17,7 @@
     <div>
       <p class="kicker"><a href="../">Lineage</a> /</p>
       <h1 class="wordmark">Orgchain</h1>
-      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make and trade items, publish keyrings, charter legal forms, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
+      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make items, buy and sell items and orgs, publish keyrings, charter legal forms, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
     </div>
     <div class="flags">
       <span class="flag hz">Test coins only</span>
@@ -89,7 +89,7 @@
           <p class="pad note" id="act-none">Select a holding, or a node in its tree, to act through it.</p>
           <div class="pad note" id="act-past" hidden><p>You are looking at beat <b id="past-beat"></b>. History is read-only.</p><button type="button" class="btn sm" id="past-now">Back to now</button></div>
           <div id="act-on" hidden>
-            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="make" aria-pressed="false">Make</button><button type="button" data-verb="send" aria-pressed="false">Send</button><button type="button" data-verb="offer" aria-pressed="false">Offer</button><button type="button" data-verb="keyring" aria-pressed="false">Keyring</button><button type="button" data-verb="charter" aria-pressed="false">Charter</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
+            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="make" aria-pressed="false">Make</button><button type="button" data-verb="offer" aria-pressed="false">Buy</button><button type="button" data-verb="sell" aria-pressed="false">Sell</button><button type="button" data-verb="send" aria-pressed="false">Send</button><button type="button" data-verb="keyring" aria-pressed="false">Keyring</button><button type="button" data-verb="charter" aria-pressed="false">Charter</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
             <p class="keyline" id="act-key"></p>
             <p class="keyline" id="act-gas"></p>
             <p class="why pad" id="act-why"></p>
@@ -141,13 +141,23 @@
               <button class="btn primary go" type="submit">Send</button>
             </form>
             <form class="vf pad" id="f-offer" data-form="offer" autocomplete="off" hidden>
-              <p class="vh"><b data-name></b> bids on an item another node holds. It has <b id="offer-has"></b>.</p>
-              <label class="lab" for="offer-item">Item</label>
+              <p class="vh"><b data-name></b> buys an item or an org that another node holds. It has <b id="offer-has"></b>.</p>
+              <label class="lab" for="offer-item">Lot</label>
               <select id="offer-item" name="lot"></select>
-              <label class="lab" for="offer-price">Price <span>test BTC, or 0 for a free claim</span></label>
+              <div class="ask" id="offer-ask" hidden><p id="offer-ask-line"></p><button class="btn primary" type="button" id="offer-take">Take it</button></div>
+              <label class="lab" for="offer-price">Offer <span>test BTC, or 0 for a free claim</span></label>
               <input id="offer-price" name="price" inputmode="decimal" maxlength="17" spellcheck="false" placeholder="0.1">
-              <p class="hint">Its SegWit key signs the whole deal now: the item to its Taproot key, the price to the holder, the 500-sat fee from its balance. Nothing reaches the chain until the holder accepts. Until then the offer stands, unless it's withdrawn or a coin it promised moves.</p>
-              <button class="btn primary go" type="submit">Offer</button>
+              <p class="hint" id="offer-note"></p>
+              <button class="btn primary go" type="submit" id="offer-go">Make the offer</button>
+            </form>
+            <form class="vf pad" id="f-sell" data-form="sell" autocomplete="off" hidden>
+              <p class="vh"><b data-name></b> lists an item it holds, or an org of its own, for any node to take at its price.</p>
+              <label class="lab" for="sell-lot">Lot</label>
+              <select id="sell-lot" name="lot"></select>
+              <label class="lab" for="sell-price">Price <span>test BTC</span></label>
+              <input id="sell-price" name="price" inputmode="decimal" maxlength="17" spellcheck="false" placeholder="1">
+              <p class="hint" id="sell-note"></p>
+              <button class="btn primary go" type="submit">List it</button>
             </form>
             <form class="vf pad" id="f-keyring" data-form="keyring" hidden>
               <p class="vh"><b data-name></b> publishes its keyring: one inscription that lists its keys on each chain, each key signing the same statement. Publishing spends <b data-name></b>'s inscription.</p>
