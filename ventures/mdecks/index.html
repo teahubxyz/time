@@ -411,11 +411,12 @@
       <button id="prev" aria-label="Previous slide">&larr; Prev</button>
       <button id="next" aria-label="Next slide">Next &rarr;</button>
       <button id="copy" class="primary">Copy deck as HTML</button>
+      <button id="link">Copy link</button>
       <span class="counter" id="counter">1 / 1</span>
     </div>
     <div class="progress" role="progressbar" aria-label="Deck progress"><div id="bar"></div></div>
-    <div class="slide-wrap" id="wrap"><article class="slide" id="slide"></article></div><p class="fit-note" id="fitnote" role="status" hidden></p>
-    <p class="export-note">The copied file is a self-contained deck: open it in any browser and use &larr; / &rarr; to present.</p>
+    <div class="slide-wrap" id="wrap"><article class="slide" id="slide"></article></div><p class="fit-note" id="fitnote" role="status" hidden></p><p class="fit-note" id="linknote" role="status" hidden></p>
+    <p class="export-note">The copied file is a self-contained deck: open it in any browser and use &larr; / &rarr; to present. A copied link carries the deck inside it, after the #, so it opens here with nothing stored.</p>
   </section>
 </main>
 
@@ -432,7 +433,7 @@
     </div>
     <div class="step">
       <h3>Take the file with you</h3>
-      <p>One button copies the deck as a single self-contained HTML file. Open it anywhere, present it offline, email it, done.</p>
+      <p>One button copies the deck as a single self-contained HTML file. Open it anywhere, present it offline, email it, done. Or copy a link with the whole deck inside it.</p>
     </div>
   </div>
 </section>
@@ -469,6 +470,7 @@
         <li>Full plain-text editor</li>
         <li>Live navigable preview with arrow keys and progress bar</li>
         <li>One-click copy of the deck as self-contained HTML</li>
+        <li>Links with the deck inside them, nothing stored</li>
         <li>Runs entirely in the browser; nothing is saved or sent.</li>
       </ul>
       <a class="cta btn" href="#try">Use it free</a>
@@ -479,7 +481,7 @@
       <p>For people who make a deck every week and want it saved and polished.</p>
       <ul>
         <li>Saved decks, themes, speaker notes</li>
-        <li>PDF export, shareable links</li>
+        <li>PDF export</li>
         <li>Plain text in, always.</li>
       </ul>
       <a class="cta btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro" target="_blank" rel="noopener">Join early access</a>
@@ -491,7 +493,8 @@
 <section id="limits">
   <h2>Honest limits</h2>
   <ul class="limits">
-    <li>Nothing is saved — close the tab and your text is gone.</li>
+    <li>Nothing is stored — close the tab without copying a link or the HTML and your text is gone.</li>
+    <li>Anyone with a link can read the deck in it, and a very long deck makes a link some apps cut short.</li>
     <li>One layout and one typeface; no themes or branding.</li>
     <li>No images, tables, or nested lists yet.</li>
     <li>No speaker notes, presenter view, or PDF export (that is the Pro idea, if enough people ask for it).</li>

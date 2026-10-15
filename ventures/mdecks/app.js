@@ -40,6 +40,7 @@
     "- This editor and the live preview",
     "- Arrow keys or swipe to present",
     "- **Copy deck as HTML**: one file that opens in any browser",
+    "- **Copy link**: the whole deck rides inside the link",
     "- Nothing is saved or sent: your deck stays in this tab",
     "",
     "---",
@@ -52,7 +53,7 @@
     "",
     "- Saved decks and themes",
     "- Speaker notes",
-    "- PDF export and a shareable link",
+    "- PDF export",
     "- **$5/mo**, the founding price",
     "",
     "Pro isn't built yet, and nothing is charged today.",
@@ -163,6 +164,7 @@
     if (current < 0) current = 0;
     render();
     note(cuts, over);
+    scheduleLink();
   }
 
   function render() {
@@ -403,6 +405,101 @@
     touchX = null;
   }, { passive: true });
 
+  // Links: the deck's text travels in the link after "#", which browsers never send to a server, so
+  // nothing is stored. #d= is the text deflated (raw) and base64url-encoded; #md= is the text
+  // percent-encoded, for anything that can't compress. The README shows how to make either.
+  var linkBtn = document.getElementById("link");
+  var linkNote = document.getElementById("linknote");
+  var linkFor = null, link = null, linkTimer = null;
+
+  function say(text, warn) {
+    linkNote.hidden = !text;
+    linkNote.textContent = text || "";
+    linkNote.classList.toggle("warn", !!warn);
+  }
+
+  function base64url(bytes) {
+    var s = "";
+    for (var i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+
+  function unbase64url(text) {
+    var s = atob(text.replace(/-/g, "+").replace(/_/g, "/"));
+    var bytes = new Uint8Array(s.length);
+    for (var i = 0; i < s.length; i++) bytes[i] = s.charCodeAt(i);
+    return bytes;
+  }
+
+  function through(data, transform) {
+    return new Response(new Blob([data]).stream().pipeThrough(transform));
+  }
+
+  // A link to this text, as a promise.
+  function makeLink(text) {
+    var base = location.href.split("#")[0];
+    if (typeof CompressionStream !== "function") return Promise.resolve(base + "#md=" + encodeURIComponent(text));
+    return through(text, new CompressionStream("deflate-raw")).arrayBuffer().then(function (buf) {
+      return base + "#d=" + base64url(new Uint8Array(buf));
+    });
+  }
+
+  // A link to the deck is kept ready, so a click copies it at once: some browsers only let a page
+  // copy while it is still answering the click.
+  function scheduleLink() {
+    clearTimeout(linkTimer);
+    linkTimer = setTimeout(function () {
+      var text = src.value;
+      makeLink(text).then(function (url) { linkFor = text; link = url; });
+    }, 250);
+  }
+
+  // The deck in a "#", as a promise of its text, or null when there is none.
+  function readLink(hash) {
+    var params = new URLSearchParams(hash.replace(/^#/, ""));
+    if (params.has("md")) return Promise.resolve(params.get("md"));
+    if (!params.has("d")) return null;
+    return Promise.resolve(params.get("d")).then(function (data) {
+      if (typeof DecompressionStream !== "function") throw new Error("no DecompressionStream");
+      return through(unbase64url(data), new DecompressionStream("deflate-raw")).text();
+    });
+  }
+
+  function openLink() {
+    var reading = readLink(location.hash);
+    if (!reading) return;
+    reading.then(function (text) {
+      load(text);
+      current = 0;
+      parse();
+      say("Opened from a link. Edits stay in this tab; copy a new link to share them.");
+    }, function () {
+      if (!src.value) { load(SAMPLE); parse(); }
+      say("This link's deck couldn't be opened. It may have been cut short on the way.", true);
+    });
+  }
+
+  // Put text in the editor, showing its start.
+  function load(text) {
+    src.value = text;
+    src.scrollTop = 0;
+  }
+
+  function share(url) {
+    history.replaceState(null, "", url);
+    say(url.length > 8000 ? "This link is " + url.length.toLocaleString("en") + " characters long. Some apps " +
+      "cut links that long short; the HTML copy travels anywhere." : "");
+    copyText(url, linkBtn, "Link copied!", function () {
+      say("Couldn't copy here, but the link is in the address bar.", true);
+    });
+  }
+
+  linkBtn.addEventListener("click", function () {
+    var text = src.value;
+    if (linkFor === text) share(link);
+    else makeLink(text).then(share);
+  });
+
   // Build the self-contained export deck: the slides as shown, cuts and all.
   function buildExport() {
     var slidesHtml = deck.map(function (s) {
@@ -427,31 +524,43 @@
   }
 
   copyBtn.addEventListener("click", function () {
-    var html = buildExport();
-    var done = function () {
-      var old = copyBtn.textContent;
-      copyBtn.textContent = "Copied!";
-      setTimeout(function () { copyBtn.textContent = old; }, 1500);
-    };
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      navigator.clipboard.writeText(html).then(done, function () { fallbackCopy(html, done); });
-    } else {
-      fallbackCopy(html, done);
-    }
+    copyText(buildExport(), copyBtn, "Copied!");
   });
 
-  function fallbackCopy(text, done) {
+  // Copy, then say so on the button for a moment; failed (optional) runs when the browser won't copy.
+  function copyText(text, button, label, failed) {
+    var done = function () {
+      if (!button.dataset.label) button.dataset.label = button.textContent;
+      button.textContent = label;
+      clearTimeout(button.labelTimer);
+      button.labelTimer = setTimeout(function () { button.textContent = button.dataset.label; }, 1500);
+    };
+    var fallback = function () { fallbackCopy(text, done, failed || function () {}); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } else {
+      fallback();
+    }
+  }
+
+  function fallbackCopy(text, done, failed) {
     var ta = document.createElement("textarea");
     ta.value = text;
     ta.style.position = "fixed";
     ta.style.opacity = "0";
     document.body.appendChild(ta);
     ta.select();
-    try { document.execCommand("copy"); done(); } catch (e) { /* give up quietly */ }
+    var copied = false;
+    try { copied = document.execCommand("copy"); } catch (e) { copied = false; }
     document.body.removeChild(ta);
+    if (copied) done(); else failed();
   }
 
-  src.value = SAMPLE;
+  // A deck in the address opens in place of the sample, and so does one pasted into it later.
+  var linked = /(^#|&)(d|md)=/.test(location.hash);
+  load(linked ? "" : SAMPLE);
   makeFrame();
   parse();
+  if (linked) openLink();
+  window.addEventListener("hashchange", openLink);
 })();
