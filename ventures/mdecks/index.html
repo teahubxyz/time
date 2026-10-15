@@ -183,19 +183,21 @@
     touch-action: pan-y;
   }
   .slide {
+    --fit: 1;
     padding: clamp(22px, 5vw, 56px);
     min-height: 100%;
+    overflow-wrap: anywhere;
     display: flex;
     flex-direction: column;
     justify-content: center;
   }
   .slide h1 {
-    font-size: clamp(1.6rem, 4.5vw, 3rem);
+    font-size: calc(clamp(1.6rem, 4.5vw, 3rem) * var(--fit));
     margin: 0 0 0.5em;
     line-height: 1.15;
   }
   .slide h2 {
-    font-size: clamp(1.2rem, 3vw, 1.9rem);
+    font-size: calc(clamp(1.2rem, 3vw, 1.9rem) * var(--fit));
     margin: 0 0 0.6em;
     color: var(--ink-dim);
     font-weight: 500;
@@ -203,11 +205,11 @@
   .slide ul {
     margin: 0;
     padding-left: 1.3em;
-    font-size: clamp(1rem, 2.2vw, 1.35rem);
+    font-size: calc(clamp(1rem, 2.2vw, 1.35rem) * var(--fit));
     line-height: 1.7;
   }
   .slide p {
-    font-size: clamp(1rem, 2.2vw, 1.35rem);
+    font-size: calc(clamp(1rem, 2.2vw, 1.35rem) * var(--fit));
     line-height: 1.7;
     margin: 0.3em 0;
   }
@@ -225,6 +227,11 @@
     padding: 1px 6px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.9em;
+  }
+  .fit-note {
+    font-size: 0.78rem;
+    color: #f2c46d;
+    margin-top: 8px;
   }
   .export-note {
     font-size: 0.78rem;
@@ -406,7 +413,7 @@
       <span class="counter" id="counter">1 / 1</span>
     </div>
     <div class="progress" role="progressbar" aria-label="Deck progress"><div id="bar"></div></div>
-    <div class="slide-wrap" id="wrap"><article class="slide" id="slide"></article></div>
+    <div class="slide-wrap" id="wrap"><article class="slide" id="slide"></article></div><p class="fit-note" id="fitnote" role="status" hidden></p>
     <p class="export-note">The copied file is a self-contained deck: open it in any browser and use &larr; / &rarr; to present.</p>
   </section>
 </main>

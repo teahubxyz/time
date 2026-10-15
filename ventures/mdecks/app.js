@@ -8,6 +8,7 @@
   var prevBtn = document.getElementById("prev");
   var nextBtn = document.getElementById("next");
   var copyBtn = document.getElementById("copy");
+  var noteEl = document.getElementById("fitnote");
 
   var SAMPLE = [
     "# .mdeck",
@@ -132,15 +133,62 @@
     if (current >= slides.length) current = slides.length - 1;
     if (current < 0) current = 0;
     render();
+    scheduleLint();
   }
 
   function render() {
     slideEl.innerHTML = renderSlide(slides[current]);
+    fit(slideEl, wrap);
+    wrap.scrollTop = 0;
     counterEl.textContent = (current + 1) + " / " + slides.length;
     var pct = slides.length <= 1 ? 100 : (current / (slides.length - 1)) * 100;
     barEl.style.width = pct + "%";
     prevBtn.disabled = current === 0;
     nextBtn.disabled = current === slides.length - 1;
+  }
+
+  // Fit each slide to the screen: shrink its text, never below FLOOR, until nothing has to scroll.
+  // A slide that still doesn't fit keeps scrolling and is named under the preview.
+  var FLOOR = 0.7;
+  var lintTimer = null;
+
+  function fits(box) {
+    return box.scrollHeight <= box.clientHeight + 1;
+  }
+
+  // The text scale the slide got, or 0 when it is too long even at FLOOR.
+  function fit(el, box) {
+    el.style.setProperty("--fit", "1");
+    if (fits(box)) return 1;
+    el.style.setProperty("--fit", String(FLOOR));
+    if (!fits(box)) return 0;
+    var lo = FLOOR, hi = 1;
+    for (var k = 0; k < 6; k++) {
+      var mid = (lo + hi) / 2;
+      el.style.setProperty("--fit", String(mid));
+      if (fits(box)) lo = mid; else hi = mid;
+    }
+    el.style.setProperty("--fit", String(lo));
+    return lo;
+  }
+
+  function lint() {
+    var tooLong = [];
+    for (var k = 0; k < slides.length; k++) {
+      slideEl.innerHTML = renderSlide(slides[k]);
+      if (!fit(slideEl, wrap)) tooLong.push(k + 1);
+    }
+    render();
+    noteEl.hidden = tooLong.length === 0;
+    noteEl.textContent = !tooLong.length ? "" :
+      (tooLong.length === 1 ? "Slide " + tooLong[0] + " is" : "Slides " + tooLong.join(", ") + " are") +
+      " too long to fit, even with smaller text. Split " + (tooLong.length === 1 ? "it" : "them") +
+      " with --- or cut some words.";
+  }
+
+  function scheduleLint() {
+    clearTimeout(lintTimer);
+    lintTimer = setTimeout(lint, 200);
   }
 
   function go(delta) {
@@ -151,6 +199,7 @@
   }
 
   src.addEventListener("input", parse);
+  window.addEventListener("resize", scheduleLint);
   prevBtn.addEventListener("click", function () { go(-1); });
   nextBtn.addEventListener("click", function () { go(1); });
 
@@ -184,12 +233,12 @@
       "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0f1115;color:#e8eaf0;display:flex;flex-direction:column}" +
       ".bar{height:5px;background:#1e222b}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#6ea8fe,#9d7bff);transition:width .18s ease}" +
       "main{flex:1;overflow-y:auto}" +
-      ".s{display:none;padding:clamp(24px,6vw,64px);min-height:100%;flex-direction:column;justify-content:center}" +
+      ".s{display:none;--fit:1;padding:clamp(24px,6vw,64px);min-height:100%;flex-direction:column;justify-content:center;overflow-wrap:anywhere}" +
       ".s.on{display:flex}" +
-      "h1{font-size:clamp(1.8rem,5vw,3.2rem);margin:0 0 .5em;line-height:1.15}" +
-      "h2{font-size:clamp(1.2rem,3vw,1.9rem);color:#9aa1af;font-weight:500;margin:0 0 .6em}" +
-      "ul{margin:0;padding-left:1.3em;font-size:clamp(1.1rem,2.5vw,1.5rem);line-height:1.7}" +
-      "p{font-size:clamp(1.1rem,2.5vw,1.5rem);line-height:1.7;margin:.3em 0}" +
+      "h1{font-size:calc(clamp(1.8rem,5vw,3.2rem)*var(--fit));margin:0 0 .5em;line-height:1.15}" +
+      "h2{font-size:calc(clamp(1.2rem,3vw,1.9rem)*var(--fit));color:#9aa1af;font-weight:500;margin:0 0 .6em}" +
+      "ul{margin:0;padding-left:1.3em;font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7}" +
+      "p{font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7;margin:.3em 0}" +
       "code{background:rgba(110,168,254,.12);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}" +
       "a{color:#6ea8fe;text-decoration:none}a:hover{text-decoration:underline}" +
       ".empty{color:#9aa1af;font-style:italic}" +
@@ -198,7 +247,10 @@
       slidesHtml +
       "\n</main>\n<div class=\"n\" id=\"n\"></div>\n<script>\n" +
       "var s=document.querySelectorAll('.s'),i=0,n=document.getElementById('n'),b=document.getElementById('b');\n" +
-      "function show(){for(var k=0;k<s.length;k++)s[k].classList.toggle('on',k===i);n.textContent=(i+1)+' / '+s.length;b.style.width=(s.length<=1?100:i/(s.length-1)*100)+'%';}\n" +
+      "function show(){for(var k=0;k<s.length;k++)s[k].classList.toggle('on',k===i);n.textContent=(i+1)+' / '+s.length;b.style.width=(s.length<=1?100:i/(s.length-1)*100)+'%';fit(s[i]);}\n" +
+      "var F=0.7,m=document.querySelector('main');function ok(){return m.scrollHeight<=m.clientHeight+1;}\n" +
+      "function fit(e){e.style.setProperty('--fit','1');if(ok())return;e.style.setProperty('--fit',String(F));if(!ok())return;var lo=F,hi=1;for(var k=0;k<6;k++){var md=(lo+hi)/2;e.style.setProperty('--fit',String(md));if(ok())lo=md;else hi=md;}e.style.setProperty('--fit',String(lo));}\n" +
+      "window.addEventListener('resize',function(){fit(s[i]);});\n" +
       "function go(d){var j=i+d;if(j<0||j>s.length-1)return;i=j;show();}\n" +
       "document.addEventListener('keydown',function(e){if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown'){e.preventDefault();go(1);}else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(-1);}else if(e.key==='Home'){i=0;show();}else if(e.key==='End'){i=s.length-1;show();}});\n" +
       "var x=null;document.addEventListener('touchstart',function(e){x=e.touches[0].clientX;},{passive:true});" +
