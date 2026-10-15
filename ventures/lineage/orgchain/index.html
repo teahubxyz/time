@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orgchain · Lineage</title>
-<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make items, buy and sell items and orgs, publish keyrings, charter legal forms, send test BTC, graduate and close, one beat at a time. Test coins only.">
+<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make items, buy and sell items, orgs and whole holdings, publish keyrings, charter legal forms, send test BTC, graduate and close, one beat at a time. Test coins only.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <script src="./theme.js"></script>
-  <script type="module" crossorigin src="./assets/index-Ox6KvI0i.js"></script>
+  <script type="module" crossorigin src="./assets/index-Ce2tG4vI.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-DqzJ8wiA.css">
 </head>
 <body>
@@ -17,7 +17,7 @@
     <div>
       <p class="kicker"><a href="../">Lineage</a> /</p>
       <h1 class="wordmark">Orgchain</h1>
-      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make items, buy and sell items and orgs, publish keyrings, charter legal forms, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
+      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make items, buy and sell items, orgs and whole holdings, publish keyrings, charter legal forms, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
     </div>
     <div class="flags">
       <span class="flag hz">Test coins only</span>
@@ -137,11 +137,11 @@
               <select id="send-to" name="to"></select>
               <label class="lab" for="send-amount">Amount <span>test BTC</span></label>
               <div class="line amt"><input id="send-amount" name="amount" inputmode="decimal" maxlength="17" spellcheck="false" placeholder="1.5"><button class="btn" type="button" id="send-max">Max</button></div>
-              <p class="hint">The sender pays the chain's 500-sat fee. One send spends at most eight coins and moves at most 50 test BTC, one block reward.</p>
+              <p class="hint">The sender pays the chain's 500-sat fee. One send spends at most 64 coins and moves at most 50 test BTC, one block reward.</p>
               <button class="btn primary go" type="submit">Send</button>
             </form>
             <form class="vf pad" id="f-offer" data-form="offer" autocomplete="off" hidden>
-              <p class="vh"><b data-name></b> buys an item or an org that another node holds. It has <b id="offer-has"></b>.</p>
+              <p class="vh"><b data-name></b> buys an item another node holds, or an org or a whole holding with its tree. It has <b id="offer-has"></b>.</p>
               <label class="lab" for="offer-item">Lot</label>
               <select id="offer-item" name="lot"></select>
               <div class="ask" id="offer-ask" hidden><p id="offer-ask-line"></p><button class="btn primary" type="button" id="offer-take">Take it</button></div>
@@ -151,7 +151,7 @@
               <button class="btn primary go" type="submit" id="offer-go">Make the offer</button>
             </form>
             <form class="vf pad" id="f-sell" data-form="sell" autocomplete="off" hidden>
-              <p class="vh"><b data-name></b> lists an item it holds, or an org of its own, for any node to take at its price.</p>
+              <p class="vh"><b data-name></b> lists an item it holds, an org of its own with its tree, or, as a holding, itself whole, for any node to take at its price.</p>
               <label class="lab" for="sell-lot">Lot</label>
               <select id="sell-lot" name="lot"></select>
               <label class="lab" for="sell-price">Price <span>test BTC</span></label>
