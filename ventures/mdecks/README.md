@@ -29,6 +29,8 @@ Everything runs in the page. Nothing is stored, nothing is sent anywhere, no acc
 
 ## Links, for agents and scripts
 
+The quickest way to hand this to an agent is the page's **Copy prompt for your agent** button. It copies [SKILL.md](SKILL.md) as a prompt: paste it into Claude, ChatGPT, Cursor or any other agent, ask for a deck, and the agent answers with a link that opens here. An agent that can install skills can keep SKILL.md as the `mdeck` skill instead.
+
 A link is the page's address, then `#d=`, then the deck's text (UTF-8) compressed with raw deflate and written in base64url without padding. Anything that can't compress can use `#md=` and the text percent-encoded instead; those links are just longer. The page opens either kind.
 
 In Python:

@@ -250,7 +250,7 @@
   }
   .steps {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
     gap: 20px;
   }
   .step {
@@ -379,12 +379,14 @@
   header h1 { font-size: 1.4rem; letter-spacing: -0.01em; }
   header .promise { margin: 0; color: var(--ink-dim); font-size: 0.9rem; }
   header .early-note { margin: 0 0 0 auto; font-size: 0.75rem; color: var(--ink-dim); }
+  header .agent { padding: 6px 12px; font-size: 0.8rem; white-space: nowrap; }
   main { flex: none; height: calc(100svh - 60px); min-height: 460px; }
   main section { padding: 0; max-width: none; margin: 0; }
   .hint code { white-space: nowrap; }
   @media (max-width: 820px) {
     header { padding: 10px 16px; }
     header .early-note { margin: 0; flex: 1 1 150px; }
+    header .agent { order: 1; }
     main { height: auto; min-height: 0; grid-template-rows: auto auto; padding: 12px 16px 16px; }
   }
 </style>
@@ -393,6 +395,7 @@
 <header>
   <h1><span class="dot">.</span>mdeck</h1>
   <p class="promise">Plain text in, slides out.</p>
+  <button id="agent" class="agent">Copy prompt for your agent</button>
   <p class="early-note">Opens a public GitHub issue. No email, no payment.</p>
   <a class="cta" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+.mdeck&venture=mdecks&plan=Pro" target="_blank" rel="noopener">Get early access</a>
 </header>
@@ -434,6 +437,10 @@
     <div class="step">
       <h3>Take the file with you</h3>
       <p>One button copies the deck as a single self-contained HTML file. Open it anywhere, present it offline, email it, done. Or copy a link with the whole deck inside it.</p>
+    </div>
+    <div class="step">
+      <h3>Or ask your agent</h3>
+      <p>Press <b>Copy prompt for your agent</b> at the top, paste it into Claude, ChatGPT, Cursor or any other agent, and ask for a deck. It answers with a link that opens here.</p>
     </div>
   </div>
 </section>

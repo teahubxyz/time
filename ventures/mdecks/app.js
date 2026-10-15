@@ -500,6 +500,26 @@
     else makeLink(text).then(share);
   });
 
+  // The prompt for an agent is SKILL.md, fetched once, so pasting it teaches any agent to make these links;
+  // it also points to the file, for agents that can install it as a skill. Until SKILL.md arrives (or if
+  // it can't), the prompt only points to it.
+  var SKILL_URL = "https://mdecks.yolopreneur.lol/SKILL.md";
+  var agentBtn = document.getElementById("agent");
+  var agentPrompt = "Read " + SKILL_URL + " and follow it to make slide decks for me as .mdeck links.";
+
+  fetch("SKILL.md").then(function (r) {
+    if (!r.ok) throw new Error("SKILL.md: " + r.status);
+    return r.text();
+  }).then(function (skill) {
+    agentPrompt = "Use .mdeck to make slide decks for me. These instructions are also at " + SKILL_URL +
+      "; if you can install skills, save that file as a skill named mdeck so you have it next time.\n\n" +
+      skill.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n+/, "");
+  }).catch(function () { /* keep the prompt that points to SKILL.md */ });
+
+  agentBtn.addEventListener("click", function () {
+    copyText(agentPrompt, agentBtn, "Prompt copied!");
+  });
+
   // Build the self-contained export deck: the slides as shown, cuts and all.
   function buildExport() {
     var slidesHtml = deck.map(function (s) {
