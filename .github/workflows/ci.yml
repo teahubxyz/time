@@ -18,3 +18,4 @@ jobs:
         with:
           node-version: 22
       - run: python3 .github/time/test_time.py
+      - run: python3 .github/time/test_seed.py

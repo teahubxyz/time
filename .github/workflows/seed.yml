@@ -1,0 +1,59 @@
+name: seed
+# Seed a venture on demand: land a site that was built somewhere else (by hand, on the Mac, by another agent) on
+# yolopreneur.lol. Actions -> seed -> Run workflow, with the inputs below.
+# The bundle is a .tgz whose top-level folder is the slug. .github/time/seed.py checks it against its sha256, copies
+# it over ventures/<slug>/ on gh-pages in one commit, adds or refreshes the venture's line in ventures/ventures.json,
+# and the last step asks Teahub pages to pull, so <slug>.yolopreneur.lol serves it within the minute.
+# Nothing in the bundle runs: it is checked (plain files and folders under <slug>/, an index.html) and copied.
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Folder and subdomain: ventures/<slug>/ is served at <slug>.yolopreneur.lol"
+        required: true
+        type: string
+      bundle:
+        description: "https URL of the .tgz, or of its parts, space-separated and in order"
+        required: true
+        type: string
+      sha256:
+        description: "sha256 of the whole .tgz"
+        required: true
+        type: string
+      name:
+        description: "Name in the ledger (needed for a new venture)"
+        required: false
+        type: string
+      one_liner:
+        description: "One line in the ledger (needed for a new venture)"
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: venture          # the venture loop writes gh-pages too: take turns
+  cancel-in-progress: false
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/time
+          path: engine
+          persist-credentials: false
+      - uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: pages
+          fetch-depth: 1
+      - run: python3 engine/.github/time/seed.py pages
+        env:                     # inputs reach the script through the environment, never interpolated into it
+          SLUG: ${{ inputs.slug }}
+          BUNDLE: ${{ inputs.bundle }}
+          SHA: ${{ inputs.sha256 }}
+          NAME: ${{ inputs.name }}
+          ONE_LINER: ${{ inputs.one_liner }}
+      - name: tell Teahub pages to pull
+        run: curl -fsS -X POST "https://yolopreneur.lol/_hook/${GITHUB_REPOSITORY}" || echo "pages pulls by itself within five minutes"
