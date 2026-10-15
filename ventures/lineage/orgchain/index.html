@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orgchain · Lineage</title>
-<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, graduate and close, one beat at a time. Test coins only.">
+<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, send test BTC, graduate and close, one beat at a time. Test coins only.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <script src="./theme.js"></script>
-  <script type="module" crossorigin src="./assets/index-CUVkz3ou.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-C2KQkSf9.css">
+  <script type="module" crossorigin src="./assets/index-C8pEZCQ4.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BwSr_QKO.css">
 </head>
 <body>
 <header class="band">
@@ -17,7 +17,7 @@
     <div>
       <p class="kicker"><a href="../">Lineage</a> /</p>
       <h1 class="wordmark">Orgchain</h1>
-      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, graduate and close. Each act is an inscription whose parent is the node that authorizes it, and each <b>beat</b> is a block. Lineage gives the structure; the chain adds time.</p>
+      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, and each <b>beat</b> is a block that pays the holding 50 test BTC. Lineage gives the structure; the chain adds time.</p>
     </div>
     <div class="flags">
       <span class="flag hz">Test coins only</span>
@@ -33,8 +33,8 @@
       <span class="lab" id="tempo-l">Tempo</span>
       <button type="button" class="seg" data-tempo="each" aria-pressed="true">Each act</button><button type="button" class="seg" data-tempo="10" aria-pressed="false">10s</button><button type="button" class="seg" data-tempo="30" aria-pressed="false">30s</button><button type="button" class="seg" data-tempo="60" aria-pressed="false">60s</button><button type="button" class="seg" data-tempo="manual" aria-pressed="false">Manual</button>
     </div>
-    <p class="beatno">Beat <b id="clock-beat">0</b> · <span id="clock-cued">nothing cued</span></p>
-    <button type="button" class="btn primary" id="beat-now" disabled>Beat now</button>
+    <p class="beatno">Beat <b id="clock-beat">0</b> · <span id="clock-cued">nothing cued</span> · <span id="clock-pays">beats pay the lab wallet</span></p>
+    <button type="button" class="btn primary" id="beat-now">Beat now</button>
     <div class="scrub">
       <label class="lab" for="beat">View</label>
       <input type="range" id="beat" min="0" max="0" value="0" step="1">
@@ -77,7 +77,7 @@
           <p class="pad note" id="act-none">Select a holding, or a node in its tree, to act through it.</p>
           <div class="pad note" id="act-past" hidden><p>You are looking at beat <b id="past-beat"></b>. History is read-only.</p><button type="button" class="btn sm" id="past-now">Back to now</button></div>
           <div id="act-on" hidden>
-            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
+            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="send" aria-pressed="false">Send</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
             <p class="keyline" id="act-key"></p>
             <p class="why pad" id="act-why"></p>
             <form class="vf pad" id="f-birth" data-form="birth" autocomplete="off">
@@ -108,6 +108,15 @@
               <label class="lab" for="decide-why">Why <span>optional</span></label>
               <textarea id="decide-why" name="why" maxlength="400" rows="3"></textarea>
               <button class="btn primary go" type="submit">Decide</button>
+            </form>
+            <form class="vf pad" id="f-send" data-form="send" autocomplete="off" hidden>
+              <p class="vh"><b data-name></b> sends test BTC from its SegWit address. It has <b id="send-has"></b>.</p>
+              <label class="lab" for="send-to">To</label>
+              <select id="send-to" name="to"></select>
+              <label class="lab" for="send-amount">Amount <span>test BTC</span></label>
+              <div class="line amt"><input id="send-amount" name="amount" inputmode="decimal" maxlength="17" spellcheck="false" placeholder="1.5"><button class="btn" type="button" id="send-max">Max</button></div>
+              <p class="hint">The sender pays the chain's 500-sat fee. One send spends at most two coins and moves at most 50 test BTC, one block reward.</p>
+              <button class="btn primary go" type="submit">Send</button>
             </form>
             <form class="vf pad" id="f-graduate" data-form="graduate" hidden>
               <p class="vh"><b data-parent></b> vouches for <b data-name></b>, and the edge flips from derived to adopted. A graduated org holds its own root, so it stays open if <b data-parent></b> closes. The event spends <b data-parent></b>'s inscription.</p>
