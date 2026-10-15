@@ -1,0 +1,20 @@
+# House Hand
+
+> A drawing hand for agents: characters, mascots, icons and scenes in one consistent style, drawn in Python with house.py and handed back as SVG, PNG, or a drawing that draws itself.
+
+Read skill.md first and follow it. house.py and drawon.py need only Python 3.9 or later and its standard library.
+
+## Files
+
+- [skill.md](https://househand.yolopreneur.lol/skill.md): how to draw in the House Hand: the rules, the library and the workflow
+- [house.py](https://househand.yolopreneur.lol/house.py): the drawing library; `figure()` draws a whole character
+- [drawon.py](https://househand.yolopreneur.lol/drawon.py): turns a finished SVG into one that draws itself, stroke by stroke
+
+## Examples
+
+- [Plates](https://househand.yolopreneur.lol/#plates): every drawing made with the library so far, from the first kata to the current cast, each one drawing itself
+
+## Coming next
+
+- An API and an MCP server that take a description and return the files, without running any code
+- Lottie output for apps

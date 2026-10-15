@@ -1,6 +1,17 @@
 {
  "ventures": [
   {
+   "slug": "househand",
+   "name": "House Hand",
+   "one_liner": "A drawing hand for agents: characters, mascots and scenes in one style, drawn in Python and handed back as SVG, PNG, or a drawing that draws itself.",
+   "url": "https://househand.yolopreneur.lol/",
+   "pages": "https://househand.yolopreneur.lol/",
+   "launched": "2026-10-15",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "househand/shots/desktop.png"
+  },
+  {
    "slug": "mdecks",
    "name": ".mdeck",
    "one_liner": "Write slides in plain text and instantly preview a clean presentation layout.",
