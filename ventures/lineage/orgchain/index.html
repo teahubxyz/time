@@ -8,8 +8,8 @@
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <script src="./theme.js"></script>
-  <script type="module" crossorigin src="./assets/index-BKQb5ieV.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-DZ6N3IHo.css">
+  <script type="module" crossorigin src="./assets/index-eJVOEOGG.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-BmeAqZOd.css">
 </head>
 <body>
 <header class="band">
@@ -55,7 +55,7 @@
         <form class="pad found" id="f-found" autocomplete="off">
           <label class="lab" for="found-name">Found a holding</label>
           <div class="line"><input id="found-name" name="name" maxlength="60" spellcheck="false" placeholder="acme-holdings"><button class="btn primary" type="submit">Found</button></div>
-          <p class="hint">Names become domains: lowercase letters, digits and hyphens.</p>
+          <p class="hint">Names become domains: lowercase letters, digits and hyphens. Each holding gets its own 24-word lab root (test keys only).</p>
         </form>
         <div class="pad sample"><button class="btn" type="button" id="sample">Load the yolopreneur sample</button></div>
       </div>
@@ -78,6 +78,7 @@
           <div class="pad note" id="act-past" hidden><p>You are looking at beat <b id="past-beat"></b>. History is read-only.</p><button type="button" class="btn sm" id="past-now">Back to now</button></div>
           <div id="act-on" hidden>
             <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
+            <p class="keyline" id="act-key"></p>
             <p class="why pad" id="act-why"></p>
             <form class="vf pad" id="f-birth" data-form="birth" autocomplete="off">
               <p class="vh">A child of <b data-name></b>. Its birth spends <b data-name></b>'s inscription.</p>
@@ -134,7 +135,7 @@
       <input type="file" id="load-file" accept="application/json,.json" hidden>
       <div id="confirm" class="confirm" hidden></div>
     </div>
-    <p>Everything here lives in this browser: a test wallet, a private toy chain, pretend money. Nothing is a real key, and minting a real root is the operator's call.</p>
+    <p>Everything here lives in this browser: test keys (a lab root per holding), a private toy chain, pretend money. Nothing is a real key, and minting a real root is the operator's call.</p>
     <p>Orgchain is lineage's app, built on <a href="https://supertestnet.lol">Super Testnet</a>'s chain and inscriptions, where the full lab lives. Source: <a href="https://teahub.xyz/lineage/orgchain">lineage/orgchain</a>. Licenses: <a href="./licenses/supertestnet-CC0.txt">Super Testnet (CC0)</a>, <a href="./licenses/tapscript.txt">tapscript</a>, <a href="./licenses/noble-curves.txt">noble-curves</a>, <a href="./licenses/noble-hashes.txt">noble-hashes</a>.</p>
   </footer>
 </main>
