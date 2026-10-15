@@ -313,7 +313,7 @@ ASSERTION PASSED: goal text identical before and after the crash.</code></pre>
   <ul class="rules">
     <li><span class="flag">1 goal</span> <span class="desc">One objective per project at a time. Not a task list, not a scheduler, not a replacement for your issue tracker.</span></li>
     <li><span class="flag">no force</span> <span class="desc">The injected text is plain, visible user context &mdash; it carries no special authority inside Codex. A model can still choose to ignore it, same as any other instruction.</span></li>
-    <li><span class="flag">no grading</span> <span class="desc">This only guarantees the goal is faithfully re-stated every run. It does not inspect diffs or grade progress &mdash; pair it with <a href="/v/finishline-supervisor/">finishline-supervisor</a> for that.</span></li>
+    <li><span class="flag">no grading</span> <span class="desc">This only guarantees the goal is faithfully re-stated every run. It does not inspect diffs or grade progress &mdash; pair it with <a href="https://finishline-supervisor.yolopreneur.lol/">finishline-supervisor</a> for that.</span></li>
     <li><span class="flag">plain json</span> <span class="desc"><code>$CODEX_GOAL_HOME</code> is ordinary local storage with your file permissions, no encryption. Don't put secrets in goal text.</span></li>
     <li><span class="flag">local lock</span> <span class="desc">Locking is advisory and local-filesystem only &mdash; it doesn't coordinate over NFS/SMB or across machines.</span></li>
     <li><span class="flag">your flags</span> <span class="desc"><code>run</code> forwards whatever <code>codex exec</code> flags you give it, including dangerous ones if you ask for them. This wrapper adds or removes none of Codex's own safety behavior.</span></li>
