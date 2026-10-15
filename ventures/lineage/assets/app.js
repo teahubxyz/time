@@ -16,7 +16,8 @@ const VEC = {
     btc: 'bc1qcr8te4kr609gcawutmrza0j4xv80jy8z306fyu',
     zpub: 'zpub6rFR7y4Q2AijBEqTUquhVz398htDFrtymD9xYYfG1m4wAcvPhXNfE3EfH1r1ADqtfSdVCToUG868RvUUkgDKf31mGDtKsAYz2oz2AGutZYs',
     eth: '0x9858EfFD232B4033E47d90003D41EC34EcaEda94',
-    note: 'Loaded the BIP-84 test mnemonic. The ✓ marks in the tree mean the derived address, zpub and Ethereum address match the published values.'
+    tap: 'bc1p5cyxnuxmeuwuvkwfem96lqzszd02n6xdcjrs20cac6yqjjwudpxqkedrcr',
+    note: 'Loaded the BIP-84 and BIP-86 test mnemonic. The ✓ marks in the tree mean the derived addresses, zpub and Ethereum address match the published values.'
   },
   nip06: {
     m: 'leader monkey parrot ring guide accident before fence cannon height naive bean',
@@ -66,6 +67,15 @@ const p2wpkh = (pub) => L.bech32.encode('bc', [0, ...L.bech32.toWords(L.ripemd16
 const wif = (priv) => L.base58check.encode(L.concatBytes(Uint8Array.of(0x80), priv, Uint8Array.of(1)));
 const npubOf = (pk) => L.bech32.encode('npub', L.bech32.toWords(pk));
 const nsecOf = (sk) => L.bech32.encode('nsec', L.bech32.toWords(sk));
+const B = globalThis.__LCB.base;
+const N = 0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141n;
+const big = (b) => BigInt('0x' + hex(b));
+// BIP-86: key-path-only Taproot. The output key commits to the internal key and no scripts.
+function tapTweak(xonly) {
+  const u = L.schnorr.utils, t = big(u.taggedHash('TapTweak', xonly)) % N;
+  return u.pointToBytes(u.lift_x(big(xonly)).add(L.schnorr.Point.BASE.multiply(t)));
+}
+const p2tr = (q) => B.bech32m.encode('bc', [1, ...B.bech32m.toWords(q)]);
 
 const sigCache = new Map();
 function signEvent(sk, created_at, kind, tags, content) {
@@ -100,12 +110,21 @@ function nostrAt(i) {
   const sk = k.privateKey, pk = L.schnorr.getPublicKey(sk);
   return { i, path: "m/44'/1237'/" + i + "'/0/0", sk, pk, hex: hex(pk), npub: npubOf(pk), nsec: nsecOf(sk) };
 }
+// An account's Bitcoin addresses: Taproot (BIP-86) for inscriptions, native segwit (BIP-84) for payments.
+function btcAt(account) {
+  const t = S.root.derive("m/86'/0'/" + account + "'/0/0"), s = S.root.derive("m/84'/0'/" + account + "'/0/0");
+  const internal = L.schnorr.getPublicKey(t.privateKey), output = tapTweak(internal);
+  return {
+    taproot: { path: "m/86'/0'/" + account + "'/0/0", priv: t.privateKey, internal, output, addr: p2tr(output) },
+    segwit: { path: "m/84'/0'/" + account + "'/0/0", priv: s.privateKey, pub: s.publicKey, addr: p2wpkh(s.publicKey) }
+  };
+}
 function deriveAgent(i) {
   const n = nostrAt(i), lv = {};
   for (const lf of ['ssh', 'git', 'dkim']) { const seed = leafKey(n.sk, lf); lv[lf] = { info: lf, seed, pub: L.ed25519.getPublicKey(seed) }; }
   const wg = clamp(leafKey(n.sk, 'wg'));
   lv.wg = { info: 'wg', priv: wg, pub: L.x25519.getPublicKey(wg) };
-  return { ...n, leaves: lv };
+  return { ...n, leaves: lv, btc: btcAt(i) };
 }
 function deriveAll() {
   const r = S.root;
@@ -117,6 +136,7 @@ function deriveAll() {
     fp: r.fingerprint.toString(16).padStart(8, '0'),
     eth: { priv: eth.privateKey, pub: eth.publicKey, addr: ethAddress(eth.privateKey) },
     btc: { priv: btc.privateKey, pub: btc.publicKey, addr: p2wpkh(btc.publicKey), zpub: acct.publicExtendedKey },
+    tap: btcAt(0).taproot,
     org: nostrAt(0),
     agents: new Map(S.agents.map((a) => [a.i, deriveAgent(a.i)])),
     node: {
@@ -140,7 +160,8 @@ function keyringOf(a) {
   return signEvent(d.sk, S.ts, 30078, [
     ['d', 'lineage/keyring/v0'], ['p', D.org.hex, '', 'parent'],
     ['key', 'ssh', sshLine(lv.ssh.pub, handle(a))], ['key', 'git', sshLine(lv.git.pub, handle(a))],
-    ['key', 'dkim', 'v=DKIM1; k=ed25519; p=' + b64(lv.dkim.pub)], ['key', 'wg', b64(lv.wg.pub)]
+    ['key', 'dkim', 'v=DKIM1; k=ed25519; p=' + b64(lv.dkim.pub)], ['key', 'wg', b64(lv.wg.pub)],
+    ['key', 'taproot', d.btc.taproot.addr], ['key', 'segwit', d.btc.segwit.addr]
   ], '');
 }
 function revocationOf(a) {
@@ -155,6 +176,7 @@ function vecOk(node) {
   const v = vector();
   if (v === 'bip84' && node === 'btc') return D.btc.addr === VEC.bip84.btc && D.btc.zpub === VEC.bip84.zpub;
   if (v === 'bip84' && node === 'eth') return D.eth.addr === VEC.bip84.eth;
+  if (v === 'bip84' && node === 'tap') return D.tap.addr === VEC.bip84.tap;
   if (v === 'nip06' && node === 'org') return D.org.npub === VEC.nip06.npub;
   return null;
 }
@@ -198,11 +220,14 @@ function rows() {
   out.push({ id: 'seed', g: '', p: 'org seed  ', l: '(' + S.org + ' LLC, held via the Otoco NFT)', v: 'fp ' + D.fp });
   out.push({ id: 'eth', g: '├─ ', p: "m/44'/60'".padEnd(13), l: 'ETH key that owns the NFT = legal control', v: short(D.eth.addr, 6, 4), ok: vecOk('eth') });
   out.push({ id: 'btc', g: '├─ ', p: "m/84'/0'".padEnd(13), l: 'BTC treasury', v: short(D.btc.addr, 7, 4), ok: vecOk('btc') });
+  out.push({ id: 'tap', g: '├─ ', p: "m/86'/0'".padEnd(13), l: 'BTC taproot: inscriptions', v: short(D.tap.addr, 7, 4), ok: vecOk('tap') });
   out.push({ id: 'org', g: '├─ ', p: "m/44'/1237'".padEnd(13), l: 'nostr: org identity (the well-known handle)', v: short(D.org.npub, 9, 4), ok: vecOk('org') });
   for (const a of S.agents) {
     const d = D.agents.get(a.i), id = 'a' + a.i, exp = S.open.has(id);
-    out.push({ id, g: '│   ├─ ', p: 'i=' + a.i + '  ', l: a.name + (a.revoked ? '  revoked' : '  → ssh/git/dkim/wg leaves'), v: short(d.npub, 9, 4), tog: true, exp, rev: a.revoked });
-    if (exp) LEAVES.forEach((lf, k) => out.push({ id: id + '.' + lf, g: '│   │   ' + (k === LEAVES.length - 1 ? '└─ ' : '├─ '), p: lf.padEnd(6), l: LEAF_DESC[lf], v: leafShort(d, lf), rev: a.revoked }));
+    out.push({ id, g: '│   ├─ ', p: 'i=' + a.i + '  ', l: a.name + (a.revoked ? '  revoked' : '  → taproot, segwit, ssh/git/dkim/wg'), v: short(d.npub, 9, 4), tog: true, exp, rev: a.revoked });
+    const kids = [['taproot', "inscriptions · m/86'/0'/" + a.i + "'", short(d.btc.taproot.addr, 7, 4)], ['segwit', "payments · m/84'/0'/" + a.i + "'", short(d.btc.segwit.addr, 7, 4)],
+      ...LEAVES.map((lf) => [lf, LEAF_DESC[lf], leafShort(d, lf)])];
+    if (exp) kids.forEach(([lf, l, v], k) => out.push({ id: id + '.' + lf, g: '│   │   ' + (k === kids.length - 1 ? '└─ ' : '├─ '), p: lf.padEnd(8), l, v, rev: a.revoked }));
   }
   out.push({ id: 'add', g: '│   └─ ', p: '+ ', l: 'derive i=' + nextIndex(), add: true });
   const nexp = S.open.has('node');
@@ -239,7 +264,7 @@ const verified = (e) => verifyEvent(e) ? ' · <span class="ok">✓ signature ver
 function vecChip(node) {
   const r = vecOk(node);
   if (r === null) return '';
-  const name = node === 'org' ? 'NIP-06' : node === 'btc' ? 'BIP-84' : 'known';
+  const name = node === 'org' ? 'NIP-06' : node === 'btc' ? 'BIP-84' : node === 'tap' ? 'BIP-86' : 'known';
   return r ? '<span class="chip ok">✓ ' + name + ' test vector</span>' : '<span class="chip bad">✗ test vector mismatch</span>';
 }
 const deriv = (ikm, info) => 'HKDF-SHA256(' + ikm + ', salt "lineage/v0", info "' + info + '")';
@@ -265,6 +290,13 @@ function inspect(id) {
       body(fields(field('first receive address', D.btc.addr), field("account zpub (m/84'/0'/0')", D.btc.zpub), field('public key', hex(D.btc.pub)), field('URN', urn('treasury'))),
         secret(() => fields(field('private key (WIF)', wif(D.btc.priv)))))];
   }
+  if (id === 'tap') {
+    const t = D.tap;
+    return ["m/86'/0'", head('Inscriptions · Bitcoin Taproot', "m/86'/0'/0'/0/0",
+      'Key-path-only Taproot (BIP-86), the branch ordinals wallets use: where the org receives and holds inscriptions, such as the badges it defines. Give the watch-only descriptor to a wallet to see them; spending still needs the seed.', vecChip('tap')) +
+      body(fields(field('address', t.addr), field('internal key (x-only)', hex(t.internal)), field('output key (tweaked)', hex(t.output)), field('watch-only descriptor', 'tr(' + hex(t.internal) + ')'), field('URN', urn('taproot'))),
+        secret(() => fields(field('private key (WIF)', wif(t.priv)))))];
+  }
   if (id === 'org') {
     const o = D.org;
     return ['org identity', head('Identity · Nostr (NIP-06 account 0)', '_@' + dm,
@@ -277,16 +309,33 @@ function inspect(id) {
     const birth = birthOf(a), ring = keyringOf(a);
     const chips = a.revoked ? '<span class="chip bad">Revoked</span>' : '<span class="chip ok">Vouched for by the org</span>';
     return [a.name, head('Agent i=' + a.i + ' · Nostr (NIP-06 account ' + a.i + ')', handle(a),
-      "A hardened child: its key reveals nothing about the org or its siblings, and its public key alone can't show whose child it is, so the org signs a birth certificate. The agent's machine holds this key and derives its own leaves; the org seed never goes there.", chips) +
+      "A hardened child: its key reveals nothing about the org or its siblings, and its public key alone can't show whose child it is, so the org signs a birth certificate. The agent's machine holds this key and its Bitcoin account keys, and derives its own leaves; the org seed never goes there.", chips) +
       body(fields(
           '<div class="f"><dt><label for="aname">name (NIP-05 and mail)</label></dt><dd><input id="aname" type="text" value="' + esc(a.name) + '" spellcheck="false" autocomplete="off" autocapitalize="off"></dd></div>',
-          field('npub', d.npub), field('public key (hex)', d.hex), field('path', d.path), field('NIP-05 · mailr address', handle(a)), field('URN', urn(a.name))),
+          field('npub', d.npub), field('public key (hex)', d.hex), field('path', d.path), field('taproot · inscriptions', d.btc.taproot.addr), field('segwit · payments', d.btc.segwit.addr), field('NIP-05 · mailr address', handle(a)), field('URN', urn(a.name))),
         code('Birth certificate · kind 30078 · signed by the org', fmtEvent(birth), verified(birth)),
         code('Keyring · kind 30078 · signed by the agent', fmtEvent(ring), verified(ring)),
         a.revoked ? code('Revocation · kind 5 (NIP-09) · signed by the org', fmtEvent(revocationOf(a)), verified(revocationOf(a))) : '',
         '<div class="acts"><button type="button" class="btn" id="revoke">' + (a.revoked ? 'Restore' : 'Revoke') + '</button><p>' +
           (a.revoked ? "Derivation can't be undone, so the keys still exist. Revoking means the org stops vouching: the name leaves nostr.json and no certificate gets renewed." : 'Revoking removes the name from nostr.json and signs a deletion request for the birth certificate. Index ' + a.i + ' is never reused.') + '</p></div>',
         secret(() => fields(field('nsec', d.nsec), field('private key (hex)', hex(d.sk)))))];
+  }
+  const mb = /^a(\d+)\.(taproot|segwit)$/.exec(id);
+  if (mb) {
+    const a = agentOf(+mb[1]), d = D.agents.get(a.i), title = a.name + ' / ' + mb[2];
+    if (mb[2] === 'taproot') {
+      const t = d.btc.taproot;
+      return [title, head('Bitcoin · Taproot (BIP-86)', title,
+        'Where ' + esc(handle(a)) + ' receives and holds inscriptions, such as the belts it earns. It is account ' + a.i + " of the org seed on the BIP-86 branch, key path only, so a wallet that opens that account finds it. The agent's keyring lists the address, so no one has to derive it.") +
+        body(fields(fieldS('derived as', t.path + ', BIP-86 tweak'), field('address', t.addr), field('internal key (x-only)', hex(t.internal)), field('output key (tweaked)', hex(t.output)),
+            field('watch-only descriptor', 'tr(' + hex(t.internal) + ')'), field('URN', urn(a.name, 'taproot'))),
+          secret(() => fields(field('private key (WIF)', wif(t.priv)), field('descriptor (Bitcoin Core)', 'tr(' + wif(t.priv) + ')'))))];
+    }
+    const s = d.btc.segwit;
+    return [title, head('Bitcoin · Native SegWit (BIP-84)', title,
+      'For ordinary payments to ' + esc(handle(a)) + ': any wallet can send to it. It is account ' + a.i + " of the org seed on the BIP-84 branch, beside the treasury's account 0. The agent's keyring lists the address, so no one has to derive it.") +
+      body(fields(fieldS('derived as', s.path), field('address', s.addr), field('public key', hex(s.pub)), field('watch-only descriptor', 'wpkh(' + hex(s.pub) + ')'), field('URN', urn(a.name, 'segwit'))),
+        secret(() => fields(field('private key (WIF)', wif(s.priv)), field('descriptor (Bitcoin Core)', 'wpkh(' + wif(s.priv) + ')'))))];
   }
   const m = /^a(\d+)\.(ssh|git|dkim|wg)$/.exec(id);
   if (m) {
@@ -372,8 +421,8 @@ function renderExports() {
   } else if (S.ex === 'lineage') {
     const doc = {
       lineage: 'v0',
-      org: { name: S.org, domain: S.domain, pubkey: D.org.hex, legal: { chain: 'ethereum', address: D.eth.addr } },
-      agents: live.map((a) => { const d = D.agents.get(a.i); return { name: a.name, i: a.i, path: d.path, pubkey: d.hex, nip05: handle(a), birth: birthOf(a).id, keyring: keyringOf(a).id }; }),
+      org: { name: S.org, domain: S.domain, pubkey: D.org.hex, taproot: D.tap.addr, legal: { chain: 'ethereum', address: D.eth.addr } },
+      agents: live.map((a) => { const d = D.agents.get(a.i); return { name: a.name, i: a.i, path: d.path, pubkey: d.hex, nip05: handle(a), taproot: d.btc.taproot.addr, segwit: d.btc.segwit.addr, birth: birthOf(a).id, keyring: keyringOf(a).id }; }),
       revoked: gone.map((a) => ({ i: a.i, pubkey: D.agents.get(a.i).hex, revocation: revocationOf(a).id })),
       node: { ssh_ca: sshLine(D.node['ssh-ca'].pub, 'lineage-ca@' + S.domain), mtls: b64(D.node.mtls.pub), noise: 'mkey:' + hex(D.node.noise.pub) }
     };
@@ -392,8 +441,11 @@ const SPEC = [
   '',
   "legal       m/44'/60'/0'/0/0      Ethereum key; holds the entity NFT",
   "treasury    m/84'/0'/0'/0/n       BIP-84 P2WPKH; watch-only via the zpub of m/84'/0'/0'",
+  "taproot     m/86'/0'/0'/0/0       BIP-86 P2TR, key path only; the org's inscriptions",
   "org         m/44'/1237'/0'/0/0    NIP-06 account 0; NIP-05 name \"_\"",
   "agent i     m/44'/1237'/i'/0/0    NIP-06 account i, i >= 1; indices are never reused",
+  "  taproot   m/86'/0'/i'/0/0       BIP-86 P2TR: the agent's inscriptions",
+  "  segwit    m/84'/0'/i'/0/0       BIP-84 P2WPKH: the agent's payments",
   '',
   'leaf        HKDF-SHA256(IKM = parent secret, salt = "lineage/v0", info = label) -> 32 bytes',
   '            Ed25519 leaves use the bytes as the seed; X25519 leaves clamp them',
@@ -412,6 +464,7 @@ const SPEC = [
   'events      kind 30078 (NIP-78, addressable)',
   '  birth     signed by the org     d = "lineage/birth/<i>", p = agent pubkey, path, name, nip05',
   '  keyring   signed by the agent   d = "lineage/keyring/v0", p = org pubkey, key = [label, public form]',
+  '            taproot and segwit carry addresses, so no one has to derive them',
   '  revoke    kind 5 (NIP-09), signed by the org, a = "30078:<org pubkey>:lineage/birth/<i>"',
   '',
   'why births  hardened children can\'t be linked to their parent from public keys,',
