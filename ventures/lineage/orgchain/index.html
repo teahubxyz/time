@@ -4,12 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Orgchain · Lineage</title>
-<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make and trade items, publish keyrings, send test BTC, graduate and close, one beat at a time. Test coins only.">
+<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, make and trade items, publish keyrings, charter legal forms, send test BTC, graduate and close, one beat at a time. Test coins only.">
 <meta name="color-scheme" content="light dark">
 <link rel="icon" href="./favicon.svg" type="image/svg+xml">
 <script src="./theme.js"></script>
-  <script type="module" crossorigin src="./assets/index-CcoNSRTp.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-C1PA9bil.css">
+  <script type="module" crossorigin src="./assets/index-DXb8Kdrd.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DwOZaPY4.css">
 </head>
 <body>
 <header class="band">
@@ -17,7 +17,7 @@
     <div>
       <p class="kicker"><a href="../">Lineage</a> /</p>
       <h1 class="wordmark">Orgchain</h1>
-      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make and trade items, publish keyrings, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
+      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, make and trade items, publish keyrings, charter legal forms, send test BTC, graduate and close. Each act is an inscription whose parent is the node that authorizes it, paid for with the actor's own gas, and each <b>beat</b> is a block whose 50 test BTC the holdings mine. Lineage gives the structure; the chain adds time.</p>
     </div>
     <div class="flags">
       <span class="flag hz">Test coins only</span>
@@ -89,7 +89,7 @@
           <p class="pad note" id="act-none">Select a holding, or a node in its tree, to act through it.</p>
           <div class="pad note" id="act-past" hidden><p>You are looking at beat <b id="past-beat"></b>. History is read-only.</p><button type="button" class="btn sm" id="past-now">Back to now</button></div>
           <div id="act-on" hidden>
-            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="make" aria-pressed="false">Make</button><button type="button" data-verb="send" aria-pressed="false">Send</button><button type="button" data-verb="offer" aria-pressed="false">Offer</button><button type="button" data-verb="keyring" aria-pressed="false">Keyring</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
+            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="make" aria-pressed="false">Make</button><button type="button" data-verb="send" aria-pressed="false">Send</button><button type="button" data-verb="offer" aria-pressed="false">Offer</button><button type="button" data-verb="keyring" aria-pressed="false">Keyring</button><button type="button" data-verb="charter" aria-pressed="false">Charter</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
             <p class="keyline" id="act-key"></p>
             <p class="keyline" id="act-gas"></p>
             <p class="why pad" id="act-why"></p>
@@ -155,8 +155,26 @@
               <p class="hint">Each key signs the way its own wallets sign a message: BIP-322 for the Bitcoin addresses, a nostr event for the npub, EIP-191 for Ethereum. No other node can list these keys while this keyring stands. A newer keyring replaces it, and a graduation retires it.</p>
               <button class="btn primary go" type="submit">Publish keyring</button>
             </form>
+            <form class="vf pad" id="f-charter" data-form="charter" autocomplete="off" hidden>
+              <p class="vh"><b data-name></b> takes a legal form: an on-chain record of what it is off chain. <span id="charter-now"></span></p>
+              <fieldset class="kinds" id="charter-forms"><legend class="lab">Form</legend></fieldset>
+              <div id="charter-where">
+                <label class="lab" for="charter-jurisdiction">Jurisdiction <span>an ISO code, like US-WY</span></label>
+                <input id="charter-jurisdiction" name="jurisdiction" list="jurisdictions" maxlength="6" spellcheck="false" placeholder="US-WY">
+                <datalist id="jurisdictions"><option value="US-WY"><option value="US-DE"><option value="US-NV"><option value="US-TX"><option value="US-FL"><option value="US-NY"><option value="US-CA"><option value="CH"><option value="MH"></datalist>
+                <label class="lab" for="charter-legal">Legal name <span>optional</span></label>
+                <input id="charter-legal" name="legal" maxlength="120" placeholder="Yolopreneur Holdings LLC">
+                <label class="lab" for="charter-provider">Formed through <span>optional</span></label>
+                <input id="charter-provider" name="provider" list="providers" maxlength="40" spellcheck="false" placeholder="doola">
+                <datalist id="providers"><option value="doola"><option value="otoco"><option value="self"></datalist>
+                <label class="lab" for="charter-filing">Filing <span>optional: the SHA-256 of the filed documents</span></label>
+                <div class="line amt"><input id="charter-filing" name="filing" maxlength="64" spellcheck="false" placeholder="SHA-256, in hex"><label class="btn" for="charter-file">Hash a file</label><input type="file" id="charter-file" hidden></div>
+              </div>
+              <p class="hint">Public and permanent: a form, a code, a name and a hash, never the documents. Hash a file reads it here, and nothing leaves this tab. The newest charter counts. A series is chartered by its master, and it lapses if the master closes, stops holding series, or the series leaves its holding. Whoever holds the inscription holds control, whatever the form.</p>
+              <button class="btn primary go" type="submit">Charter</button>
+            </form>
             <form class="vf pad" id="f-graduate" data-form="graduate" hidden>
-              <p class="vh"><b data-parent></b> vouches for <b data-name></b>, and the edge flips from derived to adopted. A graduated org holds its own root and becomes a holding of its own, so it mines, and it stays open if <b data-parent></b> closes. The event spends <b data-parent></b>'s inscription.</p>
+              <p class="vh"><b data-parent></b> vouches for <b data-name></b>, and the edge flips from derived to adopted. A graduate holds its own root and becomes a holding of its own, so it mines, and it stays open if <b data-parent></b> closes: an org takes its derived subtree along, and an agent goes independent, free to birth and award. The event spends <b data-parent></b>'s inscription.</p>
               <button class="btn primary go" type="submit" id="graduate-go">Graduate</button>
             </form>
             <form class="vf pad" id="f-close" data-form="close" hidden>
