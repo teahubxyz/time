@@ -1,71 +1,142 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#141414">
-  <meta name="description" content="Super Testnet in lineage's clothes: rehearse an org's lineage (root, births, badges) as inscriptions on a private toy Bitcoin chain in your browser, with pretend money.">
-  <title>Orgchain — rehearse an org on a small chain · Lineage</title>
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script type="module" crossorigin src="./assets/index-BYS7MnaY.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-D3-wvT7b.css">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Orgchain · Lineage</title>
+<meta name="description" content="Found and operate lineage holdings on a toy chain in your browser: birth orgs and agents, award belts, decide, graduate and close, one beat at a time. Test coins only.">
+<meta name="color-scheme" content="light dark">
+<link rel="icon" href="./favicon.svg" type="image/svg+xml">
+<script src="./theme.js"></script>
+  <script type="module" crossorigin src="./assets/index-BKQb5ieV.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DZ6N3IHo.css">
 </head>
 <body>
-  <header class="band">
-    <div class="band-in">
-      <div>
-        <h1 class="wordmark">Orgchain</h1>
-        <p class="lede"><b>Rehearse an org on a small chain.</b> Mint a root, give birth to children, award a badge, all as inscriptions on a private toy Bitcoin chain in this tab, with pretend money.</p>
-      </div>
-      <div class="flags">
-        <span class="flag hz">Test coins</span>
-        <span class="flag">Private chain</span>
-        <a class="flag" href="../">Lineage ↗</a>
-        <button id="theme-toggle" class="flag" type="button" aria-label="Toggle color theme">☾ Dark</button>
-      </div>
+<header class="band">
+  <div class="band-in">
+    <div>
+      <p class="kicker"><a href="../">Lineage</a> /</p>
+      <h1 class="wordmark">Orgchain</h1>
+      <p class="lede">Found a <b>holding</b>, then birth its orgs and agents, award belts, record decisions, graduate and close. Each act is an inscription whose parent is the node that authorizes it, and each <b>beat</b> is a block. Lineage gives the structure; the chain adds time.</p>
     </div>
-  </header>
-  <main>
-    <section class="rehearse blk" aria-labelledby="t-rehearse"><h2 class="tab" id="t-rehearse">Rehearsal <span class="sub">a lineage in four moves</span></h2><div class="panel"><ol class="moves"><li><b>Root.</b> Fund a wallet, then inscribe the org with metaprotocol <code>lineage/v0</code> and metadata like <code>{"lineage":"root","name":"yolopreneur"}</code>.</li><li><b>Birth.</b> Inscribe a child with the root as its parent. Only the parent's holder can: the parent is spent to make the child, and the child carries the parent's ID on-chain (ord tag 3).</li><li><b>Generations.</b> Children can be parents too: <code>time</code> under the root, <code>docscope</code> under <code>time</code>, as deep as the tree goes.</li><li><b>Badge.</b> Inscribe a badge once, like <code>{"lineage":"badge","skill":"launch","belt":"green"}</code>, then mint each award as a child of it with the badge as delegate, so every award shows the same mark.</li></ol><p class="later"><b>Not in this lab yet:</b> handing an award to a seat, graduation (moving a venture's inscription to its own new root) and closing (burning a parent so no more children can be born). Those need transfers and burns, which this lab doesn't do.</p></div></section>
-    <aside class="notice"><strong>Test coins only.</strong> This is a private simulation, not Bitcoin testnet or mainnet. Local-wallet keys stay in this browser, unencrypted. Inscriboor keys stay in the extension. Never load real keys or send real funds here. Nothing on Orgchain is a real org, key or badge.</aside>
-    <div id="status" role="status" aria-live="polite">Choose Inscriboor or a local test wallet to start your first loop.</div>
-    <section class="workspace">
-      <article class="panel wallet"><div class="panel-title"><span class="step">01</span><h2>Your test wallet</h2><span id="wallet-state" class="tag">NOT CREATED</span></div>
-        <div id="empty-wallet"><p>One wallet. A whole chain to play with.</p><button id="create-wallet" class="primary">Use local test wallet</button> <button id="connect-inscriboor" class="quiet">Get Inscriboor ↓</button><p id="inscriboor-status" class="muted">Looking for the extension…</p><details class="install-help"><summary>Install Inscriboor</summary><p class="muted">Inscriboor 0.2.4 connects on supertestnet.lol only. On Orgchain, use the local test wallet.</p><ol><li>Download and unzip Inscriboor.</li><li>Open <code>chrome://extensions</code> (or Brave extensions).</li><li>Turn on Developer mode.</li><li>Choose <strong>Load unpacked</strong> and select the unzipped <code>extension</code> folder.</li><li>Refresh this page. The button above will change from <strong>Get Inscriboor</strong> to <strong>Connect Inscriboor</strong>.</li></ol></details></div>
-        <div id="active-wallet" hidden><p class="label">FAKE BTC BALANCE</p><div class="balance"><span id="balance">0</span><small>BTC</small></div><p id="reserved" class="muted"></p><label for="address">Local regtest-format address</label><input id="address" readonly><button id="export-wallet" class="quiet">↓ Save test wallet</button></div>
-        <div class="wallet-footer"><label class="file-button" for="load-wallet">↑ Load test wallet or lab backup</label><input id="load-wallet" type="file" accept=".json,application/json"><p class="muted">Saved on this device. Local-wallet backups contain their test key; Inscriboor backups contain only a public descriptor. A lab backup also preserves the chain.</p></div>
-      </article>
-      <article class="panel"><div class="panel-title"><span class="step">02</span><h2>Make some blocks</h2></div><p>Skip the faucet queue. Every block gives you <strong>50 fake BTC</strong>, ready to use immediately.</p><div class="chain-stats"><div><span class="label">BLOCK HEIGHT</span><strong id="height">0</strong></div><div><span class="label">PENDING TXS</span><strong id="pending">0</strong></div></div><button id="mine" class="primary" disabled>Mine now <span>+</span></button><label for="miner-interval">Auto miner</label><select id="miner-interval"><option value="0">OFF</option><option value="10">10s</option><option value="30">30s</option><option value="60">60s</option></select><p id="miner-status" aria-live="polite">Auto mining OFF</p><p class="muted">Keep a lab tab open; browser throttling may delay blocks. Mining also confirms your pending inscriptions.</p></article>
-      <article class="panel inscribe"><div class="panel-title"><span class="step">03</span><h2>Inscribe a root, a birth, a badge</h2><span class="tag">INSCRIPTION LAB</span></div><label for="mime-type">Content type</label><select id="mime-type"></select><label for="body-file">Or upload a local file (16 KiB maximum)</label><input id="body-file" type="file"><label for="parent">Parent inscription (optional, immutable)</label><select id="parent"><option value="">No parent</option></select><label for="delegate">Delegate inscription ID (optional, future IDs allowed)</label><input id="delegate" placeholder="64 hex characters + i0"><label for="reinscribe">Reinscribe an owned sat (optional)</label><select id="reinscribe"><option value="">New sat</option></select><label for="pointer">Advanced pointer (zero-based output sat position)</label><input id="pointer" inputmode="numeric" placeholder="Default first sat"><button id="recursive-demo" class="quiet">Use recursive demo</button><p class="muted">Recursive HTML/SVG scripts use local fetch and ord.render(text) in an isolated worker; ord.id is the requested inscription. No DOM or network access.</p><label for="payload">What will you put on your chain?</label><textarea id="payload" placeholder="yolopreneur — the root of the tree…" rows="3" disabled></textarea><label for="metadata">JSON metadata (optional, independent of body)</label><textarea id="metadata" rows="3" placeholder='{"lineage":"birth","name":"time"}'></textarea><p id="metadata-count" class="muted">0 / 2048 CBOR bytes · ord tag 5 · JSON is authoring format only</p><label for="metaprotocol">Metaprotocol (optional, independent field)</label><input id="metaprotocol" placeholder="e.g. lineage/v0 · ord tag 7"><p class="muted">Native ord metaprotocol identifier. Metadata and inscription data remain independent.</p><div class="compose-footer"><span id="byte-count" class="muted">0 / 16384 bytes</span><button id="review" disabled>Review inscription ↗</button></div>
-        <div id="review-panel" hidden><h3>Review before signing</h3><div id="review-preview"></div><pre id="review-text"></pre><p id="review-parent"></p><pre id="review-metadata"></pre><p>Two transactions: commit + reveal. <strong>1,000 fake sats</strong> in fees; <strong>1,000 fake sats</strong> in a new wallet output. Any selected parent or reinscription output is also returned in full; reinscription appends to its existing sat stack.</p><p id="signing-note" class="muted">The next button asks your active signer to approve commit + reveal, then submits them to your private chain.</p><button id="sign" class="primary">Sign & inscribe</button> <button id="cancel-review" class="quiet">Cancel</button></div>
-      </article>
-    </section>
-    <section class="collection-section"><div class="section-title"><div><p class="eyebrow">04 / THE THINGS YOU MADE</p><h2>Your inscriptions <span id="collection-count">0</span></h2></div><span class="muted">Owned by this wallet</span></div><div id="collectibles" class="collectibles"><p class="empty">Your first inscription belongs here.<br><span>Fund your wallet, write some text, and make it yours.</span></p></div></section>
-    <section class="explorer-section">
-      <div class="section-title"><div><p class="eyebrow">05 / FOLLOW THE TRAIL</p><h2>Chain explorer</h2></div><button id="export-lab" class="quiet">↓ Save complete lab</button></div>
-      <div class="chain-board">
-        <div class="mempool-head"><div><span class="chain-kicker">MEMPOOL</span><strong>Waiting for the next block</strong></div><span class="muted">commit + reveal transactions live here before mining</span></div>
-        <div id="mempool-list" class="mempool-list"></div>
-        <div class="chain-divider"><span>↓ mine</span></div>
-        <div class="blocks-head"><span class="chain-kicker">BLOCKS</span><span class="muted">newest first · click any block to inspect it</span></div>
-        <div id="blocks" class="blocks"></div>
+    <div class="flags">
+      <span class="flag hz">Test coins only</span>
+      <span class="flag proto">lineage/v0</span>
+      <button class="flag" id="theme" type="button">Theme: system</button>
+    </div>
+  </div>
+</header>
+<section class="clock" aria-label="Time">
+  <div class="clock-in">
+    <p class="tab">Time</p>
+    <div class="tempo" role="group" aria-labelledby="tempo-l">
+      <span class="lab" id="tempo-l">Tempo</span>
+      <button type="button" class="seg" data-tempo="each" aria-pressed="true">Each act</button><button type="button" class="seg" data-tempo="10" aria-pressed="false">10s</button><button type="button" class="seg" data-tempo="30" aria-pressed="false">30s</button><button type="button" class="seg" data-tempo="60" aria-pressed="false">60s</button><button type="button" class="seg" data-tempo="manual" aria-pressed="false">Manual</button>
+    </div>
+    <p class="beatno">Beat <b id="clock-beat">0</b> · <span id="clock-cued">nothing cued</span></p>
+    <button type="button" class="btn primary" id="beat-now" disabled>Beat now</button>
+    <div class="scrub">
+      <label class="lab" for="beat">View</label>
+      <input type="range" id="beat" min="0" max="0" value="0" step="1">
+      <output id="beat-label" for="beat">Now · beat 0</output>
+      <button type="button" class="btn sm" id="replay">Replay</button>
+      <button type="button" class="btn sm" id="to-now">Now</button>
+    </div>
+  </div>
+  <p id="say" class="say" role="status" aria-live="polite"></p>
+</section>
+<main class="wrap">
+  <div class="work">
+    <section class="blk hold-blk" aria-labelledby="h-holdings">
+      <h2 class="tab" id="h-holdings">Holdings <span class="sub" id="holdings-sub"></span></h2>
+      <div class="panel">
+        <ul class="holds" id="holdings-list"></ul>
+        <div class="pad empty" id="holdings-empty"><p>A holding is the root of a lineage tree: the LLC that births orgs and agents. Found one, or load the sample, the yolopreneur tree from the Lineage docs over six beats.</p></div>
+        <form class="pad found" id="f-found" autocomplete="off">
+          <label class="lab" for="found-name">Found a holding</label>
+          <div class="line"><input id="found-name" name="name" maxlength="60" spellcheck="false" placeholder="acme-holdings"><button class="btn primary" type="submit">Found</button></div>
+          <p class="hint">Names become domains: lowercase letters, digits and hyphens.</p>
+        </form>
+        <div class="pad sample"><button class="btn" type="button" id="sample">Load the yolopreneur sample</button></div>
       </div>
-      <article id="inspector" class="panel inspector" hidden tabindex="-1"></article>
     </section>
-    <section class="panel" id="indexes"><h2>Indexes</h2>
-      <p>Metadata is data; indexers are interpretation. Native metaprotocol tag 7 is authoritative; metadata.protocol remains a compatibility fallback. Raw events remain uninterpreted.</p>
-      <p id="index-stats"></p><label for="protocol">Discovered protocol names</label><select id="protocol"></select>
-      <p id="protocol-stats"></p><h3>Ordered raw events</h3><p class="muted">Confirmed blocks in chain order, then mempool order.</p><div id="protocol-events"></div>
-      <label for="reducer">Optional trusted local indexer</label><select id="reducer"><option value="">None</option><option value="event-counter">Example: event-counter</option></select>
-      <h3>Derived state (separate from raw events)</h3><pre id="derived-state">No reducer selected.</pre>
+    <section class="blk tree-blk" aria-labelledby="h-tree">
+      <h2 class="tab" id="h-tree">Tree <span class="sub" id="tree-sub"></span></h2>
+      <div class="panel"><div class="tree" id="tree-rows"></div></div>
     </section>
-    <section class="panel" id="api-explorer"><h2>API explorer <span class="tag">LOCAL / IN-BROWSER</span></h2>
-      <p>LocalOrdAPI reads this browser’s chain and indexes. These paths are not server URLs; the static host cannot access your lab.</p>
-      <label for="api-preset">Preset path</label><select id="api-preset"></select>
-      <label for="api-path">Local API path</label><input id="api-path" value="/r/blockheight">
-      <button id="api-try">Try</button> <button id="api-copy" class="quiet">Copy response</button>
-      <pre id="api-response" aria-live="polite">Choose a path and press Try.</pre>
+    <section class="blk time-blk" aria-labelledby="h-timeline">
+      <h2 class="tab" id="h-timeline">Timeline <span class="sub" id="timeline-sub"></span></h2>
+      <div class="panel">
+        <ol class="beats" id="timeline-list"></ol>
+      </div>
     </section>
-    <details class="about"><summary>Under the hood &amp; attribution</summary><p>Orgchain is <a href="https://supertestnet.lol/">Super Testnet</a> in lineage's clothes: the same lab and code, restyled, with a rehearsal guide on top. Its lab state lives in this browser, separate from supertestnet.lol's.</p><p>Real serialized Bitcoin transactions, Schnorr signatures and Taproot commit/reveal scripts, on a deliberately simplified local UTXO chain. No proof of work, Bitcoin consensus, peer network, public broadcast, or production custody. Synthetic local sats follow FIFO input-to-output ranges. Child creation and reinscription preserve the owned sat. Fees retire the input tail; this is not Bitcoin consensus.</p><p>Built from and inspired by <a href="https://github.com/supertestnet/testnet_generator">Supertestnet’s testnet_generator</a>, <a href="https://github.com/supertestnet/inscriptions-online">inscriptions-online</a>, and <a href="https://github.com/supertestnet/vanilla-js-browser-wallet">vanilla-js-browser-wallet</a>. <a href="https://github.com/supertestnet/node_faker">node_faker</a> was evaluated for future RPC compatibility.</p><p>Transaction library: <a href="https://github.com/cmdruid/tapscript">tapscript by Christopher Scott</a> (<a href="licenses/tapscript.txt">CC-BY-1.0</a>). <a href="licenses/supertestnet-CC0.txt">Supertestnet CC0 license</a> · <a href="licenses/noble-curves.txt">noble-curves license</a> · <a href="licenses/noble-hashes.txt">noble-hashes license</a>.</p></details>
-    <footer><span>SMALL CHAIN. WHOLE FAMILY TREE.</span><span class="made">Part of <a href="../">Lineage</a> · <a href="https://yolopreneur.lol/">yolopreneur.lol</a> · based on <a href="https://supertestnet.lol/">Super Testnet</a></span><button id="reset" class="quiet danger">Reset local lab</button></footer>
-  </main>
-</body></html>
+    <div class="side">
+      <section class="blk" aria-labelledby="h-act">
+        <h2 class="tab" id="h-act">Act <span class="sub" id="act-sub"></span></h2>
+        <div class="panel">
+          <p class="pad note" id="act-none">Select a holding, or a node in its tree, to act through it.</p>
+          <div class="pad note" id="act-past" hidden><p>You are looking at beat <b id="past-beat"></b>. History is read-only.</p><button type="button" class="btn sm" id="past-now">Back to now</button></div>
+          <div id="act-on" hidden>
+            <div class="verbs" role="group" aria-label="Verb"><button type="button" data-verb="birth" aria-pressed="true">Birth</button><button type="button" data-verb="award" aria-pressed="false">Award</button><button type="button" data-verb="decide" aria-pressed="false">Decide</button><button type="button" data-verb="graduate" aria-pressed="false">Graduate</button><button type="button" data-verb="close" aria-pressed="false">Close</button></div>
+            <p class="why pad" id="act-why"></p>
+            <form class="vf pad" id="f-birth" data-form="birth" autocomplete="off">
+              <p class="vh">A child of <b data-name></b>. Its birth spends <b data-name></b>'s inscription.</p>
+              <label class="lab" for="birth-name">Name</label>
+              <input id="birth-name" name="name" maxlength="60" spellcheck="false" placeholder="docscope">
+              <fieldset class="kinds"><legend class="lab">Kind</legend>
+                <label><input type="radio" name="kind" value="org" checked> Org <span>has its own children</span></label>
+                <label><input type="radio" name="kind" value="agent"> Agent <span>a seat that holds belts</span></label>
+              </fieldset>
+              <button class="btn primary go" type="submit">Birth</button>
+            </form>
+            <form class="vf pad" id="f-award" data-form="award" autocomplete="off" hidden>
+              <p class="vh"><b data-name></b> awards a belt: one skill, one seat.</p>
+              <label class="lab" for="award-to">To</label>
+              <select id="award-to" name="to"></select>
+              <label class="lab" for="award-skill">Skill</label>
+              <input id="award-skill" name="skill" list="skills" maxlength="40" spellcheck="false" placeholder="launch">
+              <datalist id="skills"><option value="context"><option value="launch"><option value="post"><option value="article"><option value="listen"><option value="loop"><option value="video"></datalist>
+              <label class="lab" for="award-belt">Belt</label>
+              <select id="award-belt" name="belt"><option value="white">White</option><option value="green">Green</option><option value="black">Black</option></select>
+              <button class="btn primary go" type="submit">Award</button>
+            </form>
+            <form class="vf pad" id="f-decide" data-form="decide" autocomplete="off" hidden>
+              <p class="vh">A decision on <b data-name></b>'s record, signed by spending its inscription.</p>
+              <label class="lab" for="decide-title">Decision</label>
+              <input id="decide-title" name="title" maxlength="140" placeholder="Every venture gets a page">
+              <label class="lab" for="decide-why">Why <span>optional</span></label>
+              <textarea id="decide-why" name="why" maxlength="400" rows="3"></textarea>
+              <button class="btn primary go" type="submit">Decide</button>
+            </form>
+            <form class="vf pad" id="f-graduate" data-form="graduate" hidden>
+              <p class="vh"><b data-parent></b> vouches for <b data-name></b>, and the edge flips from derived to adopted. A graduated org holds its own root, so it stays open if <b data-parent></b> closes. The event spends <b data-parent></b>'s inscription.</p>
+              <button class="btn primary go" type="submit" id="graduate-go">Graduate</button>
+            </form>
+            <form class="vf pad" id="f-close" data-form="close" hidden>
+              <p class="vh" id="close-note"></p>
+              <div class="line"><button class="btn danger go" type="submit" id="close-go">Close</button><button class="btn" type="button" id="close-keep" hidden>Keep it open</button></div>
+            </form>
+          </div>
+        </div>
+      </section>
+      <section class="blk" aria-labelledby="h-inspect">
+        <h2 class="tab" id="h-inspect">Inspect <span class="sub" id="inspect-sub"></span></h2>
+        <div class="panel" id="inspect-body"></div>
+      </section>
+    </div>
+  </div>
+  <footer class="foot">
+    <div class="labrow">
+      <span class="lab">This lab</span>
+      <button type="button" class="btn sm" id="save">Save backup</button>
+      <button type="button" class="btn sm" id="load">Load backup</button>
+      <button type="button" class="btn sm" id="reset">Reset</button>
+      <input type="file" id="load-file" accept="application/json,.json" hidden>
+      <div id="confirm" class="confirm" hidden></div>
+    </div>
+    <p>Everything here lives in this browser: a test wallet, a private toy chain, pretend money. Nothing is a real key, and minting a real root is the operator's call.</p>
+    <p>Orgchain is lineage's app, built on <a href="https://supertestnet.lol">Super Testnet</a>'s chain and inscriptions, where the full lab lives. Source: <a href="https://teahub.xyz/lineage/orgchain">lineage/orgchain</a>. Licenses: <a href="./licenses/supertestnet-CC0.txt">Super Testnet (CC0)</a>, <a href="./licenses/tapscript.txt">tapscript</a>, <a href="./licenses/noble-curves.txt">noble-curves</a>, <a href="./licenses/noble-hashes.txt">noble-hashes</a>.</p>
+  </footer>
+</main>
+</body>
+</html>
