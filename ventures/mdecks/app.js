@@ -124,33 +124,84 @@
     return html;
   }
 
-  var slides = [];
+  // The copied deck's stylesheet. Slides are also measured with it, in a hidden frame the size of a
+  // 1280x720 screen, to decide where a long slide is cut.
+  var DECK_CSS =
+    "*{box-sizing:border-box}html,body{height:100%;margin:0}" +
+    "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0f1115;color:#e8eaf0;display:flex;flex-direction:column}" +
+    ".bar{height:5px;background:#1e222b}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#6ea8fe,#9d7bff);transition:width .18s ease}" +
+    "main{flex:1;overflow-y:auto}" +
+    ".s{display:none;--fit:1;padding:clamp(24px,6vw,64px);min-height:100%;flex-direction:column;justify-content:center;overflow-wrap:anywhere}" +
+    ".s.on{display:flex}" +
+    "h1{font-size:calc(clamp(1.8rem,5vw,3.2rem)*var(--fit));margin:0 0 .5em;line-height:1.15}" +
+    "h2{font-size:calc(clamp(1.2rem,3vw,1.9rem)*var(--fit));color:#9aa1af;font-weight:500;margin:0 0 .6em}" +
+    "ul{margin:0;padding-left:1.3em;font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7}" +
+    "p{font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7;margin:.3em 0}" +
+    "code{background:rgba(110,168,254,.12);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}" +
+    "a{color:#6ea8fe;text-decoration:none}a:hover{text-decoration:underline}" +
+    ".empty{color:#9aa1af;font-style:italic}" +
+    ".n{position:fixed;bottom:12px;right:16px;color:#9aa1af;font-size:.85rem;font-variant-numeric:tabular-nums}";
+
+  var slides = [];   // the slides as typed, each a list of lines
+  var deck = [];     // the slides as shown and copied: the typed ones, long ones cut
   var current = 0;
 
   function parse() {
     slides = splitSlides(src.value);
     if (slides.length === 0) slides = [[]];
-    if (current >= slides.length) current = slides.length - 1;
+    var cuts = [], over = [];
+    deck = [];
+    for (var k = 0; k < slides.length; k++) {
+      var pieces = cut(slides[k]), first = deck.length + 1;
+      for (var j = 0; j < pieces.length; j++) {
+        deck.push(pieces[j].lines);
+        if (pieces[j].over) over.push(deck.length);
+      }
+      if (pieces.length > 1) cuts.push([first, deck.length]);
+    }
+    if (current >= deck.length) current = deck.length - 1;
     if (current < 0) current = 0;
     render();
-    scheduleLint();
+    note(cuts, over);
   }
 
   function render() {
-    slideEl.innerHTML = renderSlide(slides[current]);
+    slideEl.innerHTML = renderSlide(deck[current]);
     fit(slideEl, wrap);
     wrap.scrollTop = 0;
-    counterEl.textContent = (current + 1) + " / " + slides.length;
-    var pct = slides.length <= 1 ? 100 : (current / (slides.length - 1)) * 100;
+    counterEl.textContent = (current + 1) + " / " + deck.length;
+    var pct = deck.length <= 1 ? 100 : (current / (deck.length - 1)) * 100;
     barEl.style.width = pct + "%";
     prevBtn.disabled = current === 0;
-    nextBtn.disabled = current === slides.length - 1;
+    nextBtn.disabled = current === deck.length - 1;
   }
 
-  // Fit each slide to the screen: shrink its text, never below FLOOR, until nothing has to scroll.
-  // A slide that still doesn't fit keeps scrolling and is named under the preview.
+  // Under the preview: which slides were cut, and any still too long.
+  function note(cuts, over) {
+    var text = "";
+    if (cuts.length === 1) {
+      text = "Slide " + cuts[0][0] + " was too long, so it runs onto " +
+        (cuts[0][1] === cuts[0][0] + 1 ? "slide " + cuts[0][1] : "slides " + (cuts[0][0] + 1) + "–" + cuts[0][1]) +
+        ". Put in a --- to choose the break yourself.";
+    } else if (cuts.length > 1) {
+      text = "Slides " + numbers(cuts.map(function (c) { return c[0]; })) +
+        " were too long, so they run onto the slides after them. Put in a --- to choose a break yourself.";
+    }
+    if (over.length) {
+      text += (text ? " " : "") + (over.length === 1 ? "Slide " + over[0] + " is" : "Slides " + numbers(over) + " are") +
+        " too long to fit even with smaller text: shorten " + (over.length === 1 ? "its longest line." : "their longest lines.");
+    }
+    noteEl.hidden = !text;
+    noteEl.textContent = text;
+    noteEl.classList.toggle("warn", over.length > 0);
+  }
+
+  function numbers(ns) {
+    return ns.length === 1 ? String(ns[0]) : ns.slice(0, -1).join(", ") + " and " + ns[ns.length - 1];
+  }
+
+  // Fit: a slide's text shrinks, never below FLOOR, until nothing has to scroll.
   var FLOOR = 0.7;
-  var lintTimer = null;
 
   function fits(box) {
     return box.scrollHeight <= box.clientHeight + 1;
@@ -172,34 +223,165 @@
     return lo;
   }
 
-  function lint() {
-    var tooLong = [];
-    for (var k = 0; k < slides.length; k++) {
-      slideEl.innerHTML = renderSlide(slides[k]);
-      if (!fit(slideEl, wrap)) tooLong.push(k + 1);
-    }
-    render();
-    noteEl.hidden = tooLong.length === 0;
-    noteEl.textContent = !tooLong.length ? "" :
-      (tooLong.length === 1 ? "Slide " + tooLong[0] + " is" : "Slides " + tooLong.join(", ") + " are") +
-      " too long to fit, even with smaller text. Split " + (tooLong.length === 1 ? "it" : "them") +
-      " with --- or cut some words.";
+  // Cut: a slide too long even at FLOOR is shown as two or more slides that fit. They are measured in a
+  // hidden frame that shows the copied deck on a 1280x720 screen, so the cuts are the same on any screen
+  // and in the copy. A cut falls between lines, never right after a heading, and as evenly as it can,
+  // though a heading, a blank line or a change between list and text is worth a little evenness. Each
+  // new slide repeats the slide's title, marked (cont.).
+  var frameMain = null, frameSlide = null;
+  var cutCache = Object.create(null), cached = 0;
+
+  function makeFrame() {
+    var frame = document.createElement("iframe");
+    frame.setAttribute("aria-hidden", "true");
+    frame.setAttribute("tabindex", "-1");
+    frame.style.cssText = "position:fixed;left:-20000px;top:0;width:1280px;height:720px;border:0;visibility:hidden;pointer-events:none";
+    frame.addEventListener("load", function () {
+      try {
+        frameMain = frame.contentDocument.querySelector("main");
+        frameSlide = frame.contentDocument.querySelector(".s");
+      } catch (e) {
+        return; // nowhere to measure: slides are not cut
+      }
+      cutCache = Object.create(null);
+      cached = 0;
+      parse();
+    });
+    // The page's height is set too, in case a browser grows the frame to fit what is in it.
+    frame.srcdoc = "<!DOCTYPE html><html><head><style>" + DECK_CSS +
+      "html{height:720px;-webkit-text-size-adjust:100%;text-size-adjust:100%}</style></head><body>" +
+      '<div class="bar"><div></div></div><main><section class="s on"></section></main></body></html>';
+    document.body.appendChild(frame);
   }
 
-  function scheduleLint() {
-    clearTimeout(lintTimer);
-    lintTimer = setTimeout(lint, 200);
+  function fitsAt(lines, scale) {
+    frameSlide.innerHTML = renderSlide(lines);
+    frameSlide.style.setProperty("--fit", String(scale));
+    return fits(frameMain);
+  }
+
+  function kindOf(t) {
+    if (t.indexOf("## ") === 0) return "h2";
+    if (t.indexOf("# ") === 0) return "h1";
+    if (t.indexOf("- ") === 0 || t.indexOf("* ") === 0) return "li";
+    return "p";
+  }
+
+  function heading(block) {
+    return block.kind === "h1" || block.kind === "h2";
+  }
+
+  // A typed slide as the slides it is shown as: [{lines, over}], over meaning still too long.
+  function cut(lines) {
+    if (!frameSlide || !frameMain) return [{ lines: lines, over: false }];
+    var key = lines.join("\n");
+    if (!(key in cutCache)) {
+      if (++cached > 500) { cutCache = Object.create(null); cached = 1; }
+      cutCache[key] = cutNow(lines);
+    }
+    return cutCache[key];
+  }
+
+  function cutNow(lines) {
+    if (fitsAt(lines, FLOOR)) return [{ lines: lines, over: false }];
+    // One block per line that isn't blank, noting a blank line before it. A leading heading is the title
+    // unless a later heading is as big (then it heads a section, like the rest).
+    var blocks = [], gap = false;
+    for (var i = 0; i < lines.length; i++) {
+      var t = lines[i].trim();
+      if (t === "") { gap = blocks.length > 0; continue; }
+      blocks.push({ line: lines[i], kind: kindOf(t), gap: gap });
+      gap = false;
+    }
+    var lead = blocks.length > 1 && heading(blocks[0]) ? blocks[0].kind : null;
+    for (var n = 1; lead && n < blocks.length; n++) {
+      if (blocks[n].kind === "h1" || blocks[n].kind === lead) lead = null;
+    }
+    var title = lead ? blocks[0].line.trim() : null;
+    var body = title ? blocks.slice(1) : blocks, m = body.length;
+    if (m < 2) return [{ lines: lines, over: true }];
+    var piece = function (a, e) {
+      var out = title ? [a === 0 ? title : title + " (cont.)"] : [];
+      for (var i = a; i < e; i++) {
+        if (body[i].gap && i > a) out.push("");
+        out.push(body[i].line);
+      }
+      return out;
+    };
+    // reach[a]: body[a..reach[a]) is the most that fits on one slide starting at a (a lone line may not).
+    var reach = [], end = 0;
+    for (var a = 0; a < m; a++) {
+      if (end < a) end = a;
+      if (a === 1) while (end > a && !fitsAt(piece(a, end), FLOOR)) end--; // "(cont.)" can make the title longer
+      while (end < m && fitsAt(piece(a, end + 1), FLOOR)) end++;
+      reach[a] = end;
+    }
+    // Where each line starts at full size, to cut evenly. seam[c]: what a cut before body[c] costs in evenness,
+    // nothing before a heading, a little at a blank line or between list and text, more inside a list or run.
+    frameSlide.innerHTML = renderSlide(piece(0, m));
+    frameSlide.style.setProperty("--fit", "1");
+    var els = frameSlide.querySelectorAll("h1,h2,li,p"), skip = title ? 1 : 0, top = [], seam = [];
+    for (var c = 0; c < m; c++) {
+      top.push(els[c + skip].getBoundingClientRect().top);
+      seam.push(c === 0 || heading(body[c]) ? 0 :
+        body[c].gap || (body[c].kind === "li") !== (body[c - 1].kind === "li") ? 1 / 16 : 1 / 4);
+    }
+    top.push(els[m - 1 + skip].getBoundingClientRect().bottom);
+    // The fewest slides it can be, with as many lines on each as fit; then as even as that many can be.
+    var fewest = 0;
+    for (var at = 0; at < m; fewest++) at = Math.max(reach[at], at + 1);
+    var runs = null;
+    for (var k = fewest; !runs && k < fewest + 4 && k <= m; k++) runs = evenly(k, body, reach, top, seam, true);
+    if (!runs) runs = evenly(fewest, body, reach, top, seam, false);
+    if (!runs) return [{ lines: lines, over: true }];
+    return runs.map(function (r) { return { lines: piece(r[0], r[1]), over: reach[r[0]] < r[1] }; });
+  }
+
+  // body cut into k runs [a, e), each within reach, as evenly by height as it can be, at the best seams;
+  // null when it can't be done. Strict: never right after a heading.
+  function evenly(k, body, reach, top, seam, strict) {
+    var m = body.length, target = (top[m] - top[0]) / k;
+    var best = [[0]], from = [[]];
+    for (var j = 1; j <= k; j++) {
+      best[j] = [];
+      from[j] = [];
+      for (var e = j; e <= m; e++) {
+        best[j][e] = Infinity;
+        if (strict && e < m && heading(body[e - 1])) continue;
+        for (var a = e - 1; a >= j - 1; a--) {
+          if (e > Math.max(reach[a], a + 1)) {
+            if (a === 1) continue; // reach can dip from 0 to 1, where "(cont.)" joins the title
+            break;
+          }
+          if (!(best[j - 1][a] < Infinity)) continue;
+          var d = top[e] - top[a] - target;
+          var cost = best[j - 1][a] + d * d + (e < m ? seam[e] * target * target : 0);
+          if (cost < best[j][e]) { best[j][e] = cost; from[j][e] = a; }
+        }
+      }
+    }
+    if (!(best[k][m] < Infinity)) return null;
+    var runs = [];
+    for (var i = k, stop = m; i >= 1; i--) {
+      runs.unshift([from[i][stop], stop]);
+      stop = from[i][stop];
+    }
+    return runs;
   }
 
   function go(delta) {
     var next = current + delta;
-    if (next < 0 || next > slides.length - 1) return;
+    if (next < 0 || next > deck.length - 1) return;
     current = next;
     render();
   }
 
   src.addEventListener("input", parse);
-  window.addEventListener("resize", scheduleLint);
+  var resizeTimer = null;
+  window.addEventListener("resize", function () {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(function () { fit(slideEl, wrap); }, 100);
+  });
   prevBtn.addEventListener("click", function () { go(-1); });
   nextBtn.addEventListener("click", function () { go(1); });
 
@@ -208,7 +390,7 @@
     if (e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ") { e.preventDefault(); go(1); }
     else if (e.key === "ArrowLeft" || e.key === "PageUp") { e.preventDefault(); go(-1); }
     else if (e.key === "Home") { current = 0; render(); }
-    else if (e.key === "End") { current = slides.length - 1; render(); }
+    else if (e.key === "End") { current = deck.length - 1; render(); }
   });
 
   // Swipe navigation.
@@ -221,28 +403,14 @@
     touchX = null;
   }, { passive: true });
 
-  // Build the self-contained export deck.
+  // Build the self-contained export deck: the slides as shown, cuts and all.
   function buildExport() {
-    var slidesHtml = slides.map(function (s) {
+    var slidesHtml = deck.map(function (s) {
       return '<section class="s">' + renderSlide(s) + "</section>";
     }).join("\n");
     return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n" +
       "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\n" +
-      "<title>Deck — .mdeck</title>\n<style>\n" +
-      "*{box-sizing:border-box}html,body{height:100%;margin:0}" +
-      "body{font-family:ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;background:#0f1115;color:#e8eaf0;display:flex;flex-direction:column}" +
-      ".bar{height:5px;background:#1e222b}.bar>div{height:100%;width:0;background:linear-gradient(90deg,#6ea8fe,#9d7bff);transition:width .18s ease}" +
-      "main{flex:1;overflow-y:auto}" +
-      ".s{display:none;--fit:1;padding:clamp(24px,6vw,64px);min-height:100%;flex-direction:column;justify-content:center;overflow-wrap:anywhere}" +
-      ".s.on{display:flex}" +
-      "h1{font-size:calc(clamp(1.8rem,5vw,3.2rem)*var(--fit));margin:0 0 .5em;line-height:1.15}" +
-      "h2{font-size:calc(clamp(1.2rem,3vw,1.9rem)*var(--fit));color:#9aa1af;font-weight:500;margin:0 0 .6em}" +
-      "ul{margin:0;padding-left:1.3em;font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7}" +
-      "p{font-size:calc(clamp(1.1rem,2.5vw,1.5rem)*var(--fit));line-height:1.7;margin:.3em 0}" +
-      "code{background:rgba(110,168,254,.12);border-radius:5px;padding:1px 6px;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.9em}" +
-      "a{color:#6ea8fe;text-decoration:none}a:hover{text-decoration:underline}" +
-      ".empty{color:#9aa1af;font-style:italic}" +
-      ".n{position:fixed;bottom:12px;right:16px;color:#9aa1af;font-size:.85rem;font-variant-numeric:tabular-nums}" +
+      "<title>Deck — .mdeck</title>\n<style>\n" + DECK_CSS +
       "\n</style>\n</head>\n<body>\n<div class=\"bar\"><div id=\"b\"></div></div>\n<main>\n" +
       slidesHtml +
       "\n</main>\n<div class=\"n\" id=\"n\"></div>\n<script>\n" +
@@ -284,5 +452,6 @@
   }
 
   src.value = SAMPLE;
+  makeFrame();
   parse();
 })();
