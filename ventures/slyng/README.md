@@ -28,6 +28,27 @@ One static page, no backend, no dependencies. This folder is the site; `tests/` 
   License; `fonts/MANIFEST-SLYNG.txt` says what changed).
 - `tools/devnet.mjs`: a nostr network on localhost for the tests: a relay with optional AUTH, a lightning address
   server that publishes zap receipts, and a Nostr Wallet Connect wallet.
+- `branding/`: the brand page, https://slyng.yolopreneur.lol/branding/ (see Brand, below).
+
+## Brand
+
+The logo is the name in Unbounded ExtraBold with the Y as the slingshot: a volt stone on the vertex of the Y, and the
+band drawn up the inside of its arms to the tips, cut flush. Ink `#111014`, bone `#F1F0EC`, white, and volt
+`#D9FF3D`. The app icon is the slingshot alone, white on ink with the band and stone in volt. `branding/` has the
+files, the rules, the motion, and every draft from the six rounds that found it.
+
+- `branding/index.html`, `branding/brand.css`: the page. No script, and its own Content-Security-Policy.
+- `branding/img/`: every image on it, drawn from the fonts' own outlines by `tools/brand/make.py` (Python 3.10+,
+  fontTools, Pillow, and Playwright's Chromium for the animations; the fonts come from google/fonts at a fixed commit,
+  checked by sha256). `branding/img/MANIFEST` has each file's sha256.
+- `tools/brand/`: one module per round of the work, kept as they were, so every draft comes out exactly as it was
+  first drawn. `python3 tools/brand/make.py --stills` makes just the SVGs, in seconds.
+
+The images are made files, like `shots/`, but the runner can't make them, so the branch carries only their
+`MANIFEST`: `tools/build.sh` runs `tools/brand/restore.sh`, which fetches each one back from the live site and checks
+it against `MANIFEST`. A refresh keeps the page whole, and refuses to land if anything doesn't match. To change the
+images: run `python3 tools/brand/make.py`, commit the new `MANIFEST`, and land the folder with `tools/bundle.sh` and
+the seed workflow.
 
 ## Decisions
 
@@ -52,7 +73,8 @@ node --test tests/*.test.js              # vectors, notes, zaps, the slingshot, 
 node tools/serve.mjs                     # in this folder, then open http://127.0.0.1:8000/
 node tools/devnet.mjs --auth             # a local relay, lightning address server and wallet; prints test keys
 python3 tests/smoke.py                   # Chromium (Playwright), desktop and phone: the demo, and a live sling via the devnet
-tools/build.sh                           # the tests, then shots/desktop.png and shots/og.png (needs Chrome or Chromium)
+tools/build.sh                           # the tests, branding/img from the live site, then shots/desktop.png and shots/og.png
+python3 tools/brand/make.py              # every image on the brand page, from scratch, into branding/img/
 ```
 
 To sling by hand against the devnet, open `http://127.0.0.1:8000/?relays=ws://127.0.0.1:<port>` and sign in with one

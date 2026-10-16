@@ -1,5 +1,6 @@
 #!/bin/sh
-# tools/build.sh: SLYNG's made files, made in place: the tests, then shots/desktop.png and shots/og.png.
+# tools/build.sh: SLYNG's made files, made in place: the tests, branding/img/ (brought back from the live site and
+# checked against its MANIFEST, see tools/brand/restore.sh), then shots/desktop.png and shots/og.png.
 #
 # Time's refresh workflow runs this on the runner (teahubxyz/time, Actions -> refresh, slug slyng); it runs anywhere
 # else too. Needs node 22+, curl, and Chrome or Chromium: set CHROME=/path/to/chrome if it isn't found, and
@@ -8,6 +9,7 @@ set -eu
 cd "$(dirname "$0")/.."
 
 node --test tests/*.test.js
+sh tools/brand/restore.sh
 
 CHROME=${CHROME:-}
 for c in "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" "$(command -v chromium || true)" \
@@ -47,4 +49,4 @@ shot() {   # shot OUT.png [chrome args] URL
 mkdir -p shots
 shot "$PWD/shots/desktop.png" --window-size=1440,900 "http://127.0.0.1:$PORT/"
 shot "$PWD/shots/og.png" --window-size=1200,630 "http://127.0.0.1:$PORT/tools/og.html"
-echo "built: tests passed, shots/desktop.png and shots/og.png"
+echo "built: tests passed, branding/img restored, shots/desktop.png and shots/og.png"
