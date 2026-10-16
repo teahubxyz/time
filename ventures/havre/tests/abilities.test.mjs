@@ -85,6 +85,81 @@ test("the shot is written from the conversation, with the rules, and the photo k
   assert.match(A.photoPrompt(ines, A.sheetView(0)), /^The reference picture shows Ines Corbel\. Keep how they look exactly.*Safe for work.*New photo: Full length, standing/);
 });
 
+// ---------- adult characters ----------
+const mara = C.normalizeCard({ name: "Mara Vell", persona: "You are Mara Vell, a night-club singer in her thirties.", adult: true,
+  portrait: "data:image/webp;base64,AAAA", look: { references: ["data:image/webp;base64,BBBB"] } });
+
+test("adult characters: the 18+ rule is the first thing every photo and clip prompt says, and the shot's", () => {
+  assert.match(A.ADULT_ONLY, /^Hard rule: everyone shown is an adult, 18 or older, with a clearly adult face and body\. Never anyone under 18/);
+  for (const p of [A.photoPrompt(mara, "On the stage.", 1, 1500, { adult: true }), A.photoPrompt(mara, "On the stage.", 2, 1500, { adult: true }),
+    A.clipPrompt(mara, "She bows.", 2500, { adult: true })]) {
+    assert.ok(p.startsWith(A.ADULT_ONLY), p);
+    assert.ok(!/Safe for work/.test(p));
+    assert.match(p, /Never a real, identifiable person\./);
+  }
+  assert.ok(A.photoPrompt(mara, "x ".repeat(3000), 1, 400, { adult: true }).startsWith(A.ADULT_ONLY), "a long shot can't push it out");
+  assert.ok(A.clipPrompt(mara, "x ".repeat(3000), 400, { adult: true }).startsWith(A.ADULT_ONLY));
+  assert.match(A.photoPrompt(mara, "On the stage."), /Safe for work/, "without adult, as before");
+  const [sys] = A.shotMessages(mara, [], "", "photo", { adult: true });
+  assert.equal(sys.content, A.PHOTO_SYSTEM_ADULT);
+  assert.equal(A.shotMessages(mara, [], "", "clip", { adult: true })[0].content, A.CLIP_SYSTEM_ADULT);
+  assert.equal(A.moveMessages(mara, [], { adult: true })[0].content, A.MOVE_SYSTEM_ADULT);
+  for (const s of [A.PHOTO_SYSTEM_ADULT, A.CLIP_SYSTEM_ADULT, A.MOVE_SYSTEM_ADULT]) {
+    assert.ok(s.includes(A.ADULT_ONLY), "the shot is written to the same rule");
+    assert.ok(!/safe for work/i.test(s));
+    assert.match(s, /Never show a real, identifiable person/);
+  }
+  assert.equal(A.shotMessages(mara, [], "")[0].content, A.PHOTO_SYSTEM, "safe for work unless asked");
+});
+
+test("adult characters: their clips and photos come from Venice's uncensored models, and nobody else's do", () => {
+  const video = [{ id: "minimax-h3-max-reference-to-video", ref: true, uncensored: true, privacy: "private" },
+    { id: "grok-imagine-1-5-reference-to-video-private", ref: true, privacy: "private" }, { id: "wan-3-0-image-to-video", ref: false, uncensored: true }];
+  assert.deepEqual(video.filter(A.isAdultClipModel).map((m) => m.id), ["minimax-h3-max-reference-to-video"]);
+  assert.deepEqual(video.filter(A.isClipModel).map((m) => m.id), ["grok-imagine-1-5-reference-to-video-private"]);
+  const edits = [{ id: "grok-imagine-edit", privacy: "private" }, { id: "seedream-v4-edit", uncensored: true, privacy: "anonymized" },
+    { id: "qwen-edit-uncensored", uncensored: true, privacy: "private" }];
+  assert.equal(A.chosen(edits.filter(A.isAdultPhotoModel), "", "adultPhoto").id, "qwen-edit-uncensored");
+  assert.equal(A.chosen(edits.filter(A.isAdultPhotoModel), "seedream-v4-edit", "adultPhoto").id, "seedream-v4-edit");
+  assert.equal(A.chosen(video.filter(A.isAdultClipModel), "", "adultClip").id, "minimax-h3-max-reference-to-video");
+});
+
+test("adult characters: words that say someone is under 18, and ones that don't", () => {
+  for (const s of ["She is 16 years old.", "a sixteen-year-old", "17yo", "15 y.o.", "aged 12", "the age of seven", "I'm 15", "she's 17 and",
+    "you are 14", "underage", "under-age", "under 18", "minors", "she is a minor", "a teen", "teenagers", "teenage", "pre-teen", "tween",
+    "adolescent", "prepubescent", "loli", "shotacon", "jailbait", "schoolgirl", "school uniform", "high school", "high-schooler",
+    "middle school", "kindergarten", "little girl", "young boy", "the kids", "a child", "children", "toddler", "infant"]) assert.ok(A.underage(s), s);
+  for (const s of ["She is 25 years old.", "a 30-year-old", "18 years old", "21 yo", "a 1000-year-old vampire", "300 years old", "she's 5'4",
+    "he's 6 foot 2", "I'm 5 minutes away", "under 18 minutes", "a minor inconvenience", "a minor key", "no kidding", "canteen",
+    "fifteen minutes", "childhood friends", "childish", "old school", "a student", "hey baby", "a young woman"]) assert.equal(A.underage(s), "", s);
+  assert.equal(A.underage(["fine", ["still fine", "a teen"]]), "teen", "lists, nested");
+  assert.equal(A.underage("divorced, two kids", A.UNDERAGE_CARD), "", "a card can mention their kids, or their childhood");
+  assert.ok(A.underage("You are 17.", A.UNDERAGE_CARD));
+});
+
+test("adult characters: adult pictures only when marked adult, 18+ said, every picture made here, and nobody young", () => {
+  const made = new Set(["data:image/webp;base64,AAAA", "data:image/webp;base64,BBBB"]);
+  const ok = { of18: true, made: (p) => made.has(p) };
+  assert.deepEqual(A.adultCheck(mara, ok), { ok: true, why: "" });
+  assert.deepEqual(A.adultCheck({ ...mara, adult: false }, ok), { ok: false, why: "" }, "not marked adult: safe for work, nothing to say");
+  assert.match(A.adultCheck(mara, { ...ok, of18: false }).why, /until you say you're 18 or older/);
+  assert.match(A.adultCheck(mara, { ...ok, on: false }).why, /switched off under abilities/);
+  const uploaded = { ...mara, look: { ...mara.look, references: [...mara.look.references, "data:image/png;base64,UPLD"] } };
+  assert.match(A.adultCheck(uploaded, ok).why, /wasn't made here with ai/, "one uploaded picture keeps it safe for work");
+  assert.equal(A.adultCheck({ ...mara, portrait: "https://outerface.venice.ai/x.png" }, ok).ok, false, "nor is a Venice photo made here");
+  assert.match(A.adultCheck({ ...mara, portrait: "", look: { references: [] } }, ok).why, /no picture made here yet/);
+  assert.match(A.adultCheck({ ...mara, persona: "You are Mara, 16 years old." }, ok).why, /their card says “16 years old”/);
+  assert.match(A.adultCheck({ ...mara, look: { ...mara.look, description: "a schoolgirl" } }, ok).why, /“schoolgirl”/, "how they look counts");
+  assert.equal(A.adultCheck({ ...mara, persona: "You are Mara. Two kids, one ex." }, ok).ok, true);
+  assert.match(A.adultCheck(mara, { ...ok, shot: "She waves at a teenager." }).why, /the shot or the chat says “teenager”.*this one stays safe for work/);
+  assert.match(A.adultCheck(mara, { ...ok, said: ["hi", "my kids are asleep"] }).why, /“kids”/, "and the chat");
+  assert.equal(A.adultCheck({ ...mara, plain: true }, ok).ok, false);
+  // a picture's fingerprint
+  assert.equal(A.pictureKey("data:image/webp;base64,AAAA"), A.pictureKey("data:image/webp;base64,AAAA"));
+  assert.notEqual(A.pictureKey("data:image/webp;base64,AAAA"), A.pictureKey("data:image/webp;base64,AAAB"));
+  assert.notEqual(A.pictureKey("ab"), A.pictureKey("ba"));
+});
+
 test("voice notes read the words, not the code or the stage directions", () => {
   assert.equal(A.speakable("<think>x</think>Sure! *waves*\n\n```js\nlet a\n```\nBye."), "Sure! Bye.");
   assert.equal(A.speakable("a".repeat(5000)).length, 4000);
@@ -146,6 +221,17 @@ test("venice: photo edits keep safe mode on, one picture or several; a first por
   await v.generateImage({ model: "grok-imagine-image", prompt: "a portrait", aspect: "1:1" });
   assert.deepEqual(calls[2].body, { model: "grok-imagine-image", prompt: "a portrait", safe_mode: true, format: "webp", return_binary: true, aspect_ratio: "1:1" });
   await assert.rejects(v.editImage({ model: "m", prompt: "p", images: [] }), /at least one picture/);
+});
+
+test("venice: an adult character's photo goes with safe mode off, and only when asked for that way", async () => {
+  const { f, calls } = fake(() => ({ status: 200, blob: "img", headers: { "content-type": "image/webp" } }));
+  const v = new Venice("sk", { fetch: f });
+  await v.editImage({ model: "qwen-edit-uncensored", prompt: "p", images: ["data:image/webp;base64,QUJD"], safe: false });
+  assert.equal(calls[0].body.safe_mode, false);
+  await v.editImage({ model: "qwen-edit-uncensored", prompt: "p", images: ["data:image/webp;base64,QUJD", "data:image/webp;base64,REVG"], safe: false });
+  assert.equal(calls[1].body.safe_mode, false);
+  for (const safe of [undefined, true, 0, "no"]) await v.editImage({ model: "m", prompt: "p", images: ["data:image/webp;base64,QUJD"], safe });
+  assert.deepEqual(calls.slice(2).map((c) => c.body.safe_mode), [true, true, true, true], "anything else: on");
 });
 
 test("venice: a voice note sends the mood as the style prompt; hearing sends the recording as a form", async () => {

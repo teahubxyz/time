@@ -143,6 +143,8 @@
       </div>
       <div class="col">
         <label class="check"><input type="checkbox" name="short_form"> short-form: replies come as a few short texts</label>
+        <label class="check"><input type="checkbox" name="adult"> adult (18+): for grown-ups only</label>
+        <p class="hint" id="adult-note" role="status" hidden></p>
         <label>HOW THEY TALK <input name="voice_notes" maxlength="2000" placeholder="clipped, wry, asks one question at a time"></label>
         <details class="group" id="flow-group">
           <summary>FLOW <span class="hint">optional stages for meeting someone new</span></summary>
@@ -240,7 +242,7 @@
       <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
       <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the characters you write answer from their own examples.</li>
       <li>They remember. Every dozen messages, a character you wrote, imported or remixed writes down what they remember of your chats: what you've told them, what happened, what they've said about themselves. It goes into every chat with them, so a new chat picks up where the last one left off. Read it, add to it, or make them forget, on their card.</li>
-      <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. Switch them on, and they hear your voice notes and see your photos.</li>
+      <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. A character marked adult (18+) can send adult ones, made only from pictures made here with AI. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
     </ol>
   </div>
@@ -304,7 +306,8 @@
     <p>Characters and chats are saved in this browser, and so are the photos, clips and voice notes in them. Export a character to keep them anywhere else.</p>
     <p>What a character remembers of your chats is kept in this browser too, beside their card and never in it: a card you export or share carries none of it. Deleting a chat doesn't make them forget; their card does. Switch memory off under abilities.</p>
     <p>Your key stays in this browser and goes only to api.venice.ai. The page's security policy blocks every other address, except the download links Venice hands out for clips from its private video models, which are fetched without your key. Conversations run on your Venice account, under Venice's terms.</p>
-    <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older. Photos and clips are for safe-for-work pictures either way: every one asks for that, and for adults only; photos also go through Venice's safe mode, which blurs anything adult; and Havre leaves Venice's adult video models out. They're made only from the pictures on a card, which are for pictures of the character, never a photo of a real person.</p>
+    <p>Venice's adult characters stay hidden unless you switch them on and confirm you're 18 or older, and marking a character of yours adult asks the same. Photos and clips are safe for work: every one asks for that, and for adults only, and photos go through Venice's safe mode, which blurs anything adult. They're made only from the pictures on a card, which are for pictures of the character, never a photo of a real person.</p>
+    <p>The one exception is a character marked adult, once you've said you're 18 or older. When every picture on their card was made here with AI, their photos and clips can be adult: they're made on Venice's uncensored models, and every prompt opens with a hard rule that everyone shown is an adult, 18 or older. Never from a picture someone uploaded, which could be of anyone, and never when their card, the shot or the chat mentions anyone under 18: then it stays safe for work. Switch it off under abilities.</p>
     <p>What characters do on their own stays within the daily allowance you set under abilities, and you can switch it off there. A clip is never made without your yes.</p>
     <p>Hearing and seeing are off until you switch them on. Your voice note goes to Venice to be written down, and your photo goes to the model you talk to, or to the one that describes it.</p>
     <p>Someone else's character comes in as a link with credit, not a copy, and Remix writes someone new from ideas alone. Names and broad ideas aren't protected by copyright; a character's written expression can be. When in doubt, ask the creator. This isn't legal advice.</p>
@@ -364,7 +367,7 @@
       <div class="tablewrap flush">
         <table class="table abilities"><tbody id="ablist"></tbody></table>
       </div>
-      <p class="mono">photos and clips are asked for safe for work, of adults, never of a real person; photos also go through venice's safe mode. they, and voice notes, are kept in this browser.</p>
+      <p class="mono">photos and clips are safe for work, of adults, never of a real person, and photos go through venice's safe mode; a character marked adult can send adult ones (see adult). they, and voice notes, are kept in this browser.</p>
       <p class="actions"><button type="button" class="btn" id="abclose">CLOSE</button></p>
     </div>
   </form>

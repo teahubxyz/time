@@ -68,6 +68,9 @@ export function normalizeCard(o = {}) {
       user: str(e && e.user, 2000).trim(), character: str(e && e.character, 4000).trim(),
     })).filter((e) => e.character),
     tags: [...new Set(arr(o.tags).map((t) => str(t, 40).trim().toLowerCase()).filter(Boolean))].slice(0, 12),
+    // for grown-ups only (18+): set by hand, or brought in (Venice's own flag, a character card's "nsfw" tag, the
+    // character a remix came from); never guessed from what they say
+    adult: o.adult === true,
     model: str(o.model, 120).trim() || DEFAULT_MODEL,
     engine: engine.venice_character ? { venice_character: slugify(engine.venice_character) } : {},
     portrait: str(o.portrait, 2_000_000).trim(),
@@ -158,6 +161,11 @@ export function identityRule(card) {
 /** a reminder of who is answering, on the last thing said: by a dozen messages in, the system prompt is far above */
 export const reminder = (card) => `[You are ${card.name}. Stay in character.]`;
 
+/** what an adult character (card.adult) is told: their chats are for grown-ups, and only grown-ups are in them */
+export const ADULT_RULE = "This is a chat for adults. Hard rule: everyone in it, and everyone in the stories you tell, " +
+  "is an adult, 18 or older. Nothing sexual ever involves anyone under 18, or anyone who seems it; if asked, refuse and " +
+  "steer back, in character.";
+
 const quoted = (s, max = 600) => `"${str(s).replace(/\s+/g, " ").trim().slice(0, max)}"`;
 
 /**
@@ -184,6 +192,7 @@ export function systemPrompt(card, { memory = [] } = {}) {
     parts.push("What you remember from your chats with them so far (keep to it, and bring it up only when it fits):\n" +
       notes.map((n) => "- " + n).join("\n"));
   }
+  if (card.adult) parts.push(ADULT_RULE);
   parts.push(identityRule(card), HOUSE_RULES);
   return parts.join("\n\n");
 }
@@ -362,10 +371,12 @@ export function fromCharacterCard(cc) {
   const persona = [str(d.description), d.personality ? "Personality: " + str(d.personality) : "",
     d.scenario ? "Scenario: " + str(d.scenario) : "", d.system_prompt ? str(d.system_prompt) : ""]
     .map((s) => s.trim()).filter(Boolean).join("\n\n");
+  // card apps mark a character for grown-ups with an "nsfw" tag; here that's the adult flag
+  const nsfw = (t) => /^\s*nsfw\s*$/i.test(str(t, 40));
   let card = normalizeCard({
     name: d.name, tagline: str(d.personality).length <= 120 ? d.personality : "", greeting: d.first_mes,
-    persona, examples: parseExamples(d.mes_example), tags: d.tags, creator: d.creator, license: "all-rights-reserved",
-    voice: { short_form: false },
+    persona, examples: parseExamples(d.mes_example), tags: arr(d.tags).filter((t) => !nsfw(t)), adult: arr(d.tags).some(nsfw),
+    creator: d.creator, license: "all-rights-reserved", voice: { short_form: false },
   });
   const src = arr(d.source).find((s) => typeof s === "string" && s);
   card = addLineage(card, { relation: "ported-from", name: card.name, creator: str(d.creator, 120), ref: src || "",
@@ -383,7 +394,7 @@ function cardData(card) {
     name: card.name, description, personality: card.tagline, scenario: "", first_mes: card.greeting,
     mes_example: formatExamples(card.examples),
     creator_notes: ["Made in Havre (" + SITE + ").", ...credits].join("\n"),
-    system_prompt: "", post_history_instructions: "", alternate_greetings: [], tags: card.tags,
+    system_prompt: "", post_history_instructions: "", alternate_greetings: [], tags: card.adult ? [...new Set([...card.tags, "nsfw"])] : card.tags,
     creator: card.creator, character_version: "havre-" + HAVRE, extensions: { havre: card },
   };
 }
@@ -554,10 +565,11 @@ export const DISTILL_SYSTEM = "You read a character and write down only the idea
 
 export const WRITE_SYSTEM = "You are a character writer. From a set of ideas and the creator's twist you write a " +
   "brand-new, original character. You have not seen any source text, so invent everything concrete: a new name, a new " +
-  "backstory, new details, your own wording. Return one JSON object: name (a new name), tagline (at most 8 words), " +
-  "greeting (one to three short texts separated by a blank line), persona (a system prompt in the second person, 120 " +
-  "to 250 words: who they are, how they talk, what they want, what they won't do), examples (three objects with user " +
-  "and character, the character's replies short, like texts), tags (at most five lowercase words).";
+  "backstory, new details, your own wording. The character is an adult, 18 or older. Return one JSON object: name (a " +
+  "new name), tagline (at most 8 words), greeting (one to three short texts separated by a blank line), persona (a " +
+  "system prompt in the second person, 120 to 250 words: who they are, how they talk, what they want, what they won't " +
+  "do), examples (three objects with user and character, the character's replies short, like texts), tags (at most " +
+  "five lowercase words).";
 
 // no length limits in the schemas: strict structured output rejects them on some models; the prompts ask for brevity
 const strings = () => ({ type: "array", items: { type: "string" } });
@@ -664,10 +676,14 @@ export function schemaModel(models, id) {
     || first((x) => x.id === DEFAULT_MODEL) || first((x) => (x.traits || []).includes("default")) || id;
 }
 
-export function cardFromWrite(o, { source, check, model } = {}) {
+/**
+ * A remix's new card from what the writer sent back. adult: the character they came from was for grown-ups, so they
+ * are too (a rewrite doesn't change who it's for).
+ */
+export function cardFromWrite(o, { source, check, model, adult = false } = {}) {
   let card = normalizeCard({
     name: o.name, tagline: o.tagline, greeting: o.greeting, persona: o.persona, examples: o.examples, tags: o.tags,
-    model, voice: { short_form: true }, license: "remix-with-credit",
+    model, voice: { short_form: true }, license: "remix-with-credit", adult: adult === true,
   });
   // a writer that changed its mind about the name halfway through: the name it gave them wins, everywhere
   const other = nameClash(card);

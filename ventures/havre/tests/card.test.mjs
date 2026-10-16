@@ -100,6 +100,27 @@ test("a conversation stays well-formed, and a reply caught in a loop says it onc
   assert.equal(C.unloop(code), code, "code is left alone");
 });
 
+test("adult characters: the flag, the nsfw tag in and out, the 18+ rule in their prompt, and a remix of one is adult", () => {
+  assert.equal(lone.adult, false);
+  assert.equal(C.normalizeCard({ name: "x", adult: "yes" }).adult, false, "only true is true");
+  const grown = C.normalizeCard({ ...lone, adult: true });
+  assert.ok(C.toCharacterCardV3(grown).data.tags.includes("nsfw"));
+  assert.ok(C.toCharacterCardV2(grown).data.tags.includes("nsfw"));
+  assert.ok(!C.toCharacterCardV3(lone).data.tags.includes("nsfw"));
+  assert.deepEqual(C.fromCharacterCard(C.toCharacterCardV3(grown)), grown, "it comes back whole");
+  const foreign = C.fromAny(JSON.stringify({ spec: "chara_card_v2", data: { name: "Vex", description: "{{char}} runs a night club.", tags: ["NSFW", "club"] } })).card;
+  assert.equal(foreign.adult, true, "a card app's nsfw tag is the flag");
+  assert.deepEqual(foreign.tags, ["club"]);
+  assert.equal(C.fromAny(JSON.stringify({ name: "Old", description: "An old card.", tags: ["sea"] })).card.adult, false);
+  assert.ok(C.systemPrompt(grown).includes(C.ADULT_RULE));
+  assert.match(C.ADULT_RULE, /Hard rule: everyone in it, and everyone in the stories you tell, is an adult, 18 or older\./);
+  assert.ok(C.systemPrompt(grown).indexOf(C.ADULT_RULE) < C.systemPrompt(grown).indexOf("Your name is"));
+  assert.ok(!C.systemPrompt(lone).includes("Hard rule"), "only for adult characters");
+  assert.match(C.WRITE_SYSTEM, /The character is an adult, 18 or older\./, "every remix is written as an adult");
+  assert.equal(C.cardFromWrite({ name: "Odile", persona: "You are Odile." }, { model: "x", adult: true }).adult, true);
+  assert.equal(C.cardFromWrite({ name: "Odile", persona: "You are Odile." }, { model: "x" }).adult, false);
+});
+
 test("their name, the same everywhere: a persona's own name, clashes, and renaming all through a card", () => {
   assert.equal(C.personaName("You are Ines Corbel, who pilots the morning ferry."), "Ines Corbel");
   assert.equal(C.personaName("You're Dr. Lin Mae. You run the clinic."), "Dr. Lin Mae");

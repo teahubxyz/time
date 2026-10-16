@@ -47,8 +47,11 @@ const K = { cards: "havre.cards.v1", sel: "havre.selected", key: "havre.key", mo
   sort: "havre.vsort", seeded: "havre.seeded.v1", adult: "havre.adult", adult18: "havre.adult.18", plainModel: "havre.plain.model",
   own: "havre.venice.models", ab: "havre.abilities", voiceOn: "havre.voicenotes", jobs: "havre.clips.pending", refOk: "havre.refs.ok",
   spent: "havre.spent", jobsDone: "havre.clips.done",
-  // what each character remembers of your chats with them (memory.js), by card id: never in the card itself
+  // what each character remembers of your chats (memory.js), by card id: never in the card itself
   memory: "havre.memory.v1",
+  // the pictures this browser made with AI (their fingerprints): an adult character's photos and clips can be adult
+  // only when every picture on their card is one of these
+  made: "havre.pictures.made.v1",
   // the pages of Venice's characters this tab saw lately (in sessionStorage, so they last as long as the tab)
   pages: "havre.venice.pages",
   // your chats: the list of threads, each thread's messages under its own key, the threads deleted (so another tab
@@ -77,7 +80,8 @@ const S = {
   // abilities: Venice's other models by type, what was picked, who sends voice notes, clips on their way, the photo
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
-  ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true }, voiceOn: {}, jobs: [], ask: null,
+  ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true,
+    adult: true, adultPhoto: "", adultClip: "" }, voiceOn: {}, jobs: [], ask: null,
   rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
@@ -533,6 +537,7 @@ async function loadVenice(offset = 0, { paging = false, fresh = false } = {}) {
 }
 function showPage({ list, more }, offset, paging) {
   Object.assign(S.v, { list, more, offset, loading: false });
+  syncAdult(list);
   vStatus(list.length ? "" : S.v.query || S.v.tag ? `nothing matched${S.v.query ? " “" + S.v.query + "”" : ""}${S.v.tag ? " in #" + S.v.tag : ""}.`
     : "venice sent back no characters.");
   renderGrid();
@@ -546,11 +551,23 @@ function talkTo(v) {
   if (!c) {
     c = addCard({
       name: v.name, tagline: v.description, engine: { venice_character: v.slug }, portrait: v.photo, creator: v.creator,
-      model: v.model || S.model, license: "all-rights-reserved", tags: v.tags, voice: { short_form: true },
+      model: v.model || S.model, license: "all-rights-reserved", tags: v.tags, voice: { short_form: true }, adult: !!v.adult,
       lineage: [{ relation: "ported-from", name: v.name, creator: v.creator, ref: "venice:" + v.slug, at: today(), note: "a link: speaks through Venice with its own prompt" }],
     }, { select: false });
   }
   selectCard(c.id, { talk: true });
+}
+/** Venice says which of its characters are adult: their cards here say the same (one met before this was kept, too) */
+function syncAdult(list) {
+  const changed = [];
+  for (const v of list) {
+    const c = S.cards.find((x) => x.engine.venice_character === v.slug);
+    if (c && c.adult !== !!v.adult) { c.adult = !!v.adult; changed.push(c.id); }
+  }
+  if (!changed.length) return;
+  persistCards();
+  renderRoster();
+  if (changed.includes((card() || {}).id)) { renderSheet(); renderChatMeta(); }
 }
 
 // your harbor: every character you have, as a table
@@ -565,7 +582,8 @@ function renderRoster() {
     const from = c.engine.venice_character ? "venice, as a link with credit" : c.lineage[0] ? C.creditLine(c.lineage[0]) : "written here";
     const go = (tab) => () => { selectCard(c.id); openCard(tab); };
     tb.append(h("tr", { "aria-current": on ? "true" : null },
-      h("th", { scope: "row" }, c.name, on ? h("span", { class: "now", text: "talking" }) : null),
+      h("th", { scope: "row" }, c.name, c.adult ? h("span", { class: "x18", title: "for grown-ups only", text: "18+" }) : null,
+        on ? h("span", { class: "now", text: "talking" }) : null),
       h("td", { text: from }),
       h("td", { text: C.LICENSES[c.license] }),
       h("td", { class: "files" }, slashed([
@@ -756,6 +774,7 @@ function renderChatMeta() {
   meta.textContent = "";
   if (!c) return;
   meta.append(...slashed([
+    c.adult ? "18+" : null,
     c.plain ? "just the model, no character" : c.engine.venice_character ? "via venice, with their own prompt" : c.tagline,
     h("span", {}, "model: ", linkish(modelName(c.model), () => openModels("chat"), { id: "model-btn", "aria-label": `Model: ${modelName(c.model)}. Change it` })),
     c.plain ? null : linkish("card", () => openCard("edit")),
@@ -1102,18 +1121,18 @@ function mediaLine(c, m) {
   if (md.kind === "photo" || md.kind === "photo-in") {
     const alt = md.kind === "photo" ? `A photo from ${c.name}${md.shot ? ": " + md.shot : ""}` : "Your photo";
     said.append(h("figure", { class: "pic" }, mediaEl("img", md.id, { alt, title: md.shot || null, decoding: "async" }, "photo")));
-    if (md.kind === "photo") said.append(cost(["photo", md.model, md.price != null && A.usd(md.price), md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
+    if (md.kind === "photo") said.append(cost(["photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
     else if (md.saw) said.append(h("span", { class: "cap", text: `${md.seer || "a model"} told them: ${md.saw}` }));
   } else if (md.kind === "clip" && !md.id) {
     // a clip this browser couldn't download: it plays from Venice's link until the link lapses
     const live = md.url && Date.now() < (md.until || 0) && /^https:\/\/private-share\.venice\.ai\//.test(md.url);
     if (!live) said.append(gone("clip"));
     else said.append(h("video", { controls: true, playsinline: true, preload: "metadata", src: md.url, title: md.shot || null }),
-      h("span", { class: "cap" }, ["clip", md.model, md.price != null && A.usd(md.price), "venice keeps it for a day"].filter(Boolean).join(" · ") + " · ",
+      h("span", { class: "cap" }, ["clip", md.model, md.price != null && A.usd(md.price), md.adult && "18+", "venice keeps it for a day"].filter(Boolean).join(" · ") + " · ",
         h("a", { href: md.url, target: "_blank", rel: "noopener noreferrer", text: "open it to save it" })));
   } else if (md.kind === "clip") {
     said.append(mediaEl("video", md.id, { controls: true, playsinline: true, preload: "metadata", title: md.shot || null }, "clip"));
-    said.append(cost(["clip", md.model, md.price != null && A.usd(md.price)]));
+    said.append(cost(["clip", md.model, md.price != null && A.usd(md.price), md.adult && "18+"]));
   } else if (md.kind === "voice-in") {
     said.append(audioEl(md.id));
   }
@@ -1273,6 +1292,11 @@ const photoModel = () => A.chosen(S.lists.inpaint, S.ab.photo, "photo");
 const portraitModel = () => A.chosen(S.lists.image, "", "portrait");
 const clipModels = () => (S.lists.video ? S.lists.video.filter(A.isClipModel) : null);
 const clipModel = () => A.chosen(clipModels(), S.ab.clip.model, "clip");
+// an adult character's photos and clips: Venice's uncensored models (the others refuse, or blur)
+const adultPhotoModels = () => (S.lists.inpaint ? S.lists.inpaint.filter(A.isAdultPhotoModel) : null);
+const adultPhotoModel = () => A.chosen(adultPhotoModels(), S.ab.adultPhoto, "adultPhoto");
+const adultClipModels = () => (S.lists.video ? S.lists.video.filter(A.isAdultClipModel) : null);
+const adultClipModel = () => A.chosen(adultClipModels(), S.ab.adultClip, "adultClip");
 const voiceModel = (c) => A.chosen(S.lists.tts, c && c.speech ? c.speech.model : "", "voice");
 const hearModel = () => A.chosen(S.lists.asr, S.ab.hearModel, "hearing");
 const seeModel = () => A.seer(S.models, S.ab.seeModel);
@@ -1291,6 +1315,10 @@ const KINDS = {
     note: "a photo is an edit of the character's own pictures, with venice's safe mode on. " + TEXT_NOTE },
   clip: { title: "CLIP MODEL", type: "video", head: ["MODEL", "PRIVACY", "LENGTHS", "SIZES", "SOUND"], search: "search clip models…",
     note: "reference-to-video models: they keep the character the way their pictures show them. venice prices each clip before it's made. " + TEXT_NOTE },
+  adultPhoto: { title: "ADULT PHOTO MODEL", type: "inpaint", head: ["MODEL", "PRIVACY", "PICTURES", "$ A PHOTO"], search: "search uncensored photo models…",
+    note: "for adult characters' photos: an edit of pictures made here with ai, with venice's safe mode off and the 18+ rule first in every prompt. only venice's uncensored photo models are here. " + TEXT_NOTE },
+  adultClip: { title: "ADULT CLIP MODEL", type: "video", head: ["MODEL", "PRIVACY", "LENGTHS", "SIZES", "SOUND"], search: "search uncensored clip models…",
+    note: "for adult characters' clips: venice's uncensored reference-to-video models, from pictures made here with ai, with the 18+ rule first in every prompt. venice prices each clip before it's made. " + TEXT_NOTE },
   voice: { title: "VOICE MODEL", type: "tts", head: ["MODEL", "PRIVACY", "VOICES", "$ A MILLION CHARACTERS"], search: "search voice models…",
     note: "a reply of 200 characters costs 200 millionths of the price. qwen 3 voices take the mood; the others ignore it. " + TEXT_NOTE },
   hearing: { title: "HEARING MODEL", type: "asr", head: ["MODEL", "PRIVACY", "$ A MINUTE"], search: "search hearing models…",
@@ -1302,11 +1330,13 @@ function kindList(kind) {
   if (kind === "chat") return S.models;
   if (kind === "seeing") return S.models && S.models.filter((m) => m.vision);
   if (kind === "clip") return clipModels();
+  if (kind === "adultPhoto") return adultPhotoModels();
+  if (kind === "adultClip") return adultClipModels();
   return S.lists[KINDS[kind].type];
 }
 /** the model of this kind in use now */
 function kindModel(kind) {
-  const c = card(), m = { photo: photoModel, clip: clipModel, hearing: hearModel, seeing: seeModel }[kind];
+  const c = card(), m = { photo: photoModel, clip: clipModel, hearing: hearModel, seeing: seeModel, adultPhoto: adultPhotoModel, adultClip: adultClipModel }[kind];
   if (m) return m();
   if (kind === "voice") return voiceModel(c);
   return c ? { id: c.model } : null;
@@ -1323,6 +1353,7 @@ function openModels(kind = "chat") {
   $("#model-for").textContent = kind === "chat" ? (c.plain ? "for the plain chat." : `for ${c.name}.` + (own ? ` their own on venice: ${modelName(own)}.` : ""))
     : kind === "voice" ? `for ${c.name}'s voice notes.` : kind === "photo" ? "for photos from every character."
     : kind === "clip" ? "for clips from every character." : kind === "hearing" ? "for hearing your voice notes."
+    : kind === "adultPhoto" ? "for adult characters' adult photos." : kind === "adultClip" ? "for adult characters' adult clips."
     : "for describing your photos to a character whose model can't see.";
   $("#msearch").value = "";
   const head = $("#mhead");
@@ -1345,16 +1376,17 @@ function renderModels() {
   const list = list0.filter((m) => !q || `${m.id} ${m.name} ${(m.traits || []).join(" ")} ${m.privacy} ${m.uncensored ? "uncensored" : ""}`.toLowerCase().includes(q))
     .sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
   const num = (text) => h("td", { class: "num", text });
+  const shape = { adultPhoto: "photo", adultClip: "clip" }[kind] || kind;
   for (const m of list) {
     const notes = [m.id, m.id === own && "their own", (m.traits || []).includes("default") && "venice's default", m.retiring && "retiring " + m.retiring].filter(Boolean);
     let cells;
     if (k.type === "text") {
       const can = [m.vision && "sees", m.tools && "tools", m.reasoning && "reasons", m.web && "web", m.uncensored && "uncensored"].filter(Boolean);
       cells = [h("td", { text: can.join(" · ") || "text" }), num(`${A.usd(m.input)} / ${A.usd(m.output)}`), num(m.ctx ? Math.round(m.ctx / 1000) + "k" : "")];
-    } else if (kind === "photo") {
+    } else if (shape === "photo") {
       cells = [h("td", { text: m.maxIn > 1 ? `up to ${m.maxIn}` : "1" }),
         num(A.usd(m.price) + (m.extra ? ` + ${A.usd(m.extra)} a picture past ${m.included}` : ""))];
-    } else if (kind === "clip") {
+    } else if (shape === "clip") {
       const secs = m.durations.map((d) => parseInt(d, 10)).filter((n) => n > 0);
       cells = [h("td", { text: secs.length ? `${Math.min(...secs)}–${Math.max(...secs)}s` : "?" }), h("td", { text: m.resolutions.join(", ") || "one size" }),
         h("td", { text: m.audio ? "yes" : "no" })];
@@ -1380,6 +1412,8 @@ function chooseModel(id) {
   } else {
     if (kind === "photo") S.ab.photo = id;
     else if (kind === "clip") S.ab.clip = { ...S.ab.clip, model: id };
+    else if (kind === "adultPhoto") S.ab.adultPhoto = id;
+    else if (kind === "adultClip") S.ab.adultClip = id;
     else if (kind === "hearing") S.ab.hearModel = id;
     else if (kind === "seeing") S.ab.seeModel = id;
     saveAb();
@@ -1389,8 +1423,9 @@ function chooseModel(id) {
   renderChatMeta();
   renderSpeech();
   if ($("#abilitydlg").open) renderAbilities();
-  if (S.ask && S.ask.kind === kind) {
-    if (kind === "clip") { S.ask.opts = A.clipOptions(clipModel(), S.ab.clip); requote(); }
+  const asking = { photo: "photo", adultPhoto: "photo", clip: "clip", adultClip: "clip" }[kind];
+  if (S.ask && S.ask.kind === asking) {
+    if (asking === "clip") { S.ask.opts = null; requote(); }        // the new model's lengths and sizes, and its price
     renderAsk();
   }
 }
@@ -1448,6 +1483,7 @@ function renderAbilities() {
   const tb = $("#ablist"), c = card(), real = !!c && !c.plain;
   tb.textContent = "";
   const pm = photoModel(), cm = clipModel(), hm = hearModel(), sm = seeModel(), vm = real ? voiceModel(c) : null;
+  const apm = adultPhotoModel(), acm = adultClipModel();
   const change = (kind, m) => linkish(m ? m.name : "…", () => openModels(kind), { "aria-label": `Change the ${KINDS[kind].title.toLowerCase()}` });
   const tick = (label, on, set) => {
     const i = h("input", { type: "checkbox" });
@@ -1471,6 +1507,13 @@ function renderAbilities() {
     row("PHOTOS", real ? `${c.name} sends a photo, made from their pictures (card → look).` : "a character sends a photo, made from their pictures.",
       ["model: ", change("photo", pm), pm && pm.price != null ? ` · ${A.usd(A.photoPrice(pm, 1))} a photo` : ""]),
     row("CLIPS", "a few seconds of video, made from the same pictures.", ["model: ", change("clip", cm), " · venice prices each clip before it's made"]),
+    row("ADULT", tick("characters marked adult send adult photos and clips (i'm 18 or older)", S.ab.adult !== false && of18(), (on, i) => {
+      if (on && !confirm18("Adult photos and clips")) { i.checked = false; return; }
+      S.ab.adult = on;
+      saveAb();
+      adultChanged();
+    }), ["photos: ", change("adultPhoto", apm), " · clips: ", change("adultClip", acm),
+      " · only from pictures made here with ai, with the 18+ rule first in every prompt; never anyone under 18, never a real person"]),
     row("VOICE NOTES", real ? tick(`${c.name} replies with voice notes`, !!S.voiceOn[c.id], (on) => setVoiceNotes(c, on))
       : "pick a character: their voice and mood are on their card.",
     real ? ["voice: ", change("voice", vm), ` (${vm ? voiceOf(c, vm) : c.speech.voice || A.DEFAULT_VOICE})`, vm && vm.perMChars != null ? ` · about ${A.usd(A.voicePrice(vm, 200))} a reply` : ""] : ""),
@@ -1518,6 +1561,9 @@ function renderAsk() {
   $("#chat").classList.toggle("asking", !box.hidden);
   if (box.hidden) return;
   const clipping = a.kind === "clip", what = clipping ? "clip" : "photo";
+  // an adult character's can be adult (abilities.js adultCheck): then it's another model, and another price
+  const ad = adultFor(c, askChat(a), [a.shot, a.hint].join("\n"));
+  a.adult = ad.ok;
   box.append(h("div", { class: "askhead" }, h("b", { text: `${clipping ? "A CLIP" : "A PHOTO"} FROM ${c.name.toUpperCase()}` }),
     h("button", { type: "button", class: "x", "aria-label": "Close", text: "×", disabled: a.busy || null, onclick: closeAsk })));
   const refs = refsOf(c);
@@ -1533,26 +1579,39 @@ function renderAsk() {
   } else {
     const ta = h("textarea", { id: "ask-shot", rows: 3, maxlength: 900, placeholder: "what the camera sees", disabled: a.busy || null });
     ta.value = a.shot;
-    ta.addEventListener("input", () => { a.shot = ta.value; syncAsk(); });
+    ta.addEventListener("input", () => {
+      a.shot = ta.value;
+      // words that make it safe for work (or no longer) change the model and the price: drawn again, with the new ones
+      if (adultFor(c, askChat(a), [a.shot, a.hint].join("\n")).ok === a.adult) syncAsk();
+      else if (a.kind === "clip") { a.opts = null; requote(); } else renderAsk();
+    });
     box.append(h("label", {}, h("span", {}, "THE SHOT ", h("span", { class: "hint", text: "written from your conversation; change anything" })), ta));
     box.append(h("p", { class: "mono" }, linkish("write it again", writeShot, { disabled: a.busy || null }), a.hint ? ` (you asked for: ${a.hint})` : ""));
     if (!clipping) {
-      const pm = photoModel(), n = pm ? Math.min(refs.length, pm.maxIn) : refs.length, price = A.photoPrice(pm, n);
+      const pm = askPhotoModel(a), n = pm ? Math.min(refs.length, pm.maxIn) : refs.length, price = A.photoPrice(pm, n);
       box.append(h("p", { class: "mono" }, `from ${n} picture${n === 1 ? "" : "s"} of ${c.name} · model: `,
-        linkish(pm ? pm.name : "…", () => openModels("photo"), { "aria-label": "Change the photo model" }), price != null ? ` · ${A.usd(price)}` : ""));
+        linkish(pm ? pm.name : S.listErr.inpaint ? "unavailable" : "…", () => openModels(a.adult ? "adultPhoto" : "photo"), { "aria-label": "Change the photo model" }),
+        price != null ? ` · ${A.usd(price)}` : ""));
       box.append(h("div", { class: "acts" },
         h("button", { type: "button", class: "btn solid small", id: "ask-go", onclick: takePhoto, text: `TAKE THE PHOTO${price != null ? " · " + A.usd(price) : ""}` }),
         h("button", { type: "button", class: "btn small", text: "CANCEL", onclick: closeAsk, disabled: a.busy || null })));
     } else {
-      const cm = clipModel();
-      if (cm && !a.opts) a.opts = A.clipOptions(cm, S.ab.clip);
+      const cm = askClipModel(a);
+      if (cm && (!a.opts || a.optsFor !== cm.id)) { a.opts = A.clipOptions(cm, S.ab.clip); a.optsFor = cm.id; }
+      // what was picked last time is kept for next time, and the model it was picked on (an adult one apart)
+      const keep = (o) => {
+        S.ab.clip = { ...S.ab.clip, ...o, ...(a.adult ? {} : { model: cm.id }) };
+        if (a.adult) S.ab.adultClip = cm.id;
+        saveAb();
+        requote();
+      };
       const opts = h("div", { class: "opts" });
       if (cm) {
         const choice = (label, key, values, show = (v) => v) => {
           if (!values || values.length < 2) return null;
           const s = h("select", { id: "ask-" + key, disabled: a.busy || null }, values.map((v) => h("option", { value: v, text: show(v) })));
           s.value = a.opts[key];
-          s.addEventListener("change", () => { a.opts[key] = s.value; S.ab.clip = { ...S.ab.clip, [key]: s.value, model: cm.id }; saveAb(); requote(); });
+          s.addEventListener("change", () => { a.opts[key] = s.value; keep({ [key]: s.value }); });
           return h("label", {}, label + " ", s);
         };
         opts.append(...[choice("length", "duration", cm.durations), choice("size", "resolution", cm.resolutions),
@@ -1560,20 +1619,23 @@ function renderAsk() {
         if (cm.audioConfigurable) {
           const i = h("input", { type: "checkbox", id: "ask-audio", disabled: a.busy || null });
           i.checked = a.opts.audio !== false;
-          i.addEventListener("change", () => { a.opts.audio = i.checked; S.ab.clip = { ...S.ab.clip, audio: i.checked, model: cm.id }; saveAb(); requote(); });
+          i.addEventListener("change", () => { a.opts.audio = i.checked; keep({ audio: i.checked }); });
           opts.append(h("label", { class: "check" }, i, " sound"));
         }
       }
       box.append(opts);
       box.append(h("p", { class: "mono" }, `from ${Math.min(refs.length, 4)} picture${refs.length === 1 ? "" : "s"} of ${c.name} · model: `,
-        linkish(cm ? cm.name : S.listErr.video ? "unavailable" : "…", () => openModels("clip"), { "aria-label": "Change the clip model" }),
+        linkish(cm ? cm.name : S.listErr.video ? "unavailable" : "…", () => openModels(a.adult ? "adultClip" : "clip"), { "aria-label": "Change the clip model" }),
         " · ", a.quoting ? "asking venice for the price…" : a.quote != null ? `venice's price: ${A.usd(a.quote)}` : "no price yet"));
       box.append(h("div", { class: "acts" },
         h("button", { type: "button", class: "btn solid small", id: "ask-go", onclick: makeClip, text: `MAKE THE CLIP${a.quote != null ? " · " + A.usd(a.quote) : ""}` }),
         h("button", { type: "button", class: "btn small", text: "CANCEL", onclick: closeAsk, disabled: a.busy || null })));
     }
   }
-  box.append(h("p", { class: "hint", text: `safe for work, and never a real person. a ${what} runs on your venice key.` }));
+  box.append(h("p", { class: "hint", id: "ask-rules", text: a.adult
+    ? `adult (18+): made only from pictures made here with ai, with the 18+ rule first in its prompt. adults only, never a real person. a ${what} runs on your venice key.`
+    : `safe for work, and never a real person. a ${what} runs on your venice key.` }));
+  if (ad.why) box.append(h("p", { class: "mono", id: "ask-why", text: ad.why }));
   if (a.status) box.append(h("p", { class: "status" + (a.bad ? " bad" : ""), role: "status", text: a.status }));
   syncAsk();
   if (was) { const t = $("#ask-shot"); if (t && !t.disabled) { t.focus({ preventScroll: true }); t.setSelectionRange(was[0], was[1]); } }
@@ -1587,13 +1649,18 @@ function syncAsk() {
 }
 /** a photo's price, from the photo model and the pictures it would use; null when Venice gives none */
 function photoPriceNow(a) {
-  const c = S.cards.find((x) => x.id === a.card), pm = photoModel();
+  const c = S.cards.find((x) => x.id === a.card), pm = askPhotoModel(a);
   return c && pm ? A.photoPrice(pm, Math.min(refsOf(c).length, Math.max(1, pm.maxIn))) : null;
 }
+/** the chat a photo or clip being asked for is about: theirs on screen, else the one it was asked in */
+const askChat = (a) => { const t = thread(); return t && t.card === a.card ? t : (a.thread && S.threads[a.thread]) || null; };
+/** the model a photo or clip being asked for is made with: an uncensored one when it's an adult character's (a.adult) */
+const askPhotoModel = (a) => (a && a.adult ? adultPhotoModel() : photoModel());
+const askClipModel = (a) => (a && a.adult ? adultClipModel() : clipModel());
 /** what a clip quote was for: the model and every option */
 const quoteKey = (cm, opts) => (cm && opts ? JSON.stringify([cm.id, opts.duration, opts.resolution, opts.aspect, opts.audio]) : "");
 /** the quote on screen is for the clip as it stands now */
-const quoteFits = (a) => a.quote != null && !a.quoting && !!a.quoteFor && a.quoteFor === quoteKey(clipModel(), a.opts);
+const quoteFits = (a) => a.quote != null && !a.quoting && !!a.quoteFor && a.quoteFor === quoteKey(askClipModel(a), a.opts);
 async function writeShot() {
   const a = S.ask;
   if (!a || a.busy) return;
@@ -1603,8 +1670,8 @@ async function writeShot() {
   Object.assign(a, { status: "writing the shot…", bad: false });
   renderAsk();
   try {
-    const t = thread() && thread().card === c.id ? thread() : (a.thread && S.threads[a.thread]) || null;
-    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t ? t.msgs : []), a.hint, a.kind),
+    const t = askChat(a), adult = adultFor(c, t, a.hint).ok;
+    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t ? t.msgs : []), a.hint, a.kind, { adult }),
       maxTokens: 260, temperature: 0.8 });
     a.shot = A.cleanText(r.text);
     Object.assign(a, a.shot ? { status: "", bad: false } : { status: "The model sent back no shot. Write one yourself, or try again.", bad: true });
@@ -1626,7 +1693,7 @@ function requote() {
   if (!a.busy) renderAsk(); else syncAsk();
   clearTimeout(quoteTimer);
   quoteTimer = setTimeout(async () => {
-    const cm = clipModel();
+    const cm = askClipModel(a);
     if (S.ask !== a || asked !== a.asked) return;
     if (!cm || !a.opts) { a.quoting = false; if (!a.busy) renderAsk(); return; }
     const key = quoteKey(cm, a.opts);
@@ -1643,21 +1710,28 @@ function trouble(e, c) {
     ? `Venice couldn't use ${c.name}'s photo (${e.message}). Add a picture of them on their card (card → look) and try again.` : e.message;
 }
 async function takePhoto() {
-  const a = S.ask, pm = photoModel();
-  if (!a || a.busy || !a.shot.trim() || !pm) return;
+  const a = S.ask;
+  if (!a || a.busy || !a.shot.trim()) return;
   const c = S.cards.find((x) => x.id === a.card);
   if (!c) return;
+  // checked again as it's made: if it changed since the panel was drawn, so did the model and the price, so it's drawn again
+  const adult = adultFor(c, askChat(a), [a.shot, a.hint].join("\n")).ok;
+  if (adult !== a.adult) { renderAsk(); return; }
+  const pm = askPhotoModel(a);
+  if (!pm) return;
   const refs = refsOf(c).slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, refs.length);
   if (price == null || !refs.length) return;                   // never without the price on the button
   a.busy = true;
   Object.assign(a, { status: `taking the photo with ${pm.name}…`, bad: false });
   renderAsk();
   try {
-    const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, a.shot, refs.length, pm.promptLimit), images: refs });
+    const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, a.shot, refs.length, pm.promptLimit, { adult }),
+      images: refs, safe: !adult });
     const id = await M.put(blob);
     if (S.ask === a) S.ask = null;
     renderAsk();
-    deliver(askThread(a), { role: "assistant", content: "", media: { kind: "photo", id, shot: a.shot.trim(), model: pm.name, price, ...(blurred ? { blurred: true } : {}) } });
+    deliver(askThread(a), { role: "assistant", content: "", media: { kind: "photo", id, shot: a.shot.trim(), model: pm.name, price,
+      ...(adult ? { adult: true } : {}), ...(blurred ? { blurred: true } : {}) } });
   } catch (e) {
     a.busy = false;
     Object.assign(a, { status: trouble(e, c), bad: true });
@@ -1695,6 +1769,59 @@ async function firstPortrait() {
   balanceSoon();
 }
 
+// ---------- adult characters ----------
+/** you've said you're 18 or older (switching on Venice's adult characters, marking one adult, or under abilities) */
+const of18 = () => local.get(K.adult18, false) === true;
+/** asked once, and remembered: true when you're 18 or older */
+function confirm18(what) {
+  if (of18()) return true;
+  if (!confirm(`${what} are for people 18 or older.\n\nAre you 18 or older?`)) return false;
+  local.set(K.adult18, true);
+  return true;
+}
+const keyCache = new Map();
+/** a picture's fingerprint (abilities.js pictureKey), worked out once per picture */
+function keyOf(p) {
+  let k = keyCache.get(p);
+  if (!k) { k = A.pictureKey(p); keyCache.set(p, k); if (keyCache.size > 64) keyCache.delete(keyCache.keys().next().value); }
+  return k;
+}
+const madeKeys = () => new Set(local.get(K.made, []) || []);
+/**
+ * A picture made here with AI joins the list of them: one drawn from words always, one made from other pictures only
+ * when every one of those was made here too, so an uploaded picture can't come out of an edit counted as made here.
+ */
+function noteMade(pic, from = []) {
+  const made = madeKeys();
+  if (!pic || !from.every((p) => made.has(keyOf(p)))) return;
+  const key = keyOf(pic);
+  local.set(K.made, [...(local.get(K.made, []) || []).filter((k) => k !== key), key].slice(-400));
+}
+/**
+ * Whether a character's photos and clips can be adult now, and if not, why ({ ok, why }; see abilities.js adultCheck):
+ * t is the chat it's for (its last few messages are read too), shot what the camera will see.
+ */
+function adultFor(c, t = null, shot = "") {
+  const made = madeKeys();
+  const said = t ? t.msgs.filter((m) => m && !m.demo).slice(-12).flatMap((m) => [typeof m.content === "string" ? m.content : "", m.media && m.media.shot]) : [];
+  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)), shot, said });
+}
+/** under the adult box on their card: whether their photos and clips can be adult, and if not, why */
+function renderAdultNote(c) {
+  const p = $("#adult-note");
+  const ad = c && !c.plain && c.adult ? adultFor(c) : null;
+  p.hidden = !ad;
+  if (ad) p.textContent = ad.ok ? "their photos and clips can be adult: every picture on their card was made here with ai. never anyone under 18, never a real person."
+    : ad.why;
+}
+/** the adult switch, or what you've said about your age, changed: what shows it catches up */
+function adultChanged() {
+  const c = card();
+  if (c && !c.plain) renderAdultNote(c);
+  if ($("#abilitydlg").open) renderAbilities();
+  if (S.ask && !S.ask.busy) { if (S.ask.kind === "clip") { S.ask.opts = null; requote(); } else renderAsk(); }
+}
+
 // ---------- pictures for a character's card, made with AI ----------
 const BLURRED = "Venice's safe mode blurred that picture, so it wasn't kept. Change how they look on their card (look), then try again.";
 /** how they look, in words: what their card says, else a description their model writes now */
@@ -1711,9 +1838,11 @@ async function drawPicture(c, look, pm, v) {
 }
 /**
  * A picture made for a character, kept on their card: as their portrait (asked for, or when they have none), else as
- * the first of their other pictures. How they look goes on their card too, if it was written just now.
+ * the first of their other pictures. How they look goes on their card too, if it was written just now. from: the
+ * pictures it was made from ([] when drawn from words), for the list of pictures made here (noteMade).
  */
-function keepPicture(c, pic, look, as = "") {
+function keepPicture(c, pic, look, as = "", from = []) {
+  noteMade(pic, from);
   const looks = { ...c.look, description: c.look.description || look || "" };
   replaceCard(as === "portrait" || !c.portrait ? { ...c, portrait: pic, look: looks }
     : { ...c, look: { ...looks, references: [pic, ...c.look.references].slice(0, C.MAX_REFERENCES) } });
@@ -1772,7 +1901,7 @@ async function makePicture(as = "") {
       pic = await drawPicture(c, look, pm, v);
     }
     const now = S.cards.find((x) => x.id === c.id);
-    if (now) keepPicture(now, pic, look, as);
+    if (now) keepPicture(now, pic, look, as, pictures);
     lookStatus(st, "");
     toast(as === "portrait" || !c.portrait ? `${c.name} has a new portrait.` : `A new picture of ${c.name} is on their card.`);
   } catch (e) {
@@ -1792,15 +1921,20 @@ function saveJobs() {
   local.set(K.jobs, S.jobs.map(({ polling, tries, ...j }) => j));
 }
 async function makeClip() {
-  const a = S.ask, cm = clipModel();
-  if (!a || a.busy || !a.shot.trim() || !cm || !quoteFits(a)) return;   // only at the price on the button
+  const a = S.ask;
+  if (!a || a.busy || !a.shot.trim()) return;
   const c = S.cards.find((x) => x.id === a.card);
   if (!c || !refsOf(c).length) return;
+  // as with a photo: if it changed since the panel was drawn, it's another model, and it's priced again
+  const adult = adultFor(c, askChat(a), [a.shot, a.hint].join("\n")).ok;
+  if (adult !== a.adult) { a.opts = null; requote(); return; }
+  const cm = askClipModel(a);
+  if (!cm || !quoteFits(a)) return;                             // only at the price on the button
   a.busy = true;
   Object.assign(a, { status: "asking venice to start the clip…", bad: false });
   renderAsk();
   try {
-    await startClip(c, cm, a.shot.trim(), { ...a.opts }, a.quote, () => askThread(a));
+    await startClip(c, cm, a.shot.trim(), { ...a.opts }, a.quote, () => askThread(a), { adult });
     if (S.ask === a) S.ask = null;
     renderAsk();
   } catch (e) {
@@ -1810,11 +1944,16 @@ async function makeClip() {
   }
   balanceSoon();
 }
-/** queue a clip at Venice and follow it until it's home, in the chat `where()` gives once it's on its way */
-async function startClip(c, cm, shot, opts, price, where) {
-  const { queueId, downloadUrl } = await new Venice(S.key).queueVideo({ model: cm.id, prompt: A.clipPrompt(c, shot, cm.promptLimit), images: refsOf(c), ...opts });
+/**
+ * Queue a clip at Venice and follow it until it's home, in the chat `where()` gives once it's on its way. adult: an
+ * adult character's clip (abilities.js adultCheck), on an uncensored model, with the 18+ rule first in its prompt.
+ */
+async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}) {
+  const { queueId, downloadUrl } = await new Venice(S.key).queueVideo({ model: cm.id, prompt: A.clipPrompt(c, shot, cm.promptLimit, { adult }),
+    images: refsOf(c), ...opts });
   const t = where();
-  const job = { id: M.newId(), card: c.id, thread: t ? t.id : "", model: cm.id, name: cm.name, queueId, downloadUrl, shot, price, started: Date.now(), elapsed: 0, expected: 0 };
+  const job = { id: M.newId(), card: c.id, thread: t ? t.id : "", model: cm.id, name: cm.name, queueId, downloadUrl, shot, price,
+    started: Date.now(), elapsed: 0, expected: 0, ...(adult ? { adult: true } : {}) };
   S.jobs.push(job);
   saveJobs();
   renderJobs();
@@ -1834,7 +1973,7 @@ async function onTheirOwn(t) {
   if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs)) return;
   // the call that decides is paid for too: set aside its most, from what's left today, and settle after
   const model = (S.models || []).find((m) => m.id === (c.model || S.model)) || null;
-  const messages = A.moveMessages(c, A.apiHistory(t.msgs)), most = A.callEstimate(messages, 300, model);
+  const messages = A.moveMessages(c, A.apiHistory(t.msgs), { adult: adultFor(c, t).ok }), most = A.callEstimate(messages, 300, model);
   if (!reserve(most)) return;
   S.moving.add(t.id);                                         // one move at a time in a chat
   let held = most;
@@ -1853,16 +1992,20 @@ async function onTheirOwn(t) {
 async function ownPhoto(t, shot) {
   const c = cardOf(t);
   await loadList("inpaint");
-  const pm = photoModel(), refs = refsOf(c);
-  if (!c || !pm || !refs.length) return;                        // no picture of them yet: nothing to send
+  if (!c) return;
+  const adult = adultFor(c, t, shot).ok;                        // an adult character's can be adult (abilities.js adultCheck)
+  const pm = adult ? adultPhotoModel() : photoModel(), refs = refsOf(c);
+  if (!pm || !refs.length) return;                              // no picture of them yet: nothing to send
   const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
   if (!reserve(price)) return;                                  // set aside first: nothing else can spend it meanwhile
   doing(t, "is taking a photo…");
   try {
-    const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, shot, pics.length, pm.promptLimit), images: pics });
+    const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, shot, pics.length, pm.promptLimit, { adult }),
+      images: pics, safe: !adult });
     const id = await M.put(blob);
     done(t);
-    deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(blurred ? { blurred: true } : {}) } });
+    deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(adult ? { adult: true } : {}),
+      ...(blurred ? { blurred: true } : {}) } });
     balanceSoon();
   } catch (e) { refund(price); throw e; } finally { done(t); }
 }
@@ -1897,8 +2040,10 @@ function placeVoice(t, m) {
 async function offerClip(t, shot) {
   const c = cardOf(t);
   await loadList("video");
-  const cm = clipModel();
-  if (!c || !cm || !refsOf(c).length || S.jobs.some((j) => j.card === c.id)) return;
+  if (!c) return;
+  const adult = adultFor(c, t, shot).ok;
+  const cm = adult ? adultClipModel() : clipModel();
+  if (!cm || !refsOf(c).length || S.jobs.some((j) => j.card === c.id)) return;
   const opts = A.clipOptions(cm, S.ab.clip);
   const quote = await new Venice(S.key).quoteVideo({ model: cm.id, ...opts });
   if (quote == null || !here(t)) return;
@@ -1906,12 +2051,12 @@ async function offerClip(t, shot) {
   const yes = h("button", { type: "button", class: "btn solid small", text: `SEND IT · ${A.usd(quote)}`, onclick: async () => {
     yes.disabled = no.disabled = true;
     S.inflight++;
-    try { await startClip(c, cm, shot, opts, quote, () => (S.threads[t.id] ? t : latestOf(c.id))); li.remove(); balanceSoon(); }
+    try { await startClip(c, cm, shot, opts, quote, () => (S.threads[t.id] ? t : latestOf(c.id)), { adult }); li.remove(); balanceSoon(); }
     catch (e) { li.remove(); err(trouble(e, c)); } finally { S.inflight--; }
   } });
   const no = h("button", { type: "button", class: "btn small", text: "NOT NOW", onclick: () => li.remove() });
-  said.append(h("span", { text: `wants to send you a ${opts.duration} clip: ${shot}` }), h("span", { class: "cap", text: `${cm.name} · venice's price: ${A.usd(quote)}` }),
-    h("span", { class: "acts" }, yes, no));
+  said.append(h("span", { text: `wants to send you a ${opts.duration} clip: ${shot}` }),
+    h("span", { class: "cap", text: `${cm.name}${adult ? " · 18+" : ""} · venice's price: ${A.usd(quote)}` }), h("span", { class: "acts" }, yes, no));
   put(li);
   scrollLog();
 }
@@ -1964,7 +2109,8 @@ async function followJob(job) {
       dropJob(job);
       const c = S.cards.find((x) => x.id === job.card);
       if (c) deliver((job.thread && S.threads[job.thread]) || latestOf(c.id) || startThread(c), { role: "assistant", content: "",
-        media: { kind: "clip", id, shot: job.shot, model: job.name, price: job.price, ...(link ? { url: link, until: job.started + 24 * 3600e3 } : {}) } });
+        media: { kind: "clip", id, shot: job.shot, model: job.name, price: job.price, ...(job.adult ? { adult: true } : {}),
+          ...(link ? { url: link, until: job.started + 24 * 3600e3 } : {}) } });
       if (blob) {                                          // home safe: Venice can let go of its copy and its link
         v.completeVideo({ model: job.model, queueId: job.queueId });
         if (job.downloadUrl) v.revokeDownload(job.downloadUrl);
@@ -2145,6 +2291,8 @@ function renderSheet() {
       ", with a prompt Havre never sees. To make a character of your own from them, use Remix.");
   }
   f.persona.disabled = f.greeting.disabled = !!c.engine.venice_character;
+  f.adult.checked = c.adult;
+  f.adult.disabled = !!c.engine.venice_character;                // a Venice character is adult when Venice says so
   f.look_description.value = c.look.description;
   f.speech_mood.value = c.speech.mood;
   const sp = $("#speech-speed");
@@ -2161,6 +2309,7 @@ function renderSheet() {
   renderLineage(c);
   renderMemory(c);
   renderNameNote(c);
+  renderAdultNote(c);
 }
 
 /** what they remember of your chats, on their card: each note with a way to forget it, and one you add yourself */
@@ -2217,6 +2366,7 @@ function renderRefs(c) {
   })));
   $("#ref-add").disabled = c.look.references.length >= C.MAX_REFERENCES;
   renderMakers();
+  renderAdultNote(c);
 }
 async function addReference(file) {
   const c = card();
@@ -2317,6 +2467,7 @@ function readSheet() {
   return C.normalizeCard({
     ...c, id: c.id, name: f.name.value, tagline: f.tagline.value, greeting: f.greeting.value, persona: f.persona.value,
     voice: { short_form: f.short_form.checked, notes: f.voice_notes.value }, tags: f.tags.value.split(","),
+    adult: f.adult.disabled ? c.adult : f.adult.checked,
     model: f.model.value, license: f.license.value, creator: f.creator.value,
     flow: rows("#flow", ["stage", "goal", "next"]), examples: rows("#examples", ["user", "character"]),
     look: { description: f.look_description.value, references: c.look.references },
@@ -2339,6 +2490,7 @@ function saveSheet() {
     $("#card-h").textContent = "CARD: " + now.name.toUpperCase();
     $("#rx-from").textContent = now.name;
     renderNameNote(now);
+    renderAdultNote(now);
   }, 120);
 }
 
@@ -2466,7 +2618,7 @@ async function importFile(file) {
     }
     if ($("#importdlg").open) $("#importdlg").close();
     const added = addCard(c);
-    toast(`${added.name} arrived (${kind}).`);
+    toast(`${added.name} arrived (${kind}${added.adult ? ", marked adult" : ""}).`);
   } catch (e) {
     if ($("#importdlg").open) { st.textContent = e.message; st.classList.add("bad"); } else toast(e.message);
   }
@@ -2479,7 +2631,7 @@ function importText() {
     $("#importdlg").close();
     const added = addCard(c);
     openCard("edit");
-    toast(`${added.name} arrived (${kind}). Check their card.`);
+    toast(`${added.name} arrived (${kind}${added.adult ? ", marked adult" : ""}). Check their card.`);
   } catch (e) { st.textContent = e.message; st.classList.add("bad"); }
 }
 
@@ -2514,7 +2666,8 @@ async function rxSource(c) {
   const pasted = $("#rx-paste").value.trim();
   if (pasted) {
     const { card: pc } = C.fromAny(pasted);
-    return { name: pc.name === "Pasted character" ? "" : pc.name, creator: "", ref: "sha256:" + (await C.sha256Hex(pasted)).slice(0, 32), text: pasted };
+    return { name: pc.name === "Pasted character" ? "" : pc.name, creator: "", ref: "sha256:" + (await C.sha256Hex(pasted)).slice(0, 32), text: pasted,
+      adult: pc.adult };
   }
   if (c.engine.venice_character) {
     const v = new Venice(S.key), hist = [];
@@ -2527,11 +2680,11 @@ async function rxSource(c) {
       hist.push({ role: "assistant", content: a });
       transcript += `Q: ${C.INTERVIEW[i]}\nA: ${a}\n\n`;
     }
-    return { name: c.name, creator: c.creator, ref: "venice:" + c.engine.venice_character, text: transcript };
+    return { name: c.name, creator: c.creator, ref: "venice:" + c.engine.venice_character, text: transcript, adult: c.adult };
   }
   const text = C.cardText(c);
   const own = c.lineage.find((l) => l.relation === "ported-from" && l.ref);
-  return { name: c.name, creator: c.creator, ref: own ? own.ref : "sha256:" + (await C.sha256Hex(text)).slice(0, 32), text };
+  return { name: c.name, creator: c.creator, ref: own ? own.ref : "sha256:" + (await C.sha256Hex(text)).slice(0, 32), text, adult: c.adult };
 }
 /** the model a call that has to come back as JSON runs on: theirs if it keeps to a schema, else one like it that does */
 async function jsonModel(c) {
@@ -2612,7 +2765,8 @@ async function writeFresh(avoid = []) {
     const first = C.cardFromWrite(o, { model });
     const src = S.rx.source;
     const check = C.similarity(C.cardText(first), src.text, { names: [src.name].filter(Boolean), newName: first.name });
-    S.rx.draft = C.cardFromWrite(o, { source: src.name || src.ref ? src : null, check, model });
+    // someone new from an adult character is adult too: a rewrite doesn't change who it's for
+    S.rx.draft = C.cardFromWrite(o, { source: src.name || src.ref ? src : null, check, model, adult: !!src.adult });
     S.rx.check = check;
     renderDraft();
     reveal($("#rx-draft"));
@@ -2631,6 +2785,7 @@ function renderDraft() {
     h("p", { class: "mono", text: `${pct}% of its five-word phrases appear in the source; the longest shared run is ${chk.run.len} words.` }));
   if (chk.reasons.length) box.append(h("ul", { class: "why-list" }, chk.reasons.map((r) => h("li", { text: r }))));
   if (d.lineage[0]) box.append(h("p", { class: "mono", text: "lineage: " + C.creditLine(d.lineage[0]) + "." }));
+  if (d.adult) box.append(h("p", { class: "mono", text: "adult (18+), like the character they came from." }));
   const row = h("div", { class: "acts" });
   const keep = h("button", { type: "button", class: "btn solid small", text: "KEEP IN HARBOR", onclick: keepDraft });
   if (chk.verdict === "too-close") keep.disabled = true;
@@ -2837,10 +2992,7 @@ function bind() {
   $("#vadult").checked = S.v.adult;
   $("#vadult").addEventListener("change", () => {
     const box = $("#vadult");
-    if (box.checked && !local.get(K.adult18, false)) {
-      if (!confirm("Adult characters are for people 18 or older.\n\nAre you 18 or older?")) { box.checked = false; return; }
-      local.set(K.adult18, true);
-    }
+    if (box.checked && !confirm18("Adult characters")) { box.checked = false; return; }
     S.v.adult = box.checked;
     local.set(K.adult, S.v.adult);
     if (S.key) loadVenice(0);
@@ -2872,6 +3024,8 @@ function bind() {
 
   const f = $("#sheet");
   for (const ev of ["focus", "pointerdown"]) $("#model-select").addEventListener(ev, loadModels, { once: true });
+  // marking a character adult asks your age first (once); this runs before the form saves the change
+  f.adult.addEventListener("change", () => { if (f.adult.checked && !confirm18("Adult characters")) f.adult.checked = false; });
   f.addEventListener("input", saveSheet);
   f.addEventListener("change", saveSheet);
   f.addEventListener("submit", (e) => e.preventDefault());
@@ -3002,10 +3156,11 @@ function bind() {
     else if (e.key === K.jobs || e.key === K.jobsDone) syncJobs();
     else if (e.key === K.spent) { renderTools(); if ($("#abilitydlg").open) renderAbilities(); }
     else if (e.key === K.memory) { const c = card(); if (c && !c.plain) renderMemory(c); }
+    else if (e.key === K.made || e.key === K.adult18) adultChanged();
     else if (e.key === K.ab) {
       S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
       renderTools();
-      if (S.ask && !S.ask.busy) { if (S.ask.kind === "clip") { S.ask.opts = A.clipOptions(clipModel(), S.ab.clip); requote(); } renderAsk(); }
+      adultChanged();
     }
   });
 }

@@ -285,6 +285,8 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .table tr[aria-current="true"] .linkish { color: var(--paper); }
 .table tr[aria-current="true"] .linkish:hover, .table tr[aria-current="true"] .linkish:focus-visible { color: var(--ink); background: var(--hi); }
 .table .now { font: 12px var(--mono); margin-left: 6px; }
+.table .x18 { display: inline-block; margin-left: 6px; padding: 0 4px; border: 1px solid currentColor; font: 400 11px/1.5 var(--mono); vertical-align: 2px; }
+#adult-note { margin-top: -6px; }
 .harbor .tablewrap { padding-bottom: 20px; }
 #harbor-empty { padding: 16px var(--gut) 20px; }
 

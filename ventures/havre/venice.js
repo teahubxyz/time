@@ -84,15 +84,17 @@ export class Venice {
   }
 
   /**
-   * A photo: an edit of one or more pictures (URLs or data: URIs; the first is the base). Venice's safe mode is
-   * always on. Returns { blob, blurred }.
+   * A photo: an edit of one or more pictures (URLs or data: URIs; the first is the base). Venice's safe mode is on
+   * unless safe is false, which Havre passes only for an adult character whose pictures it made itself (abilities.js
+   * adultCheck). Returns { blob, blurred }.
    */
-  async editImage({ model, prompt, images, signal } = {}) {
+  async editImage({ model, prompt, images, safe = true, signal } = {}) {
     const pics = (images || []).filter(Boolean);
     if (!pics.length) throw new VeniceError("A photo needs at least one picture of the character.", 0);
+    const safe_mode = safe !== false;
     const res = pics.length === 1
-      ? await this.raw("/image/edit", { body: { model, prompt, image: imageInput(pics[0]), safe_mode: true, output_format: "webp" }, signal })
-      : await this.raw("/image/multi-edit", { body: { modelId: model, prompt, images: pics.map(imageInput), safe_mode: true, output_format: "webp" }, signal });
+      ? await this.raw("/image/edit", { body: { model, prompt, image: imageInput(pics[0]), safe_mode, output_format: "webp" }, signal })
+      : await this.raw("/image/multi-edit", { body: { modelId: model, prompt, images: pics.map(imageInput), safe_mode, output_format: "webp" }, signal });
     return { blob: await res.blob(), blurred: res.headers && res.headers.get ? res.headers.get("x-venice-is-blurred") === "true" : false };
   }
 

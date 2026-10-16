@@ -13,6 +13,7 @@
 // Playwright: PW_MODULE (a path to playwright-core's index.mjs, or a package name), else playwright-core, else
 // playwright. Chrome: CHROME, with CHROME_FLAGS (e.g. --no-sandbox as root); else Playwright's own Chromium.
 import { createServer } from "node:http";
+import { deflateSync } from "node:zlib";
 import { readFile, mkdir } from "node:fs/promises";
 import { extname, join, normalize, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -54,6 +55,26 @@ function serve() {
 
 // ---------- a stand-in for api.venice.ai that answers like it does ----------
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
+let CRC = null;
+function crc32(bytes) {
+  if (!CRC) { CRC = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; CRC[n] = c; } }
+  let c = -1;
+  for (const b of bytes) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ -1) >>> 0;
+}
+/** a 2x2 PNG in one colour of its own: every picture the fake Venice makes is a different one, as a real one's would be */
+function picture(n) {
+  const chunk = (type, data) => {
+    const td = Buffer.concat([Buffer.from(type, "latin1"), data]), out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0); td.copy(out, 4); out.writeUInt32BE(crc32(td), 8 + data.length);
+    return out;
+  };
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(2, 0); ihdr.writeUInt32BE(2, 4); ihdr[8] = 8; ihdr[9] = 2;
+  const px = [(n * 37) % 256, (n * 91 + 40) % 256, (n * 53 + 90) % 256], row = Buffer.from([0, ...px, ...px]);
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk("IHDR", ihdr), chunk("IDAT", deflateSync(Buffer.concat([row, row]))), chunk("IEND", Buffer.alloc(0))]);
+}
+let pictures = 0;
+const newPicture = () => picture(++pictures);
 const seen = { characters: [], chats: [], memories: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
 /** a short WAV of silence: something an audio element can load */
 function wav(ms = 300) {
@@ -67,7 +88,9 @@ const MEDIA_MODELS = {
   inpaint: [
     { id: "grok-imagine-edit", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { inpaint: { usd: 0.03 }, resolutions: { "1K": { usd: 0.03 }, "2K": { usd: 0.04 } } },
       constraints: { combineImages: true, promptCharacterLimit: 1500 } } },
-    { id: "nano-banana-2-edit", model_spec: { name: "Nano Banana 2", privacy: "anonymized", pricing: { inpaint: { usd: 0.1 } }, constraints: { combineImages: true, maxInputImages: 6 } } }],
+    { id: "nano-banana-2-edit", model_spec: { name: "Nano Banana 2", privacy: "anonymized", pricing: { inpaint: { usd: 0.1 } }, constraints: { combineImages: true, maxInputImages: 6 } } },
+    { id: "qwen-edit-uncensored", model_spec: { name: "Qwen Edit Uncensored", privacy: "private", uncensored: true, pricing: { inpaint: { usd: 0.04 } },
+      constraints: { combineImages: true, promptCharacterLimit: 1500 } } }],
   image: [{ id: "grok-imagine-image", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { resolutions: { "1K": { usd: 0.03 } } }, constraints: { aspectRatios: ["1:1", "9:16"] } } }],
   tts: [{ id: "tts-kokoro", model_spec: { name: "Kokoro", privacy: "private", pricing: { input: { usd: 3.5 } }, voices: ["af_bella", "af_sky", "am_adam"], default_format: "mp3" } },
     { id: "tts-qwen3-1-7b", model_spec: { name: "Qwen 3 TTS 1.7B", privacy: "private", pricing: { input: { usd: 112.5 } }, voices: ["Serena", "Dylan"], default_format: "mp3" } }],
@@ -77,7 +100,9 @@ const MEDIA_MODELS = {
       durations: ["3s", "5s", "10s"], resolutions: ["480p", "720p"], aspect_ratios: ["16:9", "9:16"], audio: true, audio_configurable: false, prompt_character_limit: 4096 } } },
     { id: "wan-2-7-enhanced-image-to-video", model_spec: { name: "Wan 2.7 Enhanced", privacy: "anonymized", constraints: { model_type: "image-to-video", durations: ["5s"] } } },
     { id: "seedance-2-0-reference-to-video-basic", model_spec: { name: "Seedance 2.0 R2V", privacy: "anonymized", constraints: { model_type: "image-to-video",
-      durations: ["4s", "5s"], resolutions: ["480p", "720p"], aspect_ratios: [], audio: true, audio_configurable: true } } }],
+      durations: ["4s", "5s"], resolutions: ["480p", "720p"], aspect_ratios: [], audio: true, audio_configurable: true } } },
+    { id: "wan-3-0-reference-to-video", model_spec: { name: "Wan 3.0 Reference", privacy: "anonymized", uncensored: true, constraints: { model_type: "image-to-video",
+      durations: ["5s", "10s"], resolutions: ["720p"], aspect_ratios: ["9:16"], audio: true, audio_configurable: true } } }],
 };
 /** a reply as a model without a schema to keep to writes it: chatter around it, a raw line break in a string, a trailing comma */
 const handWritten = (o) => "Sure! Here it is:\n```json\n" + JSON.stringify(o, null, 1).replace(/\\n/g, "\n").replace(/\n}$/, ",\n}") + "\n```";
@@ -176,9 +201,9 @@ async function fakeVenice(route) {
   const file = (bytes, type, headers = {}) => route.fulfill({ status: 200, contentType: type, body: bytes, headers: { ...cors, ...headers } });
   if (url.endsWith("/image/edit") || url.endsWith("/image/multi-edit")) {
     seen.edits.push({ url, body: JSON.parse(body) });
-    return file(PIXEL, "image/webp");
+    return file(newPicture(), "image/webp");
   }
-  if (url.endsWith("/image/generate")) { seen.generated.push(JSON.parse(body)); return file(PIXEL, "image/webp"); }
+  if (url.endsWith("/image/generate")) { seen.generated.push(JSON.parse(body)); return file(newPicture(), "image/webp"); }
   if (url.endsWith("/audio/speech")) { seen.speech.push(JSON.parse(body)); return file(wav(), "audio/wav"); }
   if (url.endsWith("/audio/transcriptions")) {
     assert.ok(multipart(req), "a voice note goes as a form");
@@ -536,7 +561,11 @@ async function main() {
     // hearing and seeing: off until switched on
     assert.equal(await page.getByRole("button", { name: "record a voice note" }).count(), 0);
     await page.getByRole("button", { name: "abilities" }).click();
-    await count(page, "#ablist tr", 7);
+    await count(page, "#ablist tr", 8);
+    // adult photos and clips: on for someone who said they're 18 or older (for Venice's adult characters, above)
+    await has(page, "#ablist tr", /^ADULT characters marked adult send adult photos and clips/);
+    await has(page, "#ablist tr", /photos: Qwen Edit Uncensored · clips: Wan 3\.0 Reference · only from pictures made here with ai/);
+    assert.ok(await page.getByLabel("characters marked adult send adult photos and clips").isChecked());
     await page.getByLabel("let them hear my voice notes").check();
     await page.getByLabel("let them see my photos").check();
     await shot(page, "desktop-abilities.png");
@@ -779,6 +808,73 @@ async function main() {
     assert.ok(turn.every((m, i) => i === 0 || m.role !== turn[i - 1].role), "never two from the same side in a row: " + turn.map((m) => m.role).join(","));
     assert.equal(turn.at(-1).content, "Say nothing\n\nAre you there?\n\n[You are Ines Corbel. Stay in character.]");
 
+    // ---------- an adult character: adult photos and clips, the 18+ rule first, and the lines that stay ----------
+    // every picture on her card was made here with ai (a portrait drawn from words, a picture made from it), and you
+    // said you're 18 or older for Venice's adult characters: marked adult, her photos can be adult
+    await page.locator('#sheet [name="adult"]').check();
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").adult === true, null, "her card marked adult");
+    await has(page, "#adult-note", /^their photos and clips can be adult: every picture on their card was made here with ai/);
+    await has(page, "#roster th", /^Ines Corbel18\+/);
+    await has(page, "#who-meta", /^18\+ \/ /);
+    assert.ok(talks().length > 0);
+    await page.locator("#chat").scrollIntoViewIfNeeded();
+    await page.getByRole("button", { name: "ask for a photo" }).click();
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /moving boxes/.test(t.value) && !t.disabled; }, null, "her shot");
+    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a photo.*Hard rule: everyone shown is an adult, 18 or older/, "the shot is written to the 18+ rule");
+    await has(page, "#ask", /from 2 pictures of Ines Corbel · model: Qwen Edit Uncensored · \$0\.04/);
+    await has(page, "#ask-rules", /^adult \(18\+\): made only from pictures made here with ai, with the 18\+ rule first in its prompt/);
+    await has(page, "#ask-go", /^TAKE THE PHOTO · \$0\.04$/);
+    await shot(page, "desktop-ask-adult.png");
+    const editsBefore = seen.edits.length;
+    await page.click("#ask-go");
+    await poll(() => seen.edits.length > editsBefore, "her adult photo");
+    const adultEdit = seen.edits.at(-1).body;
+    assert.equal(adultEdit.modelId || adultEdit.model, "qwen-edit-uncensored");
+    assert.equal(adultEdit.safe_mode, false, "safe mode off, for her");
+    assert.ok(adultEdit.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), adultEdit.prompt);
+    await has(page, "#log .line.media .cap", /photo · Qwen Edit Uncensored · \$0\.04 · 18\+ · save/);
+    // a clip from her: an uncensored model, priced first, its shot written to the 18+ rule too
+    await page.getByRole("button", { name: "ask for a clip" }).click();
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /waves from the doorway/.test(t.value) && !t.disabled; }, null, "her clip's shot");
+    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a video clip.*Hard rule: everyone shown is an adult, 18 or older/);
+    await has(page, "#ask", /model: Wan 3\.0 Reference · venice's price: \$0\.47/);
+    assert.equal(seen.quotes.at(-1).model, "wan-3-0-reference-to-video");
+    await page.locator("#ask").getByRole("button", { name: "CANCEL" }).click();
+    // a picture uploaded to her card could be of anyone: her photos stay safe for work, and a picture made from it
+    // with ai doesn't count as made here either
+    await page.evaluate(() => { document.querySelector("#look-group").open = true; });
+    await page.click("#ref-add");
+    await page.setInputFiles("#ref-file", { name: "upload.png", mimeType: "image/png", buffer: picture(200) });
+    await count(page, "#refs .ref", 3);
+    await has(page, "#adult-note", /^a picture on their card wasn't made here with ai \(it was uploaded, or came from venice\)/);
+    await page.click("#ref-make");
+    await count(page, "#refs .ref", 4);
+    await page.getByRole("button", { name: "Remove picture 4" }).click();
+    await count(page, "#refs .ref", 3);
+    await has(page, "#adult-note", /wasn't made here with ai/);
+    await page.getByRole("button", { name: "Remove picture 2" }).click();
+    await count(page, "#refs .ref", 2);
+    await has(page, "#adult-note", /^their photos and clips can be adult/);
+    // a shot that mentions someone under 18 stays safe for work: the other model, its price, and safe mode on
+    await page.locator("#chat").scrollIntoViewIfNeeded();
+    await page.getByRole("button", { name: "ask for a photo" }).click();
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /moving boxes/.test(t.value) && !t.disabled; }, null, "the next shot");
+    await has(page, "#ask-go", /^TAKE THE PHOTO · \$0\.04$/);
+    await page.fill("#ask-shot", "The character from the reference picture, with a teenager at the pier.");
+    await has(page, "#ask-why", /the shot or the chat says “teenager”, which sounds like someone under 18, so this one stays safe for work/);
+    await has(page, "#ask-go", /^TAKE THE PHOTO · \$0\.03$/);
+    await has(page, "#ask", /model: Grok Imagine · \$0\.03/);
+    assert.equal(await page.inputValue("#ask-shot"), "The character from the reference picture, with a teenager at the pier.", "what you typed stays");
+    const editsNow = seen.edits.length;
+    await page.click("#ask-go");
+    await poll(() => seen.edits.length > editsNow, "the safe-for-work photo");
+    const safeEdit = seen.edits.at(-1).body;
+    assert.equal(safeEdit.modelId || safeEdit.model, "grok-imagine-edit");
+    assert.equal(safeEdit.safe_mode, true);
+    assert.match(safeEdit.prompt, /Safe for work: fully clothed, nothing sexual/);
+    await count(page, "#ask", 1);
+    await until(page, () => document.querySelector("#ask").hidden, null, "the panel closed");
+
     // exports, made in the browser; the PNG comes back in whole
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();
     let png = "";
@@ -825,6 +921,15 @@ async function main() {
     await has(page, "#log .line.note .said", /a plain chat: no character/);
     assert.equal(await page.locator("#log .said", { hasText: "Two tabs at once?" }).count(), 0, "the deleted chat left this tab too");
     await p4.close();
+
+    // a character Venice marks adult is adult here too
+    await page.click("#lt-chars");
+    await page.check("#vadult");                         // said 18 or older already: not asked again
+    await page.locator("#vgrid .tile", { hasText: "After Dark" }).click();
+    await has(page, "#who-name", /^After Dark$/);
+    await until(page, () => (JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "After Dark") || {}).adult === true, null, "After Dark marked adult");
+    await has(page, "#who-meta", /^18\+ \/ via venice/);
+    await page.uncheck("#vadult");
 
     // the page below the studio
     assert.match(await textOf(page, "#agent-prompt"), /skill\.md/);

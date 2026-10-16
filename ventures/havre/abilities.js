@@ -2,7 +2,8 @@
 // page imports this module, and so do the tests.
 //
 //   photos       an edit of the character's own pictures (their portrait and the reference pictures on their card),
-//                with the shot written from the conversation by a text model. Venice's safe mode stays on.
+//                with the shot written from the conversation by a text model. Venice's safe mode stays on, except for
+//                an adult character whose pictures were all made here with AI (adultCheck, below).
 //   clips        a few seconds of video from the same pictures (Venice's reference-to-video models), priced by
 //                Venice before anything is made
 //   voice notes  a reply read out in the character's voice, with a mood
@@ -21,6 +22,9 @@ export const PREFER = {
   clip: ["grok-imagine-1-5-reference-to-video-private", "grok-imagine-reference-to-video-private"],
   voice: ["tts-kokoro"],
   hearing: ["nvidia/parakeet-tdt-0.6b-v3", "openai/whisper-large-v3"],
+  // an adult character's photos and clips: Venice's uncensored models, the private ones first
+  adultPhoto: ["qwen-edit-uncensored", "qwen-image-2-1-turbo-edit", "seedream-v5-lite-edit"],
+  adultClip: ["minimax-h3-max-reference-to-video", "wan-3-0-reference-to-video", "wan-2-7-reference-to-video"],
 };
 export const DEFAULT_VOICE = "af_sky";
 
@@ -36,6 +40,10 @@ export function chosen(list, id, kind) {
 
 /** clips come from reference-to-video models; Venice's adult ones (the "enhanced" and uncensored variants) stay out */
 export const isClipModel = (m) => !!m && m.ref && !m.uncensored && !/enhanced/i.test(m.id);
+/** an adult character's clips come from the uncensored reference-to-video models, and only from them */
+export const isAdultClipModel = (m) => !!m && m.ref && !!m.uncensored;
+/** and their photos from the uncensored photo models: the others refuse, or blur */
+export const isAdultPhotoModel = (m) => !!m && !!m.uncensored;
 
 /** a model that describes your photo when the character's own model can't see: the cheapest private one that can */
 export function seer(textModels, id = "") {
@@ -73,18 +81,28 @@ export const hearingPerMinute = (model) => (model && model.perSecond != null ? m
 const SAFE = "Keep it safe for work: no nudity, nothing sexual, no gore. Everyone shown is an adult. Never show a real, " +
   "identifiable person: no celebrities, no public figures, no one the conversation says is real; if one is asked for, show " +
   "the character alone. No words, logos or watermarks in the picture.";
+// for an adult character's photos and clips (adultCheck): the same rules, less the one about work, and a hard one first
+export const ADULT_ONLY = "Hard rule: everyone shown is an adult, 18 or older, with a clearly adult face and body. Never " +
+  "anyone under 18, or anyone who looks it: no childlike features, no school uniforms, nothing that suggests a minor.";
+const ADULT = ADULT_ONLY + " If the conversation asks for anything else, leave it out and show only adults. Never show a " +
+  "real, identifiable person: no celebrities, no public figures, no one the conversation says is real; if one is asked " +
+  "for, show the character alone. No gore. No words, logos or watermarks in the picture.";
 
-export const PHOTO_SYSTEM = "You write the shot for a photo that a character in a chat is about to send: what the camera " +
-  "sees. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: where they " +
-  "are, what they are doing, how they are framed, the light and the mood. Call the character \"the character from the " +
-  "reference picture\" and don't describe their face, hair or body: the reference picture shows how they look. " + SAFE +
-  " Reply with the shot only.";
+const photoSystem = (rules) => "You write the shot for a photo that a character in a chat is about to send: what the " +
+  "camera sees. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: " +
+  "where they are, what they are doing, how they are framed, the light and the mood. Call the character \"the character " +
+  "from the reference picture\" and don't describe their face, hair or body: the reference picture shows how they look. " +
+  rules + " Reply with the shot only.";
+export const PHOTO_SYSTEM = photoSystem(SAFE);
+export const PHOTO_SYSTEM_ADULT = photoSystem(ADULT);
 
-export const CLIP_SYSTEM = "You write the shot for a video clip, a few seconds long, that a character in a chat is about to " +
-  "send. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: one simple " +
-  "action, where it happens, how the camera moves, the light and the mood. Call the character \"the character from the " +
-  "reference pictures\" and don't describe their face, hair or body: the pictures show how they look. " + SAFE +
+const clipSystem = (rules) => "You write the shot for a video clip, a few seconds long, that a character in a chat is " +
+  "about to send. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: " +
+  "one simple action, where it happens, how the camera moves, the light and the mood. Call the character \"the character " +
+  "from the reference pictures\" and don't describe their face, hair or body: the pictures show how they look. " + rules +
   " Reply with the shot only.";
+export const CLIP_SYSTEM = clipSystem(SAFE);
+export const CLIP_SYSTEM_ADULT = clipSystem(ADULT);
 
 export const LOOK_SYSTEM = "You describe how an original character looks, for a portrait of them. One paragraph of at most " +
   "45 words: their apparent age (an adult), face, hair, build and clothes, and one detail people remember. Invent what " +
@@ -99,8 +117,11 @@ function transcript(card, history, n = 10) {
     .map((m) => `${m.role === "user" ? "Them" : card.name}: ${clip(str(m.content).replace(/\s+/g, " ").trim(), 300)}`);
 }
 
-/** the messages for a text model to write the shot: the character, the conversation, what was asked for */
-export function shotMessages(card, history, ask = "", kind = "photo") {
+/**
+ * The messages for a text model to write the shot: the character, the conversation, what was asked for. adult: for an
+ * adult character whose pictures can be adult (adultCheck).
+ */
+export function shotMessages(card, history, ask = "", kind = "photo", { adult = false } = {}) {
   const lines = transcript(card, history);
   const look = card.look && card.look.description;
   const user = [
@@ -110,7 +131,8 @@ export function shotMessages(card, history, ask = "", kind = "photo") {
     "What was asked for: " + (str(ask, 500).trim() || "nothing in particular. Pick a moment that fits the conversation."),
     `Write the shot for the ${kind === "clip" ? "clip" : "photo"} ${card.name} sends now.`,
   ].filter(Boolean).join("\n\n");
-  return [{ role: "system", content: kind === "clip" ? CLIP_SYSTEM : PHOTO_SYSTEM }, { role: "user", content: user }];
+  const system = kind === "clip" ? (adult ? CLIP_SYSTEM_ADULT : CLIP_SYSTEM) : adult ? PHOTO_SYSTEM_ADULT : PHOTO_SYSTEM;
+  return [{ role: "system", content: system }, { role: "user", content: user }];
 }
 
 /** the messages for a text model to describe how a character looks, when their card doesn't say */
@@ -130,15 +152,22 @@ export function cleanText(text, max = 900) {
 
 // the rules ride at the front of every picture and clip, where a long shot can't push them out
 const KEEP = "Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult.";
+// an adult character's: the 18+ rule is the very first thing the model reads
+const KEEP_ADULT = ADULT_ONLY + " Never a real, identifiable person. No gore.";
 
-/** what the photo model is told: keep the character as the pictures show them, in the shot */
-export function photoPrompt(card, shot, pictures = 1, limit = 1500) {
+/**
+ * What the photo model is told: keep the character as the pictures show them, in the shot. adult: an adult
+ * character's photo (adultCheck), which keeps every rule but the one about work, and opens with the 18+ rule.
+ */
+export function photoPrompt(card, shot, pictures = 1, limit = 1500, { adult = false } = {}) {
   const lead = pictures > 1
     ? `The reference pictures show ${card.name}. Keep how they look exactly: face, hair, build, clothes and style.`
     : `The reference picture shows ${card.name}. Keep how they look exactly: face, hair, build, clothes and style.`;
+  if (adult) return clip(`${KEEP_ADULT} ${lead} New photo: ${str(shot).trim()} A natural photo with no text in it.`, limit);
   return clip(`${lead} ${KEEP} New photo: ${str(shot).trim()} A natural photo with no text in it.`, limit);
 }
-export function clipPrompt(card, shot, limit = 2500) {
+export function clipPrompt(card, shot, limit = 2500, { adult = false } = {}) {
+  if (adult) return clip(`${KEEP_ADULT} The reference pictures show ${card.name}. Keep how they look exactly. ${str(shot).trim()}`, limit);
   return clip(`The reference pictures show ${card.name}. Keep how they look exactly. ${KEEP} ${str(shot).trim()}`, limit);
 }
 /** a first portrait, when a character has no picture at all */
@@ -235,25 +264,27 @@ export function mediaIds(chats) {
 
 // ---------- on their own: a character sends a photo or a voice note when it fits, and offers a clip ----------
 
-export const MOVE_SYSTEM = "You decide whether a character in a chat does something besides texting, right after the " +
-  "reply they just sent. Choose one move: \"photo\" (they send a photo of themselves because it fits: they were asked " +
-  "for one, or they mention where they are, what they're doing or wearing, or something worth showing), \"voice\" (they " +
-  "send that reply as a voice note too: a feeling, a laugh, a whisper, something better said aloud), \"clip\" (a few " +
-  "seconds of video, only for a moment that needs moving pictures), or \"nothing\" (most of the time). Never two photos " +
-  "in a row. For a photo or a clip, write the shot: what the camera sees, at most 60 words, calling them \"the character " +
-  "from the reference picture\" instead of describing their face, hair or body. " + SAFE +
+const moveSystem = (rules) => "You decide whether a character in a chat does something besides texting, right after " +
+  "the reply they just sent. Choose one move: \"photo\" (they send a photo of themselves because it fits: they were " +
+  "asked for one, or they mention where they are, what they're doing or wearing, or something worth showing), \"voice\" " +
+  "(they send that reply as a voice note too: a feeling, a laugh, a whisper, something better said aloud), \"clip\" (a " +
+  "few seconds of video, only for a moment that needs moving pictures), or \"nothing\" (most of the time). Never two " +
+  "photos in a row. For a photo or a clip, write the shot: what the camera sees, at most 60 words, calling them \"the " +
+  "character from the reference picture\" instead of describing their face, hair or body. " + rules +
   " Reply with one JSON object: {\"move\": \"photo\" | \"voice\" | \"clip\" | \"nothing\", \"shot\": \"...\"}.";
+export const MOVE_SYSTEM = moveSystem(SAFE);
+export const MOVE_SYSTEM_ADULT = moveSystem(ADULT);
 
 export const MOVE_SCHEMA = {
   type: "object", additionalProperties: false, required: ["move", "shot"],
   properties: { move: { type: "string", enum: ["photo", "voice", "clip", "nothing"] }, shot: { type: "string" } },
 };
 
-/** the messages for a text model to decide the character's next move */
-export function moveMessages(card, history) {
+/** the messages for a text model to decide the character's next move (adult: their pictures can be adult, adultCheck) */
+export function moveMessages(card, history, { adult = false } = {}) {
   const lines = transcript(card, history, 12);
   const look = card.look && card.look.description;
-  return [{ role: "system", content: MOVE_SYSTEM }, { role: "user", content: [
+  return [{ role: "system", content: adult ? MOVE_SYSTEM_ADULT : MOVE_SYSTEM }, { role: "user", content: [
     `The character: ${card.name}${card.tagline ? ". " + card.tagline : ""}`,
     look ? `How they look: ${look}` : "",
     "The conversation, latest last (their reply just now is the last line):\n" + lines.join("\n"),
@@ -285,6 +316,93 @@ export function moveLikely(history, { every = 6 } = {}) {
 /** did they send a photo or clip of their own in the last few messages (so not another one yet) */
 export function sentLately(history, gap = 4) {
   return (history || []).filter((m) => m && !m.demo && !m.hidden).slice(-gap).some((m) => m.role === "assistant" && m.media && m.media.own);
+}
+
+// ---------- adult characters: their photos and clips ----------
+
+// an age under 18, in figures or in words
+const AGE = "(?:[1-9]|1[0-7]|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen)";
+const AGE_FIGURES = "(?:[1-9]|1[0-7])";
+// a number that isn't someone's age: "5 minutes away", "she's 5'4", "he's 6 foot", "turns 9 o'clock"
+const NOT_AN_AGE = "(?![\\s-]*(?:minutes?|mins?|hours?|hrs?|days?|weeks?|months?|feet|foot|ft|inch(?:es)?|cm|met(?:er|re)s?|kg|" +
+  "kilos?|lbs?|pounds?|stones?|percent|%|dollars?|bucks|euros?|times|o['’]?clock|am|pm|[:.,]\\d|['’\"″′]))";
+// someone young: an age under 18, a teenager, a minor, a school below college
+const YOUNG = [
+  AGE + "[\\s-]*(?:years?|yrs?)[\\s-]*old",
+  AGE_FIGURES + "[\\s-]*y\\.?\\s?o",
+  "(?:aged?|age of)\\s+" + AGE + "\\b" + NOT_AN_AGE,
+  "(?:i['’]?m|i am|she['’]?s|she is|he['’]?s|he is|they['’]?re|they are|you['’]?re|you are|turned|turns|turning)\\s+" +
+    "(?:only\\s+|just\\s+)?" + AGE_FIGURES + "\\b" + NOT_AN_AGE,
+  "under[\\s-]?(?:age|aged|(?:18|eighteen)\\b" + NOT_AN_AGE + ")",
+  "minors",
+  "(?:a|is|am|are|was|still|being)\\s+minor\\b(?!\\s+(?:key|chord|details?|things?|issues?|problems?|inconvenience|roles?|" +
+    "injur\\w*|changes?|edits?|points?|characters?|league|scale|setbacks?|hiccups?|fix\\w*|bugs?|repairs?))",
+  "teens?", "teenagers?", "teenaged?", "pre-?teens?", "tweens?", "adolescen(?:t|ts|ce)", "(?:pre)?pubescent",
+  "loli(?:con|s)?", "shota(?:con|s)?", "jail-?bait", "school[\\s-]?(?:girls?|boys?|uniforms?)",
+  "(?:high|middle|junior high|elementary|grade|primary|prep)[\\s-]?school(?:ers?)?", "highschool(?:ers?)?",
+  "kindergart(?:en|ner)s?", "little (?:girls?|boys?)", "young (?:girls?|boys?)",
+];
+// and children: in a shot or a chat they're someone in the picture; on a card they're more often the character's own
+const CHILDREN = ["child(?:ren)?", "kids?", "kiddos?", "toddlers?", "infants?", "school[\\s-]?(?:kids?|children)"];
+const words = (list) => new RegExp("\\b(?:" + list.join("|") + ")\\b", "i");
+/**
+ * Words that say someone in a picture is under 18. A shot or a chat with one in it gets no adult pictures: it errs on
+ * the safe side ("my kids are asleep" counts), and the page says which words it found.
+ */
+export const UNDERAGE = words([...YOUNG, ...CHILDREN]);
+/** words that say a character is under 18 themselves (their card can mention their kids, or their childhood) */
+export const UNDERAGE_CARD = words(YOUNG);
+
+/** the first words in these texts that say someone is under 18 (re: UNDERAGE, or UNDERAGE_CARD for a card), or "" */
+export function underage(texts, re = UNDERAGE) {
+  for (const t of [texts].flat(Infinity)) {
+    const m = str(t, 200000).match(re);
+    if (m) return m[0];
+  }
+  return "";
+}
+
+/** everything a card says about them */
+const cardWords = (card) => [card.name, card.tagline, card.greeting, card.persona, card.voice && card.voice.notes,
+  card.look && card.look.description, ...(card.tags || []), ...(card.examples || []).flatMap((e) => [e.user, e.character]),
+  ...(card.flow || []).flatMap((s) => [s.stage, s.goal, s.next])].filter(Boolean).join("\n");
+
+/**
+ * Whether an adult character's photos and clips can be adult, and if not, why (a sentence for the page; "" for a
+ * character who isn't marked adult). They can when you've said you're 18 or older (of18), adult pictures are on (on),
+ * every picture on their card was made here with AI (made(picture): a picture someone uploaded could be of anyone), and
+ * nothing on their card, in the shot or in the last few messages (said) says anyone is under 18.
+ */
+export function adultCheck(card, { of18 = false, on = true, made = () => false, shot = "", said = [] } = {}) {
+  if (!card || !card.adult || card.plain) return { ok: false, why: "" };
+  const sfw = "so their photos and clips stay safe for work.";
+  if (!on) return { ok: false, why: "adult photos and clips are switched off under abilities." };
+  if (!of18) return { ok: false, why: "adult photos and clips wait until you say you're 18 or older, under abilities." };
+  const pics = [card.portrait, ...((card.look && card.look.references) || [])].filter(Boolean);
+  if (!pics.length) return { ok: false, why: `${card.name} has no picture made here yet (card → look: make one with ai), ${sfw}` };
+  if (!pics.every((p) => made(p))) return { ok: false, why: `a picture on their card wasn't made here with ai (it was uploaded, or came from venice), ${sfw}` };
+  const onCard = underage(cardWords(card), UNDERAGE_CARD);
+  if (onCard) return { ok: false, why: `their card says “${onCard}”, which sounds like someone under 18, ${sfw}` };
+  const now = underage([shot, said]);
+  if (now) return { ok: false, why: `the shot or the chat says “${now}”, which sounds like someone under 18, so this one stays safe for work.` };
+  return { ok: true, why: "" };
+}
+
+/**
+ * A short fingerprint of a picture (the data: URI a card keeps it as), for the list of pictures this browser made with
+ * AI. It only has to tell this browser's pictures apart; it guards nothing secret.
+ */
+export function pictureKey(picture) {
+  const s = str(picture, 20000000);
+  let h1 = 0xdeadbeef ^ s.length, h2 = 0x41c6ce57 ^ s.length;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.charCodeAt(i);
+    h1 = Math.imul(h1 ^ c, 2654435761);
+    h2 = Math.imul(h2 ^ c, 1597334677);
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+  return (h2 >>> 0).toString(16).padStart(8, "0") + (h1 >>> 0).toString(16).padStart(8, "0") + "-" + s.length.toString(36);
 }
 
 // ---------- the daily allowance for what they do on their own ----------

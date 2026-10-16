@@ -43,6 +43,7 @@
    }
   },
   "tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 40 } },
+  "adult": { "type": "boolean", "default": false, "description": "For grown-ups only (18+): everyone in their chats and pictures is an adult. Character cards carry it as an \"nsfw\" tag. Havre makes adult photos and clips of an adult character only from pictures it made itself with AI, never from an uploaded one, and never when their card or chat mentions anyone under 18." },
   "model": { "type": "string", "maxLength": 120, "description": "A Venice model id, e.g. zai-org-glm-5-2." },
   "engine": {
    "type": "object", "additionalProperties": false,

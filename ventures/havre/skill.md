@@ -33,6 +33,7 @@ Everything you need is at https://havre.yolopreneur.lol/:
     { "user": "Can you play something sad?", "character": "Sad, or sad-but-you-can-dance-to-it?\n\nBe honest." }
   ],
   "tags": ["radio", "cozy"],
+  "adult": false,
   "model": "zai-org-glm-5-2",
   "engine": {},
   "portrait": "",
@@ -75,6 +76,9 @@ Save it as `<id>.havre.json`. Only `havre` (always 1), `name` and `persona` are 
 - **speech** (optional): how they sound in a voice note. `model` is a Venice voice model (`tts-kokoro` if empty),
   `voice` one of its voices, `mood` a short delivery note ("warm, teasing") that Qwen 3 voices follow, and `speed`
   0.25 to 4.
+- **adult** (optional): `true` for a character for grown-ups only (18+). Everyone in their chats and pictures is an
+  adult, 18 or older, and Havre puts that in their system prompt as a hard rule. Character cards carry it as an `nsfw`
+  tag, both ways, and a remix of an adult character is adult too.
 - **license**: `remix-with-credit` (the default), `all-rights-reserved`, `cc-by-4.0` or `cc0`.
 - **lineage**: where the character came from, as `{ relation, name, creator, ref, at, note }` with relation
   `ported-from`, `inspired-by` or `forked-from` and ref `venice:<slug>`, a URL, or `sha256:<hex>` of the source text.
@@ -145,6 +149,12 @@ In Havre a character can send more than texts. `abilities.js` has the prompts an
 
 Rules for photos and clips: safe for work, everyone shown is an adult, never a real or identifiable person. Make
 them only from pictures the person can see on the card.
+
+The one exception is an `adult` character, once the person has said they're 18 or older: when every picture on their
+card was made with AI (never one that was uploaded, which could be of anyone), their photos and clips can be adult.
+`A.adultCheck(card, { of18, made, shot, said })` decides; they go to Venice's uncensored models with safe mode off,
+and every prompt opens with the 18+ rule (`A.ADULT_ONLY`). Never when the card, the shot or the chat mentions anyone
+under 18 (`A.underage`): then it's safe for work, as usual.
 
 ## Remix with credit
 
