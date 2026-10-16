@@ -56,8 +56,10 @@ Save it as `<id>.havre.json`. Only `havre` (always 1), `name` and `persona` are 
 - **greeting**: one to three short texts, separated by a blank line.
 - **voice**: `short_form: true` makes replies arrive as a few short texts, the way people text. Put how they talk in
   `notes` as traits ("clipped", "asks one question at a time"), never as catchphrases.
-- **examples**: three to five exchanges. They teach the voice, and they are what a visitor without a key hears: the
-  page answers with the example whose question is closest to what was said.
+- **examples**: three to five exchanges. They teach the voice (the first four go into the system prompt), and they are
+  what a visitor without a key hears: the page answers with the example whose question is closest to what was said.
+- **name**: keep it the same everywhere. The persona should open with "You are <name>", and the greeting and examples
+  shouldn't call them anything else: a model given two names drifts to the other one.
 - **flow** (optional): stages for meeting someone new, taken in order. Each has a `stage`, a `goal` and `next` (when to
   move on). A coach's flow might be assess, plan, execute:
   ```json
@@ -105,7 +107,10 @@ console.log(problems.length ? problems : "valid");' juniper.havre.json
 ## Talking to a character through Venice
 
 Havre uses Venice's OpenAI-compatible API with the person's own key. Build the messages with `C.chatMessages(card,
-history)` (the system prompt, the greeting, then the conversation) and send them:
+history)`: the system prompt (who they are, how they talk with their examples, their flow, their name and the house
+rules), the greeting, the last 40 messages, and on the latest one a reminder of who is answering
+(`[You are <name>. Stay in character.]`), since a model drifts from a prompt far above. `C.chatMessages(card, history,
+{ memory })` adds what the character remembers of your chats (`memory.js`). Then send them:
 
 ```sh
 curl https://api.venice.ai/api/v1/chat/completions \

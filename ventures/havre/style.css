@@ -215,6 +215,7 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 
 /* the conversation, set like a script */
 .chat .sechead h2 { text-transform: uppercase; }
+.back { display: none; }
 .log {
   flex: 1 1 auto; margin: 0; padding: 16px var(--gut); list-style: none;
   height: max(300px, calc(100vh - 450px)); overflow-y: auto; overscroll-behavior: contain;
@@ -324,6 +325,14 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 #speech-status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 #portrait-status, #look-status { display: block; margin-top: 6px; }
 #portrait-status:empty, #look-status:empty { display: none; }
+/* what they remember: a list of notes, each with a way to forget it */
+#memory-how { margin-bottom: 10px; }
+.notes { margin: 0 0 10px; padding-left: 20px; font-size: 16px; }
+.notes li + li { margin-top: 4px; }
+.notes .linkish { font: 12px var(--mono); }
+.notes li.empty { list-style: none; margin-left: -20px; font: 13px var(--mono); }
+#memory-add { font: 17px var(--serif); }
+#memory-group p.mono { margin-top: 8px; }
 .lineage h3 { font: 700 13px var(--mono); margin-bottom: 4px; }
 .lineage-list { margin: 0 0 4px; padding-left: 20px; font-size: 16px; }
 .lineage-list:empty::before { content: "nothing yet: written here."; font: 13px var(--mono); margin-left: -20px; }
@@ -421,6 +430,10 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 /* ---------- narrow screens ---------- */
 @media (max-width: 1040px) {
   .chars { border-right: 0; border-bottom: 1px solid var(--ink); }
+  /* one at a time, like a phone's messages: the list, or the chat with a way back to it */
+  .studio.pane-list .chat, .studio.pane-chat .chars { display: none; }
+  .studio.pane-list .chars { border-bottom: 0; }
+  .chat .back { display: block; flex-basis: 100%; font: 14px var(--mono); }
   .grid { margin-right: 0; }
   .chat { position: static; max-height: none; }
   .log, .chat.asking .log { height: max(320px, 58vh); }

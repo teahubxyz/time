@@ -54,7 +54,7 @@ function serve() {
 
 // ---------- a stand-in for api.venice.ai that answers like it does ----------
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const seen = { characters: [], chats: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
+const seen = { characters: [], chats: [], memories: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
 /** a short WAV of silence: something an audio element can load */
 function wav(ms = 300) {
   const n = Math.round(8000 * ms / 1000), b = Buffer.alloc(44 + n * 2);
@@ -79,8 +79,10 @@ const MEDIA_MODELS = {
     { id: "seedance-2-0-reference-to-video-basic", model_spec: { name: "Seedance 2.0 R2V", privacy: "anonymized", constraints: { model_type: "image-to-video",
       durations: ["4s", "5s"], resolutions: ["480p", "720p"], aspect_ratios: [], audio: true, audio_configurable: true } } }],
 };
-/** the chat calls where someone talks: not the ones deciding what a character does on their own */
-const talks = () => seen.chats.filter((b) => !/^You decide whether/.test(String((b.messages[0] || {}).content || "")));
+/** a reply as a model without a schema to keep to writes it: chatter around it, a raw line break in a string, a trailing comma */
+const handWritten = (o) => "Sure! Here it is:\n```json\n" + JSON.stringify(o, null, 1).replace(/\\n/g, "\n").replace(/\n}$/, ",\n}") + "\n```";
+/** the chat calls where someone talks: not the ones deciding what a character does on their own, or writing down what they remember */
+const talks = () => seen.chats.filter((b) => !/^You (decide whether|keep the memory)/.test(String((b.messages[0] || {}).content || "")));
 const multipart = (req) => (req.headers()["content-type"] || "").startsWith("multipart/form-data");
 const CHARACTERS = [
   { slug: "sable-penrose", name: "Sable Penrose", description: "Your new neighbor needs help moving in.", author: "btrzm",
@@ -100,7 +102,7 @@ async function fakeVenice(route) {
     if (MEDIA_MODELS[type]) return ok({ data: MEDIA_MODELS[type] });
     return ok({ data: [
       { id: "zai-org-glm-5-2", model_spec: { name: "GLM 5.2", privacy: "private", traits: ["default"], availableContextTokens: 198000,
-        capabilities: { supportsFunctionCalling: true, supportsReasoning: true }, pricing: { input: { usd: 1.4 }, output: { usd: 4.4 } } } },
+        capabilities: { supportsFunctionCalling: true, supportsReasoning: true, supportsResponseSchema: true }, pricing: { input: { usd: 1.4 }, output: { usd: 4.4 } } } },
       { id: "tiny-model", model_spec: { name: "Tiny", privacy: "anonymized", uncensored: true, availableContextTokens: 32000,
         capabilities: { supportsVision: true }, pricing: { input: { usd: 0.1 }, output: { usd: 0.2 } } } },
       { id: "beta-model", model_spec: { name: "Beta only", beta: true, privacy: "private", pricing: {} } }] });
@@ -116,7 +118,10 @@ async function fakeVenice(route) {
   }
   if (url.includes("/chat/completions")) {
     const b = JSON.parse(body);
+    // Tiny can't keep to a schema: asked to, it refuses, and without one it writes its JSON by hand
+    if (b.response_format && b.model === "tiny-model") return ok({ error: "This model does not support response_format" }, 400);
     seen.chats.push(b);
+    const json = (o) => (b.response_format ? JSON.stringify(o) : handWritten(o));
     const system = b.messages[0] && b.messages[0].role === "system" ? b.messages[0].content : "";
     const last = (b.messages.at(-1) || {}).content || "";
     const lastSaid = typeof last === "string" ? last : "";
@@ -124,15 +129,18 @@ async function fakeVenice(route) {
     let reply;
     if (system.startsWith("You decide whether a character")) {
       const said = (b.messages[1].content.match(/^Them: .*$/gm) || []).at(-1) || "";     // the last thing they said
-      reply = /^Them:.*\bSend me a pic/i.test(said) ? JSON.stringify({ move: "photo", shot: "The character from the reference picture holds up a mug in a half-unpacked kitchen." })
-        : /^Them:.*\bFilm the harbor/i.test(said) ? JSON.stringify({ move: "clip", shot: "The character from the reference pictures pans across the harbor at dusk." })
-        : /^Them:.*\bWhisper it/i.test(said) ? JSON.stringify({ move: "voice", shot: "" }) : JSON.stringify({ move: "nothing", shot: "" });
+      reply = /^Them:.*\bSend me a pic/i.test(said) ? json({ move: "photo", shot: "The character from the reference picture holds up a mug\nin a half-unpacked kitchen." })
+        : /^Them:.*\bFilm the harbor/i.test(said) ? json({ move: "clip", shot: "The character from the reference pictures pans across the harbor at dusk." })
+        : /^Them:.*\bWhisper it/i.test(said) ? json({ move: "voice", shot: "" }) : json({ move: "nothing", shot: "" });
     } else if (lastSaid.startsWith("[Time passes")) {
       reply = "You're back!\n\nI kept the kettle warm.";
     } else if (system.startsWith("You write the shot for a photo")) {
       reply = "Shot: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight.";
     } else if (system.startsWith("You write the shot for a video clip")) {
       reply = "The character from the reference pictures waves from the doorway as the camera drifts closer.";
+    } else if (system.startsWith("You keep the memory of a character")) {
+      seen.memories.push(b);
+      reply = json({ notes: ["They asked about the ferry, six times over.", "I told them to ask again after the tide."] });
     } else if (system.startsWith("You describe how an original character looks")) {
       reply = "Thirties, wiry, a knitted cap, a reefer jacket with the collar up, salt in the stubble.";
     } else if (Array.isArray(last) && last[0].text.startsWith("Describe this photo")) {
@@ -142,16 +150,22 @@ async function fakeVenice(route) {
       assert.equal(last[1].type, "image_url", "a model that can see gets the photo itself");
       reply = "Nice photo.\n\nIs that your boat?";
     } else if (system.startsWith("You read a character")) {
-      reply = JSON.stringify({ archetype: "gruff shopkeeper", premise: "keeps a log of every newcomer", setting: "a small port town",
+      reply = json({ archetype: "gruff shopkeeper", premise: "keeps a log of every newcomer", setting: "a small port town",
         drives: ["help newcomers settle"], fears: ["losing the logbook"], voice: ["wry", "plain"], quirks: ["counts boats"],
         relationships: ["grudging guide to the user"], boundaries: ["won't oversell"], themes: ["arrival"] });
     } else if (system.startsWith("You are a character writer")) {
       assert.ok(body.includes("logbook") || body.includes("log of every"), "the writer gets the ideas");
       assert.ok(!body.includes("bait shop"), "the writer never sees the source");
-      reply = JSON.stringify({ name: "Ines Corbel", tagline: "Ferry pilot with a pencil behind her ear",
+      reply = json({ name: "Ines Corbel", tagline: "Ferry pilot with a pencil behind her ear",
         greeting: "Ticket? Kidding.\n\nWhere are you headed?",
         persona: "You are Ines Corbel, who pilots the morning ferry across a cold grey estuary. You sketch every passenger in a tiny notebook and give them the drawing at the far pier. You are cheerful, nosy and quick, and you hate fog.",
         examples: [{ user: "Is it far?", character: "Twelve minutes.\n\nNine if the gulls cooperate." }], tags: ["ferry"] });
+    } else if (lastSaid.startsWith("Think hard")) {
+      reply = b.max_tokens > 700 ? "Okay, I thought about it.\n\nTwelve minutes." : "";   // the first time, it thinks its room away
+    } else if (lastSaid.startsWith("Loop for me")) {
+      reply = "I'm not sure.\n\n".repeat(30);
+    } else if (/^Say nothing(\n\n\[|$)/.test(lastSaid)) {
+      reply = "";
     } else if (lastSaid.startsWith("[Start the conversation")) {
       reply = "Oh! Hi.\n\nCareful, the boxes bite.";
     } else {
@@ -522,7 +536,7 @@ async function main() {
     // hearing and seeing: off until switched on
     assert.equal(await page.getByRole("button", { name: "record a voice note" }).count(), 0);
     await page.getByRole("button", { name: "abilities" }).click();
-    await count(page, "#ablist tr", 6);
+    await count(page, "#ablist tr", 7);
     await page.getByLabel("let them hear my voice notes").check();
     await page.getByLabel("let them see my photos").check();
     await shot(page, "desktop-abilities.png");
@@ -638,7 +652,11 @@ async function main() {
     await page.reload();
     await until(page, () => [...document.querySelectorAll("#log .pic img")].some((i) => i.src.startsWith("blob:") && i.complete && i.naturalWidth > 0), null, "the photo after a reload");
 
-    // remix with credit, end to end, from the card that came in
+    // remix with credit, end to end, from the card that came in. His model can't keep to JSON (it writes it by hand), so
+    // the two passes run on one that can, and the new character talks through his
+    await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Captain Ro's card" }).click();
+    await page.selectOption("#model-select", "tiny-model");
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Captain Ro").model === "tiny-model", null, "his model saved");
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Remix Captain Ro" }).click();
     await has(page, "#rx-from", /^Captain Ro$/);
     assert.match(await textOf(page, "#rx-rights"), /reserves the rights/);
@@ -655,13 +673,19 @@ async function main() {
     await page.locator("#rx-draft button", { hasText: "KEEP IN HARBOR" }).click();
     await has(page, "#who-name", /^Ines Corbel$/);
     await count(page, "#roster tr", 4);
+    await has(page, "#log .line.them .said", /Where are you headed\?/);
+    assert.equal(await page.locator("#studio.pane-chat").count(), 1, "a kept remix opens their chat, to say hello");
+    assert.ok(await page.locator("#chat-back").isHidden(), "a wide screen shows the list and the chat side by side, so no way back is needed");
     const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel"));
     assert.equal(kept.lineage[0].relation, "inspired-by");
+    const passes = seen.chats.filter((b) => /^You (read a character|are a character writer)/.test(b.messages[0].content));
+    assert.ok(passes.length >= 2 && passes.every((b) => b.model === "zai-org-glm-5-2" && b.response_format), "the remix ran on a model that keeps to JSON");
+    assert.equal(kept.model, "tiny-model", "she talks through his model");
     assert.equal(kept.lineage[0].name, "Captain Ro");
     assert.match(kept.lineage[0].ref, /^sha256:/);
 
     // pictures for her card, made with AI: a portrait drawn from how she looks, then one more picture made from it
-    const inesNow = () => page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel"));
+    const inesNow = () => page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel"));
     await has(page, "#portrait-make", /^make one with ai · \$0\.03$/);
     const drawn = seen.generated.length;
     await page.click("#portrait-make");
@@ -682,6 +706,78 @@ async function main() {
     assert.equal(seen.edits.at(-1).body.safe_mode, true);
     await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel").look.references.length === 1, null, "the picture kept on her card");
     await shot(page, "desktop-card-pictures.png");
+
+    // her name stays hers: the rule in her prompt, and a reminder on the latest thing said
+    await answered(page, async () => { await page.fill("#say", "Tell me about the ferry, part 1"); await page.keyboard.press("Enter"); });
+    const first = talks().at(-1);
+    assert.match(first.messages[0].content, /Your name is Ines Corbel\. Never introduce yourself by another name\./);
+    assert.match(first.messages[0].content, /How you sound, in a few examples[^\n]*\n- When they say "Is it far\?", you text: "Twelve minutes\." "Nine if the gulls cooperate\."/);
+    assert.equal(first.messages.at(-1).content, "Tell me about the ferry, part 1\n\n[You are Ines Corbel. Stay in character.]");
+    assert.equal(first.messages.filter((m) => m.content.includes("Stay in character.]")).length, 1, "only on the latest");
+    // what she remembers: a dozen messages in, her own model writes it down, and it rides in every chat with her
+    assert.equal(seen.memories.length, 0);
+    for (let i = 2; i <= 6; i++) await answered(page, async () => { await page.fill("#say", `Tell me about the ferry, part ${i}`); await page.keyboard.press("Enter"); });
+    await poll(() => seen.memories.length === 1, "her memory written down");
+    const mem = seen.memories[0];
+    assert.equal(mem.model, "zai-org-glm-5-2", "written by a model that keeps to JSON (hers, Tiny, can't)");
+    assert.match(mem.messages[1].content, /^The character: Ines Corbel/);
+    assert.match(mem.messages[1].content, /What they remember so far: nothing yet\./);
+    assert.match(mem.messages[1].content, /Them: Tell me about the ferry, part 1\nInes Corbel: Mm\. Good question\. Ask me again after the tide\./);
+    assert.equal(mem.messages[1].content.match(/^Them: /gm).length, 6, "the dozen messages since the start");
+    assert.ok(!mem.messages[1].content.includes("Stay in character"), "the reminder isn't something said");
+    await page.evaluate(() => { document.querySelector("#memory-group").open = true; });
+    await has(page, "#memory-list li", /They asked about the ferry, six times over\./);
+    await answered(page, async () => { await page.fill("#say", "Who are you, again?"); await page.keyboard.press("Enter"); });
+    assert.match(talks().at(-1).messages[0].content, /What you remember from your chats with them so far[^\n]*\n- They asked about the ferry, six times over\.\n- I told them to ask again after the tide\./);
+    const memNow = () => page.evaluate(() => (JSON.parse(localStorage.getItem("havre.memory.v1")) || {})["ines-corbel"]);
+    assert.ok(Object.values((await memNow()).upTo).length === 1, "where it read up to, in this chat");
+    // forget one note; add one of your own; nothing of it goes into her card
+    await page.getByRole("button", { name: "Forget: They asked about the ferry, six times over." }).click();
+    await page.fill("#memory-add", "They're called Princess.");
+    await page.press("#memory-add", "Enter");
+    await count(page, "#memory-list li", 2);
+    assert.deepEqual((await memNow()).notes, ["They're called Princess.", "I told them to ask again after the tide."]);
+    assert.ok(!JSON.stringify(await inesNow()).includes("Princess"), "memory lives beside the card, never in it");
+    await shot(page, "desktop-memory.png");
+    // leaving a chat with a few new messages, she writes down what she remembers of them, so a new chat picks up there
+    await answered(page, async () => { await page.fill("#say", "And the gulls?"); await page.keyboard.press("Enter"); });
+    await page.locator("#who-meta").getByRole("button", { name: "new chat" }).click();
+    await poll(() => seen.memories.length === 2, "what she remembers of the chat she left");
+    const left2 = seen.memories[1].messages[1].content;
+    assert.match(left2, /What they remember so far:\n- They're called Princess\.\n- I told them to ask again after the tide\./, "with what you gave her");
+    assert.deepEqual(left2.match(/^Them: .*$/gm), ["Them: Who are you, again?", "Them: And the gulls?"], "only what's new since");
+    // a new name goes all through her card
+    const persona = (await inesNow()).persona;
+    assert.match(persona, /^You are Ines Corbel/);
+    await page.locator('#sheet [name="name"]').focus();
+    await page.fill('#sheet [name="name"]', "Ines Marrec");
+    await page.locator('#sheet [name="tagline"]').focus();
+    await until(page, () => /^You are Ines Marrec/.test(JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").persona), null, "her persona renamed");
+    assert.equal((await inesNow()).greeting, "Ticket? Kidding.\n\nWhere are you headed?", "what doesn't name her stays as it was");
+    // a persona that calls her something else is pointed out, with the fix
+    await page.fill('#sheet [name="persona"]', "You are Odile Brun, who pilots the morning ferry.");
+    await has(page, "#name-note", /their persona calls them Odile Brun, but their name here is Ines Marrec/);
+    await page.getByRole("button", { name: "call them Ines Marrec everywhere" }).click();
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").persona === "You are Ines Marrec, who pilots the morning ferry.", null, "the persona fixed");
+    assert.ok(await page.locator("#name-note").isHidden());
+    await page.fill('#sheet [name="name"]', "Ines Corbel");
+    await page.fill('#sheet [name="persona"]', persona);
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").name === "Ines Corbel", null, "her name back");
+
+    // a model that thinks its whole room away is asked once more, with room; a reply caught in a loop says it once
+    await answered(page, async () => { await page.fill("#say", "Think hard: how far is it?"); await page.keyboard.press("Enter"); }, /Twelve minutes\./);
+    assert.deepEqual(talks().slice(-2).map((b) => b.max_tokens), [700, 2100]);
+    await answered(page, async () => { await page.fill("#say", "Loop for me"); await page.keyboard.press("Enter"); }, /I'm not sure\./);
+    await until(page, () => document.querySelector("#composer").getAttribute("aria-busy") === "false", null, "the reply played out", 15000);
+    assert.equal(await page.locator("#log .line.them .said", { hasText: "I'm not sure." }).count(), 1, "said once, not thirty times");
+    // nothing at all, twice: said so; and the next message doesn't go out as two of yours in a row
+    await page.fill("#say", "Say nothing");
+    await page.keyboard.press("Enter");
+    await has(page, "#log .line.err .said", /^Tiny sent back nothing, twice\./);
+    await answered(page, async () => { await page.fill("#say", "Are you there?"); await page.keyboard.press("Enter"); });
+    const turn = talks().at(-1).messages;
+    assert.ok(turn.every((m, i) => i === 0 || m.role !== turn[i - 1].role), "never two from the same side in a row: " + turn.map((m) => m.role).join(","));
+    assert.equal(turn.at(-1).content, "Say nothing\n\nAre you there?\n\n[You are Ines Corbel. Stay in character.]");
 
     // exports, made in the browser; the PNG comes back in whole
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();
@@ -792,6 +888,7 @@ async function main() {
     await venice(p3);
     await p3.goto(base);
     await count(p3, "#vgrid li.ghost", 8);
+    assert.ok(await p3.locator("#chat").isHidden(), "a phone shows the list first, and a chat once someone's picked");
     const wide = () => p3.evaluate(() => document.documentElement.scrollWidth);
     assert.ok(await wide() <= W, `no sideways scroll on a phone (scrollWidth ${await wide()})`);
     // a field under 16px makes iOS Safari zoom in when it's tapped, and the page stays cut off
@@ -806,17 +903,26 @@ async function main() {
     await p3.locator("#vgrid .tile", { hasText: "Wren" }).click();
     await has(p3, "#log .line.them .said", /Careful, the boxes bite\./);
     assert.ok(await p3.locator("#say").isVisible(), "the chat is on screen");
+    assert.ok(await p3.locator("#chars").isHidden(), "and not stranded below the list: one at a time");
     assert.ok(await wide() <= W, `still no sideways scroll (scrollWidth ${await wide()})`);
     assert.deepEqual(await small(), [], "nor here");
     await p3.waitForTimeout(500);
     await shot(p3, "phone-chat.png");
     await shot(p3, "phone-full.png", { fullPage: true });
-    // from a chat, back to all of them
-    await p3.locator("#who-meta").getByRole("button", { name: "all chats" }).click();
+    // from a chat, back to the list it came from; a chat from your chats opens in its place, and goes back to them
+    await has(p3, "#chat-back", /^← characters$/);
+    await p3.click("#chat-back");
+    assert.ok(await p3.locator("#chat").isHidden());
+    assert.ok(await p3.locator("#lp-chars").isVisible());
+    await p3.click("#lt-chats");
     await count(p3, "#threads > li", 1);
-    assert.ok(await p3.locator("#lp-chats").isVisible());
     await p3.waitForTimeout(400);
     await shot(p3, "phone-chats.png");
+    await p3.locator("#threads .trow").first().click();
+    assert.ok(await p3.locator("#chars").isHidden() && await p3.locator("#say").isVisible());
+    await has(p3, "#chat-back", /^← your chats$/);
+    await p3.click("#chat-back");
+    assert.ok(await p3.locator("#lp-chats").isVisible());
     await phone.close();
   } finally {
     await browser.close();

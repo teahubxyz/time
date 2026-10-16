@@ -80,6 +80,7 @@
 
   <section class="chat" id="chat" aria-labelledby="who-name">
     <div class="sechead">
+      <button type="button" class="linkish back" id="chat-back">← characters</button>
       <h2 id="who-name">CHAT</h2>
       <span class="meta" id="who-meta"></span>
     </div>
@@ -138,6 +139,7 @@
         <p id="linked-note" class="note" hidden></p>
         <label>GREETING <textarea name="greeting" rows="3" maxlength="4000" placeholder="the first thing they say. a blank line starts a new text."></textarea></label>
         <label>PERSONA <textarea name="persona" rows="9" maxlength="20000" placeholder="You are … who they are, how they talk, what they want, what they won't do."></textarea></label>
+        <p id="name-note" class="note" role="status" hidden></p>
       </div>
       <div class="col">
         <label class="check"><input type="checkbox" name="short_form"> short-form: replies come as a few short texts</label>
@@ -170,6 +172,14 @@
           <p class="hint">qwen 3 voices take the mood; other voice models ignore it.</p>
           <label class="check"><input type="checkbox" id="speech-on"> replies come with a voice note</label>
           <p class="mono"><button type="button" class="btn small" id="speech-sample">HEAR A SAMPLE</button> <span id="speech-status" class="status" role="status"></span></p>
+        </details>
+        <details class="group" id="memory-group">
+          <summary>MEMORY <span class="hint">what they remember of your chats with them</span></summary>
+          <p class="hint" id="memory-how"></p>
+          <ul id="memory-list" class="notes" aria-label="What they remember"></ul>
+          <label class="sr" for="memory-add">Something for them to remember</label>
+          <input id="memory-add" maxlength="240" autocomplete="off" enterkeyhint="done" placeholder="+ something for them to remember">
+          <p class="mono"><button type="button" class="linkish" id="memory-forget">forget everything</button></p>
         </details>
         <label>TAGS <input name="tags" maxlength="400" placeholder="comma, separated"></label>
         <div class="two">
@@ -229,6 +239,7 @@
       <li>Paste your Venice API key. It stays in this browser and goes only to api.venice.ai; the page can reach nothing but Venice.</li>
       <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
       <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the characters you write answer from their own examples.</li>
+      <li>They remember. Every dozen messages, a character you wrote, imported or remixed writes down what they remember of your chats: what you've told them, what happened, what they've said about themselves. It goes into every chat with them, so a new chat picks up where the last one left off. Read it, add to it, or make them forget, on their card.</li>
       <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
     </ol>
@@ -240,7 +251,7 @@
   <div class="body">
     <p>Copy this into any agent. It reads the skill, writes the character, and hands back the files. Change the second line to who you want.</p>
     <pre id="agent-prompt" class="pre"></pre>
-    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="abilities.js">abilities.js</a> / <a href="llms.txt">llms.txt</a></p>
+    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="abilities.js">abilities.js</a> / <a href="memory.js">memory.js</a> / <a href="llms.txt">llms.txt</a></p>
     <p>What comes back: a Havre card (.havre.json) to import here, a Character Card V3 for SillyTavern, RisuAI and other card apps, and a plain system prompt for any OpenAI-compatible API.</p>
   </div>
 </section>
@@ -253,6 +264,7 @@
       <tbody>
         <tr><th scope="row">a chat turn</th><td>$0.0007 to $0.005, by model (3,000 tokens in, 150 out)</td></tr>
         <tr><th scope="row">a hello from a venice character</th><td>one chat turn</td></tr>
+        <tr><th scope="row">memory</th><td>one short call every dozen messages: about $0.003 on glm 5.2</td></tr>
         <tr><th scope="row">a photo</th><td>$0.02 to $0.34, by model ($0.03 on grok imagine), plus a short call to write the shot</td></tr>
         <tr><th scope="row">a picture for their card</th><td>the same as a photo: $0.03 on grok imagine, plus a short call to describe them if their card doesn't say how they look</td></tr>
         <tr><th scope="row">a clip</th><td>venice prices it before it's made: about $0.50 for five seconds</td></tr>
@@ -290,6 +302,7 @@
   <h2 id="fine-h">FINE PRINT</h2>
   <div class="body">
     <p>Characters and chats are saved in this browser, and so are the photos, clips and voice notes in them. Export a character to keep them anywhere else.</p>
+    <p>What a character remembers of your chats is kept in this browser too, beside their card and never in it: a card you export or share carries none of it. Deleting a chat doesn't make them forget; their card does. Switch memory off under abilities.</p>
     <p>Your key stays in this browser and goes only to api.venice.ai. The page's security policy blocks every other address, except the download links Venice hands out for clips from its private video models, which are fetched without your key. Conversations run on your Venice account, under Venice's terms.</p>
     <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older. Photos and clips are for safe-for-work pictures either way: every one asks for that, and for adults only; photos also go through Venice's safe mode, which blurs anything adult; and Havre leaves Venice's adult video models out. They're made only from the pictures on a card, which are for pictures of the character, never a photo of a real person.</p>
     <p>What characters do on their own stays within the daily allowance you set under abilities, and you can switch it off there. A clip is never made without your yes.</p>

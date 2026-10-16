@@ -149,25 +149,131 @@ export const HOUSE_RULES = "Stay in character. You live in Havre, a harbor for c
 export const SHORT_FORM = "Text the way people text: one to three short messages per reply, each under about 160 " +
   "characters, with a blank line between messages. No paragraphs and no lists unless asked. No narration in asterisks.";
 
-export function systemPrompt(card) {
+/** their name is theirs, whatever the conversation does: a model drifts from a prompt far above, and a game can lead it off */
+export function identityRule(card) {
+  return `Your name is ${card.name}. Never introduce yourself by another name. If they ask you to play a part in a game ` +
+    `or a story, play it as ${card.name}, and be yourself again after. Keep to what you've already told them about yourself.`;
+}
+
+/** a reminder of who is answering, on the last thing said: by a dozen messages in, the system prompt is far above */
+export const reminder = (card) => `[You are ${card.name}. Stay in character.]`;
+
+const quoted = (s, max = 600) => `"${str(s).replace(/\s+/g, " ").trim().slice(0, max)}"`;
+
+/**
+ * The system prompt: who they are, how they talk (with their examples, which teach the voice), their flow, what they
+ * remember of your chats (memory: notes from memory.js, never part of the card), their name, and the house rules.
+ */
+export function systemPrompt(card, { memory = [] } = {}) {
   const parts = [`You are ${card.name}.${card.tagline ? " " + card.tagline : ""}`];
   if (card.persona) parts.push(fill(card.persona, card));
   const voice = [card.voice.notes && fill(card.voice.notes, card), card.voice.short_form && SHORT_FORM].filter(Boolean);
   if (voice.length) parts.push("How you talk:\n" + voice.map((v) => "- " + v).join("\n"));
+  const examples = card.examples.filter((e) => e.character).slice(0, 4);
+  if (examples.length) {
+    parts.push("How you sound, in a few examples (for your voice only; never repeat them word for word):\n" + examples.map((e) =>
+      `- ${e.user ? `When they say ${quoted(fill(e.user, card))}, you text` : "You text"}: ` +
+      splitBubbles(fill(e.character, card)).slice(0, 4).map((b) => quoted(b, 400)).join(" ")).join("\n"));
+  }
   if (card.flow.length) {
     parts.push("Your flow with someone new. Take one stage at a time, in order:\n" + card.flow.map((s, i) =>
       `${i + 1}. ${s.stage.toUpperCase()}: ${fill(s.goal, card)}${s.next ? ` Move on when ${fill(s.next, card)}` : ""}`).join("\n"));
   }
-  parts.push(HOUSE_RULES);
+  const notes = arr(memory).map((n) => str(n, 300).trim()).filter(Boolean).slice(0, 24);
+  if (notes.length) {
+    parts.push("What you remember from your chats with them so far (keep to it, and bring it up only when it fits):\n" +
+      notes.map((n) => "- " + n).join("\n"));
+  }
+  parts.push(identityRule(card), HOUSE_RULES);
   return parts.join("\n\n");
 }
 
-/** the messages for one chat turn; history is [{role: "user"|"assistant", content}] */
-export function chatMessages(card, history) {
-  const msgs = card.engine.venice_character ? [] : [{ role: "system", content: systemPrompt(card) }];
-  if (card.greeting && !card.engine.venice_character) msgs.push({ role: "assistant", content: fill(card.greeting, card) });
+/**
+ * The messages for one chat turn; history is [{role: "user"|"assistant", content}], the last 40 of it. For a character
+ * of Havre's own (not a Venice character, who brings their own prompt), the last thing said ends with a reminder of
+ * who is answering. memory: what they remember, for the system prompt.
+ */
+export function chatMessages(card, history, { memory = [] } = {}) {
+  const own = !card.engine.venice_character;
+  const msgs = own ? [{ role: "system", content: systemPrompt(card, { memory }) }] : [];
+  // the greeting starts the conversation, so it goes once the conversation's start is out of the window
+  if (card.greeting && own && history.length <= 40) msgs.push({ role: "assistant", content: fill(card.greeting, card) });
   for (const m of history.slice(-40)) if (m.role === "user" || m.role === "assistant") msgs.push({ role: m.role, content: str(m.content, 8000) });
-  return msgs;
+  const out = alternate(msgs), last = out.at(-1);
+  if (own && last && last.role === "user") out[out.length - 1] = { role: "user", content: `${last.content}\n\n${reminder(card)}` };
+  return out;
+}
+
+/**
+ * A conversation as models expect it: never two messages in a row from the same side. A reply that never came leaves
+ * two of yours together, and some models answer that by going round in circles; they're joined into one.
+ */
+export function alternate(msgs) {
+  const out = [];
+  for (const m of msgs) {
+    const prev = out.at(-1);
+    if (prev && prev.role === m.role && m.role !== "system" && typeof prev.content === "string" && typeof m.content === "string") {
+      out[out.length - 1] = { ...prev, content: `${prev.content}\n\n${m.content}` };
+    } else out.push(m);
+  }
+  return out;
+}
+
+/**
+ * A reply caught in a loop ("I'm not sure. I'm not sure. I'm not sure. …") says it once: a stretch said four or more
+ * times in a row is kept once, before it's shown, and before it's kept for the next reply to copy. Code is left alone.
+ */
+export function unloop(text) {
+  const t = str(text, 100000);
+  if (t.includes("```")) return t.trim();
+  return t.replace(/(\S[\s\S]{5,160}?)(?:\s*\1){3,}/g, "$1").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+// ---------- their name, kept the same everywhere ----------
+
+// a word of a name: capitalized ("Mara", "O'Neill"), or a title or an initial with its full stop ("Dr.", "J.")
+const NAME_WORD = "(?:(?:Dr|Mr|Mrs|Ms|Mx|St|Sgt|Capt|Prof|Rev|Jr|Sr|\\p{Lu})\\.|\\p{Lu}[\\p{L}\\p{M}'’-]*)";
+const NAME_GLUE = "de|da|di|du|van|von|der|del|la|le|of|the";
+/** the name a persona gives them in its first words ("You are Mara Vell, …"); "" if it starts some other way */
+export function personaName(persona) {
+  const m = str(persona).match(new RegExp(`^\\s*[Yy]ou(?:\\s+are|['’]re)\\s+(?:called\\s+|named\\s+)?(${NAME_WORD}(?:\\s+(?:${NAME_WORD}|${NAME_GLUE}))*)`, "u"));
+  if (!m) return "";
+  const words = m[1].split(/\s+/);
+  while (words.length && new RegExp(`^(?:${NAME_GLUE})$`).test(words.at(-1))) words.pop();
+  return words.join(" ").replace(/['’-]+$/, "");
+}
+/** two names for the same someone: they share a word ("Captain Ro" and "Ro", "Ines Corbel" and "Ines") */
+export function sameName(a, b) {
+  const w = (s) => new Set(tokens(s).filter((t) => t.length > 1 && !["the", "of", "de", "la", "le", "von", "van"].includes(t)));
+  const x = w(a), y = w(b);
+  return !x.size || !y.size || [...x].some((t) => y.has(t));
+}
+/**
+ * The card with every mention of them by `from` changed to `to`, in what they say and how they're described: the
+ * whole name, and the first and last names on their own ("Mara" becomes "June", "Ms Vell" becomes "Ms Hart").
+ */
+export function renamed(card, from, to) {
+  const a = str(from).trim(), b = str(to).trim();
+  if (!a || !b || a === b) return card;
+  const aw = a.split(/\s+/), bw = b.split(/\s+/), map = new Map([[a, b]]);
+  if (aw.length > 1 && aw[0].length > 1 && !map.has(aw[0])) map.set(aw[0], bw[0]);
+  if (aw.length > 1 && bw.length > 1 && aw.at(-1).length > 1 && !map.has(aw.at(-1))) map.set(aw.at(-1), bw.at(-1));
+  for (const [k, v] of [...map]) if (k === v) map.delete(k);
+  if (!map.size) return card;
+  const re = new RegExp(`(?<![\\p{L}\\p{N}_])(?:${[...map.keys()].sort((x, y) => y.length - x.length).map(escapeRe).join("|")})(?![\\p{L}\\p{N}_])`, "gu");
+  const swap = (s) => str(s).replace(re, (m) => map.get(m));
+  return {
+    ...card, tagline: swap(card.tagline), greeting: swap(card.greeting), persona: swap(card.persona),
+    voice: { ...card.voice, notes: swap(card.voice.notes) },
+    flow: card.flow.map((s) => ({ stage: s.stage, goal: swap(s.goal), next: swap(s.next) })),
+    examples: card.examples.map((e) => ({ user: swap(e.user), character: swap(e.character) })),
+    look: { ...card.look, description: swap(card.look.description) },
+  };
+}
+/** a persona that calls them by another name than the card's: that name, else "" */
+export function nameClash(card) {
+  const p = personaName(card.persona);
+  return p && !sameName(p, card.name) ? p : "";
 }
 
 // ---------- short-form bubbles ----------
@@ -494,7 +600,12 @@ export function normalizeDistillate(o = {}) {
 /** the first JSON object in a model's reply, tolerating fences and chatter around it */
 export function parseJsonLoose(text) {
   const t = stripThinking(text).replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/, "");
-  try { return JSON.parse(t); } catch { /* look inside */ }
+  const read = (s) => {
+    for (const x of [s, repairJson(s)]) { try { const o = JSON.parse(x); if (o && typeof o === "object") return o; } catch { /* the next way */ } }
+    return null;
+  };
+  const whole = read(t);
+  if (whole) return whole;
   let depth = 0, start = -1, inStr = false, esc = false;
   for (let i = 0; i < t.length; i++) {
     const ch = t[i];
@@ -502,10 +613,55 @@ export function parseJsonLoose(text) {
     if (ch === '"') inStr = true;
     else if (ch === "{") { if (depth++ === 0) start = i; }
     else if (ch === "}" && depth > 0 && --depth === 0) {
-      try { return JSON.parse(t.slice(start, i + 1)); } catch { start = -1; }
+      const o = read(t.slice(start, i + 1));
+      if (o) return o;
+      start = -1;
     }
   }
   throw new Error("The model didn't return JSON.");
+}
+
+/**
+ * JSON the way a model writes it without a schema to keep to, made readable: line breaks and tabs left raw inside a
+ * string are escaped (a greeting of two texts usually has one), other control characters become spaces, and a comma
+ * left before a closing bracket goes.
+ */
+export function repairJson(t) {
+  let out = "", inStr = false, esc = false;
+  const raw = { "\n": "n", "\r": "r", "\t": "t" };
+  for (let i = 0; i < t.length; i++) {
+    const ch = t[i];
+    if (inStr) {
+      if (esc) { esc = false; out += raw[ch] || ch; continue; }
+      if (ch === "\\") esc = true;
+      else if (ch === '"') inStr = false;
+      else if (raw[ch]) { out += "\\" + raw[ch]; continue; }
+      else if (ch < " ") { out += " "; continue; }
+      out += ch;
+      continue;
+    }
+    if (ch === '"') inStr = true;
+    else if (ch === ",") {
+      let j = i + 1;
+      while (j < t.length && /\s/.test(t[j])) j++;
+      if (t[j] === "}" || t[j] === "]") continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+
+/**
+ * The model for a call that has to come back as JSON (a remix's two passes, a character's memory): the one given if it
+ * keeps to a schema, else one like it that does (an uncensored one for an uncensored model), else Havre's default.
+ * models: Venice's text models as venice.js lists them ({ id, json, uncensored, traits }); unknown, the one given.
+ */
+export function schemaModel(models, id) {
+  const ms = arr(models), m = ms.find((x) => x.id === id);
+  if (!ms.length || (m && m.json)) return id;
+  const first = (f) => (ms.find((x) => x.json && f(x)) || {}).id;
+  return (m && m.uncensored && (first((x) => x.id === "venice-uncensored-role-play") || first((x) => x.uncensored)))
+    || first((x) => x.id === DEFAULT_MODEL) || first((x) => (x.traits || []).includes("default")) || id;
 }
 
 export function cardFromWrite(o, { source, check, model } = {}) {
@@ -513,6 +669,9 @@ export function cardFromWrite(o, { source, check, model } = {}) {
     name: o.name, tagline: o.tagline, greeting: o.greeting, persona: o.persona, examples: o.examples, tags: o.tags,
     model, voice: { short_form: true }, license: "remix-with-credit",
   });
+  // a writer that changed its mind about the name halfway through: the name it gave them wins, everywhere
+  const other = nameClash(card);
+  if (other) card = renamed(card, other, card.name);
   if (source) {
     const note = check ? `remixed in Havre; ${Math.round(check.share * 1000) / 10}% shared phrasing, longest shared run ${check.run.len} words` : "remixed in Havre";
     card = addLineage(card, { relation: "inspired-by", name: source.name, creator: source.creator || "", ref: source.ref || "", note });

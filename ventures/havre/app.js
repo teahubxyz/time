@@ -4,6 +4,7 @@ import * as C from "./card.js";
 import * as A from "./abilities.js";
 import * as M from "./media.js";
 import * as T from "./threads.js";
+import * as R from "./memory.js";
 import { Venice, VeniceError } from "./venice.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -46,6 +47,8 @@ const K = { cards: "havre.cards.v1", sel: "havre.selected", key: "havre.key", mo
   sort: "havre.vsort", seeded: "havre.seeded.v1", adult: "havre.adult", adult18: "havre.adult.18", plainModel: "havre.plain.model",
   own: "havre.venice.models", ab: "havre.abilities", voiceOn: "havre.voicenotes", jobs: "havre.clips.pending", refOk: "havre.refs.ok",
   spent: "havre.spent", jobsDone: "havre.clips.done",
+  // what each character remembers of your chats with them (memory.js), by card id: never in the card itself
+  memory: "havre.memory.v1",
   // the pages of Venice's characters this tab saw lately (in sessionStorage, so they last as long as the tab)
   pages: "havre.venice.pages",
   // your chats: the list of threads, each thread's messages under its own key, the threads deleted (so another tab
@@ -67,12 +70,14 @@ const S = {
   // started yet), the one the conversation on screen was drawn for, the replies on their way (by thread), what each
   // character is doing meanwhile ("is typing…"), and a count that goes up whenever the conversation is drawn again
   threads: {}, open: null, shown: null, busy: new Map(), doing: new Map(), gen: 0, left: "chars",
+  // on a narrow screen the studio shows one thing at a time: "list" (your chats, the characters) or "chat"
+  pane: "list",
   demo: {}, rx: null, plain: null, own: {},
   v: { list: [], offset: 0, more: false, query: "", sort: "featured", tag: "", adult: false, loading: false, asked: 0 },
   // abilities: Venice's other models by type, what was picked, who sends voice notes, clips on their way, the photo
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
-  ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25 }, voiceOn: {}, jobs: [], ask: null,
+  ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true }, voiceOn: {}, jobs: [], ask: null,
   rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
@@ -131,6 +136,7 @@ function boot() {
   S.jobs = (local.get(K.jobs, []) || []).filter((j) => j && j.queueId && j.model && Date.now() - (j.started || 0) < 23 * 3600e3);
   pruneEmpty();
   bind();
+  setPane("list");
   renderAll();
   markRead(thread());
   loadModels();
@@ -346,12 +352,23 @@ function paintFace(el, src) {
 function renderAll() { renderLeft(); renderGrid(); renderThreads(); renderRoster(); renderChat(); renderCard(); updateKeyUI(); }
 
 // ---------- your chats ----------
-/** the left column: your chats, or the characters to start one with */
+/** the left column: your chats, or the characters to start one with (on a narrow screen, in place of the chat) */
 function setLeft(which, { focus = false } = {}) {
   S.left = which;
   local.set(K.left, which);
+  setPane("list");
   renderLeft();
   if (focus) $(which === "chats" ? "#lt-chats" : "#lt-chars").focus();
+}
+/**
+ * On a narrow screen the studio shows one thing at a time, the way a phone's messages do: the list (your chats, the
+ * characters) or the chat you're in, with a way back. A wide screen shows both, side by side.
+ */
+function setPane(which) {
+  S.pane = which === "chat" ? "chat" : "list";
+  const st = $("#studio");
+  st.classList.toggle("pane-chat", S.pane === "chat");
+  st.classList.toggle("pane-list", S.pane === "list");
 }
 function renderLeft() {
   for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"]]) {
@@ -359,6 +376,8 @@ function renderLeft() {
     $(tab).tabIndex = S.left === w ? 0 : -1;
     $(panel).hidden = S.left !== w;
   }
+  // a narrow screen's way back from a chat: to whichever list you came from
+  $("#chat-back").textContent = S.left === "chats" ? "← your chats" : "← characters";
 }
 const faces = new Map();         // each chat's face in the list, kept between drawings so the photos don't flicker
 function threadFace(t, src) {
@@ -565,16 +584,18 @@ function renderRoster() {
 function selectCard(id, { talk = false, scroll = false, open } = {}) {
   if (S.ask && !S.ask.busy && S.ask.card !== id) S.ask = null;
   if (S.rec) stopRecording(true);
-  const was = S.sel;
+  const was = S.sel, leaving = thread();
   S.sel = id;
   local.set(K.sel, id);
   const t = open !== undefined ? open : latestOf(id);
   S.open = t ? t.id : null;
   local.set(K.open, S.open);
+  if (leaving && leaving !== t) remember(leaving, R.LEAVING);    // a chat you leave: what they'll remember of it
   markRead(t);
   markTiles(); renderRoster(); renderThreads(); renderChat();
   if (was !== id) renderCard();
   if (!talk) return;
+  setPane("chat");
   if (scroll || narrow()) (narrow() ? $("#chat") : $("#studio")).scrollIntoView({ behavior: motion(), block: "start" });
   if (!narrow()) $("#say").focus({ preventScroll: true });
   speakFirst();
@@ -604,6 +625,7 @@ function deleteThread() {
   if (!t || !confirm(`Delete this chat${c && !c.plain ? " with " + c.name : ""}? It can't be brought back.`)) return;
   dropThread(t.id);
   renderThreads(); renderChat(); markTiles(); renderRoster();
+  if (narrow()) setLeft("chats");                           // on a phone: back to your chats, without that one
 }
 /** a thread's keeping undone: here, and, through the list of deleted threads, in every other tab */
 function forgetThread(id) {
@@ -740,8 +762,12 @@ function renderChatMeta() {
     t ? linkish("new chat", newChat, { id: "new-chat", title: `A new chat${c.plain ? "" : " with " + c.name}; this one stays in your chats` }) : null,
     t ? linkish("rename", renameThread, { title: "Name this chat" }) : null,
     t ? linkish("delete", deleteThread, { title: "Delete this chat" }) : null,
-    narrow() ? linkish("all chats", () => { setLeft("chats"); $("#chars").scrollIntoView({ behavior: motion(), block: "start" }); }) : null,
   ]));
+}
+/** a narrow screen goes back from the chat to the list it came from */
+function backToList() {
+  setLeft(S.left);
+  $("#studio").scrollIntoView({ behavior: motion(), block: "start" });
 }
 /** a word under the text box: what failed, what is on its way */
 function err(text) { put(line(text, "havre", "err")); scrollLog(); }
@@ -812,10 +838,53 @@ function renderLog() {
 
 /** a character texts in short bubbles; a plain chat answers in one piece */
 const bubblesOf = (c, text) => (c.plain ? [C.stripThinking(text)].filter(Boolean) : C.splitBubbles(text));
-/** what the model reads: the conversation, with photos and voice notes as words (see abilities.js) */
+/** what the model reads: the conversation, with photos and voice notes as words (see abilities.js), and what they remember */
 function messagesFor(c, hist) {
   const api = A.apiHistory(hist);
-  return c.plain ? api.slice(-40).map(({ role, content }) => ({ role, content })) : C.chatMessages(c, api);
+  return c.plain ? C.alternate(api.slice(-40).map(({ role, content }) => ({ role, content }))) : C.chatMessages(c, api, { memory: memoryFor(c) });
+}
+
+// ---------- what they remember ----------
+/** what a character remembers of your chats with them (memory.js), as this browser keeps it */
+const memoryOf = (id) => R.readMemory((local.get(K.memory, {}) || {})[id]);
+function saveMemory(id, m) {
+  const all = { ...(local.get(K.memory, {}) || {}) };
+  if (m && (m.notes.length || Object.keys(m.upTo).length)) all[id] = m; else delete all[id];
+  if (!local.set(K.memory, all)) full();
+}
+/** what goes into their prompt: nothing with memory switched off, or for a Venice character (Venice has their prompt) */
+const memoryFor = (c) => (S.ab.memory && c && !c.plain && !c.engine.venice_character ? memoryOf(c.id).notes : []);
+const remembering = new Set(), memoryMissed = new Map();
+/**
+ * After every dozen messages in a chat (or a few, when you leave it), its character writes down what they remember now:
+ * one short call (on their model, if it keeps to JSON), with what they remembered before and the messages since. One
+ * that goes wrong is tried again a few messages on.
+ */
+async function remember(t, enough = R.EVERY) {
+  const c = cardOf(t);
+  if (!c || c.plain || c.engine.venice_character || !S.key || !S.ab.memory || remembering.has(c.id) || !S.threads[t.id]) return;
+  const before = memoryOf(c.id), fresh = R.unread(t.msgs, before.upTo[t.id]);
+  if (fresh.length < Math.max(enough, memoryMissed.get(t.id) || 0)) return;
+  remembering.add(c.id);
+  S.inflight++;
+  try {
+    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages: R.memoryMessages(c, before.notes, R.transcript(c, fresh.slice(-40))),
+      schema: R.MEMORY_SCHEMA, maxTokens: 700, temperature: 0.3 });
+    const now = memoryOf(c.id), notes = R.merged(now.notes, R.normalizeNotes(C.parseJsonLoose(r.text)));
+    if (!notes) throw new Error("no notes");
+    memoryMissed.delete(t.id);
+    if (S.cards.some((x) => x.id === c.id)) {
+      const upTo = Object.fromEntries(Object.entries({ ...now.upTo, [t.id]: fresh.at(-1).id }).filter(([id]) => S.threads[id]));
+      saveMemory(c.id, { notes, upTo, at: Date.now() });
+      if ((card() || {}).id === c.id) renderMemory(c);
+    }
+  } catch {
+    memoryMissed.set(t.id, fresh.length + 6);
+  } finally {
+    remembering.delete(c.id);
+    S.inflight--;
+    balanceSoon();
+  }
 }
 /** the send button: off while the chat on screen waits for its reply (replies in other chats don't hold it up) */
 function syncSend() {
@@ -893,12 +962,15 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
       S.demo[t.id] = n + 1;
       reply = C.demoReply(c, n, text);
     } else {
-      const r = await new Venice(S.key).chat({ model: c.model || S.model, characterSlug: c.engine.venice_character || "",
-        veniceSystemPrompt: !!c.plain, maxTokens: c.plain ? 2000 : 700,
-        messages: A.withPicture(messagesFor(c, hist), picture), signal: ctrl.signal });
-      if (own) { settle(held, A.callCost(r.usage, model)); held = 0; }
-      reply = C.stripThinking(r.text);
-      if (!reply) throw new Error("Venice sent back an empty reply. Try again, or pick another model on the card.");
+      const v = new Venice(S.key), room = c.plain ? 2000 : 700;
+      const ask = (maxTokens) => v.chat({ model: c.model || S.model, characterSlug: c.engine.venice_character || "", veniceSystemPrompt: !!c.plain,
+        maxTokens, messages: A.withPicture(messagesFor(c, hist), picture), signal: ctrl.signal });
+      let r = await ask(room), cost = A.callCost(r.usage, model);
+      reply = C.unloop(C.stripThinking(r.text));
+      // a model that thinks before it answers can spend all its room thinking, and send back nothing: once more, with room
+      if (!reply && !ctrl.signal.aborted) { r = await ask(room * 3); cost += A.callCost(r.usage, model); reply = C.unloop(C.stripThinking(r.text)); }
+      if (own) { settle(held, cost); held = 0; }
+      if (!reply) throw new Error(`${modelName(c.model || S.model)} sent back nothing, twice. Try again, or pick another model (model:, at the top of the chat).`);
     }
     if (ctrl.signal.aborted || !S.threads[t.id]) return;
     const msg = { id: mid(), role: "assistant", content: reply, at: Date.now(), ...(demo ? { demo: true } : {}) };
@@ -908,7 +980,7 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
     if (here(t)) markRead(t);
     saveThread(t);
     done(t);
-    if (!demo) balanceSoon();
+    if (!demo) { balanceSoon(); remember(t); }
     // a voice note with the reply: every reply when they're set to, and, on their own, one back to yours (priced
     // first, and set aside from today's allowance)
     let mirror = 0;
@@ -1390,6 +1462,12 @@ function renderAbilities() {
   tb.append(
     row("ON THEIR OWN", tick("characters text first when you come back, and send photos and voice notes when they like", S.ab.own, (on) => setOwn(on)),
       ["up to ", allowance, ` a day · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
+    row("MEMORY", tick("characters remember your chats with them", S.ab.memory, (on) => {
+      S.ab.memory = on;
+      saveAb();
+      const c = card();
+      if (c && !c.plain) renderMemory(c);
+    }), "every dozen messages, one short call writes down what they remember: about $0.003 on glm 5.2. read it, or make them forget, on their card."),
     row("PHOTOS", real ? `${c.name} sends a photo, made from their pictures (card → look).` : "a character sends a photo, made from their pictures.",
       ["model: ", change("photo", pm), pm && pm.price != null ? ` · ${A.usd(A.photoPrice(pm, 1))} a photo` : ""]),
     row("CLIPS", "a few seconds of video, made from the same pictures.", ["model: ", change("clip", cm), " · venice prices each clip before it's made"]),
@@ -2081,6 +2159,44 @@ function renderSheet() {
   renderFlow(c);
   renderExamples(c);
   renderLineage(c);
+  renderMemory(c);
+  renderNameNote(c);
+}
+
+/** what they remember of your chats, on their card: each note with a way to forget it, and one you add yourself */
+function renderMemory(c) {
+  const ul = $("#memory-list"), how = $("#memory-how");
+  if (!c || c.plain) return;
+  const linked = !!c.engine.venice_character, { notes } = memoryOf(c.id);
+  how.textContent = linked
+    ? `${c.name} speaks through venice, with venice's own prompt, so havre can't give them a memory yet. a remix of them can have one.`
+    : (S.ab.memory
+      ? `every dozen messages, one short call on your key writes down what ${c.name} remembers of your chats. it goes into every chat with them, here in this browser, and never into their card.`
+      : "memory is switched off under abilities: nothing goes into their chats, and nothing new is written down.");
+  $("#memory-add").hidden = linked;
+  $("#memory-forget").hidden = linked || !notes.length;
+  ul.textContent = "";
+  if (linked) return;
+  if (!notes.length) { ul.append(h("li", { class: "empty", text: "nothing yet: a few messages in, they start remembering." })); return; }
+  notes.forEach((n, i) => ul.append(h("li", {}, n, " ", linkish("forget", () => {
+    const m = memoryOf(c.id);
+    saveMemory(c.id, { ...m, notes: m.notes.filter((x) => x !== n) });
+    renderMemory(card());
+  }, { "aria-label": `Forget: ${n}` }))));
+}
+/** a persona that calls them by another name than their card's: the model would answer to either, so it's said, with the fix */
+function renderNameNote(c) {
+  const p = $("#name-note"), other = c && !c.plain && !c.engine.venice_character ? C.nameClash(c) : "";
+  p.hidden = !other;
+  p.textContent = "";
+  if (!other) return;
+  p.append(`their persona calls them ${other}, but their name here is ${c.name}, so they may answer to either. `,
+    linkish(`call them ${c.name} everywhere`, () => {
+      const now = card();
+      replaceCard(C.renamed(now, other, now.name));
+      renderSheet();
+      toast(`${now.name} it is, all through their card.`);
+    }));
 }
 
 /** the pictures photos and clips are made from: the portrait, then up to three more */
@@ -2222,6 +2338,7 @@ function saveSheet() {
     renderChatMeta();
     $("#card-h").textContent = "CARD: " + now.name.toUpperCase();
     $("#rx-from").textContent = now.name;
+    renderNameNote(now);
   }, 120);
 }
 
@@ -2416,6 +2533,26 @@ async function rxSource(c) {
   const own = c.lineage.find((l) => l.relation === "ported-from" && l.ref);
   return { name: c.name, creator: c.creator, ref: own ? own.ref : "sha256:" + (await C.sha256Hex(text)).slice(0, 32), text };
 }
+/** the model a call that has to come back as JSON runs on: theirs if it keeps to a schema, else one like it that does */
+async function jsonModel(c) {
+  await loadModels();
+  return C.schemaModel(S.models, c.model || S.model);
+}
+/**
+ * A remix pass that has to come back as JSON, asked once more, with more room and plainer words, if the reply can't be
+ * read (cut off, or wrapped in chatter). what: what was asked for, for the error.
+ */
+async function askJson(model, { messages, schema, maxTokens, temperature, what }) {
+  const v = new Venice(S.key);
+  const r = await v.chat({ model, messages, schema, maxTokens, temperature });
+  try { return C.parseJsonLoose(r.text); } catch { /* once more */ }
+  const last = messages.length - 1;
+  const firmer = messages.map((m, i) => (i === last ? { ...m, content: m.content + "\n\nReply with the JSON object only, nothing before or after it." } : m));
+  const again = await v.chat({ model, messages: firmer, schema, maxTokens: maxTokens * 2, temperature });
+  try { return C.parseJsonLoose(again.text); } catch {
+    throw new Error(`${modelName(model)} sent back ${what} Havre couldn't read, twice. Try again, or pick another model on the card.`);
+  }
+}
 async function distill() {
   const c = card();
   if (!c || c.plain || S.rx.busy) return;
@@ -2423,10 +2560,10 @@ async function distill() {
   rxBusy(true);
   try {
     S.rx.source = await rxSource(c);
-    rxStatus("Distilling the ideas…");
-    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: C.distillMessages(S.rx.source.text),
-      schema: C.DISTILL_SCHEMA, maxTokens: 900, temperature: 0.4 });
-    S.rx.ideas = C.normalizeDistillate(C.parseJsonLoose(r.text));
+    const model = await jsonModel(c);
+    rxStatus(`Distilling the ideas with ${modelName(model)}…`);
+    S.rx.ideas = C.normalizeDistillate(await askJson(model, { messages: C.distillMessages(S.rx.source.text), schema: C.DISTILL_SCHEMA,
+      maxTokens: 1200, temperature: 0.4, what: "ideas" }));
     renderIdeas();
     $("#rx-twist-label").hidden = false;
     $("#rx-write").hidden = false;
@@ -2467,10 +2604,11 @@ async function writeFresh(avoid = []) {
   rxBusy(true);
   rxStatus(avoid.length ? "Rewriting, steering clear of what was shared…" : "Writing someone new…");
   try {
-    const model = c.model || S.model;
-    const r = await new Venice(S.key).chat({ model, messages: C.writeMessages(S.rx.ideas, $("#rx-twist").value, avoid),
-      schema: C.WRITE_SCHEMA, maxTokens: 1500, temperature: 0.95 });
-    const o = C.parseJsonLoose(r.text);
+    // the new character talks through the model of the one they came from; the writing is done by one that keeps to JSON
+    const model = c.model || S.model, writer = await jsonModel(c);
+    rxStatus(avoid.length ? `Rewriting with ${modelName(writer)}, steering clear of what was shared…` : `Writing someone new with ${modelName(writer)}…`);
+    const o = await askJson(writer, { messages: C.writeMessages(S.rx.ideas, $("#rx-twist").value, avoid), schema: C.WRITE_SCHEMA,
+      maxTokens: 2000, temperature: 0.95, what: "a character" });
     const first = C.cardFromWrite(o, { model });
     const src = S.rx.source;
     const check = C.similarity(C.cardText(first), src.text, { names: [src.name].filter(Boolean), newName: first.name });
@@ -2502,13 +2640,15 @@ function renderDraft() {
   row.append(h("button", { type: "button", class: "btn small", text: "WRITE ANOTHER", onclick: () => writeFresh() }));
   box.append(row);
 }
+/** a remix kept: they join the harbor, and their chat opens, with their greeting, for you to say hello */
 function keepDraft() {
   const d = S.rx.draft;
   if (!d || S.rx.check.verdict === "too-close") return;
   const from = card();
-  const c = addCard(d);
-  toast(`${c.name} joined the harbor${from ? ", inspired by " + from.name : ""}.`);
+  const c = addCard(d, { select: false });
+  selectCard(c.id, { talk: true, scroll: true, open: null });
   setTab("edit");
+  toast(`${c.name} joined the harbor${from ? ", inspired by " + from.name : ""}. Say hello.`);
 }
 
 // ---------- export ----------
@@ -2735,6 +2875,19 @@ function bind() {
   f.addEventListener("input", saveSheet);
   f.addEventListener("change", saveSheet);
   f.addEventListener("submit", (e) => e.preventDefault());
+  // a new name goes all through their card, so their persona and greeting don't go on calling them the old one
+  let nameWas = "";
+  f.name.addEventListener("focus", () => { nameWas = (card() || {}).name || ""; });
+  f.name.addEventListener("change", () => {
+    const c = card(), was = nameWas;
+    nameWas = c ? c.name : "";
+    if (!c || c.plain || !was || was === c.name || /^(new character|unnamed)$/i.test(was)) return;
+    const next = C.renamed(c, was, c.name);
+    if (JSON.stringify(next) === JSON.stringify(c)) return;
+    replaceCard(next);
+    renderSheet();
+    toast(`${was} is ${c.name} now, all through their card.`);
+  });
   $("#flow-add").addEventListener("click", () => { $("#flow").append(itemRow(FLOW_FIELDS, {})); $("#flow-group").open = true; $("#flow > li:last-child input").focus(); });
   $("#ex-add").addEventListener("click", () => { $("#examples").append(itemRow(EX_FIELDS, {})); $("#ex-group").open = true; $("#examples > li:last-child input").focus(); });
   $("#portrait-pick").addEventListener("click", () => $("#portrait-file").click());
@@ -2764,12 +2917,32 @@ function bind() {
   $("#speech-sample").addEventListener("click", hearSample);
   $("#speech-group").addEventListener("toggle", () => { if ($("#speech-group").open) loadList("tts"); });
   $("#speech-on").addEventListener("change", (e) => { e.stopPropagation(); const c = card(); if (c && !c.plain) setVoiceNotes(c, $("#speech-on").checked); });
+  // what they remember lives beside the card, not in it: typing here doesn't change the card
+  const madd = $("#memory-add");
+  for (const ev of ["input", "change"]) madd.addEventListener(ev, (e) => e.stopPropagation());
+  madd.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.isComposing) return;
+    e.preventDefault();
+    const c = card(), note = madd.value.trim();
+    if (!c || c.plain || c.engine.venice_character || !note) return;
+    const m = memoryOf(c.id);
+    saveMemory(c.id, { ...m, notes: R.withNote(m.notes, note) });
+    madd.value = "";
+    renderMemory(c);
+  });
+  $("#memory-forget").addEventListener("click", () => {
+    const c = card();
+    if (!c || !confirm(`Make ${c.name} forget everything they remember of your chats? The chats themselves stay.`)) return;
+    saveMemory(c.id, { ...memoryOf(c.id), notes: [] });     // where they'd read up to stays, so it isn't all read again
+    renderMemory(c);
+  });
   $("#delete").addEventListener("click", () => {
     const c = card();
     if (!c || !confirm(`Remove ${c.name} from your harbor? Your chats with them go too. Export them first if you want to keep a copy.`)) return;
     for (const t of threadsOf(c.id)) dropThread(t.id);                       // their chats go with them
     S.cards = S.cards.filter((x) => x.id !== c.id);
     for (const j of S.jobs.filter((x) => x.card === c.id)) dropJob(j);         // and their clips on the way
+    saveMemory(c.id, null);                                                   // and what they remembered
     if (S.voiceOn[c.id]) { delete S.voiceOn[c.id]; local.set(K.voiceOn, S.voiceOn); }
     if (S.ask && S.ask.card === c.id) S.ask = null;
     S.sel = S.cards[0] ? S.cards[0].id : "";
@@ -2792,7 +2965,8 @@ function bind() {
   $("#rx-write").addEventListener("click", () => writeFresh());
   for (const b of $$("[data-out]")) b.addEventListener("click", () => exportAs(b.dataset.out));
 
-  // your chats, and the left column's two tabs
+  // your chats, and the left column's two tabs (on a narrow screen, the chat has its way back to them)
+  $("#chat-back").addEventListener("click", backToList);
   const left = [$("#lt-chats"), $("#lt-chars")];
   for (const t of left) {
     t.addEventListener("click", () => setLeft(t.id === "lt-chats" ? "chats" : "chars"));
@@ -2827,6 +3001,7 @@ function bind() {
     else if (e.key === K.chats && e.newValue) { if (fromV1()) { saveIndex(); renderThreads(); } }    // a tab still on the first page
     else if (e.key === K.jobs || e.key === K.jobsDone) syncJobs();
     else if (e.key === K.spent) { renderTools(); if ($("#abilitydlg").open) renderAbilities(); }
+    else if (e.key === K.memory) { const c = card(); if (c && !c.plain) renderMemory(c); }
     else if (e.key === K.ab) {
       S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
       renderTools();

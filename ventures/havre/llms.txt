@@ -11,6 +11,7 @@ Read skill.md first and follow it. card.js and venice.js are ES modules with no 
 - [card.js](https://havre.yolopreneur.lol/card.js): read, check and convert cards (Character Card V1/V2/V3, PNG cards, system prompts), and the similarity check
 - [venice.js](https://havre.yolopreneur.lol/venice.js): the Venice API calls the page makes: chat, characters, models, photos, voice notes, hearing and clips
 - [abilities.js](https://havre.yolopreneur.lol/abilities.js): the prompts and rules behind photos, clips, voice notes, hearing and seeing
+- [memory.js](https://havre.yolopreneur.lol/memory.js): what a character remembers of your chats: the notes, when they're written, and the prompt that writes them
 
 ## Coming next
 

@@ -59,9 +59,73 @@ test("system prompt carries persona, voice, flow and the house rules", () => {
   const msgs = C.chatMessages(card, [{ role: "user", content: "hi" }]);
   assert.equal(msgs[0].role, "system");
   assert.equal(msgs[1].role, "assistant");
-  assert.equal(msgs.at(-1).content, "hi");
+  assert.equal(msgs.at(-1).content, "hi\n\n[You are Juniper Vale. Stay in character.]", "the last thing said carries who is answering");
   const linked = C.normalizeCard({ name: "Sable", engine: { venice_character: "sable-penrose" } });
-  assert.equal(C.chatMessages(linked, [{ role: "user", content: "hi" }]).length, 1, "a Venice character brings its own prompt");
+  assert.deepEqual(C.chatMessages(linked, [{ role: "user", content: "hi" }]), [{ role: "user", content: "hi" }], "a Venice character brings its own prompt");
+});
+
+test("a character keeps their own name: the rule, the reminder at the end, their examples and what they remember", () => {
+  const p = C.systemPrompt(lone, { memory: ["They're called Princess.", "", "I told them I grew up in Bergen."] });
+  assert.match(p, /Your name is Juniper Vale\. Never introduce yourself by another name\./);
+  assert.match(p, /How you sound, in a few examples[^\n]*\n- When they say "What are you growing\?", you text: "Patience, mostly\." "And a moonflower that refuses to bloom\."/,
+    "the examples teach the voice, each text quoted on its own");
+  assert.match(p, /What you remember from your chats with them so far[^\n]*\n- They're called Princess\.\n- I told them I grew up in Bergen\./);
+  assert.ok(p.indexOf("Your name is") > p.indexOf("What you remember"), "the name comes last, nearest the conversation");
+  assert.ok(!C.systemPrompt(lone).includes("What you remember"), "nothing remembered, nothing said");
+  // twenty-five messages in, the reminder rides on the latest one only, and the forty-message window holds
+  const hist = Array.from({ length: 50 }, (_, i) => ({ role: i % 2 ? "assistant" : "user", content: "m" + i }));
+  hist.push({ role: "user", content: "who are you again?" });
+  const msgs = C.chatMessages(lone, hist, { memory: ["They're called Princess."] });
+  assert.equal(msgs.length, 1 + 40, "the forty latest, and no greeting: it went with the start of the conversation");
+  assert.equal(C.chatMessages(lone, hist.slice(-11))[1].content, "Oh. You found the greenhouse.\n\nMind the ferns, they bite.", "while the start is there, so is the greeting");
+  assert.equal(msgs.filter((m) => /Stay in character\.\]$/.test(m.content)).length, 1);
+  assert.equal(msgs.at(-1).content, "who are you again?\n\n[You are Juniper Vale. Stay in character.]");
+  assert.match(msgs[0].content, /They're called Princess\./);
+  // a reply last (nothing new said) carries no reminder
+  assert.equal(C.chatMessages(lone, [{ role: "user", content: "a" }, { role: "assistant", content: "b" }]).at(-1).content, "b");
+});
+
+test("a conversation stays well-formed, and a reply caught in a loop says it once", () => {
+  const msgs = C.chatMessages(lone, [{ role: "user", content: "a" }, { role: "user", content: "b" }]);
+  assert.deepEqual(msgs.map((m) => m.role), ["system", "assistant", "user"]);
+  assert.equal(msgs.at(-1).content, "a\n\nb\n\n[You are Juniper Vale. Stay in character.]", "a reply that never came leaves two of yours: joined");
+  assert.deepEqual(C.alternate([{ role: "system", content: "s" }, { role: "assistant", content: "hi" }, { role: "assistant", content: "there" }]).map((m) => m.content),
+    ["s", "hi\n\nthere"]);
+  assert.equal(C.unloop("I'm not sure.\n\n".repeat(30)), "I'm not sure.");
+  assert.equal(C.unloop("I'm not sure. I'm not sure. I'm not sure. I'm not sure. Anyway: the ferry."), "I'm not sure. Anyway: the ferry.");
+  assert.equal(C.unloop("I am not sure I am not sure I am not sure I am not sure"), "I am not sure");
+  assert.equal(C.unloop("No. No. No. No."), "No. No. No. No.", "a short no, said four times, is meant");
+  assert.equal(C.unloop("Twelve minutes.\n\nNine if the gulls cooperate."), "Twelve minutes.\n\nNine if the gulls cooperate.");
+  const code = "```\nx = 1\nx = 1\nx = 1\nx = 1\n```";
+  assert.equal(C.unloop(code), code, "code is left alone");
+});
+
+test("their name, the same everywhere: a persona's own name, clashes, and renaming all through a card", () => {
+  assert.equal(C.personaName("You are Ines Corbel, who pilots the morning ferry."), "Ines Corbel");
+  assert.equal(C.personaName("You're Dr. Lin Mae. You run the clinic."), "Dr. Lin Mae");
+  assert.equal(C.personaName("You are Captain Ro. You run a bait shop."), "Captain Ro");
+  assert.equal(C.personaName("You are Ana de la Cruz, a dancer"), "Ana de la Cruz");
+  assert.equal(C.personaName("You are a retired lighthouse engineer."), "", "a description isn't a name");
+  assert.equal(C.personaName("{{char}} is a ferry pilot."), "");
+  assert.ok(C.sameName("Captain Ro", "Ro") && C.sameName("Ines Corbel", "Ines") && !C.sameName("The Oracle", "Pythia"));
+  assert.equal(C.nameClash(lone), "");
+  const odd = C.normalizeCard({ name: "June Hart", persona: "You are Mara Vell, who sketches. Mara hates fog; Ms Vell hates gulls more. Maradona isn't you.",
+    greeting: "Hi, I'm Mara!", examples: [{ user: "Mara?", character: "Mara Vell, yes." }], look: { description: "Mara's coat is red." } });
+  assert.equal(C.nameClash(odd), "Mara Vell");
+  const fixed = C.renamed(odd, "Mara Vell", "June Hart");
+  assert.equal(fixed.persona, "You are June Hart, who sketches. June hates fog; Ms Hart hates gulls more. Maradona isn't you.");
+  assert.equal(fixed.greeting, "Hi, I'm June!");
+  assert.deepEqual(fixed.examples, [{ user: "June?", character: "June Hart, yes." }]);
+  assert.equal(fixed.look.description, "June's coat is red.");
+  assert.equal(C.nameClash(fixed), "");
+  assert.equal(C.renamed(odd, "Mara Vell", "Mara Vell"), odd, "the same name changes nothing");
+  // names that swap words don't chain into each other
+  assert.equal(C.renamed(C.normalizeCard({ name: "x", persona: "Ann Lee waved. Ann smiled." }), "Ann Lee", "Lee Ann").persona, "Lee Ann waved. Lee smiled.");
+  // a remix draft whose persona changed its mind about the name keeps the name it was given
+  const made = C.cardFromWrite({ name: "Ottoline Marsh", tagline: "Tide-pool surveyor", greeting: "Ottilie here.", persona: "You are Ottilie Brand, a surveyor. Ottilie counts crabs.",
+    examples: [], tags: [] }, { model: "x" });
+  assert.equal(made.persona, "You are Ottoline Marsh, a surveyor. Ottoline counts crabs.");
+  assert.equal(made.greeting, "Ottoline here.");
 });
 
 test("splitBubbles: blank lines split, long text splits at sentences, code stays whole, thinking is dropped", () => {
@@ -195,6 +259,30 @@ test("parseJsonLoose finds the object inside chatter and fences", () => {
   assert.deepEqual(C.parseJsonLoose('Sure!\n```json\n{"a": 1, "b": "}"}\n```'), { a: 1, b: "}" });
   assert.deepEqual(C.parseJsonLoose('<think>{"no":1}</think>Here: {"ok": true} done'), { ok: true });
   assert.throws(() => C.parseJsonLoose("no json here"), /didn't return JSON/);
+  assert.throws(() => C.parseJsonLoose('"just a string"'), /didn't return JSON/, "only an object will do");
+});
+
+test("JSON written by hand, without a schema, still reads: raw line breaks in strings, trailing commas", () => {
+  const hand = 'Here is your character:\n```json\n{\n "name": "Mara Vell",\n "greeting": "Ticket?\n\nKidding.",\n "tags": ["ferry", "fog",],\n}\n```\nEnjoy!';
+  assert.deepEqual(C.parseJsonLoose(hand), { name: "Mara Vell", greeting: "Ticket?\n\nKidding.", tags: ["ferry", "fog"] });
+  assert.equal(C.repairJson('{"a": "x\ty", "b": "q\\\n"}'), '{"a": "x\\ty", "b": "q\\n"}', "a tab, and a backslash before a raw line break");
+  assert.equal(C.repairJson('{"a": "1, }", }'), '{"a": "1, }" }', "a comma inside a string stays");
+  assert.deepEqual(C.parseJsonLoose('{"notes": ["one",\n"two",]}'), { notes: ["one", "two"] });
+});
+
+test("a call that has to come back as JSON runs on a model that keeps to a schema", () => {
+  const models = [
+    { id: "zai-org-glm-5-2", json: true, uncensored: false, traits: ["default"] },
+    { id: "llama-3.3-70b", json: false, uncensored: false, traits: [] },
+    { id: "hermes-uncensored", json: false, uncensored: true, traits: [] },
+    { id: "venice-uncensored-role-play", json: true, uncensored: true, traits: [] },
+    { id: "qwen3-235b-a22b-instruct-2507", json: true, uncensored: false, traits: [] },
+  ];
+  assert.equal(C.schemaModel(models, "qwen3-235b-a22b-instruct-2507"), "qwen3-235b-a22b-instruct-2507", "theirs, when it can");
+  assert.equal(C.schemaModel(models, "llama-3.3-70b"), "zai-org-glm-5-2", "else Havre's default");
+  assert.equal(C.schemaModel(models, "hermes-uncensored"), "venice-uncensored-role-play", "an uncensored one for an uncensored one");
+  assert.equal(C.schemaModel(models, "retired-model"), "zai-org-glm-5-2", "one Venice no longer lists");
+  assert.equal(C.schemaModel(null, "llama-3.3-70b"), "llama-3.3-70b", "nothing known about the models: as given");
 });
 
 test("demo replies come from the card's own examples, answering the closest question", () => {
