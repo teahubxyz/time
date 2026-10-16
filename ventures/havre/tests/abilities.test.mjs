@@ -80,6 +80,9 @@ test("the shot is written from the conversation, with the rules, and the photo k
   assert.match(A.photoPrompt(ines, "On deck."), /Keep how they look exactly.*Safe for work.*everyone shown is an adult\. New photo: On deck\./);
   assert.match(A.clipPrompt(ines, "She waves."), /everyone shown is an adult\. She waves\.$/);
   assert.match(A.lookMessages(ines)[1].content, /Ferry pilot/);
+  // a picture for their card, made from the ones they have: the next view of a character sheet
+  assert.deepEqual([0, 1, 2, 3, -1, NaN].map(A.sheetView), [A.SHEET_VIEWS[0], A.SHEET_VIEWS[1], A.SHEET_VIEWS[2], A.SHEET_VIEWS[0], A.SHEET_VIEWS[2], A.SHEET_VIEWS[0]]);
+  assert.match(A.photoPrompt(ines, A.sheetView(0)), /^The reference picture shows Ines Corbel\. Keep how they look exactly.*Safe for work.*New photo: Full length, standing/);
 });
 
 test("voice notes read the words, not the code or the stage directions", () => {

@@ -27,7 +27,7 @@
 
 <header class="mast" id="top">
   <h1>HAVRE</h1>
-  <p class="motto">a harbor for characters.<br>talk to venice characters on your own key.<br>no account. no server. nothing kept but what you keep.</p>
+  <p class="motto">a harbor for characters. <br>talk to venice characters on your own key. <br>no account. no server. nothing kept but what you keep.</p>
   <nav class="nav" aria-label="On this page"><a href="#how">how it works</a> / <a href="#agents">for agents</a> / <a href="#costs">costs</a> / <a href="#plans">early access</a></nav>
 </header>
 
@@ -130,7 +130,7 @@
       <div class="col">
         <div class="portrait">
           <span class="face big" id="sheet-face" aria-hidden="true"></span>
-          <p class="mono"><button type="button" class="linkish" id="portrait-pick">change portrait</button> / <button type="button" class="linkish" id="portrait-clear">remove</button></p>
+          <p class="mono"><button type="button" class="linkish" id="portrait-pick">change portrait</button> / <button type="button" class="linkish" id="portrait-make">make one with ai</button> / <button type="button" class="linkish" id="portrait-clear">remove</button> <span id="portrait-status" class="status" role="status"></span></p>
           <input type="file" id="portrait-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
         </div>
         <label>NAME <input name="name" maxlength="120" required></label>
@@ -155,7 +155,7 @@
         <details class="group" id="look-group">
           <summary>LOOK <span class="hint">their photos and clips are made from these pictures</span></summary>
           <div class="refs" id="refs"></div>
-          <p class="mono"><button type="button" class="linkish" id="ref-add">add a picture</button> <span class="hint">up to three besides the portrait. pictures of the character only, never a photo of a real person.</span></p>
+          <p class="mono"><button type="button" class="linkish" id="ref-add">add a picture</button> / <button type="button" class="linkish" id="ref-make">make one with ai</button> <span class="hint">up to three besides the portrait. ai makes the next one from the pictures they have, so it's still them, or from how they look if they have none. pictures of the character only, never a photo of a real person.</span> <span id="look-status" class="status" role="status"></span></p>
           <input type="file" id="ref-file" accept="image/png,image/jpeg,image/webp" hidden>
           <label>HOW THEY LOOK <textarea name="look_description" rows="3" maxlength="1500" placeholder="sixties, tall, grey braid, oilskin coat, reading glasses on a cord"></textarea></label>
         </details>
@@ -254,6 +254,7 @@
         <tr><th scope="row">a chat turn</th><td>$0.0007 to $0.005, by model (3,000 tokens in, 150 out)</td></tr>
         <tr><th scope="row">a hello from a venice character</th><td>one chat turn</td></tr>
         <tr><th scope="row">a photo</th><td>$0.02 to $0.34, by model ($0.03 on grok imagine), plus a short call to write the shot</td></tr>
+        <tr><th scope="row">a picture for their card</th><td>the same as a photo: $0.03 on grok imagine, plus a short call to describe them if their card doesn't say how they look</td></tr>
         <tr><th scope="row">a clip</th><td>venice prices it before it's made: about $0.50 for five seconds</td></tr>
         <tr><th scope="row">a voice note</th><td>about $0.0007 with kokoro, up to about $0.04 with the priciest voices</td></tr>
         <tr><th scope="row">hearing your voice note</th><td>$0.006 a minute</td></tr>

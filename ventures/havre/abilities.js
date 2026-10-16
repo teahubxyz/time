@@ -148,6 +148,17 @@ export function portraitPrompt(card, limit = 1500) {
     "plain background, no text.", limit);
 }
 
+/**
+ * The views of a character sheet: a picture made for a character's card, from the pictures they have, shows them
+ * the next way along, so their photos and clips have them from more than one side.
+ */
+export const SHEET_VIEWS = [
+  "Full length, standing and facing the camera, against a plain light background, in even light.",
+  "Head and shoulders in a three-quarter view, against a plain background, in soft daylight.",
+  "Full length, seen from the side in mid-step, against a plain background, in even light.",
+];
+export const sheetView = (n) => SHEET_VIEWS[((Math.trunc(n) || 0) % SHEET_VIEWS.length + SHEET_VIEWS.length) % SHEET_VIEWS.length];
+
 /** the words of a reply, ready to be read out: no thinking, no code, no stage directions */
 export function speakable(text, max = 4000) {
   const t = str(text, 100000).replace(/<think>[\s\S]*?<\/think>/gi, "").replace(/```[\s\S]*?(```|$)/g, " ")

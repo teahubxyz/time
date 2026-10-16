@@ -224,13 +224,14 @@ export class Venice {
   }
 
   /**
-   * One page of public Venice characters: { list, more }. Adult characters only with adult: true. sort: featured,
-   * imports, highestRating, mostRecent (or any other sortBy Venice takes); search matches names, descriptions and
-   * #tags; tags narrows to a tag.
+   * One page of public Venice characters: { list, more }. adult: true lists the adult ones, and only them (left
+   * unasked, Venice mixes them into the rest, where the first pages barely change); otherwise there are none. sort:
+   * featured, imports, highestRating, mostRecent (or any other sortBy Venice takes); search matches names,
+   * descriptions and #tags; tags narrows to a tag.
    */
   async characterPage({ search = "", limit = 24, offset = 0, sort = "", tags = "", adult = false } = {}) {
     const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
-    if (!adult) q.set("isAdult", "false");
+    q.set("isAdult", adult ? "true" : "false");
     if (search) q.set("search", search);
     if (sort) q.set("sortBy", sort);
     if (tags) q.set("tags", tags);
@@ -243,10 +244,10 @@ export class Venice {
       d = await this.call("/characters?" + q);
     }
     const raw = d && Array.isArray(d.data) ? d.data : [];
-    return { list: raw.filter((c) => c && (adult || !c.adult)).map(characterInfo), more: raw.length >= limit };
+    return { list: raw.filter((c) => c && !!c.adult === !!adult).map(characterInfo), more: raw.length >= limit };
   }
 
-  /** public Venice characters (adult ones only with adult: true) */
+  /** public Venice characters (the adult ones with adult: true, else the rest) */
   async characters(opts = {}) {
     return (await this.characterPage(opts)).list;
   }

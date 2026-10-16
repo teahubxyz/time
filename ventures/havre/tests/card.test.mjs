@@ -291,15 +291,15 @@ test("venice: a page of characters asks for safe-for-work ones, sorted, and says
   assert.ok(!tries[1].url.includes("sortBy") && !tries[1].url.includes("isAdult"));
 });
 
-test("venice: adult characters only when asked for, and tags narrow the list", async () => {
+test("venice: adult characters only when asked for, and then only them; tags narrow the list", async () => {
   const urls = [];
   const data = [{ slug: "a", name: "A", adult: false, tags: ["sea"] }, { slug: "b", name: "B", adult: true, tags: [] }];
   const v = new Venice("sk", { fetch: fakeFetch(() => ({ status: 200, body: { data } }), urls) });
-  const all = await v.characterPage({ adult: true, tags: "sea" });
+  const adult = await v.characterPage({ adult: true, tags: "sea" });
   const q = new URL(urls[0].url).searchParams;
-  assert.equal(q.get("isAdult"), null, "no filter when adult characters are wanted");
+  assert.equal(q.get("isAdult"), "true", "asked for as such: left out, Venice mixes them in with the rest");
   assert.equal(q.get("tags"), "sea");
-  assert.deepEqual(all.list.map((c) => [c.slug, c.adult]), [["a", false], ["b", true]]);
+  assert.deepEqual(adult.list.map((c) => [c.slug, c.adult]), [["b", true]], "only the adult ones, whatever comes back");
   assert.deepEqual((await v.characters()).map((c) => c.slug), ["a"], "and none when they aren't");
 });
 

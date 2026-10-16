@@ -56,7 +56,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.solid:disabled { background: #767676; color: var(--paper); }
 .linkish {
   padding: 0; border: 0; background: none; color: var(--link); text-decoration: underline;
-  font: inherit; cursor: pointer;
+  font: inherit; text-align: left; cursor: pointer;
 }
 .linkish:hover, .linkish:focus-visible { color: var(--ink); background: var(--hi); }
 .linkish:disabled { color: #767676; text-decoration: none; cursor: default; background: none; }
@@ -322,6 +322,8 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 #speech-group .check { margin-top: 10px; }
 #speech-group p.mono { margin-top: 8px; }
 #speech-status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+#portrait-status, #look-status { display: block; margin-top: 6px; }
+#portrait-status:empty, #look-status:empty { display: none; }
 .lineage h3 { font: 700 13px var(--mono); margin-bottom: 4px; }
 .lineage-list { margin: 0 0 4px; padding-left: 20px; font-size: 16px; }
 .lineage-list:empty::before { content: "nothing yet: written here."; font: 13px var(--mono); margin-left: -20px; }
@@ -450,6 +452,16 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   .table th, .table td { border: 0; padding: 2px 12px; }
   .table td:nth-of-type(1), .table td:nth-of-type(2) { font: 13px var(--mono); }
   .table td.files { padding-top: 6px; white-space: normal; }
+}
+/* phones and other touch screens: a field under 16px makes iOS Safari zoom in when it's tapped, and the page stays
+   zoomed in, cut off at the sides */
+@media (max-width: 640px), (pointer: coarse) {
+  .keybar input:not([type=checkbox]), .filters input[type=search], .pick select, .ask .opts select, .abilities select,
+  .chip.add input { font-size: 16px; }
+}
+/* a small phone (an iPhone SE is 375px wide): the left column's tabs a little smaller, so a count of what's new fits */
+@media (max-width: 400px) {
+  .lefthead [role=tab], .lefthead .sep { font-size: 24px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }

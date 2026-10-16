@@ -1190,6 +1190,7 @@ function listsChanged() {
   if ($("#modeldlg").open) renderModels();
   if ($("#abilitydlg").open) renderAbilities();
   renderSpeech();
+  renderMakers();
   const a = S.ask;
   if (a && !a.busy) {
     renderAsk();
@@ -1594,27 +1595,15 @@ async function firstPortrait() {
   if (!c) return;
   if (refsOf(c).length) { renderAsk(); writeShot(); return; }   // they've had a picture since: no portrait to pay for
   a.busy = true;
-  Object.assign(a, { status: "imagining how they look…", bad: false });
+  Object.assign(a, { status: c.look.description ? `drawing ${c.name} with ${pm.name}…` : "imagining how they look…", bad: false });
   renderAsk();
   try {
-    const v = new Venice(S.key);
-    let look = c.look.description;
-    if (!look) look = A.cleanText((await v.chat({ model: c.model || S.model, messages: A.lookMessages(c), maxTokens: 200, temperature: 0.9 })).text, 1500);
+    const v = new Venice(S.key), look = await lookOf(c, v);
     a.status = `drawing ${c.name} with ${pm.name}…`;
     renderAsk();
-    const { blob } = await v.generateImage({ model: pm.id, prompt: A.portraitPrompt({ ...c, look: { ...c.look, description: look } }, pm.promptLimit),
-      aspect: pm.aspects.includes("1:1") ? "1:1" : "" });
-    const portrait = await shrinkImage(blob, 512, "image/webp", { svg: false });
+    const portrait = await drawPicture(c, look, pm, v);
     const now = S.cards.find((x) => x.id === c.id);
-    if (now && !refsOf(now).length) {
-      // their portrait if they had none, else the first of their pictures (a drawing kept as an SVG portrait stays)
-      const looks = { ...now.look, description: now.look.description || look };
-      replaceCard(now.portrait ? { ...now, look: { ...looks, references: [portrait, ...now.look.references].slice(0, C.MAX_REFERENCES) } }
-        : { ...now, portrait, look: looks });
-      renderRoster();
-      renderThreads();
-      if ((card() || {}).id === c.id) renderSheet();
-    }
+    if (now && !refsOf(now).length) keepPicture(now, portrait, look);
     a.busy = false;
     Object.assign(a, { status: "", bad: false });
     toast(`${c.name} has a picture now, on their card.`);
@@ -1626,6 +1615,96 @@ async function firstPortrait() {
     renderAsk();
   }
   balanceSoon();
+}
+
+// ---------- pictures for a character's card, made with AI ----------
+const BLURRED = "Venice's safe mode blurred that picture, so it wasn't kept. Change how they look on their card (look), then try again.";
+/** how they look, in words: what their card says, else a description their model writes now */
+async function lookOf(c, v) {
+  if (c.look.description) return c.look.description;
+  return A.cleanText((await v.chat({ model: c.model || S.model, messages: A.lookMessages(c), maxTokens: 200, temperature: 0.9 })).text, 1500);
+}
+/** a picture of them drawn from how they look, by an image model, as a data: URI (one safe mode blurred isn't kept) */
+async function drawPicture(c, look, pm, v) {
+  const { blob, blurred } = await v.generateImage({ model: pm.id, prompt: A.portraitPrompt({ ...c, look: { ...c.look, description: look } }, pm.promptLimit),
+    aspect: pm.aspects.includes("1:1") ? "1:1" : "" });
+  if (blurred) throw new Error(BLURRED);
+  return shrinkImage(blob, 512, "image/webp", { svg: false });
+}
+/**
+ * A picture made for a character, kept on their card: as their portrait (asked for, or when they have none), else as
+ * the first of their other pictures. How they look goes on their card too, if it was written just now.
+ */
+function keepPicture(c, pic, look, as = "") {
+  const looks = { ...c.look, description: c.look.description || look || "" };
+  replaceCard(as === "portrait" || !c.portrait ? { ...c, portrait: pic, look: looks }
+    : { ...c, look: { ...looks, references: [pic, ...c.look.references].slice(0, C.MAX_REFERENCES) } });
+  renderRoster();
+  renderThreads();
+  if ((card() || {}).id === c.id) renderSheet();
+  picturesChanged();
+}
+let drawing = false;
+function lookStatus(sel, text, bad = false) { const s = $(sel); s.textContent = text; s.classList.toggle("bad", bad); }
+/**
+ * What a picture made for their card would be: a portrait is drawn from how they look; another picture is made from
+ * the pictures they have (so it's still them), or drawn too when they have none. { model, pictures, price, list }.
+ */
+function makerPlan(c, as) {
+  const refs = as === "portrait" ? [] : refsOf(c);
+  if (!refs.length) { const m = portraitModel(); return { model: m, pictures: [], price: m ? m.price : null, list: "image" }; }
+  const m = photoModel(), pictures = refs.slice(0, Math.max(1, m ? m.maxIn : 1));
+  return { model: m, pictures, price: m ? A.photoPrice(m, pictures.length) : null, list: "inpaint" };
+}
+/** the two links that make a picture for their card, with what the next one costs */
+function renderMakers() {
+  const c = card();
+  if (!c || c.plain) return;
+  for (const [sel, as] of [["#portrait-make", "portrait"], ["#ref-make", ""]]) {
+    const { price } = makerPlan(c, as), b = $(sel);
+    b.textContent = "make one with ai" + (price != null ? " · " + A.usd(price) : "");
+    b.disabled = drawing || (as !== "portrait" && !!c.portrait && c.look.references.length >= C.MAX_REFERENCES);
+  }
+}
+/** a picture for their card, made with AI on your key: a new portrait ("portrait"), or one more picture of them */
+async function makePicture(as = "") {
+  const c = card(), st = as === "portrait" ? "#portrait-status" : "#look-status";
+  if (!c || c.plain || drawing) return;
+  if (!S.key) return needKey("pictures need your venice key.");
+  if (as !== "portrait" && c.portrait && c.look.references.length >= C.MAX_REFERENCES) return;
+  await loadList(makerPlan(c, as).list);
+  const { model: pm, pictures, price, list } = makerPlan(c, as);
+  if (!pm || price == null) { lookStatus(st, S.listErr[list] || "Venice has no model for that right now.", true); return; }
+  if (as === "portrait" && c.portrait && !confirm(`Replace ${c.name}'s portrait with a new one, drawn from how they look? It costs ${A.usd(price)} on your Venice key.`)) return;
+  drawing = true;
+  S.inflight++;
+  renderMakers();
+  try {
+    const v = new Venice(S.key);
+    let look = "", pic;
+    if (pictures.length) {
+      lookStatus(st, `making a picture of ${c.name} with ${pm.name}…`);
+      const { blob, blurred } = await v.editImage({ model: pm.id, prompt: A.photoPrompt(c, A.sheetView(c.look.references.length), pictures.length, pm.promptLimit), images: pictures });
+      if (blurred) throw new Error(BLURRED);
+      pic = await shrinkImage(blob, 768, "image/webp", { svg: false });
+    } else {
+      if (!c.look.description) lookStatus(st, "imagining how they look…");
+      look = await lookOf(c, v);
+      lookStatus(st, `drawing ${c.name} with ${pm.name}…`);
+      pic = await drawPicture(c, look, pm, v);
+    }
+    const now = S.cards.find((x) => x.id === c.id);
+    if (now) keepPicture(now, pic, look, as);
+    lookStatus(st, "");
+    toast(as === "portrait" || !c.portrait ? `${c.name} has a new portrait.` : `A new picture of ${c.name} is on their card.`);
+  } catch (e) {
+    lookStatus(st, e.message, true);
+  } finally {
+    drawing = false;
+    S.inflight--;
+    renderMakers();
+    balanceSoon();
+  }
 }
 
 // ---------- abilities: clips on their way ----------
@@ -1994,6 +2073,9 @@ function renderSheet() {
   if (![...sp.options].some((o) => Number(o.value) === c.speech.speed)) sp.append(h("option", { value: String(c.speech.speed), text: `${c.speech.speed}×` }));
   sp.value = [...sp.options].find((o) => Number(o.value) === c.speech.speed).value;
   $("#speech-status").textContent = "";
+  if (!drawing) for (const s of ["#portrait-status", "#look-status"]) lookStatus(s, "");
+  loadList("image");
+  if (refsOf(c).length) loadList("inpaint");
   renderRefs(c);
   renderSpeech();
   renderFlow(c);
@@ -2018,6 +2100,7 @@ function renderRefs(c) {
     picturesChanged();
   })));
   $("#ref-add").disabled = c.look.references.length >= C.MAX_REFERENCES;
+  renderMakers();
 }
 async function addReference(file) {
   const c = card();
@@ -2181,8 +2264,8 @@ function setTab(name) {
 // ---------- the key ----------
 function updateKeyUI() {
   const on = !!S.key;
-  $("#keyin").placeholder = !on ? "paste it here"
-    : S.keyRemembered ? "saved on this device. paste a new one to replace it" : "saved for this tab. paste a new one to replace it";
+  $("#keyin").placeholder = !on ? "paste it here" : S.keyRemembered ? "saved on this device" : "saved for this tab";
+  $("#keyin").title = on ? "Paste a new key here to replace this one" : "";
   $("#keyforget").hidden = !on;
   $("#keyremember").checked = on ? S.keyRemembered : $("#keyremember").checked;
 }
@@ -2676,6 +2759,8 @@ function bind() {
     $("#ref-file").click();
   });
   $("#ref-file").addEventListener("change", () => { const rf = $("#ref-file").files[0]; $("#ref-file").value = ""; if (rf) addReference(rf); });
+  $("#portrait-make").addEventListener("click", () => makePicture("portrait"));
+  $("#ref-make").addEventListener("click", () => makePicture());
   $("#speech-sample").addEventListener("click", hearSample);
   $("#speech-group").addEventListener("toggle", () => { if ($("#speech-group").open) loadList("tts"); });
   $("#speech-on").addEventListener("change", (e) => { e.stopPropagation(); const c = card(); if (c && !c.plain) setVoiceNotes(c, $("#speech-on").checked); });

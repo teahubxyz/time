@@ -111,8 +111,8 @@ async function fakeVenice(route) {
   }
   if (url.includes("/characters")) {
     seen.characters.push(url);
-    const q = new URL(url).searchParams, tag = q.get("tags");
-    return ok({ object: "list", data: CHARACTERS.filter((c) => (q.get("isAdult") !== "false" || !c.adult) && (!tag || c.tags.includes(tag))) });
+    const q = new URL(url).searchParams, tag = q.get("tags"), adult = q.get("isAdult");
+    return ok({ object: "list", data: CHARACTERS.filter((c) => (adult === null || String(c.adult) === adult) && (!tag || c.tags.includes(tag))) });
   }
   if (url.includes("/chat/completions")) {
     const b = JSON.parse(body);
@@ -317,17 +317,20 @@ async function main() {
     await count(page, "#vgrid li:not(.ghost)", 2);
     assert.equal(seen.characters.length, asked, "a page seen a moment ago isn't asked for again");
     assert.equal(await page.locator('#vgrid img[data-kept="yes"]').count(), 1, "nor is her photo drawn again");
-    // adult characters, once someone says they're 18 or older
+    // adult characters, once someone says they're 18 or older: then those, and their tags
     page.once("dialog", (d) => d.accept());
     await page.check("#vadult");
-    await count(page, "#vgrid li:not(.ghost)", 3);
-    assert.ok(!seen.characters.at(-1).includes("isAdult"), "every character, adult ones too");
+    await count(page, "#vgrid li:not(.ghost)", 1);
+    assert.ok(seen.characters.at(-1).includes("isAdult=true"), "asked for as such: left out, Venice mixes them in with the rest");
+    await has(page, "#vgrid .nm", /^After Dark$/);
     await has(page, "#vgrid .x18", /18\+/);
+    assert.ok(await page.locator("#vtags").isHidden(), "their tags (they have none)");
     assert.equal(await page.evaluate(() => localStorage.getItem("havre.adult.18")), "true");
     asked = seen.characters.length;
     await page.uncheck("#vadult");
     await count(page, "#vgrid li:not(.ghost)", 2);
-    assert.equal(seen.characters.length, asked, "the page without them comes back without asking either");
+    await has(page, "#vtags", /#neighbor/);
+    assert.equal(seen.characters.length, asked, "the page without them comes back, tags and all, without asking either");
     // the same search again asks Venice afresh
     await page.click("#vgo");
     await poll(() => seen.characters.length > asked, "the same search, asked again");
@@ -657,6 +660,29 @@ async function main() {
     assert.equal(kept.lineage[0].name, "Captain Ro");
     assert.match(kept.lineage[0].ref, /^sha256:/);
 
+    // pictures for her card, made with AI: a portrait drawn from how she looks, then one more picture made from it
+    const inesNow = () => page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel"));
+    await has(page, "#portrait-make", /^make one with ai · \$0\.03$/);
+    const drawn = seen.generated.length;
+    await page.click("#portrait-make");
+    await until(page, () => /^data:image\/webp/.test((JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel") || {}).portrait || ""), null, "her portrait");
+    assert.equal(seen.generated.length, drawn + 1, "one picture, drawn");
+    assert.match(seen.generated.at(-1).prompt, /^Portrait photo of Ines Corbel, an original adult character: Thirties, wiry.*Safe for work/);
+    assert.equal(seen.generated.at(-1).safe_mode, true);
+    assert.match((await inesNow()).look.description, /^Thirties, wiry/, "how she looks, written on her card for next time");
+    await until(page, () => { const i = document.querySelector("#sheet-face img"); return !!i && i.src.startsWith("data:image/webp"); }, null, "her portrait on the card");
+    await page.evaluate(() => { document.querySelector("#look-group").open = true; });
+    const edited = seen.edits.length;
+    await has(page, "#ref-make", /^make one with ai · \$0\.03$/);
+    await page.click("#ref-make");
+    await count(page, "#refs .ref", 2);
+    assert.equal(seen.edits.length, edited + 1, "made from the pictures she has");
+    assert.equal(seen.edits.at(-1).body.image, (await inesNow()).portrait.split(",")[1], "her portrait, so it's still her");
+    assert.match(seen.edits.at(-1).body.prompt, /^The reference picture shows Ines Corbel\..*New photo: Full length, standing/);
+    assert.equal(seen.edits.at(-1).body.safe_mode, true);
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel").look.references.length === 1, null, "the picture kept on her card");
+    await shot(page, "desktop-card-pictures.png");
+
     // exports, made in the browser; the PNG comes back in whole
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();
     let png = "";
@@ -758,15 +784,21 @@ async function main() {
     await count(p2, "#threads > li", 1);
     await old.close();
 
-    // ---------- phone ----------
-    const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    // ---------- phone: an iPhone SE's screen, 375 by 667 ----------
+    const W = 375;
+    const phone = await browser.newContext({ viewport: { width: W, height: 667 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
     const p3 = await phone.newPage();
     watch(p3, "phone: ");
     await venice(p3);
     await p3.goto(base);
     await count(p3, "#vgrid li.ghost", 8);
     const wide = () => p3.evaluate(() => document.documentElement.scrollWidth);
-    assert.ok(await wide() <= 390, `no sideways scroll on a phone (scrollWidth ${await wide()})`);
+    assert.ok(await wide() <= W, `no sideways scroll on a phone (scrollWidth ${await wide()})`);
+    // a field under 16px makes iOS Safari zoom in when it's tapped, and the page stays cut off
+    const small = () => p3.evaluate(() => [...document.querySelectorAll("input:not([type=checkbox]):not([type=file]), select, textarea")]
+      .filter((el) => el.offsetParent).map((el) => [el.id || el.name || el.className, parseFloat(getComputedStyle(el).fontSize)]).filter(([, s]) => s < 16));
+    assert.deepEqual(await small(), [], "no field small enough for the phone to zoom in on");
+    assert.match(await p3.locator(".motto").evaluate((el) => el.innerText), /characters\. talk to venice characters on your own key\. no account/, "the motto keeps its spaces on one line");
     await shot(p3, "phone.png");
     await p3.fill("#keyin", "sk-good");
     await p3.click("#keysave");
@@ -774,7 +806,8 @@ async function main() {
     await p3.locator("#vgrid .tile", { hasText: "Wren" }).click();
     await has(p3, "#log .line.them .said", /Careful, the boxes bite\./);
     assert.ok(await p3.locator("#say").isVisible(), "the chat is on screen");
-    assert.ok(await wide() <= 390, `still no sideways scroll (scrollWidth ${await wide()})`);
+    assert.ok(await wide() <= W, `still no sideways scroll (scrollWidth ${await wide()})`);
+    assert.deepEqual(await small(), [], "nor here");
     await p3.waitForTimeout(500);
     await shot(p3, "phone-chat.png");
     await shot(p3, "phone-full.png", { fullPage: true });
