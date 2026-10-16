@@ -46,60 +46,78 @@ export class Venice {
     return data;
   }
 
-  /** text models with their prices (USD per million tokens); no key needed */
+  /**
+   * Text models: what each can do, how private it is, and what it costs (USD per million tokens). No key needed.
+   * Models that are offline, or open only to Venice's beta testers, are left out.
+   */
   async models() {
     const d = await this.call("/models?type=text", { auth: false });
-    return (d && d.data || []).filter((m) => !(m.model_spec && m.model_spec.offline)).map((m) => {
-      const s = m.model_spec || {}, p = s.pricing || {};
+    return (d && d.data || []).filter((m) => m && !(m.model_spec && (m.model_spec.offline || m.model_spec.beta))).map((m) => {
+      const s = m.model_spec || {}, p = s.pricing || {}, c = s.capabilities || {}, dep = s.deprecation || null;
       return {
         id: m.id, name: s.name || m.id, ctx: s.availableContextTokens || 0, traits: s.traits || [],
         input: p.input && p.input.usd, output: p.output && p.output.usd,
-        json: !!(s.capabilities && s.capabilities.supportsResponseSchema),
+        privacy: s.privacy || "", uncensored: !!s.uncensored,
+        vision: !!c.supportsVision, tools: !!c.supportsFunctionCalling, reasoning: !!c.supportsReasoning, web: !!c.supportsWebSearch,
+        json: !!c.supportsResponseSchema,
+        retiring: dep ? String(dep.removesAt || dep.date || "soon").slice(0, 10) : "",
       };
     });
   }
 
+  /** what is left to spend on this key: { amount, currency, canConsume } */
+  async balance() {
+    const d = await this.call("/billing/balance");
+    const b = d && d.balances || {}, currency = d && d.consumptionCurrency || "USD";
+    const amount = { DIEM: b.diem, BUNDLED_CREDITS: b.bundledCredits, EARNED_CREDITS: b.earnedCredits }[currency] ?? b.usd;
+    return { amount: typeof amount === "number" ? amount : null, currency, canConsume: !!(d && d.canConsume) };
+  }
+
   /**
-   * One page of public Venice characters, safe for work only: { list, more }. sort: featured, imports, highestRating,
-   * mostRecent (or any other sortBy Venice takes); search matches names, descriptions and #tags.
+   * One page of public Venice characters: { list, more }. Adult characters only with adult: true. sort: featured,
+   * imports, highestRating, mostRecent (or any other sortBy Venice takes); search matches names, descriptions and
+   * #tags; tags narrows to a tag.
    */
-  async characterPage({ search = "", limit = 24, offset = 0, sort = "" } = {}) {
-    const q = new URLSearchParams({ limit: String(limit), offset: String(offset), isAdult: "false" });
+  async characterPage({ search = "", limit = 24, offset = 0, sort = "", tags = "", adult = false } = {}) {
+    const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+    if (!adult) q.set("isAdult", "false");
     if (search) q.set("search", search);
     if (sort) q.set("sortBy", sort);
+    if (tags) q.set("tags", tags);
     let d;
     try {
       d = await this.call("/characters?" + q);
     } catch (e) {
       if (e.status !== 400) throw e;
-      q.delete("sortBy"); q.delete("isAdult");             // asked for something this API doesn't take: ask plainly
+      for (const k of ["sortBy", "isAdult", "tags"]) q.delete(k);   // asked for something this API doesn't take: ask plainly
       d = await this.call("/characters?" + q);
     }
     const raw = d && Array.isArray(d.data) ? d.data : [];
-    return { list: raw.filter((c) => c && !c.adult).map(characterInfo), more: raw.length >= limit };
+    return { list: raw.filter((c) => c && (adult || !c.adult)).map(characterInfo), more: raw.length >= limit };
   }
 
-  /** public Venice characters, safe for work only */
+  /** public Venice characters (adult ones only with adult: true) */
   async characters(opts = {}) {
     return (await this.characterPage(opts)).list;
   }
 
-  async character(slug) {
+  async character(slug, { adult = false } = {}) {
     const d = await this.call("/characters/" + encodeURIComponent(slug));
     const c = d && d.data;
     if (!c) throw new VeniceError("Venice doesn't know that character.", 404);
-    if (c.adult) throw new VeniceError("That character is marked adult; Havre only shows safe-for-work characters for now.", 451);
+    if (c.adult && !adult) throw new VeniceError("That character is marked adult. Switch on adult characters to see them.", 451);
     return characterInfo(c);
   }
 
   /**
    * One chat completion. characterSlug: speak through a public Venice character (its own prompt, which Havre never
-   * sees). schema: ask for JSON matching it. Returns { text, usage }.
+   * sees). veniceSystemPrompt: keep Venice's own system prompt (a plain chat with no character). schema: ask for JSON
+   * matching it. Returns { text, usage }.
    */
-  async chat({ model, messages, characterSlug = "", schema = null, maxTokens = 700, temperature = 0.8, signal } = {}) {
+  async chat({ model, messages, characterSlug = "", veniceSystemPrompt = false, schema = null, maxTokens = 700, temperature = 0.8, signal } = {}) {
     // short-form chat wants fast, plain replies: no reasoning pass (a reasoning model can spend the whole budget
     // thinking and send back nothing), and only Havre's own system prompt
-    const venice_parameters = { disable_thinking: true, strip_thinking_response: true, include_venice_system_prompt: false };
+    const venice_parameters = { disable_thinking: true, strip_thinking_response: true, include_venice_system_prompt: !!veniceSystemPrompt };
     if (characterSlug) { venice_parameters.character_slug = characterSlug; delete venice_parameters.include_venice_system_prompt; }
     const body = { model, messages, max_tokens: maxTokens, temperature, stream: false, venice_parameters };
     if (schema) body.response_format = { type: "json_schema", json_schema: { name: "result", strict: true, schema } };
@@ -122,5 +140,6 @@ function characterInfo(c) {
     photo: /^https:\/\/outerface\.venice\.ai\//.test(c.photoUrl || "") ? c.photoUrl : "",
     url: "https://venice.ai/c/" + encodeURIComponent(c.slug), model: c.modelId || "", tags: c.tags || [],
     imports: c.stats && c.stats.imports || 0, rating: c.stats && c.stats.averageRating || 0, web: !!c.webEnabled,
+    adult: !!c.adult,
   };
 }

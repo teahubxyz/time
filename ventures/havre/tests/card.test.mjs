@@ -290,3 +290,39 @@ test("venice: a page of characters asks for safe-for-work ones, sorted, and says
   assert.equal(tries.length, 2, "asked again without the sort");
   assert.ok(!tries[1].url.includes("sortBy") && !tries[1].url.includes("isAdult"));
 });
+
+test("venice: adult characters only when asked for, and tags narrow the list", async () => {
+  const urls = [];
+  const data = [{ slug: "a", name: "A", adult: false, tags: ["sea"] }, { slug: "b", name: "B", adult: true, tags: [] }];
+  const v = new Venice("sk", { fetch: fakeFetch(() => ({ status: 200, body: { data } }), urls) });
+  const all = await v.characterPage({ adult: true, tags: "sea" });
+  const q = new URL(urls[0].url).searchParams;
+  assert.equal(q.get("isAdult"), null, "no filter when adult characters are wanted");
+  assert.equal(q.get("tags"), "sea");
+  assert.deepEqual(all.list.map((c) => [c.slug, c.adult]), [["a", false], ["b", true]]);
+  assert.deepEqual((await v.characters()).map((c) => c.slug), ["a"], "and none when they aren't");
+});
+
+test("venice: models say what they can do and how private they are; beta-only ones are left out; the balance reads", async () => {
+  const v = new Venice("sk", { fetch: fakeFetch((p) => (p.startsWith("/models") ? { status: 200, body: { data: [
+    { id: "m1", model_spec: { name: "M One", privacy: "private", uncensored: true, availableContextTokens: 65536, traits: ["default"],
+      capabilities: { supportsVision: true, supportsFunctionCalling: true, supportsReasoning: false, supportsWebSearch: true },
+      pricing: { input: { usd: 0.5 }, output: { usd: 2 } }, deprecation: { removesAt: "2026-12-01T00:00:00Z" } } },
+    { id: "m2", model_spec: { name: "Beta", beta: true } }] } }
+    : { status: 200, body: { canConsume: true, consumptionCurrency: "DIEM", balances: { diem: 42.25, usd: 3, bundledCredits: null, earnedCredits: null }, diemEpochAllocation: 100 } }), []) });
+  const [m] = await v.models();
+  assert.equal((await v.models()).length, 1);
+  assert.deepEqual([m.name, m.privacy, m.uncensored, m.vision, m.tools, m.reasoning, m.web, m.ctx, m.input, m.output, m.retiring],
+    ["M One", "private", true, true, true, false, true, 65536, 0.5, 2, "2026-12-01"]);
+  assert.deepEqual(await v.balance(), { amount: 42.25, currency: "DIEM", canConsume: true });
+});
+
+test("venice: a plain chat keeps Venice's own system prompt; a character's chat doesn't", async () => {
+  const bodies = [];
+  const v = new Venice("sk", { fetch: async (url, init) => { bodies.push(JSON.parse(init.body)); return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "hi" } }] }) }; } });
+  await v.chat({ model: "m", messages: [{ role: "user", content: "hi" }], veniceSystemPrompt: true, maxTokens: 2000 });
+  assert.equal(bodies[0].venice_parameters.include_venice_system_prompt, true);
+  assert.equal(bodies[0].max_tokens, 2000);
+  await v.chat({ model: "m", messages: [] });
+  assert.equal(bodies[1].venice_parameters.include_venice_system_prompt, false);
+});

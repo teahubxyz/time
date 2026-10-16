@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://outerface.venice.ai; font-src 'none'; connect-src https://api.venice.ai; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://venice.ai https://outerface.venice.ai; font-src 'none'; connect-src https://api.venice.ai; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin">
 <title>Havre</title>
 <meta name="description" content="A harbor for characters. Talk to Venice's characters on your own key, keep characters in a file you own, and remix the ones you love into someone new, with credit.">
@@ -37,6 +37,7 @@
   <button type="submit" class="btn inv" id="keysave">SAVE</button>
   <label class="check"><input type="checkbox" id="keyremember"> remember on this device</label>
   <button type="button" class="btn ghost-inv" id="keyforget" hidden>FORGET</button>
+  <span id="balance" class="balance" hidden></span>
   <span id="keystatus" class="keystatus" role="status" aria-live="polite"></span>
   <span class="keyfine">sent to api.venice.ai and nowhere else. <a href="https://venice.ai/settings/api" target="_blank" rel="noopener">get a key</a></span>
 </form>
@@ -45,7 +46,7 @@
   <section class="chars" id="chars" aria-labelledby="chars-h">
     <div class="sechead">
       <h2 id="chars-h">CHARACTERS</h2>
-      <span class="meta">venice's public characters, safe for work.</span>
+      <span class="meta">venice's public characters.</span>
     </div>
     <form class="filters" id="venform" role="search" aria-label="Venice characters">
       <label class="sr" for="vsearch">Search Venice characters</label>
@@ -56,11 +57,13 @@
         <option value="highestRating">top rated</option>
         <option value="mostRecent">newest</option>
       </select></label>
+      <label class="check"><input type="checkbox" id="vadult"> adult (18+)</label>
       <button type="submit" class="btn" id="vgo">SEARCH</button>
     </form>
+    <p id="vtags" class="tags" hidden></p>
     <p id="venstatus" class="status" role="status" aria-live="polite"></p>
     <ul id="vgrid" class="grid" aria-label="Venice characters"></ul>
-    <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
+    <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="plain">chat without a character</button> / <button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
   </section>
 
   <section class="chat" id="chat" aria-labelledby="who-name">
@@ -190,8 +193,8 @@
   <div class="body">
     <ol>
       <li>Paste your Venice API key. It stays in this browser, and the page can reach api.venice.ai and nothing else.</li>
-      <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first.</li>
-      <li>Talk. Replies come as a few short texts. Without a key, the characters you write answer from their own examples.</li>
+      <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
+      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Without a key, the characters you write answer from their own examples.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
     </ol>
   </div>
@@ -218,7 +221,7 @@
         <tr><th scope="row">a remix</th><td>two short calls; five more for a venice character</td></tr>
       </tbody>
     </table>
-    <p class="mono">each card's model list shows venice's price per million tokens.</p>
+    <p class="mono">the model picker shows venice's price per million tokens, and your balance shows next to your key.</p>
   </div>
 </section>
 
@@ -249,7 +252,7 @@
   <div class="body">
     <p>Characters and conversations are saved in this browser. Export them to keep them anywhere else.</p>
     <p>Your key stays in this browser and goes only to api.venice.ai; the page's security policy blocks every other address. Conversations run on your Venice account, under Venice's terms.</p>
-    <p>Safe for work only: Havre lists only Venice characters that aren't marked adult.</p>
+    <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older.</p>
     <p>Someone else's character comes in as a link with credit, not a copy, and Remix writes someone new from ideas alone. Names and broad ideas aren't protected by copyright; a character's written expression can be. When in doubt, ask the creator. This isn't legal advice.</p>
     <p>Havre is independent. It isn't part of Venice.ai and isn't endorsed by Venice.</p>
   </div>
@@ -276,6 +279,25 @@
       <label>OR PASTE A DESCRIPTION <textarea id="paste" rows="5" placeholder="Name on the first line, then who they are."></textarea></label>
       <p id="impstatus" class="status" role="status"></p>
       <p class="actions"><button type="button" class="btn" id="impcancel">CLOSE</button> <button type="button" class="btn solid" id="imp-paste">IMPORT TEXT</button></p>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="modeldlg" class="dlg wide" aria-labelledby="model-h">
+  <form method="dialog" id="modelform">
+    <h2 id="model-h">MODEL</h2>
+    <div class="dlgbody">
+      <p class="mono" id="model-for"></p>
+      <label class="sr" for="msearch">Search models</label>
+      <input id="msearch" type="search" placeholder="search models: a name, private, uncensored…" autocomplete="off">
+      <div class="mtable">
+        <table class="table models">
+          <thead><tr><th scope="col">MODEL</th><th scope="col">PRIVACY</th><th scope="col">CAN</th><th scope="col">$ IN / OUT</th><th scope="col">CONTEXT</th></tr></thead>
+          <tbody id="mlist"></tbody>
+        </table>
+      </div>
+      <p class="mono">private: what you say is used for the reply and not kept. anonymized: venice passes it to the model's maker without saying who you are, and they can read it. prices are per million tokens.</p>
+      <p class="actions"><button type="button" class="btn" id="mclose">CLOSE</button></p>
     </div>
   </form>
 </dialog>

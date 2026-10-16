@@ -1,10 +1,11 @@
 // node tests/smoke.mjs [--shots DIR]: Havre in a real browser, against a fake Venice (no network, no key).
 //
 // Serves this folder on localhost and drives Chromium through the page on a desktop and a phone: the first visit,
-// a card import and a chat without a key, the key, Venice's characters (adult ones never listed) and one who says
-// hello first, a remix end to end, the exports, the retirement of the first version's cast, and the page's security
-// policy. Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones
-// the site serves (tools/build.sh copies them to shots/).
+// a card import and a chat without a key, the key and the balance, Venice's characters (photos through Venice's
+// image service, tags, adult ones only once asked for) and one who says hello first, the model picker, a plain
+// chat, a remix end to end, the exports, the retirement of the first version's cast, and the page's security policy.
+// Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
+// site serves (tools/build.sh copies them to shots/).
 //
 // Playwright: PW_MODULE (a path to playwright-core's index.mjs, or a package name), else playwright-core, else
 // playwright. Chrome: CHROME, with CHROME_FLAGS (e.g. --no-sandbox as root); else Playwright's own Chromium.
@@ -50,11 +51,11 @@ function serve() {
 
 // ---------- a stand-in for api.venice.ai that answers like it does ----------
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const seen = { characters: [], chats: [] };
+const seen = { characters: [], chats: [], photos: [] };
 const CHARACTERS = [
   { slug: "sable-penrose", name: "Sable Penrose", description: "Your new neighbor needs help moving in.", author: "btrzm",
     photoUrl: "https://outerface.venice.ai/sable.png", adult: false, webEnabled: false, modelId: "zai-org-glm-5-2", tags: ["neighbor"], stats: { imports: 25752 } },
-  { slug: "hidden", name: "Hidden", description: "", author: "x", photoUrl: null, adult: true, modelId: "m", tags: [], stats: {} },
+  { slug: "after-dark", name: "After Dark", description: "Only for grown-ups.", author: "x", photoUrl: null, adult: true, modelId: "m", tags: [], stats: {} },
   { slug: "wren", name: "Wren", description: "A deckhand on the night ferry.", author: "q", photoUrl: null, adult: false, modelId: "zai-org-glm-5-2", tags: [], stats: {} },
 ];
 async function fakeVenice(route) {
@@ -65,11 +66,22 @@ async function fakeVenice(route) {
     return route.fulfill({ status: 204, headers: { ...cors, "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" } });
   }
   if (url.includes("/models")) {
-    return ok({ data: [{ id: "zai-org-glm-5-2", model_spec: { pricing: { input: { usd: 1.4 }, output: { usd: 4.4 } } } },
-      { id: "tiny-model", model_spec: { pricing: { input: { usd: 0.1 }, output: { usd: 0.2 } } } }] });
+    return ok({ data: [
+      { id: "zai-org-glm-5-2", model_spec: { name: "GLM 5.2", privacy: "private", traits: ["default"], availableContextTokens: 198000,
+        capabilities: { supportsFunctionCalling: true, supportsReasoning: true }, pricing: { input: { usd: 1.4 }, output: { usd: 4.4 } } } },
+      { id: "tiny-model", model_spec: { name: "Tiny", privacy: "anonymized", uncensored: true, availableContextTokens: 32000,
+        capabilities: { supportsVision: true }, pricing: { input: { usd: 0.1 }, output: { usd: 0.2 } } } },
+      { id: "beta-model", model_spec: { name: "Beta only", beta: true, privacy: "private", pricing: {} } }] });
   }
   if (auth !== "Bearer sk-good") return ok({ error: "Authentication failed" }, 401);
-  if (url.includes("/characters")) { seen.characters.push(url); return ok({ object: "list", data: CHARACTERS }); }
+  if (url.includes("/billing/balance")) {
+    return ok({ canConsume: true, consumptionCurrency: "USD", balances: { usd: 12.5, diem: null, bundledCredits: null, earnedCredits: null }, diemEpochAllocation: 0 });
+  }
+  if (url.includes("/characters")) {
+    seen.characters.push(url);
+    const q = new URL(url).searchParams, tag = q.get("tags");
+    return ok({ object: "list", data: CHARACTERS.filter((c) => (q.get("isAdult") !== "false" || !c.adult) && (!tag || c.tags.includes(tag))) });
+  }
   if (url.includes("/chat/completions")) {
     const b = JSON.parse(body);
     seen.chats.push(b);
@@ -127,7 +139,9 @@ async function main() {
   };
   const venice = async (page) => {
     await page.route(/^https:\/\/api\.venice\.ai\//, fakeVenice);
-    await page.route(/^https:\/\/outerface\.venice\.ai\//, (r) => r.fulfill({ status: 200, contentType: "image/png", body: PIXEL }));
+    // Venice's photos only come through its image service; asked for directly, they're refused
+    await page.route(/^https:\/\/venice\.ai\/_next\/image\?/, (r) => { seen.photos.push(r.request().url()); r.fulfill({ status: 200, contentType: "image/png", body: PIXEL }); });
+    await page.route(/^https:\/\/outerface\.venice\.ai\//, (r) => r.fulfill({ status: 403, contentType: "application/json", body: "{}" }));
   };
   if (SHOTS) await mkdir(SHOTS, { recursive: true });
   const shot = async (page, name, opts = {}) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, name), ...opts }); };
@@ -177,21 +191,41 @@ async function main() {
     assert.equal(await page.evaluate(() => localStorage.getItem("havre.key")), null, "an unremembered key stays out of localStorage");
     assert.equal(await page.evaluate(() => JSON.parse(sessionStorage.getItem("havre.key"))), "sk-good");
 
-    // Venice's characters: adult ones are never listed, and a photo from outerface.venice.ai shows
+    // Venice's characters: adult ones only when asked for, and photos come through Venice's image service
     await count(page, "#vgrid li:not(.ghost)", 2);
-    assert.ok(seen.characters.some((u) => /isAdult=false/.test(u) && /sortBy=featured/.test(u)), "asked for safe-for-work characters");
+    assert.ok(seen.characters.some((u) => /isAdult=false/.test(u) && /sortBy=featured/.test(u)), "no adult characters unless asked");
     await until(page, () => { const i = document.querySelector("#vgrid img"); return !!i && i.complete && i.naturalWidth > 0; }, null, "a character's photo");
+    assert.ok(seen.photos[0].startsWith("https://venice.ai/_next/image?url=https%3A%2F%2Fouterface.venice.ai%2Fsable.png&w="), seen.photos[0]);
     assert.equal(await page.locator("#vgrid .noface").count(), 1, "no photo is an empty frame");
-    const asked = seen.characters.length;
+    await has(page, "#balance", /^balance \$12\.50$/);
+    let asked = seen.characters.length;
     await page.selectOption("#vsort", "imports");
     await poll(() => seen.characters.length > asked, "a sorted search");
     assert.ok(seen.characters.at(-1).includes("sortBy=imports"), "the sort reaches Venice");
     await count(page, "#vgrid li:not(.ghost)", 2);
     await has(page, "#vgrid .nm", /Wren/);
+    // a tag narrows the list, and comes off again
+    asked = seen.characters.length;
+    await page.getByRole("button", { name: "Only characters tagged neighbor" }).click();
+    await poll(() => seen.characters.length > asked, "a search by tag");
+    assert.ok(seen.characters.at(-1).includes("tags=neighbor"));
+    await count(page, "#vgrid li:not(.ghost)", 1);
+    await page.getByRole("button", { name: "Show every tag, not just neighbor" }).click();
+    await count(page, "#vgrid li:not(.ghost)", 2);
+    // adult characters, once someone says they're 18 or older
+    page.once("dialog", (d) => d.accept());
+    await page.check("#vadult");
+    await count(page, "#vgrid li:not(.ghost)", 3);
+    assert.ok(!seen.characters.at(-1).includes("isAdult"), "every character, adult ones too");
+    await has(page, "#vgrid .x18", /18\+/);
+    assert.equal(await page.evaluate(() => localStorage.getItem("havre.adult.18")), "true");
+    await page.uncheck("#vadult");
+    await count(page, "#vgrid li:not(.ghost)", 2);
 
     // one of them says hello first, through Venice, with their own prompt
     const chatsBefore = seen.chats.length;
     await page.locator("#vgrid .tile", { hasText: "Sable Penrose" }).click();
+    await page.waitForTimeout(50);
     await has(page, "#who-name", /^Sable Penrose$/);
     await has(page, "#log .line.them .said", /Careful, the boxes bite\./);
     assert.equal(await page.locator("#log .line.me").count(), 0, "what started it isn't shown");
@@ -201,11 +235,33 @@ async function main() {
     assert.equal(hello.messages[0].role, "user");
     await count(page, "#roster tr", 2);
     assert.match(await page.locator('#vgrid .tile[aria-pressed="true"]').evaluate((el) => el.textContent), /Sable Penrose.*talking now/);
+    // the model: their own on Venice to start with, and any other Venice model from the picker
+    await has(page, "#model-btn", /^GLM 5\.2$/);
+    await page.click("#model-btn");
+    await count(page, "#mlist tr", 2);
+    assert.match(await textOf(page, "#mlist tr"), /GLM 5\.2.*their own/);
+    assert.match(await page.locator("#mlist tr", { hasText: "Tiny" }).evaluate((el) => el.textContent), /anonymized.*sees.*uncensored.*\$0\.10 \/ \$0\.20.*32k/);
+    await shot(page, "desktop-models.png");
+    await page.getByRole("button", { name: "Use Tiny" }).click();
+    await has(page, "#model-btn", /^Tiny$/);
     await page.fill("#say", "Do you have a boat?");
     await page.keyboard.press("Enter");
     await has(page, "#log .line.them .said", /Ask me again after the tide\./);
+    assert.equal(seen.chats.at(-1).model, "tiny-model");
     await page.waitForTimeout(400);
     await shot(page, "desktop-chat.png");
+
+    // a plain chat: no character, just a model, in one piece
+    await page.click("#plain");
+    await has(page, "#who-name", /^no character$/);
+    await page.fill("#say", "What is a harbor?");
+    await page.keyboard.press("Enter");
+    await has(page, "#log .line.them .said", /Mm\. Good question\.\n\nAsk me again after the tide\./);
+    const plain = seen.chats.at(-1);
+    assert.equal(plain.messages[0].role, "user", "no system prompt of Havre's");
+    assert.equal(plain.venice_parameters.include_venice_system_prompt, true);
+    assert.ok(!plain.venice_parameters.character_slug);
+    assert.ok(await page.locator("#card-body").isHidden(), "a plain chat has no card");
 
     // remix with credit, end to end, from the card that came in
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Remix Captain Ro" }).click();

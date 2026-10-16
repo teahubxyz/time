@@ -105,6 +105,7 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .keystatus.bad { color: #ff8a8a; }
 .keystatus.ok { color: var(--ink); background: var(--hi); padding: 0 4px; }
 .keyfine { margin-left: auto; }
+.balance { padding: 0 6px; border: 1px solid var(--paper); white-space: nowrap; }
 .keybar :focus-visible { outline-color: var(--hi); }
 
 /* ---------- section heads ---------- */
@@ -131,6 +132,10 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .pick select { width: auto; font: 14px var(--mono); }
 #venstatus { padding: 10px var(--gut); border-bottom: 1px solid var(--ink); }
 #venstatus:empty { display: none; }
+.tags { padding: 10px var(--gut); border-bottom: 1px solid var(--ink); font: 14px/1.6 var(--mono); }
+.tags b { background: var(--ink); color: var(--paper); padding: 0 4px; font-weight: 400; }
+.tags b .linkish { color: var(--paper); text-decoration: none; }
+.tags b .linkish:hover { color: var(--ink); }
 
 .grid {
   margin: 0 -1px 0 0; padding: 0; list-style: none;
@@ -155,6 +160,7 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .tile[aria-pressed="true"] { background: var(--ink); color: var(--paper); }
 .tile[aria-pressed="true"] .go { color: var(--paper); text-decoration: none; }
 .tile[aria-pressed="true"]:hover .nm { color: var(--ink); }
+.tile .x18 { align-self: flex-start; display: inline-block; margin-top: 4px; padding: 0 4px; border: 1px solid currentColor; font: 11px/1.5 var(--mono); }
 .grid > li.ghost .tile { cursor: default; }
 .grid > li.ghost .tx { min-height: 64px; }
 /* no photo: an empty frame with an X through it */
@@ -297,6 +303,14 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   border: 2px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink);
 }
 .dlg::backdrop { background: rgba(255, 255, 255, 0.85); }
+.dlg.wide { width: min(1040px, calc(100vw - 32px)); }
+.mtable { max-height: min(58vh, 560px); overflow: auto; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
+.models { font-size: 16px; }
+.models thead th { position: sticky; top: 0; background: var(--paper); }
+.models tbody th .mid { display: block; font: 12px/1.4 var(--mono); font-weight: 400; overflow-wrap: anywhere; }
+.models td { font: 13px/1.5 var(--mono); }
+.models td.num { white-space: nowrap; }
+.models tr[aria-current="true"] .mid { color: var(--paper); }
 .dlg h2 { padding: 10px 16px; background: var(--ink); color: var(--paper); font: 700 15px var(--mono); }
 .dlgbody { display: flex; flex-direction: column; gap: 14px; padding: 16px; }
 .dlgbody label { display: flex; flex-direction: column; gap: 4px; font: 13px var(--mono); }

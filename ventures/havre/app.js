@@ -38,17 +38,20 @@ function box(kind) {
 }
 const local = box("localStorage"), session = box("sessionStorage");
 const K = { cards: "havre.cards.v1", chats: "havre.chats.v1", sel: "havre.selected", key: "havre.key", model: "havre.model",
-  sort: "havre.vsort", seeded: "havre.seeded.v1" };
+  sort: "havre.vsort", seeded: "havre.seeded.v1", adult: "havre.adult", adult18: "havre.adult.18", plainModel: "havre.plain.model",
+  own: "havre.venice.models" };
 const PAGE = 24;
+const PLAIN = "_plain";              // a plain chat with a model: no character, no card
 const SORTS = ["featured", "imports", "highestRating", "mostRecent"];
 // what a character hears when they speak first; it stays out of the conversation on screen
 const OPENER = "[Start the conversation: someone new just came to talk to you. Say hello in character, in a line or two.]";
 
 const S = {
-  cards: [], sel: "", chats: {}, key: "", keyRemembered: false, model: C.DEFAULT_MODEL, models: null, replying: null,
-  demo: {}, rx: null, v: { list: [], offset: 0, more: false, query: "", sort: "featured", loading: false, asked: 0 },
+  cards: [], sel: "", chats: {}, key: "", keyRemembered: false, model: C.DEFAULT_MODEL, models: null, modelsError: "",
+  replying: null, demo: {}, rx: null, plain: null, own: {},
+  v: { list: [], offset: 0, more: false, query: "", sort: "featured", tag: "", adult: false, loading: false, asked: 0 },
 };
-const card = () => S.cards.find((c) => c.id === S.sel) || S.cards[0] || null;
+const card = () => (S.sel === PLAIN ? S.plain : S.cards.find((c) => c.id === S.sel) || S.cards[0] || null);
 
 // ---------- boot ----------
 function boot() {
@@ -57,16 +60,21 @@ function boot() {
   for (const [id, hist] of Object.entries(S.chats)) if (!Array.isArray(hist)) delete S.chats[id];
   S.sel = local.get(K.sel, "") || "";
   retireFirstCast();
-  if (!S.cards.some((c) => c.id === S.sel)) S.sel = S.cards[0] ? S.cards[0].id : "";
+  if (S.sel !== PLAIN && !S.cards.some((c) => c.id === S.sel)) S.sel = S.cards[0] ? S.cards[0].id : "";
   const kept = local.get(K.key, "");
   S.key = kept || session.get(K.key, "") || "";
   S.keyRemembered = !!kept;
   S.model = local.get(K.model, C.DEFAULT_MODEL) || C.DEFAULT_MODEL;
+  S.plain = { ...C.normalizeCard({ name: "no character", voice: { short_form: false } }), id: PLAIN, plain: true,
+    model: local.get(K.plainModel, C.DEFAULT_MODEL) || C.DEFAULT_MODEL };
   const sort = local.get(K.sort, "featured");
   S.v.sort = SORTS.includes(sort) ? sort : "featured";
+  S.v.adult = local.get(K.adult, false) === true && local.get(K.adult18, false) === true;
+  S.own = local.get(K.own, {}) || {};
   bind();
   renderAll();
-  if (S.key) loadVenice(0);
+  loadModels();
+  if (S.key) { loadVenice(0); loadBalance(); }
 }
 
 // The first version of Havre arrived with three characters of its own. This one has none, so they leave, unless
@@ -93,7 +101,7 @@ function persistCards(now = false) {
 }
 function persistChats() {
   for (const id of Object.keys(S.chats)) {
-    if (!S.cards.some((c) => c.id === id)) delete S.chats[id];
+    if (id !== PLAIN && !S.cards.some((c) => c.id === id)) delete S.chats[id];
     else if (S.chats[id].length > 80) S.chats[id] = S.chats[id].slice(-80);
   }
   local.set(K.chats, S.chats);
@@ -118,10 +126,15 @@ function replaceCard(next) {
 }
 
 // ---------- faces ----------
+// Venice keeps character photos (outerface.venice.ai) behind its own sign-in; its image service hands them out
+const OUTERFACE = /^https:\/\/outerface\.venice\.ai\//;
+function veniceImg(url, w = 384) {
+  return OUTERFACE.test(url || "") ? `https://venice.ai/_next/image?url=${encodeURIComponent(url)}&w=${w}&q=75` : url || "";
+}
 function portraitSrc(c) {
   const p = (c && c.portrait) || "";
   if (/^data:image\/(png|jpe?g|webp|gif|svg\+xml)[;,]/i.test(p)) return p;
-  if (/^https:\/\/outerface\.venice\.ai\//.test(p)) return p;
+  if (OUTERFACE.test(p)) return veniceImg(p);
   if (p.startsWith(C.SITE)) return p.slice(C.SITE.length);
   if (p && !/^[a-z][a-z0-9+.-]*:/i.test(p) && !p.startsWith("//")) return p;
   return "";
@@ -156,16 +169,33 @@ function renderGrid() {
   $("#vnext").disabled = !S.v.more || S.v.loading;
   $("#vrange").textContent = showing ? `${S.v.offset + 1}–${S.v.offset + S.v.list.length}` : "";
   if (!S.key) vStatus("paste your venice key above and venice's characters show up here.");
+  renderTags();
 }
+/** the tags on this page, most common first; one picked narrows the search to it */
+function renderTags() {
+  const p = $("#vtags");
+  p.textContent = "";
+  const counts = new Map();
+  for (const v of S.v.list) for (const t of v.tags || []) { const k = String(t).toLowerCase().trim(); if (k) counts.set(k, (counts.get(k) || 0) + 1); }
+  const top = [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 14).map(([t]) => t);
+  if (S.v.tag && !top.includes(S.v.tag)) top.unshift(S.v.tag);
+  p.hidden = !S.key || !top.length;
+  if (p.hidden) return;
+  p.append("tags: ", ...slashed(top.map((t) => (t === S.v.tag
+    ? h("b", {}, "#" + t + " ", linkish("×", () => setTag(""), { "aria-label": `Show every tag, not just ${t}` }))
+    : linkish("#" + t, () => setTag(t), { "aria-label": `Only characters tagged ${t}` })))));
+}
+function setTag(t) { S.v.tag = t; loadVenice(0); }
 function tile(v, now) {
   const here = S.cards.some((c) => c.engine.venice_character === v.slug), on = now === v.slug;
   const ph = h("span", { class: "ph" });
-  paintFace(ph, v.photo);
+  paintFace(ph, veniceImg(v.photo));
   return h("li", {}, h("button", { type: "button", class: "tile", "aria-pressed": on ? "true" : "false", "data-slug": v.slug,
     "aria-label": `Talk to ${v.name}`, title: v.description ? v.description.slice(0, 300) : null, onclick: () => talkTo(v) },
   ph, h("span", { class: "tx" }, h("span", { class: "nm", text: v.name }),
     v.description ? h("span", { class: "ds", text: v.description }) : null,
-    h("span", { class: "go", text: on ? "talking now" : here ? "talk again" : "talk" }))));
+    h("span", { class: "go", text: on ? "talking now" : here ? "talk again" : "talk" }),
+    v.adult ? h("span", { class: "x18", text: "18+" }) : null)));
 }
 /** who is talking now, and who is in your harbor already, without redrawing the photos */
 function markTiles() {
@@ -185,10 +215,12 @@ async function loadVenice(offset = 0, { paging = false } = {}) {
   vStatus("asking venice for characters…");
   renderGrid();
   try {
-    const { list, more } = await new Venice(S.key).characterPage({ search: S.v.query, sort: S.v.sort, limit: PAGE, offset });
+    const { list, more } = await new Venice(S.key).characterPage({ search: S.v.query, sort: S.v.sort, tags: S.v.tag,
+      adult: S.v.adult, limit: PAGE, offset });
     if (asked !== S.v.asked) return;                      // a newer search is on its way
     Object.assign(S.v, { list, more, offset, loading: false });
-    vStatus(list.length ? "" : S.v.query ? `nothing safe for work matched “${S.v.query}”.` : "venice sent back no characters.");
+    vStatus(list.length ? "" : S.v.query || S.v.tag ? `nothing matched${S.v.query ? " “" + S.v.query + "”" : ""}${S.v.tag ? " in #" + S.v.tag : ""}.`
+      : "venice sent back no characters.");
     renderGrid();
     if (paging) $("#chars").scrollIntoView({ behavior: motion(), block: "start" });
   } catch (e) {
@@ -201,6 +233,7 @@ async function loadVenice(offset = 0, { paging = false } = {}) {
 
 function talkTo(v) {
   if (!S.key) return needKey("paste your venice key first.");
+  if (v.model && S.own[v.slug] !== v.model) { S.own[v.slug] = v.model; local.set(K.own, S.own); }   // the model they use on Venice
   let c = S.cards.find((x) => x.engine.venice_character === v.slug);
   if (!c) {
     c = addCard({
@@ -250,23 +283,25 @@ function selectCard(id, { talk = false, scroll = false } = {}) {
 // a Venice character, or one of yours with no greeting written, says hello first
 function speakFirst() {
   const c = card();
-  if (!c || !S.key || S.replying || (S.chats[c.id] || []).length) return;
+  if (!c || c.plain || !S.key || S.replying || (S.chats[c.id] || []).length) return;
   if (c.engine.venice_character || (!c.greeting && c.persona)) send(OPENER, { hidden: true });
 }
 
 // ---------- the conversation ----------
+/** characters from Venice, and the plain chat, need a key to say anything */
+const needsKey = (c) => !!(c && (c.plain || c.engine.venice_character));
 function renderChat() {
   const c = card();
   $("#who-name").textContent = c ? c.name : "chat";
   renderChatMeta();
-  const venice = !!(c && c.engine.venice_character);
-  const locked = !c || (venice && !S.key);
+  const locked = !c || (needsKey(c) && !S.key);
   $("#say").disabled = locked;
   $("#sendbtn").disabled = locked || !!S.replying;
-  $("#say").placeholder = c ? `say something to ${c.name}` : "say something";
+  $("#say").placeholder = c && !c.plain ? `say something to ${c.name}` : "say something";
   const kn = $("#keynote");
   kn.hidden = !c || !!S.key;
-  kn.textContent = venice ? `paste your venice key above to talk to ${c.name}.`
+  kn.textContent = c && c.plain ? "paste your venice key above to chat."
+    : needsKey(c) ? `paste your venice key above to talk to ${c.name}.`
     : "no key yet: replies come from the card's own examples. paste your venice key above to really talk.";
   renderLog();
 }
@@ -275,8 +310,9 @@ function renderChatMeta() {
   meta.textContent = "";
   if (!c) return;
   meta.append(...slashed([
-    c.engine.venice_character ? "via venice, with their own prompt" : c.tagline,
-    linkish("card", () => openCard("edit")),
+    c.plain ? "just the model, no character" : c.engine.venice_character ? "via venice, with their own prompt" : c.tagline,
+    h("span", {}, "model: ", linkish(modelName(c.model), openModels, { id: "model-btn", "aria-label": `Model: ${modelName(c.model)}. Change it` })),
+    c.plain ? null : linkish("card", () => openCard("edit")),
     linkish("start over", startOver, { title: "Start this conversation over" }),
   ]));
 }
@@ -294,7 +330,7 @@ function startOver() {
 /** one line of the script: who says it, then what they say. kind: note, err, typing or suggest */
 function line(text, who, kind = "") {
   const c = card();
-  const name = who === "me" ? "you" : who === "havre" ? "havre" : c ? c.name : "";
+  const name = who === "me" ? "you" : who === "havre" ? "havre" : !c ? "" : c.plain ? modelName(c.model) : c.name;
   const said = h("div", { class: "said" });
   if (kind) said.textContent = text;
   else {
@@ -325,12 +361,15 @@ function renderLog() {
     return;
   }
   const hist = S.chats[c.id] || [];
-  if (c.engine.venice_character) {
+  if (c.plain) {
+    if (!hist.length) put(line(S.key ? "a plain chat: no character, just the model you pick above. say anything."
+      : "paste your venice key above to chat with a model.", "havre", "note"));
+  } else if (c.engine.venice_character) {
     if (!hist.length) put(line(`${c.name} speaks through venice, with their own prompt.${S.key ? " say hello." : ""}`, "havre", "note"));
   } else if (c.greeting) for (const b of C.splitBubbles(C.fill(c.greeting, c, "you"))) put(line(b, "them"));
   for (const m of hist) {
     if (m.role === "user" && !m.hidden) put(line(m.content, "me"));
-    else if (m.role === "assistant") for (const b of C.splitBubbles(m.content)) put(line(b, "them"));
+    else if (m.role === "assistant") for (const b of bubblesOf(c, m.content)) put(line(b, "them"));
   }
   const ideas = hist.some((m) => m.role === "user" && !m.hidden) ? [] : C.suggestions(c);
   if (ideas.length) {
@@ -342,9 +381,13 @@ function renderLog() {
   scrollLog();
 }
 
+/** a character texts in short bubbles; a plain chat answers in one piece */
+const bubblesOf = (c, text) => (c.plain ? [C.stripThinking(text)].filter(Boolean) : C.splitBubbles(text));
+const plainMessages = (hist) => hist.filter((m) => !m.demo && (m.role === "user" || m.role === "assistant")).slice(-40)
+  .map((m) => ({ role: m.role, content: m.content }));
 function setBusy(on) {
   const c = card();
-  $("#sendbtn").disabled = on || !c || !!(c.engine.venice_character && !S.key);
+  $("#sendbtn").disabled = on || !c || (needsKey(c) && !S.key);
   $("#composer").setAttribute("aria-busy", on ? "true" : "false");
 }
 
@@ -367,6 +410,7 @@ async function send(text, { hidden = false } = {}) {
   try {
     let reply;
     if (demo) {
+      if (c.plain) throw new Error("Paste your Venice key above to chat.");
       if (c.engine.venice_character) throw new Error(`${c.name} lives on Venice, so they need your Venice key to talk.`);
       await sleep(still ? 250 : 750);
       const n = S.demo[c.id] || 0;
@@ -374,7 +418,8 @@ async function send(text, { hidden = false } = {}) {
       reply = C.demoReply(c, n, text);
     } else {
       const r = await new Venice(S.key).chat({ model: c.model || S.model, characterSlug: c.engine.venice_character || "",
-        messages: C.chatMessages(c, hist.filter((m) => !m.demo)), signal: ctrl.signal });
+        veniceSystemPrompt: !!c.plain, maxTokens: c.plain ? 2000 : 700,
+        messages: c.plain ? plainMessages(hist) : C.chatMessages(c, hist.filter((m) => !m.demo)), signal: ctrl.signal });
       reply = C.stripThinking(r.text);
       if (!reply) throw new Error("Venice sent back an empty reply. Try again, or pick another model on the card.");
     }
@@ -382,7 +427,8 @@ async function send(text, { hidden = false } = {}) {
     hist.push({ role: "assistant", content: reply, ...(demo ? { demo: true } : {}) });
     persistChats();
     typing.remove();
-    await play(C.splitBubbles(reply), ctrl.signal);
+    if (!demo) balanceSoon();
+    await play(bubblesOf(c, reply), ctrl.signal);
   } catch (e) {
     if (e && e.name === "AbortError") return;
     typing.remove();
@@ -414,10 +460,14 @@ async function play(bubbles, signal) {
 
 // ---------- the card ----------
 function renderCard() {
-  const c = card();
-  $("#card-empty").hidden = !!c;
-  $("#card-body").hidden = !c;
-  $("#card-h").textContent = c ? "CARD: " + c.name.toUpperCase() : "CARD";
+  const c = card(), real = !!c && !c.plain;
+  const empty = $("#card-empty");
+  empty.hidden = real;
+  empty.textContent = c && c.plain ? "a plain chat has no card. pick a character to see theirs."
+    : "no character yet. the card shows up here once someone is in your harbor.";
+  $("#card-body").hidden = !real;
+  $("#card-h").textContent = real ? "CARD: " + c.name.toUpperCase() : "CARD";
+  if (!real) return;
   renderSheet();
   resetRemix();
 }
@@ -444,13 +494,84 @@ function fillModels(sel, current) {
   if (current && ![...sel.options].some((o) => o.value === current)) sel.prepend(h("option", { value: current, text: current }));
   sel.value = current || C.DEFAULT_MODEL;
 }
-async function loadModels() {
-  if (S.models) return;
+let modelsAsked = null;
+function loadModels() {
+  if (S.models) return Promise.resolve();
+  if (!modelsAsked) {
+    modelsAsked = new Venice("").models().then((ms) => {
+      S.models = ms;
+      S.modelsError = "";
+      const c = card();
+      if (c && !c.plain) fillModels($("#model-select"), c.model);
+      renderChatMeta();
+      if ($("#modeldlg").open) renderModels();
+    }).catch((e) => { S.modelsError = e.message; modelsAsked = null; if ($("#modeldlg").open) renderModels(); });
+  }
+  return modelsAsked;
+}
+const modelName = (id) => { const m = S.models && S.models.find((x) => x.id === id); return m ? m.name : id || "?"; };
+
+// ---------- the model picker ----------
+/** the model a Venice character uses on Venice itself, as Havre last saw it */
+const ownModel = (c) => (c && c.engine.venice_character && S.own[c.engine.venice_character]) || "";
+const usd = (n) => (n == null ? "?" : "$" + (n >= 10 ? n.toFixed(0) : n >= 1 ? n.toFixed(2).replace(/\.?0+$/, "") : n.toFixed(2)));
+function openModels() {
+  const c = card();
+  if (!c) return;
+  const own = ownModel(c);
+  $("#model-for").textContent = c.plain ? "for the plain chat." : `for ${c.name}.` + (own ? ` their own on venice: ${modelName(own)}.` : "");
+  $("#msearch").value = "";
+  $("#modeldlg").showModal();
+  renderModels();
+  loadModels();
+}
+function renderModels() {
+  const c = card(), tb = $("#mlist"), q = $("#msearch").value.trim().toLowerCase();
+  tb.textContent = "";
+  if (!c) return;
+  if (!S.models) {
+    tb.append(h("tr", {}, h("td", { colspan: "5", text: S.modelsError || "asking venice for its models…" })));
+    return;
+  }
+  const own = ownModel(c);
+  const rank = (m) => (m.id === c.model ? 2 : 0) + (m.id === own ? 1 : 0);
+  const list = S.models.filter((m) => !q || `${m.id} ${m.name} ${m.traits.join(" ")} ${m.privacy}`.toLowerCase().includes(q))
+    .sort((a, b) => rank(b) - rank(a) || a.name.localeCompare(b.name));
+  for (const m of list) {
+    const can = [m.vision && "sees", m.tools && "tools", m.reasoning && "reasons", m.web && "web", m.uncensored && "uncensored"].filter(Boolean);
+    const notes = [m.id, m.id === own && "their own", m.traits.includes("default") && "venice's default", m.retiring && "retiring " + m.retiring].filter(Boolean);
+    tb.append(h("tr", { "aria-current": m.id === c.model ? "true" : null },
+      h("th", { scope: "row" }, linkish(m.name, () => chooseModel(m.id), { "aria-label": `Use ${m.name}` }), h("span", { class: "mid", text: notes.join(" · ") })),
+      h("td", { text: m.privacy || "?" }),
+      h("td", { text: can.join(" · ") || "text" }),
+      h("td", { class: "num", text: `${usd(m.input)} / ${usd(m.output)}` }),
+      h("td", { class: "num", text: m.ctx ? Math.round(m.ctx / 1000) + "k" : "" })));
+  }
+  if (!list.length) tb.append(h("tr", {}, h("td", { colspan: "5", text: `no model matches “${$("#msearch").value.trim()}”.` })));
+}
+function chooseModel(id) {
+  const c = card();
+  if (!c) return;
+  if (c.plain) { S.plain.model = id; local.set(K.plainModel, id); }
+  else { replaceCard({ ...c, model: id }); fillModels($("#model-select"), id); }
+  $("#modeldlg").close();
+  renderChatMeta();
+  toast(`${c.plain ? "The plain chat" : c.name} now talks through ${modelName(id)}.`);
+}
+
+// ---------- what is left on the key ----------
+let balanceTimer = 0;
+function balanceSoon() { clearTimeout(balanceTimer); balanceTimer = setTimeout(loadBalance, 1500); }
+async function loadBalance() {
+  const el = $("#balance");
+  if (!S.key) { el.hidden = true; return; }
   try {
-    S.models = await new Venice("").models();
-    const c = card();
-    if (c) fillModels($("#model-select"), c.model);
-  } catch { /* the recommended list is enough */ }
+    const { amount, currency } = await new Venice(S.key).balance();
+    if (amount == null || !S.key) { el.hidden = true; return; }
+    el.textContent = "balance " + (currency === "USD" ? "$" + amount.toFixed(2)
+      : currency === "DIEM" ? amount.toFixed(2) + " diem" : amount.toFixed(2) + " credits");
+    el.hidden = false;
+  } catch { el.hidden = true; }
 }
 
 function renderSheet() {
@@ -612,6 +733,7 @@ async function saveKey(ev) {
   renderChat();
   resetRemix();
   loadVenice(0);
+  loadBalance();
 }
 function forgetKey() {
   if (S.replying) { S.replying.abort(); S.replying = null; setBusy(false); }
@@ -624,6 +746,7 @@ function forgetKey() {
   $("#keyremember").checked = false;
   updateKeyUI();
   keyStatus("forgotten.", false, true);
+  $("#balance").hidden = true;
   renderGrid();
   renderChat();
   resetRemix();
@@ -710,7 +833,7 @@ async function rxSource(c) {
 }
 async function distill() {
   const c = card();
-  if (!c || S.rx.busy) return;
+  if (!c || c.plain || S.rx.busy) return;
   if (!S.key) return needKey("remix needs your venice key.");
   rxBusy(true);
   try {
@@ -944,6 +1067,21 @@ function bind() {
     local.set(K.sort, S.v.sort);
     if (S.key) loadVenice(0);
   });
+  $("#vadult").checked = S.v.adult;
+  $("#vadult").addEventListener("change", () => {
+    const box = $("#vadult");
+    if (box.checked && !local.get(K.adult18, false)) {
+      if (!confirm("Adult characters are for people 18 or older.\n\nAre you 18 or older?")) { box.checked = false; return; }
+      local.set(K.adult18, true);
+    }
+    S.v.adult = box.checked;
+    local.set(K.adult, S.v.adult);
+    if (S.key) loadVenice(0);
+  });
+  $("#plain").addEventListener("click", () => selectCard(PLAIN, { talk: true }));
+  $("#msearch").addEventListener("input", renderModels);
+  $("#modelform").addEventListener("submit", (e) => e.preventDefault());       // Enter in the search box keeps it open
+  $("#mclose").addEventListener("click", () => $("#modeldlg").close());
   $("#vprev").addEventListener("click", () => loadVenice(Math.max(0, S.v.offset - PAGE), { paging: true }));
   $("#vnext").addEventListener("click", () => loadVenice(S.v.offset + PAGE, { paging: true }));
 
