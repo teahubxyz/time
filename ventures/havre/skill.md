@@ -152,6 +152,12 @@ In Havre a character can send more than texts. `abilities.js` has the prompts an
 Rules for photos and clips: safe for work, everyone shown is an adult, never a real or identifiable person. Make
 them only from pictures the person can see on the card.
 
+Word those rules for what's wanted, never by naming what they rule out: content filters (Venice's, and the ones of
+the models' makers) read the words, not the "no" in front of them, so a rule that names what it forbids gets a
+harmless prompt turned down. When Venice turns one down anyway (a 422 its docs call `CONTENT_POLICY_VIOLATION`;
+`VeniceError.refused`), offer the next model (`A.another(list, tried, kind)`) instead of a dead end. A photo a
+character starts on their own tries one other model, then says in the chat that it didn't come.
+
 The one exception is an `adult` character, once the person has said they're 18 or older: when every picture on their
 card was made with AI (never one that was uploaded, which could be of anyone), their photos and clips can be adult.
 `A.adultCheck(card, { of18, made, shot, said })` decides; they go to Venice's uncensored models with safe mode off,

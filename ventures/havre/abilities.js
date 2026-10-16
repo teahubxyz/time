@@ -38,6 +38,10 @@ export function pick(list, prefer = []) {
 export function chosen(list, id, kind) {
   return (list && id && list.find((m) => m.id === id)) || pick(list, PREFER[kind] || []);
 }
+/** another model of a kind, for when the ones tried turned something down: the next Havre reaches for; null if none is left */
+export function another(list, tried = [], kind = "") {
+  return pick((list || []).filter((m) => m && !tried.includes(m.id)), PREFER[kind] || []);
+}
 
 /** clips come from reference-to-video models; Venice's adult ones (the "enhanced" and uncensored variants) stay out */
 export const isClipModel = (m) => !!m && m.ref && !m.uncensored && !/enhanced/i.test(m.id);
@@ -79,21 +83,27 @@ export const hearingPerMinute = (model) => (model && model.perSecond != null ? m
 
 // ---------- what goes into a photo or a clip ----------
 
+// Content filters (Venice's, and the ones of the models' makers) read the words in a prompt, not the "no" in front of
+// them: a rule that names what it rules out is the kind of prompt they turn down. So the rules that go into a picture
+// or a clip say what's wanted, and the shot is written to the rules without repeating them.
 const SAFE = "Keep it safe for work: no nudity, nothing sexual, no gore. Everyone shown is an adult. Never show a real, " +
   "identifiable person: no celebrities, no public figures, no one the conversation says is real; if one is asked for, show " +
   "the character alone. No words, logos or watermarks in the picture.";
-// for an adult character's photos and clips (adultCheck): the same rules, less the one about work, and a hard one first
-export const ADULT_ONLY = "Hard rule: everyone shown is an adult, 18 or older, with a clearly adult face and body. Never " +
-  "anyone under 18, or anyone who looks it: no childlike features, no school uniforms, nothing that suggests a minor.";
-const ADULT = ADULT_ONLY + " If the conversation asks for anything else, leave it out and show only adults. Never show a " +
-  "real, identifiable person: no celebrities, no public figures, no one the conversation says is real; if one is asked " +
-  "for, show the character alone. No gore. No words, logos or watermarks in the picture.";
+// for an adult character's photos and clips (adultCheck): the same rules, less the one about work, and a hard one first.
+// It says who is shown, not who isn't: the words for that are the ones filters look for (and Havre's own check, underage)
+export const ADULT_ONLY = "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.";
+const ADULT = ADULT_ONLY + " If the conversation asks for anyone younger, or for anything that makes someone look younger, " +
+  "leave it out and show only adults. Never show a real, identifiable person: no celebrities, no public figures, no one the " +
+  "conversation says is real; if one is asked for, show the character alone. No gore. No words, logos or watermarks in the " +
+  "picture.";
+// the shot goes to the image model as it is: rules written into it would only be words for a filter to trip on
+const UNSAID = "Follow these rules without writing them into the shot.";
 
 const photoSystem = (rules) => "You write the shot for a photo that a character in a chat is about to send: what the " +
   "camera sees. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: " +
   "where they are, what they are doing, how they are framed, the light and the mood. Call the character \"the character " +
   "from the reference picture\" and don't describe their face, hair or body: the reference picture shows how they look. " +
-  rules + " Reply with the shot only.";
+  rules + " " + UNSAID + " Reply with the shot only.";
 export const PHOTO_SYSTEM = photoSystem(SAFE);
 export const PHOTO_SYSTEM_ADULT = photoSystem(ADULT);
 
@@ -101,7 +111,7 @@ const clipSystem = (rules) => "You write the shot for a video clip, a few second
   "about to send. Use what is happening in the conversation and what was asked for. One paragraph of at most 60 words: " +
   "one simple action, where it happens, how the camera moves, the light and the mood. Call the character \"the character " +
   "from the reference pictures\" and don't describe their face, hair or body: the pictures show how they look. " + rules +
-  " Reply with the shot only.";
+  " " + UNSAID + " Reply with the shot only.";
 export const CLIP_SYSTEM = clipSystem(SAFE);
 export const CLIP_SYSTEM_ADULT = clipSystem(ADULT);
 
@@ -151,10 +161,11 @@ export function cleanText(text, max = 900) {
   return clip(t, max);
 }
 
-// the rules ride at the front of every picture and clip, where a long shot or a long look can't push them out
-const KEEP = "Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult.";
+// the rules ride at the front of every picture and clip, where a long shot or a long look can't push them out. They
+// say what's wanted: an image model reads the words, not the "no" in front of them, and so does a content filter
+const KEEP = "Safe for work: everyone in it is an adult, fully clothed.";
 // an adult character's: the 18+ rule is the very first thing the model reads
-const KEEP_ADULT = ADULT_ONLY + " Never a real, identifiable person. No gore.";
+const KEEP_ADULT = ADULT_ONLY + " Never a real, identifiable person.";
 
 /** how their card says they look, on one line, without a full stop at the end ("" when it doesn't say) */
 const lookWords = (card) => str(card && card.look && card.look.description, 4000).replace(/\s+/g, " ").trim().replace(/[.!?…]+$/, "");
@@ -300,7 +311,7 @@ const moveSystem = (rules) => "You decide whether a character in a chat does som
   "(they send that reply as a voice note too: a feeling, a laugh, a whisper, something better said aloud), \"clip\" (a " +
   "few seconds of video, only for a moment that needs moving pictures), or \"nothing\" (most of the time). Never two " +
   "photos in a row. For a photo or a clip, write the shot: what the camera sees, at most 60 words, calling them \"the " +
-  "character from the reference picture\" instead of describing their face, hair or body. " + rules +
+  "character from the reference picture\" instead of describing their face, hair or body. " + rules + " " + UNSAID +
   " Reply with one JSON object: {\"move\": \"photo\" | \"voice\" | \"clip\" | \"nothing\", \"shot\": \"...\"}.";
 export const MOVE_SYSTEM = moveSystem(SAFE);
 export const MOVE_SYSTEM_ADULT = moveSystem(ADULT);

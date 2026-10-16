@@ -46,6 +46,21 @@ test("the model in use: the one picked if Venice still has it, else Havre's pref
   assert.equal(A.seer([{ id: "d", vision: false }]), null);
 });
 
+test("another model, for when the ones tried turned something down: the next Havre reaches for, never one tried", () => {
+  const edits = [{ id: "nano-banana-2-edit", privacy: "anonymized" }, { id: "grok-imagine-edit", privacy: "private" },
+    { id: "firered-image-edit", privacy: "private" }, { id: "qwen-edit-uncensored", privacy: "private", uncensored: true }];
+  assert.equal(A.another(edits, ["grok-imagine-edit"], "photo").id, "firered-image-edit", "Havre's next preference");
+  assert.equal(A.another(edits, ["firered-image-edit"], "photo").id, "grok-imagine-edit");
+  assert.equal(A.another(edits, ["grok-imagine-edit", "firered-image-edit"], "photo").id, "qwen-edit-uncensored", "then a private one");
+  assert.equal(A.another(edits, ["grok-imagine-edit", "firered-image-edit", "qwen-edit-uncensored"], "photo").id, "nano-banana-2-edit", "then any");
+  assert.equal(A.another(edits, edits.map((m) => m.id), "photo"), null, "none left");
+  assert.equal(A.another(null, [], "photo"), null);
+  const adult = edits.filter(A.isAdultPhotoModel);
+  assert.equal(A.another(adult, ["qwen-edit-uncensored"], "adultPhoto"), null, "an adult character's photos stay on the uncensored models");
+  assert.equal(A.another([...adult, { id: "seedream-v5-lite-edit", uncensored: true }, { id: "qwen-image-2-1-turbo-edit", uncensored: true }],
+    ["qwen-edit-uncensored"], "adultPhoto").id, "qwen-image-2-1-turbo-edit");
+});
+
 test("prices: a photo with extra pictures, a voice note, a minute of hearing, written plainly", () => {
   assert.equal(A.photoPrice(photos[2], 1), 0.12);
   assert.equal(A.photoPrice(photos[2], 3), 0.189);
@@ -76,8 +91,8 @@ test("the shot is written from the conversation, with the rules, and the photo k
   const p = A.photoPrompt(ines, "She leans on the rail at dusk.", 2, 120);
   assert.ok(p.startsWith("The reference pictures show Ines Corbel."));
   assert.ok(p.length <= 120);
-  assert.match(A.portraitPrompt(ines), /^Portrait photo of Ines Corbel, an original adult character: forties.*Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult\./);
-  assert.match(A.photoPrompt(ines, "On deck."), /^The reference picture shows Ines Corbel\. Safe for work.*everyone shown is an adult\. Keep their face.* New photo: On deck\. A natural photo with no text in it\.$/);
+  assert.match(A.portraitPrompt(ines), /^Portrait photo of Ines Corbel, an original adult character: forties.*Safe for work: everyone in it is an adult, fully clothed\./);
+  assert.match(A.photoPrompt(ines, "On deck."), /^The reference picture shows Ines Corbel\. Safe for work: everyone in it is an adult, fully clothed\. Keep their face.* New photo: On deck\. A natural photo with no text in it\.$/);
   assert.match(A.clipPrompt(ines, "She waves."), /^The reference pictures show Ines Corbel\. Safe for work.*How they look: forties.* The clip: She waves\.$/);
   assert.match(A.lookMessages(ines)[1].content, /Ferry pilot/);
   // a picture for their card, made from the ones they have: the next view of a character sheet
@@ -111,11 +126,11 @@ test("pictures made from their pictures keep their face and follow how their car
   }
   assert.ok(A.photoPrompt(long, shot, 1, 1500, { adult: true }).startsWith(A.ADULT_ONLY));
   // with hardly any room, the look goes before the shot does
-  assert.match(A.photoPrompt(long, "On deck.", 1, 380), /Keep their face, hair and build/);
+  assert.match(A.photoPrompt(long, "On deck.", 1, 355), /Keep their face, hair and build/);
   // a portrait: the look takes the room the rules and the framing leave
   const drawn = A.portraitPrompt(long);
   assert.ok(drawn.length <= 1500);
-  assert.match(drawn, /… Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult\. Head and shoulders, soft light, plain background, no text\.$/);
+  assert.match(drawn, /… Safe for work: everyone in it is an adult, fully clothed\. Head and shoulders, soft light, plain background, no text\.$/);
   assert.match(A.portraitPrompt(long, 1500, { adult: true }), /^Hard rule.*Portrait photo of Ines Corbel.*… Head and shoulders, soft light, plain background, no text\.$/);
   assert.match(A.portraitPrompt({ ...bare, tagline: "Ferry pilot." }), /an original adult character: Ferry pilot\. Safe for work/);
   assert.match(A.portraitPrompt({ ...bare, tagline: "" }), /an original adult character: an original character\. Safe for work/);
@@ -126,7 +141,7 @@ const mara = C.normalizeCard({ name: "Mara Vell", persona: "You are Mara Vell, a
   portrait: "data:image/webp;base64,AAAA", look: { references: ["data:image/webp;base64,BBBB"] } });
 
 test("adult characters: the 18+ rule is the first thing every photo and clip prompt says, and the shot's", () => {
-  assert.match(A.ADULT_ONLY, /^Hard rule: everyone shown is an adult, 18 or older, with a clearly adult face and body\. Never anyone under 18/);
+  assert.equal(A.ADULT_ONLY, "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.");
   for (const p of [A.photoPrompt(mara, "On the stage.", 1, 1500, { adult: true }), A.photoPrompt(mara, "On the stage.", 2, 1500, { adult: true }),
     A.clipPrompt(mara, "She bows.", 2500, { adult: true })]) {
     assert.ok(p.startsWith(A.ADULT_ONLY), p);
@@ -148,10 +163,34 @@ test("adult characters: the 18+ rule is the first thing every photo and clip pro
   assert.equal(A.shotMessages(mara, [], "")[0].content, A.PHOTO_SYSTEM, "safe for work unless asked");
 });
 
+test("the words Havre puts in a picture or a clip are none a content filter turns down, and an adult's still open with the 18+ rule", () => {
+  // what filters look for is what a rule rules out, named: Havre's own words say what's wanted instead
+  const TRIPS = /\b(?:sex\w*|nud\w*|naked|gor[ey]|minors?|child\w*|kids?|school\w*|teen\w*|under[\s-]?(?:18|eighteen|age\w*)|young\w*)\b/i;
+  for (const adult of [false, true]) {
+    const who = adult ? mara : ines, bare = { ...who, look: { ...who.look, description: "" } };
+    for (const p of [A.photoPrompt(who, "On deck.", 1, 1500, { adult }), A.photoPrompt(who, "On deck.", 2, 1500, { adult }),
+      A.photoPrompt(bare, "On deck.", 1, 1500, { adult }), A.photoPrompt(who, A.sheetView(0), 1, 1500, { adult }), A.clipPrompt(who, "She waves.", 2500, { adult }),
+      A.clipPrompt(bare, "She waves.", 2500, { adult }), A.portraitPrompt(who, 1500, { adult }), A.portraitPrompt({ ...bare, tagline: "" }, 1500, { adult })]) {
+      assert.ok(!TRIPS.test(p), `“${(p.match(TRIPS) || [])[0]}” in: ${p}`);
+      assert.equal(A.underage(p), "", p);
+      if (adult) assert.ok(p.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body."), p);
+      else assert.match(p, /Safe for work: everyone in it is an adult, fully clothed\./);
+    }
+  }
+  // the shot is written to the rules without repeating them (it goes to the image model as it's written), and a rule
+  // echoed into it anyway can't make Havre's own check say someone is under 18
+  for (const s of [A.PHOTO_SYSTEM, A.CLIP_SYSTEM, A.MOVE_SYSTEM, A.PHOTO_SYSTEM_ADULT, A.CLIP_SYSTEM_ADULT, A.MOVE_SYSTEM_ADULT]) {
+    assert.match(s, /Follow these rules without writing them into the shot\. (Reply with the shot only\.|Reply with one JSON object)/);
+    assert.equal(A.underage(s), "", s);
+  }
+  // the model writing an adult character's shot is told what the 18+ rule keeps out, in words that name no one
+  assert.match(A.PHOTO_SYSTEM_ADULT, /Hard rule, 18\+ only: everyone shown is an adult, 18 or older, with a grown adult face and body\. If the conversation asks for anyone younger, or for anything that makes someone look younger, leave it out and show only adults\./);
+});
+
 test("adult characters: a portrait for their card opens with the 18+ rule too, and is drawn whatever pictures they have", () => {
   const p = A.portraitPrompt(mara, 1500, { adult: true });
   assert.ok(p.startsWith(A.ADULT_ONLY), p);
-  assert.match(p, /Never a real, identifiable person\. No gore\. Portrait photo of Mara Vell, an original adult character: /);
+  assert.match(p, /Never a real, identifiable person\. Portrait photo of Mara Vell, an original adult character: /);
   assert.ok(!/Safe for work/.test(p));
   assert.ok(A.portraitPrompt({ ...mara, look: { description: "x ".repeat(3000) } }, 400, { adult: true }).startsWith(A.ADULT_ONLY), "a long look can't push it out");
   assert.match(A.portraitPrompt(mara), /Safe for work/, "without adult, as before");
@@ -376,10 +415,21 @@ test("venice: the other model lists come with their prices, voices, lengths and 
   assert.deepEqual((await v.mediaModels("image"))[0].aspects, ["1:1"]);
 });
 
-test("venice: what Venice says when it turns something down", async () => {
-  const v = new Venice("sk", { fetch: fake((p) => (p === "/video/queue" ? { status: 422, body: { error: "Prompt violates content policy" } } : { status: 503, body: {} })).f });
-  await assert.rejects(v.queueVideo({ model: "m", prompt: "p", duration: "5s" }), /content rules: Prompt violates content policy/);
-  await assert.rejects(v.speak({ model: "m", input: "x" }), /busy at Venice/);
+test("venice: what Venice says when it turns something down, and when a 422 is something else", async () => {
+  const answers = {
+    "/video/queue": { status: 422, body: { error: "Your prompt violates the content policy of Venice.ai or the model provider" } },
+    "/image/edit": { status: 422, body: { error: { code: "CONTENT_POLICY_VIOLATION", message: "Blocked by the model provider: a real person." } } },
+    "/image/multi-edit": { status: 422, body: {} },
+    "/image/generate": { status: 422, body: { error: "Image dimensions exceed the maximum allowed." } },
+  };
+  const v = new Venice("sk", { fetch: fake((p) => answers[p] || { status: 503, body: {} }).f });
+  const said = (re, refused, status = 422) => (e) => { assert.match(e.message, re); assert.equal(e.refused, refused); assert.equal(e.status, status); return true; };
+  await assert.rejects(v.queueVideo({ model: "m", prompt: "p", duration: "5s" }), said(/^Venice turned that down as against its content rules\.$/, true));
+  await assert.rejects(v.editImage({ model: "m", prompt: "p", images: ["data:image/png;base64,AA"] }),
+    said(/^Venice turned that down as against its content rules \(“Blocked by the model provider: a real person”\)\.$/, true));
+  await assert.rejects(v.editImage({ model: "m", prompt: "p", images: ["a", "b"] }), said(/^Venice turned that down as against its content rules\.$/, true), "nothing said: a no");
+  await assert.rejects(v.generateImage({ model: "m", prompt: "p" }), said(/^Image dimensions exceed the maximum allowed\.$/, false), "not a no on content");
+  await assert.rejects(v.speak({ model: "m", input: "x" }), said(/busy at Venice/, false, 503));
 });
 
 // ---------- on their own ----------

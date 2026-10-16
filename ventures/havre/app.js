@@ -1543,7 +1543,9 @@ function askFor(kind) {
   if (S.ask && S.ask.busy) { toast("One thing at a time: the last one is still on its way."); return; }
   const hint = $("#say").value.trim();
   if (hint) { $("#say").value = ""; growSay(); }
-  S.ask = { kind, card: c.id, thread: S.open, hint, shot: "", busy: false, status: "", bad: false, quote: null, quoting: false, opts: null, asked: 0 };
+  // refused: the photo models that turned this photo down (each gets the next one a click away)
+  S.ask = { kind, card: c.id, thread: S.open, hint, shot: "", busy: false, status: "", bad: false, quote: null, quoting: false, opts: null, asked: 0,
+    refused: [] };
   loadList(kind === "clip" ? "video" : "inpaint");
   if (!refsOf(c).length) loadList("image");
   renderAsk();
@@ -1591,12 +1593,15 @@ function renderAsk() {
     box.append(h("label", {}, h("span", {}, "THE SHOT ", h("span", { class: "hint", text: "written from your conversation; change anything" })), ta));
     box.append(h("p", { class: "mono" }, linkish("write it again", writeShot, { disabled: a.busy || null }), a.hint ? ` (you asked for: ${a.hint})` : ""));
     if (!clipping) {
-      const pm = askPhotoModel(a), n = pm ? Math.min(refs.length, pm.maxIn) : refs.length, price = A.photoPrice(pm, n);
+      const pm = askPhotoModel(a), n = pm ? Math.min(refs.length, pm.maxIn) : refs.length, price = A.photoPrice(pm, n), alt = askAlt(a, c);
       box.append(h("p", { class: "mono" }, `from ${n} picture${n === 1 ? "" : "s"} of ${c.name} · model: `,
         linkish(pm ? pm.name : S.listErr.inpaint ? "unavailable" : "…", () => openModels(a.adult ? "adultPhoto" : "photo"), { "aria-label": "Change the photo model" }),
         price != null ? ` · ${A.usd(price)}` : ""));
       box.append(h("div", { class: "acts" },
-        h("button", { type: "button", class: "btn solid small", id: "ask-go", onclick: takePhoto, text: `TAKE THE PHOTO${price != null ? " · " + A.usd(price) : ""}` }),
+        alt ? h("button", { type: "button", class: "btn solid small", id: "ask-alt", onclick: () => tryAnother(alt.model),
+          text: `TRY ${alt.model.name.toUpperCase()} · ${A.usd(alt.price)}` }) : null,
+        h("button", { type: "button", class: alt ? "btn small" : "btn solid small", id: "ask-go", onclick: takePhoto,
+          text: `${alt ? "TRY AGAIN" : "TAKE THE PHOTO"}${price != null ? " · " + A.usd(price) : ""}` }),
         h("button", { type: "button", class: "btn small", text: "CANCEL", onclick: closeAsk, disabled: a.busy || null })));
     } else {
       const cm = askClipModel(a);
@@ -1646,9 +1651,30 @@ function renderAsk() {
 }
 /** the button that spends money is live only when there's a shot and a price for exactly what would be made */
 function syncAsk() {
-  const a = S.ask, go = $("#ask-go");
+  const a = S.ask, go = $("#ask-go"), alt = $("#ask-alt");
   if (!a || !go) return;
   go.disabled = a.busy || !a.shot.trim() || (a.kind === "clip" ? !quoteFits(a) : photoPriceNow(a) == null);
+  if (alt) alt.disabled = a.busy || !a.shot.trim();
+}
+/**
+ * The photo model turned this photo down: the next photo model Havre reaches for, and its price ({ model, price }), or
+ * null when there's none left, or the photo model now isn't one that said no.
+ */
+function askAlt(a, c) {
+  const pm = askPhotoModel(a);
+  if (!pm || !a.refused.includes(pm.id)) return null;
+  const m = A.another(a.adult ? adultPhotoModels() : S.lists.inpaint, a.refused, a.adult ? "adultPhoto" : "photo");
+  const price = m ? A.photoPrice(m, Math.min(refsOf(c).length, Math.max(1, m.maxIn))) : null;
+  return m && price != null ? { model: m, price } : null;
+}
+/** the photo taken with that other model, which stays the photo model from then on (as if picked under model:) */
+function tryAnother(m) {
+  const a = S.ask;
+  if (!a || a.busy || !m || !a.shot.trim()) return;
+  if (a.adult) S.ab.adultPhoto = m.id; else S.ab.photo = m.id;
+  saveAb();
+  toast(`${a.adult ? "Adult photo model" : "Photo model"}: ${m.name}, from now on.`);
+  takePhoto();
 }
 /** a photo's price, from the photo model and the pictures it would use; null when Venice gives none */
 function photoPriceNow(a) {
@@ -1708,7 +1734,9 @@ function requote() {
     if (!a.busy) renderAsk(); else syncAsk();
   }, 200);
 }
+/** what went wrong with a photo or a clip that was asked for, and what to do about it */
 function trouble(e, c) {
+  if (e.refused) return `${e.message} Change the shot, or try another model.`;
   return e.status === 400 && c.engine.venice_character && !c.look.references.length
     ? `Venice couldn't use ${c.name}'s photo (${e.message}). Add a picture of them on their card (card → look) and try again.` : e.message;
 }
@@ -1737,11 +1765,14 @@ async function takePhoto() {
       ...(adult ? { adult: true } : {}), ...(blurred ? { blurred: true } : {}) } });
   } catch (e) {
     a.busy = false;
+    if (e.refused && !a.refused.includes(pm.id)) a.refused.push(pm.id);     // the next model is a click away (askAlt)
     Object.assign(a, { status: trouble(e, c), bad: true });
     renderAsk();
   }
   balanceSoon();
 }
+/** a picture for their card that Venice turned down as against its content rules: what to change */
+const redraw = (e) => (e.refused ? `${e.message} Change how they look (card → look), and try again.` : e.message);
 /** a character with no picture at all: how they look, in words (if their card doesn't say), then a portrait from that */
 async function firstPortrait() {
   const a = S.ask;
@@ -1766,7 +1797,7 @@ async function firstPortrait() {
     writeShot();
   } catch (e) {
     a.busy = false;
-    Object.assign(a, { status: e.message, bad: true });
+    Object.assign(a, { status: redraw(e), bad: true });
     renderAsk();
   }
   balanceSoon();
@@ -1927,7 +1958,7 @@ async function makePicture(as = "") {
     lookStatus(st, "");
     toast(as === "portrait" || !c.portrait ? `${c.name} has a new portrait.` : `A new picture of ${c.name} is on their card.`);
   } catch (e) {
-    lookStatus(st, e.message, true);
+    lookStatus(st, redraw(e), true);
   } finally {
     drawing = false;
     S.inflight--;
@@ -2011,25 +2042,47 @@ async function onTheirOwn(t) {
     else if (move === "clip" && !lately) await offerClip(t, shot);
   } catch { /* then they just text */ } finally { refund(held); S.moving.delete(t.id); }
 }
+/** something they started on their own that didn't come (a photo, a voice note): said in its chat, or in a word elsewhere */
+function missed(t, what, e) {
+  const c = cardOf(t);
+  if (!c || !S.threads[t.id]) return;
+  const why = `${c.name}'s ${what} didn't come: ${(e && e.message) || "something went wrong."}`;
+  if (here(t)) err(why); else toast(why);
+}
+/**
+ * A photo they send on their own, out of the day's allowance. One that Venice turns down as against its content rules
+ * goes once more, to the next photo model; one that still doesn't come is said in its chat, so "is taking a photo…"
+ * never just stops.
+ */
 async function ownPhoto(t, shot) {
   const c = cardOf(t);
   await loadList("inpaint");
   if (!c) return;
   const adult = adultFor(c, t, shot).ok;                        // an adult character's can be adult (abilities.js adultCheck)
-  const pm = adult ? adultPhotoModel() : photoModel(), refs = refsOf(c);
-  if (!pm || !refs.length) return;                              // no picture of them yet: nothing to send
-  const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
-  if (!reserve(price)) return;                                  // set aside first: nothing else can spend it meanwhile
-  doing(t, "is taking a photo…");
-  try {
-    const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, shot, pics.length, pm.promptLimit, { adult }),
-      images: pics, safe: !adult });
-    const id = await M.put(blob);
-    done(t);
-    deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(adult ? { adult: true } : {}),
-      ...(blurred ? { blurred: true } : {}) } });
-    balanceSoon();
-  } catch (e) { refund(price); throw e; } finally { done(t); }
+  const refs = refsOf(c), tried = [];
+  let pm = adult ? adultPhotoModel() : photoModel(), why = null;
+  while (pm && refs.length && tried.length < 2) {               // no picture of them yet: nothing to send
+    const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
+    if (!reserve(price)) break;                                 // set aside first: nothing else can spend it meanwhile
+    tried.push(pm.id);
+    doing(t, "is taking a photo…");
+    try {
+      const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, shot, pics.length, pm.promptLimit, { adult }),
+        images: pics, safe: !adult });
+      const id = await M.put(blob);
+      done(t);
+      deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(adult ? { adult: true } : {}),
+        ...(blurred ? { blurred: true } : {}) } });
+      balanceSoon();
+      return;
+    } catch (e) {
+      refund(price);
+      why = e;
+      pm = e.refused ? A.another(adult ? adultPhotoModels() : S.lists.inpaint, tried, adult ? "adultPhoto" : "photo") : null;
+    }
+  }
+  done(t);
+  if (why) missed(t, "photo", why);
 }
 async function ownVoice(t) {
   const c = cardOf(t), msg = [...t.msgs].reverse().find((m) => m.role === "assistant" && !m.media && !m.demo);
@@ -2047,7 +2100,7 @@ async function ownVoice(t) {
     done(t);
     placeVoice(t, msg);
     balanceSoon();
-  } catch (e) { refund(price); throw e; } finally { done(t); voicing.delete(msg); }
+  } catch (e) { refund(price); missed(t, "voice note", e); } finally { done(t); voicing.delete(msg); }
 }
 /** a voice note that came after its words were shown: it goes above them, where it would have been */
 function placeVoice(t, m) {

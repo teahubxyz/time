@@ -6,17 +6,29 @@
 export const BASE = "https://api.venice.ai/api/v1";
 
 export class VeniceError extends Error {
-  constructor(message, status) { super(message); this.status = status; }
+  /** refused: Venice turned it down as against its content rules (its own, or the ones of the model's maker) */
+  constructor(message, status, refused = false) { super(message); this.status = status; this.refused = !!refused; }
 }
 
-function explain(status, body) {
-  const said = (body && (body.error && (body.error.message || body.error)) || body && body.message || "").toString().slice(0, 240);
+/**
+ * What went wrong, from Venice's answer, as an error to throw. A 422 is a no on content when Venice says so (its
+ * CONTENT_POLICY_VIOLATION) or says nothing; its other 422s (a clip too long, a picture too big) are what they say.
+ */
+function failure(status, body) {
+  const e = body && body.error;
+  const said = String((e && typeof e === "object" ? e.message : e) || (body && body.message) || "").slice(0, 240);
+  const code = String((e && typeof e === "object" && e.code) || (body && body.code) || "");
+  const refused = status === 422 && (/CONTENT_POLICY/i.test(code) || /content polic|violat|moderat|blocked|safety/i.test(said) || !said);
+  return new VeniceError(explain(status, said, refused), status, refused);
+}
+function explain(status, said, refused) {
+  // Venice's own words for it ("violates the content policy of Venice.ai or the model provider") say no more than this
+  if (refused) return "Venice turned that down as against its content rules" + (/content polic/i.test(said) || !said ? "." : ` (“${said.replace(/[.\s]+$/, "")}”).`);
   if (status === 401 || status === 403) return "Venice didn't accept that key. Check it at venice.ai → Settings → API.";
   if (status === 402) return "Venice says the key is out of credit.";
   if (status === 429) return "Venice is rate-limiting this key. Wait a moment and try again.";
   if (status === 404) return "Venice doesn't know that " + (said.includes("model") ? "model." : "character or model.");
   if (status === 413) return "That file is too big for Venice.";
-  if (status === 422) return "Venice turned that down as against its content rules" + (said ? ": " + said : ".");
   if (status === 503) return "That model is busy at Venice right now. Try again in a moment, or pick another.";
   if (status >= 500) return "Venice had a problem (" + status + "). Try again in a moment.";
   return said || "Venice answered " + status + ".";
@@ -50,7 +62,7 @@ export class Venice {
     }
     let data = null;
     try { data = await res.json(); } catch { data = null; }
-    if (!res.ok) throw new VeniceError(explain(res.status, data), res.status);
+    if (!res.ok) throw failure(res.status, data);
     return data;
   }
 
@@ -69,7 +81,7 @@ export class Venice {
     if (!res.ok) {
       let data = null;
       try { data = await res.json(); } catch { data = null; }
-      throw new VeniceError(explain(res.status, data), res.status);
+      throw failure(res.status, data);
     }
     return res;
   }

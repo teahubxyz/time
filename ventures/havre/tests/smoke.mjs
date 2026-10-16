@@ -4,9 +4,9 @@
 // a card import and a chat without a key, the key and the balance, Venice's characters (photos through Venice's
 // image service that stay put between searches, pages seen lately not asked for again, tags, adult ones only once
 // asked for) and one who says hello first, the model picker, a plain chat, several chats at once (and in two tabs),
-// the abilities (a photo, voice notes, a clip priced first, your voice note through a fake microphone, your photo
-// seen or described, a first portrait), a remix end to end, the exports, the retirement of the first version's cast
-// and its conversations, and the page's security policy.
+// the abilities (a photo, and one Venice turns down, voice notes, a clip priced first, your voice note through a fake
+// microphone, your photo seen or described, a first portrait), a remix end to end, the exports, the retirement of the
+// first version's cast and its conversations, and the page's security policy.
 // Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
 // site serves (tools/build.sh copies them to shots/).
 //
@@ -77,7 +77,12 @@ let pictures = 0;
 const newPicture = () => picture(++pictures);
 // Venice's safe mode judges the picture, not the prompt: set, the next one drawn with safe mode on comes back blurred
 let blurNext = false;
-const seen = { characters: [], chats: [], memories: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
+// the photo models that turn every photo down, as Venice does when a prompt trips its content filter (or the model maker's)
+const refusing = new Set();
+// set, the voice models are busy at Venice
+let speechDown = false;
+const seen = { characters: [], chats: [], memories: [], photos: [], edits: [], refused: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [],
+  shares: [], completed: [] };
 /** a short WAV of silence: something an audio element can load */
 function wav(ms = 300) {
   const n = Math.round(8000 * ms / 1000), b = Buffer.alloc(44 + n * 2);
@@ -90,6 +95,7 @@ const MEDIA_MODELS = {
   inpaint: [
     { id: "grok-imagine-edit", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { inpaint: { usd: 0.03 }, resolutions: { "1K": { usd: 0.03 }, "2K": { usd: 0.04 } } },
       constraints: { combineImages: true, promptCharacterLimit: 1500 } } },
+    { id: "firered-image-edit", model_spec: { name: "FireRed", privacy: "private", pricing: { inpaint: { usd: 0.04 } }, constraints: { promptCharacterLimit: 1500 } } },
     { id: "nano-banana-2-edit", model_spec: { name: "Nano Banana 2", privacy: "anonymized", pricing: { inpaint: { usd: 0.1 } }, constraints: { combineImages: true, maxInputImages: 6 } } },
     { id: "qwen-edit-uncensored", model_spec: { name: "Qwen Edit Uncensored", privacy: "private", uncensored: true, pricing: { inpaint: { usd: 0.04 } },
       constraints: { combineImages: true, promptCharacterLimit: 1500 } } }],
@@ -112,6 +118,8 @@ const MEDIA_MODELS = {
 const handWritten = (o) => "Sure! Here it is:\n```json\n" + JSON.stringify(o, null, 1).replace(/\\n/g, "\n").replace(/\n}$/, ",\n}") + "\n```";
 /** the chat calls where someone talks: not the ones deciding what a character does on their own, or writing down what they remember */
 const talks = () => seen.chats.filter((b) => !/^You (decide whether|keep the memory)/.test(String((b.messages[0] || {}).content || "")));
+/** words a content filter turns a prompt down for: none of them are Havre's own (abilities.test.mjs has the rest) */
+const TRIPS = /\b(?:sex\w*|nud\w*|naked|gor[ey]|minors?|child\w*|kids?|school\w*|teen\w*|under[\s-]?(?:18|eighteen|age\w*)|young\w*)\b/i;
 const multipart = (req) => (req.headers()["content-type"] || "").startsWith("multipart/form-data");
 const CHARACTERS = [
   { slug: "sable-penrose", name: "Sable Penrose", description: "Your new neighbor needs help moving in.", author: "btrzm",
@@ -161,7 +169,7 @@ async function fakeVenice(route) {
       reply = /^Them:.*\bSend me a pic/i.test(said) ? json({ move: "photo", shot: "The character from the reference picture holds up a mug\nin a half-unpacked kitchen." })
         : /^Them:.*\bFilm the harbor/i.test(said) ? json({ move: "clip", shot: "The character from the reference pictures pans across the harbor at dusk." })
         : /^Them:.*\bWhisper it/i.test(said) ? json({ move: "voice", shot: "" }) : json({ move: "nothing", shot: "" });
-    } else if (lastSaid.startsWith("[Time passes")) {
+    } else if (/^(?:\(You sent me [^\n]*\)\n\n)?\[Time passes/.test(lastSaid)) {          // after a word about the photo she sent last, if she did
       reply = "You're back!\n\nI kept the kettle warm.";
     } else if (system.startsWith("You write the shot for a photo")) {
       reply = "Shot: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight.";
@@ -204,7 +212,9 @@ async function fakeVenice(route) {
   }
   const file = (bytes, type, headers = {}) => route.fulfill({ status: 200, contentType: type, body: bytes, headers: { ...cors, ...headers } });
   if (url.endsWith("/image/edit") || url.endsWith("/image/multi-edit")) {
-    seen.edits.push({ url, body: JSON.parse(body) });
+    const e = JSON.parse(body), model = e.model || e.modelId;
+    if (refusing.has(model)) { seen.refused.push(model); return ok({ error: "Your prompt violates the content policy of Venice.ai or the model provider" }, 422); }
+    seen.edits.push({ url, body: e });
     return file(newPicture(), "image/webp");
   }
   if (url.endsWith("/image/generate")) {
@@ -213,7 +223,11 @@ async function fakeVenice(route) {
     if (blur) blurNext = false;
     return file(newPicture(), "image/webp", blur ? { "x-venice-is-blurred": "true", "access-control-expose-headers": "x-venice-is-blurred" } : {});
   }
-  if (url.endsWith("/audio/speech")) { seen.speech.push(JSON.parse(body)); return file(wav(), "audio/wav"); }
+  if (url.endsWith("/audio/speech")) {
+    if (speechDown) return ok({ error: "The model is at capacity." }, 503);
+    seen.speech.push(JSON.parse(body));
+    return file(wav(), "audio/wav");
+  }
   if (url.endsWith("/audio/transcriptions")) {
     assert.ok(multipart(req), "a voice note goes as a form");
     seen.heard.push(body);
@@ -634,6 +648,29 @@ async function main() {
     await page.getByRole("button", { name: "NOT NOW" }).click();
     await count(page, "#log .line.offer", 0);
     assert.equal(seen.queued.length, queuedBefore, "no clip without a yes");
+    // a voice note she starts on her own that doesn't come: the chat says so, instead of going quiet after "is recording…"
+    speechDown = true;
+    await answered(page, async () => { await page.fill("#say", "Whisper it to me again"); await page.keyboard.press("Enter"); });
+    await has(page, "#log .line.err .said", /^Sable Penrose's voice note didn't come: That model is busy at Venice right now\./, 10000);
+    assert.equal(await page.locator("#log [data-typing]").count(), 0, "nobody is still recording");
+    speechDown = false;
+    // Venice turns her photo down: she tries once more with the next photo model, and when that one says no too, the
+    // chat says her photo didn't come, instead of going quiet after "is taking a photo…"; the allowance gets it all back
+    refusing.add("grok-imagine-edit").add("firered-image-edit");
+    const refusedBefore = seen.refused.length, spentNo = await spent(), picsNo = await page.locator("#log .pic img").count();
+    await answered(page, async () => { await page.fill("#say", "Send me a pic of the hallway"); await page.keyboard.press("Enter"); });
+    await has(page, "#log .line.err .said", /^Sable Penrose's photo didn't come: Venice turned that down as against its content rules\.$/, 10000);
+    assert.deepEqual(seen.refused.slice(refusedBefore), ["grok-imagine-edit", "firered-image-edit"], "once more, with the next photo model");
+    assert.equal(await page.locator("#log [data-typing]").count(), 0, "nobody is still taking a photo");
+    assert.equal(await page.locator("#log .pic img").count(), picsNo);
+    assert.ok(await spent() - spentNo < 0.001, "neither photo came out of the allowance: " + (await spent() - spentNo));
+    // one says no and the next says yes: her photo comes
+    refusing.delete("firered-image-edit");
+    await answered(page, async () => { await page.fill("#say", "Send me a pic of the stairs"); await page.keyboard.press("Enter"); });
+    await count(page, "#log .pic img", picsNo + 1, 10000);
+    await has(page, "#log .line.media .cap", /photo · FireRed · \$0\.04 · on their own/);
+    assert.deepEqual(seen.refused.slice(refusedBefore), ["grok-imagine-edit", "firered-image-edit", "grok-imagine-edit"]);
+    refusing.clear();
     // and when you come back after a while, she texts first in her chat, and Captain Ro in his, which isn't on screen
     await page.evaluate(() => {
       const index = JSON.parse(localStorage.getItem("havre.threads.v1"));
@@ -648,8 +685,9 @@ async function main() {
     });
     await page.reload();
     await has(page, "#log .line.them .said", /I kept the kettle warm\./);
-    const nudges = () => talks().filter((b) => /^\[Time passes/.test(String(b.messages.at(-1).content)));
-    assert.match(nudges()[0].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. They just came back to the chat\./);
+    const nudges = () => talks().filter((b) => /^(?:\(You sent me [^\n]*\)\n\n)?\[Time passes/.test(String(b.messages.at(-1).content)));
+    assert.match(nudges()[0].messages.at(-1).content, /^\(You sent me a photo: The character from the reference picture holds up a mug in a half-unpacked kitchen\.\)\n\n\[Time passes: about 8 hours since you last talked\. They just came back to the chat\./,
+      "the photo she sent last, then the time that's passed");
     await poll(() => nudges().length === 2, "Captain Ro texting first", 9000);
     assert.match(nudges()[1].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. Reach out to them first/);
     await has(page, "#chats-new", /^1$/);
@@ -683,9 +721,29 @@ async function main() {
     const wren = await page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Wren"));
     assert.match(wren.portrait, /^data:image\/webp;base64,/);
     assert.match(wren.look.description, /^Thirties, wiry/);
+    // the photo model turns the photo down: the panel says so, with the next photo model a click away
+    refusing.add("grok-imagine-edit");
+    const editsWren = seen.edits.length, refusedWren = seen.refused.length;
     await page.click("#ask-go");
+    await has(page, "#ask .status", /^Venice turned that down as against its content rules\. Change the shot, or try another model\.$/);
+    assert.deepEqual(seen.refused.slice(refusedWren), ["grok-imagine-edit"]);
+    assert.equal(seen.edits.length, editsWren, "nothing made");
+    await has(page, "#ask-alt", /^TRY FIRERED · \$0\.04$/);
+    await has(page, "#ask-go", /^TRY AGAIN · \$0\.03$/);
+    await shot(page, "desktop-ask-refused.png");
+    await page.click("#ask-alt");
+    await has(page, "#toast", /^Photo model: FireRed, from now on\.$/);
     await until(page, () => [...document.querySelectorAll("#log .pic img")].some((i) => i.src.startsWith("blob:")), null, "Wren's photo");
+    assert.equal(seen.edits.at(-1).body.model, "firered-image-edit");
     assert.match(seen.edits.at(-1).body.image, /^[A-Za-z0-9+/]+=*$/, "a picture of the card's own goes as base64");
+    await has(page, "#log .line.media .cap", /photo · FireRed · \$0\.04 · save/);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("havre.abilities")).photo), "firered-image-edit", "the photo model from now on");
+    refusing.clear();
+    // and back to Grok Imagine, for what comes next
+    await page.getByRole("button", { name: "abilities" }).click();
+    await page.getByRole("button", { name: "Change the photo model", exact: true }).click();
+    await page.getByRole("button", { name: "Use Grok Imagine", exact: true }).click();
+    await page.click("#abclose");
     // photos and voice notes stay through a reload, from this browser's own store
     await page.reload();
     await until(page, () => [...document.querySelectorAll("#log .pic img")].some((i) => i.src.startsWith("blob:") && i.complete && i.naturalWidth > 0), null, "the photo after a reload");
@@ -833,7 +891,7 @@ async function main() {
     await page.locator("#chat").scrollIntoViewIfNeeded();
     await page.getByRole("button", { name: "ask for a photo" }).click();
     await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /moving boxes/.test(t.value) && !t.disabled; }, null, "her shot");
-    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a photo.*Hard rule: everyone shown is an adult, 18 or older/, "the shot is written to the 18+ rule");
+    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a photo.*Hard rule, 18\+ only: everyone shown is an adult, 18 or older/, "the shot is written to the 18+ rule");
     await has(page, "#ask", /from 2 pictures of Ines Corbel · model: Qwen Edit Uncensored · \$0\.04/);
     await has(page, "#ask-rules", /^adult \(18\+\): made only from pictures made here with ai, with the 18\+ rule first in its prompt/);
     await has(page, "#ask-go", /^TAKE THE PHOTO · \$0\.04$/);
@@ -844,12 +902,13 @@ async function main() {
     const adultEdit = seen.edits.at(-1).body;
     assert.equal(adultEdit.modelId || adultEdit.model, "qwen-edit-uncensored");
     assert.equal(adultEdit.safe_mode, false, "safe mode off, for her");
-    assert.ok(adultEdit.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), adultEdit.prompt);
+    assert.ok(adultEdit.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), adultEdit.prompt);
+    assert.ok(!TRIPS.test(adultEdit.prompt), "nothing in it for a content filter to turn down: " + adultEdit.prompt);
     await has(page, "#log .line.media .cap", /photo · Qwen Edit Uncensored · \$0\.04 · 18\+ · save/);
     // a clip from her: an uncensored model, priced first, its shot written to the 18+ rule too
     await page.getByRole("button", { name: "ask for a clip" }).click();
     await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /waves from the doorway/.test(t.value) && !t.disabled; }, null, "her clip's shot");
-    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a video clip.*Hard rule: everyone shown is an adult, 18 or older/);
+    assert.match(talks().at(-1).messages[0].content, /^You write the shot for a video clip.*Hard rule, 18\+ only: everyone shown is an adult, 18 or older/);
     await has(page, "#ask", /model: Wan 3\.0 Reference · venice's price: \$0\.47/);
     assert.equal(seen.quotes.at(-1).model, "wan-3-0-reference-to-video");
     await page.locator("#ask").getByRole("button", { name: "CANCEL" }).click();
@@ -882,7 +941,8 @@ async function main() {
     assert.equal(seen.generated.length, drawnBefore + 1);
     assert.equal(adultDrawn.model, "krea-2-turbo");
     assert.equal(adultDrawn.safe_mode, false, "no safe mode for an adult character's portrait");
-    assert.ok(adultDrawn.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), adultDrawn.prompt);
+    assert.ok(adultDrawn.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), adultDrawn.prompt);
+    assert.ok(!TRIPS.test(adultDrawn.prompt), adultDrawn.prompt);
     assert.equal(blurNext, true, "so nothing was blurred");
     blurNext = false;
     await has(page, "#adult-note", /^their photos and clips can be adult/);
@@ -894,7 +954,7 @@ async function main() {
     assert.equal(seen.edits.length, editedBefore + 1);
     assert.equal(sheetEdit.modelId || sheetEdit.model, "qwen-edit-uncensored");
     assert.equal(sheetEdit.safe_mode, false);
-    assert.ok(sheetEdit.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), sheetEdit.prompt);
+    assert.ok(sheetEdit.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), sheetEdit.prompt);
     await has(page, "#adult-note", /^their photos and clips can be adult/);
     // with adult pictures switched off, safe mode is back on, and a blur says why
     await page.getByRole("button", { name: "abilities" }).click();
@@ -927,7 +987,7 @@ async function main() {
     const safeEdit = seen.edits.at(-1).body;
     assert.equal(safeEdit.modelId || safeEdit.model, "grok-imagine-edit");
     assert.equal(safeEdit.safe_mode, true);
-    assert.match(safeEdit.prompt, /Safe for work: fully clothed, nothing sexual/);
+    assert.match(safeEdit.prompt, /Safe for work: everyone in it is an adult, fully clothed\./);
     await count(page, "#ask", 1);
     await until(page, () => document.querySelector("#ask").hidden, null, "the panel closed");
     // starting her look over, from under look: every picture off her card, the portrait too. The next one is drawn from
