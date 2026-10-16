@@ -157,11 +157,12 @@
           <button type="button" class="btn small" id="ex-add">ADD AN EXAMPLE</button>
         </details>
         <details class="group" id="look-group">
-          <summary>LOOK <span class="hint">their photos and clips are made from these pictures</span></summary>
+          <summary>LOOK <span class="hint">their photos and clips are made from these pictures and words</span></summary>
           <div class="refs" id="refs"></div>
-          <p class="mono"><button type="button" class="linkish" id="ref-add">add a picture</button> / <button type="button" class="linkish" id="ref-make">make one with ai</button> <span class="hint">up to three besides the portrait. ai makes the next one from the pictures they have, so it's still them, or from how they look if they have none. pictures of the character only, never a photo of a real person.</span> <span id="look-status" class="status" role="status"></span></p>
+          <p class="mono"><button type="button" class="linkish" id="ref-add">add a picture</button> / <button type="button" class="linkish" id="ref-make">make one with ai</button> <span class="hint">up to three besides the portrait. ai makes the next one from the pictures they have, so it's still them, changed to match how they look below; or from how they look alone, if they have none: to start over with someone new, remove every picture here first. pictures of the character only, never a photo of a real person.</span> <span id="look-status" class="status" role="status"></span></p>
           <input type="file" id="ref-file" accept="image/png,image/jpeg,image/webp" hidden>
           <label>HOW THEY LOOK <textarea name="look_description" rows="3" maxlength="1500" placeholder="sixties, tall, grey braid, oilskin coat, reading glasses on a cord"></textarea></label>
+          <p class="hint">new photos, clips and pictures keep their face from the pictures above and follow these words for everything else, so changing them changes the next ones. a new portrait is drawn from these words alone.</p>
         </details>
         <details class="group" id="speech-group">
           <summary>VOICE NOTES <span class="hint">how they sound when they send one</span></summary>

@@ -151,36 +151,60 @@ export function cleanText(text, max = 900) {
   return clip(t, max);
 }
 
-// the rules ride at the front of every picture and clip, where a long shot can't push them out
+// the rules ride at the front of every picture and clip, where a long shot or a long look can't push them out
 const KEEP = "Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult.";
 // an adult character's: the 18+ rule is the very first thing the model reads
 const KEEP_ADULT = ADULT_ONLY + " Never a real, identifiable person. No gore.";
 
+/** how their card says they look, on one line, without a full stop at the end ("" when it doesn't say) */
+const lookWords = (card) => str(card && card.look && card.look.description, 4000).replace(/\s+/g, " ").trim().replace(/[.!?…]+$/, "");
+/** words that end a sentence: a full stop, unless they were cut short with … */
+const ended = (s) => (/[.!?…]$/.test(s) ? s : s + ".");
+// how much of how they look rides in a photo or a clip: enough for a look, and never the room the shot needs
+export const LOOK_ROOM = 600;
+
 /**
- * What the photo model is told: keep the character as the pictures show them, in the shot. adult: an adult
- * character's photo (adultCheck), which keeps every rule but the one about work, and opens with the 18+ rule.
+ * A photo or a clip made from the character's pictures: the rules, then who they are, then what the camera sees (body).
+ * Their face comes from the pictures; the rest follows how their card says they look where the pictures differ, so a
+ * changed look changes the next one, and the shot where it says what they wear. Nothing else is pinned: an edit model
+ * keeps what it isn't told to change, and a shot that asks for other clothes gets them. The look takes the room the
+ * rest leaves, up to LOOK_ROOM; with hardly any, it's left out.
+ */
+function fromPictures(card, pictures, body, limit, adult, what) {
+  const them = pictures > 1 ? `The reference pictures show ${card.name}.` : `The reference picture shows ${card.name}.`;
+  const head = adult ? `${KEEP_ADULT} ${them}` : `${them} ${KEEP}`;
+  const withLook = (look) => `${head} Keep their face, so it's clearly them. How they look: ${look} Where the ` +
+    `${pictures > 1 ? "pictures differ" : "picture differs"} from these words, follow the words; where the ${what} says what ` +
+    `they wear, follow that. ${body}`;
+  const look = lookWords(card), room = Math.min(LOOK_ROOM, limit - withLook("").length - 1);
+  if (look && room >= 40) return clip(withLook(ended(clip(look, room))), limit);
+  return clip(`${head} Keep their face, hair and build, so it's clearly them; their clothes stay as they are unless the ` +
+    `${what} says what they wear. ${body}`, limit);
+}
+/**
+ * What the photo model is told: who the character is (fromPictures), in the shot. adult: an adult character's photo
+ * (adultCheck), which keeps every rule but the one about work, and opens with the 18+ rule.
  */
 export function photoPrompt(card, shot, pictures = 1, limit = 1500, { adult = false } = {}) {
-  const lead = pictures > 1
-    ? `The reference pictures show ${card.name}. Keep how they look exactly: face, hair, build, clothes and style.`
-    : `The reference picture shows ${card.name}. Keep how they look exactly: face, hair, build, clothes and style.`;
-  if (adult) return clip(`${KEEP_ADULT} ${lead} New photo: ${str(shot).trim()} A natural photo with no text in it.`, limit);
-  return clip(`${lead} ${KEEP} New photo: ${str(shot).trim()} A natural photo with no text in it.`, limit);
+  return fromPictures(card, pictures, `New photo: ${str(shot).trim()} A natural photo with no text in it.`, limit, adult, "new photo");
 }
 export function clipPrompt(card, shot, limit = 2500, { adult = false } = {}) {
-  if (adult) return clip(`${KEEP_ADULT} The reference pictures show ${card.name}. Keep how they look exactly. ${str(shot).trim()}`, limit);
-  return clip(`The reference pictures show ${card.name}. Keep how they look exactly. ${KEEP} ${str(shot).trim()}`, limit);
+  return fromPictures(card, 2, `The clip: ${str(shot).trim()}`, limit, adult, "clip");
 }
 /**
- * A portrait drawn from how they look (a first one, or a new one for their card). adult: an adult character's
- * (adultCheck, drawn), which keeps every rule but the one about work, and opens with the 18+ rule.
+ * A portrait drawn from how they look (a first one, or a new one for their card): the look takes the room the rules and
+ * the framing leave. adult: an adult character's (adultCheck, drawn), which keeps every rule but the one about work,
+ * and opens with the 18+ rule.
  */
 export function portraitPrompt(card, limit = 1500, { adult = false } = {}) {
-  const look = ((card.look && card.look.description) || card.tagline || "an original character").trim().replace(/[.!?…]+$/, "");
-  if (adult) return clip(`${KEEP_ADULT} Portrait photo of ${card.name}, an original adult character: ${look}. Head and shoulders, ` +
-    "soft light, plain background, no text.", limit);
-  return clip(`Portrait photo of ${card.name}, an original adult character: ${look}. ${KEEP} Head and shoulders, soft light, ` +
-    "plain background, no text.", limit);
+  const look = lookWords(card) || str(card.tagline).trim().replace(/[.!?…]+$/, "") || "an original character";
+  const make = (w) => (adult
+    ? `${KEEP_ADULT} Portrait photo of ${card.name}, an original adult character: ${w} Head and shoulders, soft light, plain ` +
+      "background, no text."
+    : `Portrait photo of ${card.name}, an original adult character: ${w} ${KEEP} Head and shoulders, soft light, plain ` +
+      "background, no text.");
+  const room = limit - make("").length - 1;
+  return clip(make(ended(room >= 40 ? clip(look, room) : look)), limit);
 }
 
 /**

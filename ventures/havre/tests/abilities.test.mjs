@@ -77,12 +77,48 @@ test("the shot is written from the conversation, with the rules, and the photo k
   assert.ok(p.startsWith("The reference pictures show Ines Corbel."));
   assert.ok(p.length <= 120);
   assert.match(A.portraitPrompt(ines), /^Portrait photo of Ines Corbel, an original adult character: forties.*Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult\./);
-  assert.match(A.photoPrompt(ines, "On deck."), /Keep how they look exactly.*Safe for work.*everyone shown is an adult\. New photo: On deck\./);
-  assert.match(A.clipPrompt(ines, "She waves."), /everyone shown is an adult\. She waves\.$/);
+  assert.match(A.photoPrompt(ines, "On deck."), /^The reference picture shows Ines Corbel\. Safe for work.*everyone shown is an adult\. Keep their face.* New photo: On deck\. A natural photo with no text in it\.$/);
+  assert.match(A.clipPrompt(ines, "She waves."), /^The reference pictures show Ines Corbel\. Safe for work.*How they look: forties.* The clip: She waves\.$/);
   assert.match(A.lookMessages(ines)[1].content, /Ferry pilot/);
   // a picture for their card, made from the ones they have: the next view of a character sheet
   assert.deepEqual([0, 1, 2, 3, -1, NaN].map(A.sheetView), [A.SHEET_VIEWS[0], A.SHEET_VIEWS[1], A.SHEET_VIEWS[2], A.SHEET_VIEWS[0], A.SHEET_VIEWS[2], A.SHEET_VIEWS[0]]);
-  assert.match(A.photoPrompt(ines, A.sheetView(0)), /^The reference picture shows Ines Corbel\. Keep how they look exactly.*Safe for work.*New photo: Full length, standing/);
+  assert.match(A.photoPrompt(ines, A.sheetView(0)), /^The reference picture shows Ines Corbel\. Safe for work.*How they look: forties.*New photo: Full length, standing/);
+});
+
+test("pictures made from their pictures keep their face and follow how their card says they look, so a new look shows", () => {
+  const p = A.photoPrompt(ines, "On deck, in a red dress.");
+  assert.match(p, /Keep their face, so it's clearly them\. How they look: forties, short grey hair, yellow oilskin\. Where the picture differs from these words, follow the words; where the new photo says what they wear, follow that\. New photo: On deck, in a red dress\./);
+  assert.ok(!/exactly|clothes and style/.test(p), "nothing else is pinned as it was: " + p);
+  assert.match(A.photoPrompt(ines, "On deck.", 2), /Where the pictures differ from these words/);
+  // a changed look is in the next picture, the old one isn't
+  const red = { ...ines, look: { ...ines.look, description: "Thirties, red hair in a braid,\n a green raincoat." } };
+  for (const q of [A.photoPrompt(red, "On deck."), A.photoPrompt(red, A.sheetView(1)), A.clipPrompt(red, "She waves."), A.portraitPrompt(red)]) {
+    assert.match(q, /Thirties, red hair in a braid, a green raincoat\. /, q);
+    assert.ok(!q.includes("grey hair"), q);
+  }
+  // no words about how they look: their face, hair and build stay, and their clothes unless the shot says otherwise
+  const bare = { ...ines, look: { ...ines.look, description: "" } };
+  assert.match(A.photoPrompt(bare, "On deck."), /Safe for work.*Keep their face, hair and build, so it's clearly them; their clothes stay as they are unless the new photo says what they wear\. New photo: On deck\./);
+  assert.match(A.clipPrompt(bare, "She waves."), /unless the clip says what they wear\. The clip: She waves\.$/);
+  // a long look takes only the room the shot leaves (and at most LOOK_ROOM): the rules, the shot and its ending all stay
+  const long = { ...ines, look: { ...ines.look, description: "salt in the stubble, ".repeat(200) } };
+  const shot = "On deck at dusk, the gulls wheeling. ".repeat(10).trim();
+  for (const [q, limit] of [[A.photoPrompt(long, shot), 1500], [A.photoPrompt(long, shot, 1, 1500, { adult: true }), 1500], [A.clipPrompt(long, shot, 1000), 1000]]) {
+    assert.ok(q.length <= limit, q.length);
+    assert.ok(q.endsWith(shot + (q.includes("New photo:") ? " A natural photo with no text in it." : "")), q);
+    const words = q.match(/How they look: (.*?) Where the/)[1];
+    assert.ok(words.endsWith("…") && words.length <= A.LOOK_ROOM, words);
+  }
+  assert.ok(A.photoPrompt(long, shot, 1, 1500, { adult: true }).startsWith(A.ADULT_ONLY));
+  // with hardly any room, the look goes before the shot does
+  assert.match(A.photoPrompt(long, "On deck.", 1, 380), /Keep their face, hair and build/);
+  // a portrait: the look takes the room the rules and the framing leave
+  const drawn = A.portraitPrompt(long);
+  assert.ok(drawn.length <= 1500);
+  assert.match(drawn, /… Safe for work: fully clothed, nothing sexual, no gore; everyone shown is an adult\. Head and shoulders, soft light, plain background, no text\.$/);
+  assert.match(A.portraitPrompt(long, 1500, { adult: true }), /^Hard rule.*Portrait photo of Ines Corbel.*… Head and shoulders, soft light, plain background, no text\.$/);
+  assert.match(A.portraitPrompt({ ...bare, tagline: "Ferry pilot." }), /an original adult character: Ferry pilot\. Safe for work/);
+  assert.match(A.portraitPrompt({ ...bare, tagline: "" }), /an original adult character: an original character\. Safe for work/);
 });
 
 // ---------- adult characters ----------

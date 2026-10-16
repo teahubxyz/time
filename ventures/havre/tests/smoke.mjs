@@ -734,13 +734,17 @@ async function main() {
     assert.match((await inesNow()).look.description, /^Thirties, wiry/, "how she looks, written on her card for next time");
     await until(page, () => { const i = document.querySelector("#sheet-face img"); return !!i && i.src.startsWith("data:image/webp"); }, null, "her portrait on the card");
     await page.evaluate(() => { document.querySelector("#look-group").open = true; });
+    // how she looks, changed on her card: the next picture keeps her face, and follows the new words for the rest
+    await page.fill('#sheet [name="look_description"]', "Thirties, red hair in a braid, a green raincoat.");
+    await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").look.description === "Thirties, red hair in a braid, a green raincoat.",
+      null, "her new look saved");
     const edited = seen.edits.length;
     await has(page, "#ref-make", /^make one with ai · \$0\.03$/);
     await page.click("#ref-make");
     await count(page, "#refs .ref", 2);
     assert.equal(seen.edits.length, edited + 1, "made from the pictures she has");
     assert.equal(seen.edits.at(-1).body.image, (await inesNow()).portrait.split(",")[1], "her portrait, so it's still her");
-    assert.match(seen.edits.at(-1).body.prompt, /^The reference picture shows Ines Corbel\..*New photo: Full length, standing/);
+    assert.match(seen.edits.at(-1).body.prompt, /^The reference picture shows Ines Corbel\..*Keep their face, so it's clearly them\. How they look: Thirties, red hair in a braid, a green raincoat\. Where the picture differs from these words, follow the words.*New photo: Full length, standing/);
     assert.equal(seen.edits.at(-1).body.safe_mode, true);
     await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel").look.references.length === 1, null, "the picture kept on her card");
     await shot(page, "desktop-card-pictures.png");
@@ -926,6 +930,27 @@ async function main() {
     assert.match(safeEdit.prompt, /Safe for work: fully clothed, nothing sexual/);
     await count(page, "#ask", 1);
     await until(page, () => document.querySelector("#ask").hidden, null, "the panel closed");
+    // starting her look over, from under look: every picture off her card, the portrait too. The next one is drawn from
+    // how she looks alone (hers on an uncensored model, as an adult's), and it's her new portrait
+    await page.evaluate(() => { document.querySelector("#look-group").open = true; });
+    await count(page, "#refs .ref", 3);
+    for (const name of ["Remove picture 3", "Remove picture 2", "Remove portrait"]) await page.getByRole("button", { name, exact: true }).click();
+    await count(page, "#refs .ref", 1);
+    assert.equal(await page.locator("#refs .ref button").count(), 0, "nothing left to remove");
+    await until(page, () => { const c = JSON.parse(localStorage.getItem("havre.cards.v1")).find((x) => x.id === "ines-corbel"); return !c.portrait && !c.look.references.length; },
+      null, "every picture gone");
+    await has(page, "#adult-note", /has no picture made here yet/);
+    await has(page, "#ref-make", /^make one with ai · \$0\.04$/);
+    const generatedBefore = seen.generated.length, editsBefore2 = seen.edits.length;
+    await page.click("#ref-make");
+    await until(page, () => /^data:image\/webp/.test(JSON.parse(localStorage.getItem("havre.cards.v1")).find((x) => x.id === "ines-corbel").portrait), null,
+      "her new portrait, drawn from words");
+    assert.equal(seen.generated.length, generatedBefore + 1);
+    assert.equal(seen.edits.length, editsBefore2, "made from no picture of before");
+    assert.equal(seen.generated.at(-1).model, "krea-2-turbo");
+    assert.match(seen.generated.at(-1).prompt, /Portrait photo of Ines Corbel, an original adult character: Thirties, red hair in a braid, a green raincoat\./);
+    await count(page, "#refs .ref", 1);
+    await has(page, "#adult-note", /^their photos and clips can be adult/);
 
     // exports, made in the browser; the PNG comes back in whole
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();

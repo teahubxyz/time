@@ -71,8 +71,10 @@ Save it as `<id>.havre.json`. Only `havre` (always 1), `name` and `persona` are 
 - **look** (optional): how they look. `description` is a sentence or two (an adult; face, hair, build, clothes).
   `references` holds up to three more pictures besides the `portrait`, best as data: URIs (PNG, JPEG, WebP or GIF)
   so they travel with the card. Havre makes photos and clips of the character from the portrait and these, when
-  they're kept in the card (or the character's own photo on Venice). Pictures of the character only: art, or
-  pictures the person made. Never a photo of a real person.
+  they're kept in the card (or the character's own photo on Venice): their face comes from the pictures, and
+  everything else from `description`, so a new description shows in the next photo. A new portrait is drawn from
+  `description` alone. Pictures of the character only: art, or pictures the person made. Never a photo of a real
+  person.
 - **speech** (optional): how they sound in a voice note. `model` is a Venice voice model (`tts-kokoro` if empty),
   `voice` one of its voices, `mood` a short delivery note ("warm, teasing") that Qwen 3 voices follow, and `speed`
   0.25 to 4.
@@ -133,8 +135,8 @@ In Havre a character can send more than texts. `abilities.js` has the prompts an
 
 - **A photo**: a text model writes the shot from the conversation (`A.shotMessages(card, A.apiHistory(history), ask)`),
   then `venice.editImage({ model, prompt: A.photoPrompt(card, shot, n), images })` edits the character's own
-  pictures (`/image/edit`, or `/image/multi-edit` for several). Safe mode is always on. A character with no picture
-  yet gets a first portrait from `A.portraitPrompt(card)` through `/image/generate`.
+  pictures (`/image/edit`, or `/image/multi-edit` for several). Safe mode is on, except for adult characters (below).
+  A character with no picture yet gets a first portrait from `A.portraitPrompt(card)` through `/image/generate`.
 - **A clip**: the same kind of shot (`kind: "clip"`), priced first with `venice.quoteVideo()`, then
   `venice.queueVideo()` with a reference-to-video model and the character's pictures, polled with
   `venice.retrieveVideo()`. Always show the price before queueing.

@@ -2379,7 +2379,7 @@ function renderRefs(c) {
     paintFace(f, src);
     return h("figure", { class: "ref" }, f, h("figcaption", {}, label, remove ? [" ", linkish("remove", remove, { "aria-label": `Remove ${label}` })] : []));
   };
-  box.append(frame(portraitSrc(c), "portrait"));
+  box.append(frame(portraitSrc(c), "portrait", c.portrait ? removePortrait : null));
   c.look.references.forEach((r, i) => box.append(frame(pictureSrc(r), `picture ${i + 2}`, () => {
     const now = card();
     replaceCard({ ...now, look: { ...now.look, references: now.look.references.filter((_, j) => j !== i) } });
@@ -2389,6 +2389,16 @@ function renderRefs(c) {
   $("#ref-add").disabled = c.look.references.length >= C.MAX_REFERENCES;
   renderMakers();
   renderAdultNote(c);
+}
+/**
+ * Their portrait off their card (from the top of the sheet, or under look): photos come from the pictures left, and with
+ * none left, the next picture made with AI is drawn from how they look alone, as their new portrait.
+ */
+function removePortrait() {
+  const c = card();
+  if (!c || c.plain) return;
+  replaceCard({ ...c, portrait: "" });
+  renderSheet(); renderThreads(); picturesChanged();
 }
 async function addReference(file) {
   const c = card();
@@ -3075,12 +3085,7 @@ function bind() {
     try { const c = card(); replaceCard({ ...c, portrait: await shrinkImage(pf) }); renderSheet(); renderThreads(); picturesChanged(); }
     catch { toast("That image didn't load."); }
   });
-  $("#portrait-clear").addEventListener("click", () => {
-    const c = card();
-    if (!c) return;
-    replaceCard({ ...c, portrait: "" });
-    renderSheet(); renderThreads(); picturesChanged();
-  });
+  $("#portrait-clear").addEventListener("click", removePortrait);
   $("#ref-add").addEventListener("click", () => {
     if (!local.get(K.refOk, false)) {
       if (!confirm("Photos and clips of a character are made from their pictures. Add only pictures of the character: art, or pictures you made. Never a photo of a real person.\n\nAdd a picture of the character?")) return;
