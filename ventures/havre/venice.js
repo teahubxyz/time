@@ -59,12 +59,29 @@ export class Venice {
     });
   }
 
-  /** public Venice characters, safe-for-work only */
-  async characters({ search = "", limit = 24, offset = 0 } = {}) {
-    const q = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  /**
+   * One page of public Venice characters, safe for work only: { list, more }. sort: featured, imports, highestRating,
+   * mostRecent (or any other sortBy Venice takes); search matches names, descriptions and #tags.
+   */
+  async characterPage({ search = "", limit = 24, offset = 0, sort = "" } = {}) {
+    const q = new URLSearchParams({ limit: String(limit), offset: String(offset), isAdult: "false" });
     if (search) q.set("search", search);
-    const d = await this.call("/characters?" + q);
-    return (d && d.data || []).filter((c) => !c.adult).map(characterInfo);
+    if (sort) q.set("sortBy", sort);
+    let d;
+    try {
+      d = await this.call("/characters?" + q);
+    } catch (e) {
+      if (e.status !== 400) throw e;
+      q.delete("sortBy"); q.delete("isAdult");             // asked for something this API doesn't take: ask plainly
+      d = await this.call("/characters?" + q);
+    }
+    const raw = d && Array.isArray(d.data) ? d.data : [];
+    return { list: raw.filter((c) => c && !c.adult).map(characterInfo), more: raw.length >= limit };
+  }
+
+  /** public Venice characters, safe for work only */
+  async characters(opts = {}) {
+    return (await this.characterPage(opts)).list;
   }
 
   async character(slug) {
@@ -104,6 +121,6 @@ function characterInfo(c) {
     slug: c.slug, name: c.name || c.slug, description: c.description || "", creator: c.author || "",
     photo: /^https:\/\/outerface\.venice\.ai\//.test(c.photoUrl || "") ? c.photoUrl : "",
     url: "https://venice.ai/c/" + encodeURIComponent(c.slug), model: c.modelId || "", tags: c.tags || [],
-    imports: c.stats && c.stats.imports || 0, rating: c.stats && c.stats.averageRating || 0,
+    imports: c.stats && c.stats.imports || 0, rating: c.stats && c.stats.averageRating || 0, web: !!c.webEnabled,
   };
 }

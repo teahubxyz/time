@@ -6,15 +6,15 @@ description: Write AI characters as Havre cards (.havre.json) with a persona, a 
 # Havre
 
 Havre (https://havre.yolopreneur.lol/) is a harbor for characters. A character is a card file its person keeps: who
-they are, how they talk, how they meet someone new, and where they came from. People talk to them in the browser with
-their own Venice API key, export them to other apps, and remix the ones they love into someone new, with credit.
+they are, how they talk, how they meet someone new, and where they came from. People talk to them, and to Venice's own
+public characters, in the browser with their own Venice API key; export them to other apps; and remix the ones they
+love into someone new, with credit.
 
 Everything you need is at https://havre.yolopreneur.lol/:
 
 - `card.schema.json`: the format, as JSON Schema.
 - `card.js`: reading, checking and converting cards (an ES module, no dependencies; works in Node 20+ and browsers).
 - `venice.js`: the few Venice API calls Havre makes.
-- `cast/maren.havre.json`, `cast/taskmaster.havre.json`, `cast/odile.havre.json`: the first arrivals, as examples.
 
 ## A card
 
@@ -54,9 +54,9 @@ Save it as `<id>.havre.json`. Only `havre` (always 1), `name` and `persona` are 
 - **voice**: `short_form: true` makes replies arrive as a few short texts, the way people text. Put how they talk in
   `notes` as traits ("clipped", "asks one question at a time"), never as catchphrases.
 - **examples**: three to five exchanges. They teach the voice, and they are what a visitor without a key hears: the
-  studio answers with the example whose question is closest to what was said.
+  page answers with the example whose question is closest to what was said.
 - **flow** (optional): stages for meeting someone new, taken in order. Each has a `stage`, a `goal` and `next` (when to
-  move on). Taskmaster's flow is assess, plan, execute:
+  move on). A coach's flow might be assess, plan, execute:
   ```json
   [{ "stage": "assess", "goal": "Ask what they're working on, the main blocker and the deadline.", "next": "you know all three." },
    { "stage": "plan", "goal": "Propose one plan and ask them to say go.", "next": "they say go." },

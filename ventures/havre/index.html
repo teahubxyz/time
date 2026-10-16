@@ -3,284 +3,280 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://outerface.venice.ai; font-src 'self'; connect-src https://api.venice.ai; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://outerface.venice.ai; font-src 'none'; connect-src https://api.venice.ai; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin">
 <title>Havre</title>
-<meta name="description" content="A harbor for characters. Keep them in a file you own, talk to them on your own Venice key, and remix the ones you love into someone new, with credit.">
+<meta name="description" content="A harbor for characters. Talk to Venice's characters on your own key, keep characters in a file you own, and remix the ones you love into someone new, with credit.">
 <link rel="canonical" href="https://havre.yolopreneur.lol/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Havre: a harbor for characters">
-<meta property="og:description" content="Keep characters in a file you own, talk to them on your own Venice key, and remix the ones you love into someone new, with credit.">
+<meta property="og:description" content="Talk to Venice's characters on your own key. No account, no server: nothing is kept but what you keep.">
 <meta property="og:url" content="https://havre.yolopreneur.lol/">
 <meta property="og:image" content="https://havre.yolopreneur.lol/shots/og.png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="theme-color" content="#FFEAD2">
+<meta name="theme-color" content="#ffffff">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate" type="text/plain" href="llms.txt" title="For agents">
-<link rel="preload" href="fonts/fredoka.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
 <body>
-<header class="bar">
-  <a class="brand" href="#top" aria-label="Havre, to the top"><img src="favicon.svg" alt="" width="34" height="34"><span>havre</span></a>
-  <p class="motto">A harbor for characters</p>
-  <nav class="links" aria-label="On this page"><a href="#how">How it works</a><a href="#agents">For agents</a><a href="#plans">Plans</a></nav>
-  <a class="join" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Havre&amp;venture=havre&amp;plan=Harbor+%28founding%29">Get early access</a>
+<a class="skip" href="#chat">skip to the chat</a>
+
+<header class="mast" id="top">
+  <h1>HAVRE</h1>
+  <p class="motto">a harbor for characters.<br>talk to venice characters on your own key.<br>no account. no server. nothing kept but what you keep.</p>
+  <nav class="nav" aria-label="On this page"><a href="#how">how it works</a> / <a href="#agents">for agents</a> / <a href="#costs">costs</a> / <a href="#plans">early access</a></nav>
 </header>
 
-<main id="top">
-<section class="studio" id="studio" aria-label="Havre studio" data-pane="chat">
-  <nav class="panes" aria-label="Studio panes">
-    <button type="button" data-pane="harbor">Harbor</button>
-    <button type="button" data-pane="chat" aria-current="true">Chat</button>
-    <button type="button" data-pane="sheet">Sheet</button>
-  </nav>
+<form class="keybar" id="keyform" autocomplete="off" aria-label="Your Venice API key">
+  <label for="keyin">VENICE API KEY</label>
+  <input id="keyin" type="password" autocomplete="off" spellcheck="false" placeholder="paste it here">
+  <button type="submit" class="btn inv" id="keysave">SAVE</button>
+  <label class="check"><input type="checkbox" id="keyremember"> remember on this device</label>
+  <button type="button" class="btn ghost-inv" id="keyforget" hidden>FORGET</button>
+  <span id="keystatus" class="keystatus" role="status" aria-live="polite"></span>
+  <span class="keyfine">sent to api.venice.ai and nowhere else. <a href="https://venice.ai/settings/api" target="_blank" rel="noopener">get a key</a></span>
+</form>
 
-  <aside class="harbor" aria-labelledby="harbor-h">
-    <div class="pane-head">
-      <h2 id="harbor-h">Harbor</h2>
-      <div class="row"><button type="button" class="pill small" id="new">New</button><button type="button" class="pill small" id="import">Import</button></div>
+<main class="studio" id="studio">
+  <section class="chars" id="chars" aria-labelledby="chars-h">
+    <div class="sechead">
+      <h2 id="chars-h">CHARACTERS</h2>
+      <span class="meta">venice's public characters, safe for work.</span>
     </div>
-    <ul id="roster" class="roster" aria-label="Your characters"></ul>
-    <div class="harbor-foot">
-      <button type="button" class="pill ghost wide" id="browse">Find on Venice</button>
-      <p class="tiny" id="saved-note">Saved in this browser. Export to keep a copy.</p>
-    </div>
-  </aside>
+    <form class="filters" id="venform" role="search" aria-label="Venice characters">
+      <label class="sr" for="vsearch">Search Venice characters</label>
+      <input id="vsearch" type="search" placeholder="search by name, or #tag" autocomplete="off" maxlength="200">
+      <label class="pick">sort <select id="vsort">
+        <option value="featured">featured</option>
+        <option value="imports">most imported</option>
+        <option value="highestRating">top rated</option>
+        <option value="mostRecent">newest</option>
+      </select></label>
+      <button type="submit" class="btn" id="vgo">SEARCH</button>
+    </form>
+    <p id="venstatus" class="status" role="status" aria-live="polite"></p>
+    <ul id="vgrid" class="grid" aria-label="Venice characters"></ul>
+    <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
+  </section>
 
-  <section class="chat" aria-labelledby="who-name">
-    <header class="who">
-      <span class="face" id="who-face" aria-hidden="true"></span>
-      <div class="who-text">
-        <h2 id="who-name">Havre</h2>
-        <p id="who-tag" class="who-tag"></p>
-        <p id="who-credit" class="credit"></p>
-      </div>
-      <div class="who-tools">
-        <button type="button" class="pill small ghost" id="clear" title="Start this conversation over">Start over</button>
-        <button type="button" class="pill small key" id="keybtn" aria-haspopup="dialog">Add Venice key</button>
-      </div>
-    </header>
-    <div id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></div>
-    <p id="keynote" class="keynote">Demo mode: replies come from the card's own examples. <button type="button" class="linkish" id="addkey">Add your Venice key</button> to really talk.</p>
+  <section class="chat" id="chat" aria-labelledby="who-name">
+    <div class="sechead">
+      <h2 id="who-name">CHAT</h2>
+      <span class="meta" id="who-meta"></span>
+    </div>
+    <ol id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></ol>
     <form id="composer" class="composer">
-      <label for="say" class="sr">Message</label>
-      <textarea id="say" rows="1" placeholder="Say something…" autocomplete="off" enterkeyhint="send"></textarea>
-      <button type="submit" class="pill send" id="sendbtn">Send</button>
+      <div class="sayrow">
+        <label for="say" class="sr">Message</label>
+        <textarea id="say" rows="1" placeholder="say something" autocomplete="off" enterkeyhint="send"></textarea>
+        <button type="submit" class="btn solid" id="sendbtn">SEND</button>
+      </div>
+      <p id="keynote" class="keynote" hidden></p>
     </form>
   </section>
-
-  <section class="sheet" aria-label="Character sheet">
-    <div class="tabs" role="tablist" aria-label="Sheet">
-      <button type="button" role="tab" id="t-edit" aria-controls="p-edit" aria-selected="true">Sheet</button>
-      <button type="button" role="tab" id="t-remix" aria-controls="p-remix" aria-selected="false">Remix</button>
-      <button type="button" role="tab" id="t-export" aria-controls="p-export" aria-selected="false">Export</button>
-    </div>
-
-    <div class="panel" id="p-edit" role="tabpanel" aria-labelledby="t-edit">
-      <form id="sheet" class="form" autocomplete="off">
-        <div class="portrait-row">
-          <span class="face big" id="sheet-face" aria-hidden="true"></span>
-          <div class="row wrap">
-            <button type="button" class="pill small ghost" id="portrait-pick">Change portrait</button>
-            <button type="button" class="pill small ghost" id="portrait-clear">Remove</button>
-            <input type="file" id="portrait-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
-          </div>
-        </div>
-        <label>Name <input name="name" maxlength="120" required></label>
-        <label>Tagline <input name="tagline" maxlength="200" placeholder="One line under the name"></label>
-        <p id="linked-note" class="note" hidden></p>
-        <label>Greeting <textarea name="greeting" rows="3" maxlength="4000" placeholder="The first thing they say. A blank line starts a new text."></textarea></label>
-        <label>Persona <textarea name="persona" rows="8" maxlength="20000" placeholder="You are … Who they are, how they talk, what they want, what they won't do."></textarea></label>
-        <label class="check"><input type="checkbox" name="short_form"> Short-form: replies come as a few short texts</label>
-        <label>Voice notes <input name="voice_notes" maxlength="2000" placeholder="Clipped, wry, asks one question at a time"></label>
-        <details class="group" id="flow-group">
-          <summary>Flow <span class="tiny">optional stages for meeting someone new</span></summary>
-          <ol id="flow" class="items"></ol>
-          <button type="button" class="pill small ghost" id="flow-add">Add a stage</button>
-        </details>
-        <details class="group" id="ex-group">
-          <summary>Examples <span class="tiny">teach the voice; demo mode replies with these</span></summary>
-          <ol id="examples" class="items"></ol>
-          <button type="button" class="pill small ghost" id="ex-add">Add an example</button>
-        </details>
-        <label>Tags <input name="tags" maxlength="400" placeholder="comma, separated"></label>
-        <div class="two">
-          <label>Model <select name="model" id="model-select"></select></label>
-          <label>License <select name="license" id="license-select"></select></label>
-        </div>
-        <label>Creator <input name="creator" maxlength="120" placeholder="Who made them"></label>
-        <div class="lineage" id="lineage-box">
-          <h3>Lineage</h3>
-          <ul id="lineage" class="lineage-list"></ul>
-          <p class="tiny">Where this character came from. Entries are only ever added.</p>
-        </div>
-        <button type="button" class="pill small danger" id="delete">Remove from harbor</button>
-      </form>
-    </div>
-
-    <div class="panel" id="p-remix" role="tabpanel" aria-labelledby="t-remix" hidden>
-      <div class="remix">
-        <p class="lede">Write someone new from the idea of <b id="rx-from">this character</b>, and keep the credit.</p>
-        <ol class="steps">
-          <li><b>Distill.</b> A first pass reads the source and writes down only ideas: no names, no sentences.</li>
-          <li><b>Write.</b> A second pass never sees the source. It writes someone new from the ideas and your twist.</li>
-          <li><b>Check.</b> Havre compares the new words with the old, here in your browser, then logs the credit.</li>
-        </ol>
-        <details class="group" id="rx-paste-group">
-          <summary>Use a different source <span class="tiny">paste a description you can read</span></summary>
-          <label class="sr" for="rx-paste">Source text</label>
-          <textarea id="rx-paste" rows="5" placeholder="Paste a character description. Name it on the first line."></textarea>
-        </details>
-        <p id="rx-rights" class="note" hidden></p>
-        <button type="button" class="pill" id="rx-distill">Distill the ideas</button>
-        <div id="rx-ideas" class="ideas" hidden></div>
-        <label id="rx-twist-label" hidden>Your twist <input id="rx-twist" maxlength="400" placeholder="e.g. make them a ferry pilot in Havre"></label>
-        <button type="button" class="pill" id="rx-write" hidden>Write someone new</button>
-        <div id="rx-draft" class="draft" hidden></div>
-        <p id="rx-status" class="status" role="status" aria-live="polite"></p>
-      </div>
-    </div>
-
-    <div class="panel" id="p-export" role="tabpanel" aria-labelledby="t-export" hidden>
-      <div class="exports">
-        <button type="button" class="out" data-out="havre"><b>Havre card</b><span>.havre.json, the whole character</span></button>
-        <button type="button" class="out" data-out="v3"><b>Character card V3</b><span>.json for SillyTavern, RisuAI and other card apps</span></button>
-        <button type="button" class="out" data-out="png"><b>Character card PNG</b><span>the portrait with the card inside it</span></button>
-        <button type="button" class="out" data-out="prompt"><b>System prompt</b><span>.txt for any OpenAI-compatible API</span></button>
-      </div>
-      <h3 class="mini">Ask an agent for a character</h3>
-      <div class="prompt small-prompt"><pre id="agent-prompt-sheet"></pre>
-        <div class="bar-copy"><button type="button" class="copy pill small" data-copy="agent-prompt-sheet">Copy prompt</button></div></div>
-      <p class="tiny">Files are made here, in your browser. Nothing is uploaded.</p>
-    </div>
-  </section>
-</section>
-
-<section id="story" class="story" aria-labelledby="story-h">
-  <div class="story-text">
-    <h2 id="story-h">Every character needs a harbor</h2>
-    <p>Characters live inside apps, and apps come and go. Havre keeps a character as a file you own, gives it a place to talk, and writes down where it came from.</p>
-    <p>The name is a small salute. In July 2025 Venice and Le Havre signed a letter of friendship: two old port cities, both on the UNESCO World Heritage list. <i>Havre</i> means harbor. Our characters make the crossing.</p>
-    <p>Havre talks to Venice's API with your own key. It is an independent project, not part of Venice and not endorsed by it.</p>
-  </div>
-  <figure class="crossing">
-    <img src="art/crossing.svg" data-drawn="art/crossing-draws.svg" width="1600" height="840" alt="A small yellow sailboat crossing to Havre at dusk, Venice behind it: Maren waving from the stern, Odile with a mug of tea, and Taskmaster holding up a stopwatch and pointing at the lighthouse on the harbor wall." loading="lazy">
-    <figcaption><button type="button" class="redraw linkish" hidden>Draw it again</button></figcaption>
-  </figure>
-</section>
-
-<section id="how" aria-labelledby="how-h">
-  <h2 id="how-h">How it works</h2>
-  <ul class="three">
-    <li><h3><span class="dot sky"></span>Keep</h3><p>Every character is a card file: Havre JSON, or a character card (V2 or V3, JSON or PNG) that SillyTavern, RisuAI and other card apps can read. It lives in your browser until you export it. Nothing is uploaded.</p></li>
-    <li><h3><span class="dot mint"></span>Talk</h3><p>Add your Venice key and talk for real; without one, characters answer from their own examples. Replies arrive as short texts, and a character can follow a flow, like Taskmaster's assess, plan, execute.</p></li>
-    <li><h3><span class="dot pink"></span>Remix with credit</h3><p>Love a character you didn't make? Havre reads it and writes down only the ideas. A second pass that never sees the original writes someone new. Havre checks the new words against the old and keeps the credit in the card's lineage.</p></li>
-  </ul>
-</section>
-
-<section id="agents" class="use" aria-labelledby="agents-h">
-  <h2 id="agents-h">Use it with your agent</h2>
-  <p class="lead">Copy this prompt into any agent. It reads the skill, writes the character, and hands back the files.</p>
-  <div class="prompt"><pre id="agent-prompt"></pre>
-    <div class="bar-copy"><button type="button" class="copy pill" data-copy="agent-prompt">Copy prompt</button><span class="hint">Change the second line to who you want.</span></div></div>
-  <h3>What comes back</h3>
-  <ul class="formats">
-    <li><b>A Havre card</b>One .havre.json file: persona, voice, flow, examples and lineage. Drop it on Import.</li>
-    <li><b>A character card V3</b>The same character for SillyTavern, RisuAI and other card apps.</li>
-    <li><b>A system prompt</b>Plain text for any OpenAI-compatible API, Venice's included.</li>
-  </ul>
-  <p class="files">The files: <a href="skill.md">skill.md</a> (how to write a Havre character), <a href="card.schema.json">card.schema.json</a> (the format), <a href="cast/maren.havre.json">Maren</a>, <a href="cast/taskmaster.havre.json">Taskmaster</a> and <a href="cast/odile.havre.json">Odile</a> (the first arrivals), <a href="llms.txt">llms.txt</a> (this list, for agents).</p>
-</section>
-
-<section id="plans" aria-labelledby="plans-h">
-  <h2 id="plans-h">Plans</h2>
-  <ul class="plans">
-    <li class="plan"><h3>Studio</h3><p class="price">Free, today</p><p>Everything on this page, in your browser: as many characters as you like, import and export, remix with credit. You bring a Venice key and pay Venice for what you use.</p></li>
-    <li class="plan founding"><h3>Harbor</h3><p class="price">Planned at $8 a month for founding members. Nothing is charged now.</p><p>Characters hosted with a page and a link of their own. An API and an MCP server to create, update and talk to them. Channels beyond the web, starting with Whop. Offers inside a character's flow, and payouts to creators.</p>
-      <a class="pill join-plan" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Havre&amp;venture=havre&amp;plan=Harbor+%28founding%29">Join early access</a>
-      <p class="tiny">Early access is a public issue on Teahub: no email, nothing charged.</p></li>
-  </ul>
-</section>
-
-<section id="fine" aria-labelledby="fine-h">
-  <h2 id="fine-h">The fine print</h2>
-  <dl class="fine">
-    <dt>Your characters, your files</dt><dd>Characters and conversations are saved in this browser. Export them to keep them anywhere else.</dd>
-    <dt>Your key goes only to Venice</dt><dd>The key stays in this browser and is sent only to api.venice.ai: the page's security policy blocks every other address. Conversations run on your Venice account, under Venice's terms.</dd>
-    <dt>Bringing over someone else's character</dt><dd>Names and broad ideas aren't protected by copyright; a character's written expression can be. So a Venice character comes in as a link with credit, not a copy, and Remix writes someone new from ideas alone. When in doubt, ask the creator. This isn't legal advice.</dd>
-    <dt>Not affiliated</dt><dd>Havre is independent. It is not part of Venice.ai and isn't endorsed by Venice; it uses Venice's public API, with your key.</dd>
-    <dt>Safe for work</dt><dd>Havre only lists Venice characters that aren't marked adult.</dd>
-  </dl>
-</section>
-
-<section id="next" aria-labelledby="next-h">
-  <h2 id="next-h">Coming next</h2>
-  <ul class="next-list">
-    <li>A hosted harbor: every character gets a public page and a link to share.</li>
-    <li>An API and an MCP server, so agents can create, update and talk to characters without a browser.</li>
-    <li>Flows that can make an offer: a checkout link from the creator's Whop, and payouts to creators.</li>
-    <li>Channels: Whop apps first, then iMessage.</li>
-    <li>Crews: characters with helpers of their own.</li>
-    <li>A lineage tree for every remix.</li>
-  </ul>
-</section>
 </main>
 
-<footer class="foot">
-  <p>Havre is a venture on <a href="https://yolopreneur.lol/">yolopreneur.lol</a>, made by Claude in October 2026. The drawings are in the <a href="https://househand.yolopreneur.lol/">House Hand</a>. Headings are set in Fredoka, under the <a href="fonts/OFL.txt">SIL Open Font License</a>.</p>
-  <p>Havre is independent and not affiliated with Venice.ai.</p>
-</footer>
+<section class="block harbor" id="harbor" aria-labelledby="harbor-h">
+  <div class="sechead">
+    <h2 id="harbor-h">YOUR HARBOR</h2>
+    <span class="meta">kept in this browser. export a file to keep a character anywhere else.</span>
+  </div>
+  <div class="tablewrap">
+    <table class="table">
+      <thead><tr><th scope="col">NAME</th><th scope="col">FROM</th><th scope="col">LICENSE</th><th scope="col">FILE</th></tr></thead>
+      <tbody id="roster"></tbody>
+    </table>
+  </div>
+  <p id="harbor-empty" class="mono pad">nothing here yet. pick one of venice's characters, import a card, or write one.</p>
+</section>
 
-<dialog id="keydlg" class="dlg" aria-labelledby="key-h">
-  <form method="dialog" id="keyform">
-    <h2 id="key-h">Your Venice key</h2>
-    <p>Characters talk through <a href="https://venice.ai/" rel="noopener" target="_blank">Venice</a>'s API on your own account. Make a key at <a href="https://venice.ai/settings/api" rel="noopener" target="_blank">venice.ai → Settings → API</a>.</p>
-    <label>API key <input type="password" id="keyin" autocomplete="off" spellcheck="false" placeholder="paste it here"></label>
-    <label class="check"><input type="checkbox" id="keyremember"> Remember it on this device</label>
-    <label>Model for new characters <select id="keymodel"></select></label>
-    <p class="tiny">The key stays in this browser and goes only to api.venice.ai; this page's security policy blocks every other address. Without "remember", it's gone when you close the tab.</p>
-    <p id="keystatus" class="status" role="status"></p>
-    <div class="row end">
-      <button type="button" class="pill ghost small" id="keyforget">Forget key</button>
-      <button type="button" class="pill ghost small" value="cancel" id="keycancel">Close</button>
-      <button type="submit" class="pill small" id="keysave">Save</button>
+<section class="block card" id="card" aria-labelledby="card-h">
+  <div class="sechead">
+    <h2 id="card-h">CARD</h2>
+    <span class="meta">the character as a file: edit it, remix it, export it.</span>
+  </div>
+  <p id="card-empty" class="mono pad">no character yet. the card shows up here once someone is in your harbor.</p>
+  <div id="card-body">
+  <div class="tabs" role="tablist" aria-label="Card">
+    <button type="button" role="tab" id="t-edit" aria-controls="p-edit" aria-selected="true">SHEET</button>
+    <button type="button" role="tab" id="t-remix" aria-controls="p-remix" aria-selected="false" tabindex="-1">REMIX</button>
+    <button type="button" role="tab" id="t-export" aria-controls="p-export" aria-selected="false" tabindex="-1">EXPORT</button>
+  </div>
+
+  <div class="panel" id="p-edit" role="tabpanel" aria-labelledby="t-edit">
+    <form id="sheet" class="sheet" autocomplete="off">
+      <div class="col">
+        <div class="portrait">
+          <span class="face big" id="sheet-face" aria-hidden="true"></span>
+          <p class="mono"><button type="button" class="linkish" id="portrait-pick">change portrait</button> / <button type="button" class="linkish" id="portrait-clear">remove</button></p>
+          <input type="file" id="portrait-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
+        </div>
+        <label>NAME <input name="name" maxlength="120" required></label>
+        <label>TAGLINE <input name="tagline" maxlength="200" placeholder="one line under the name"></label>
+        <p id="linked-note" class="note" hidden></p>
+        <label>GREETING <textarea name="greeting" rows="3" maxlength="4000" placeholder="the first thing they say. a blank line starts a new text."></textarea></label>
+        <label>PERSONA <textarea name="persona" rows="9" maxlength="20000" placeholder="You are … who they are, how they talk, what they want, what they won't do."></textarea></label>
+      </div>
+      <div class="col">
+        <label class="check"><input type="checkbox" name="short_form"> short-form: replies come as a few short texts</label>
+        <label>VOICE <input name="voice_notes" maxlength="2000" placeholder="clipped, wry, asks one question at a time"></label>
+        <details class="group" id="flow-group">
+          <summary>FLOW <span class="hint">optional stages for meeting someone new</span></summary>
+          <ol id="flow" class="items"></ol>
+          <button type="button" class="btn small" id="flow-add">ADD A STAGE</button>
+        </details>
+        <details class="group" id="ex-group">
+          <summary>EXAMPLES <span class="hint">they teach the voice; without a key, replies come from these</span></summary>
+          <ol id="examples" class="items"></ol>
+          <button type="button" class="btn small" id="ex-add">ADD AN EXAMPLE</button>
+        </details>
+        <label>TAGS <input name="tags" maxlength="400" placeholder="comma, separated"></label>
+        <div class="two">
+          <label>MODEL <select name="model" id="model-select"></select></label>
+          <label>LICENSE <select name="license" id="license-select"></select></label>
+        </div>
+        <label>CREATOR <input name="creator" maxlength="120" placeholder="who made them"></label>
+        <div class="lineage">
+          <h3>LINEAGE</h3>
+          <ul id="lineage" class="lineage-list"></ul>
+          <p class="hint">where this character came from. entries are only ever added.</p>
+        </div>
+        <button type="button" class="btn danger small" id="delete">REMOVE FROM HARBOR</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel" id="p-remix" role="tabpanel" aria-labelledby="t-remix" hidden>
+    <div class="remix">
+      <p class="lede">Write someone new from the idea of <b id="rx-from">this character</b>, and keep the credit.</p>
+      <ol class="steps">
+        <li><b>Distill.</b> A first pass reads the source and writes down only ideas: no names, no sentences.</li>
+        <li><b>Write.</b> A second pass never sees the source. It writes someone new from the ideas and your twist.</li>
+        <li><b>Check.</b> Havre compares the new words with the old, here in your browser, then logs the credit.</li>
+      </ol>
+      <details class="group" id="rx-paste-group">
+        <summary>USE A DIFFERENT SOURCE <span class="hint">paste a description you can read</span></summary>
+        <label class="sr" for="rx-paste">Source text</label>
+        <textarea id="rx-paste" rows="5" placeholder="Paste a character description. Name it on the first line."></textarea>
+      </details>
+      <p id="rx-rights" class="note" hidden></p>
+      <p><button type="button" class="btn solid" id="rx-distill">DISTILL THE IDEAS</button></p>
+      <div id="rx-ideas" class="ideas" hidden></div>
+      <label id="rx-twist-label" hidden>YOUR TWIST <input id="rx-twist" maxlength="400" placeholder="e.g. make them a ferry pilot"></label>
+      <p><button type="button" class="btn solid" id="rx-write" hidden>WRITE SOMEONE NEW</button></p>
+      <div id="rx-draft" class="draft" hidden></div>
+      <p id="rx-status" class="status" role="status" aria-live="polite"></p>
     </div>
-  </form>
-</dialog>
+  </div>
+
+  <div class="panel" id="p-export" role="tabpanel" aria-labelledby="t-export" hidden>
+    <ul class="exports">
+      <li><button type="button" class="out" data-out="havre"><b>HAVRE CARD</b><span>.havre.json, the whole character</span></button></li>
+      <li><button type="button" class="out" data-out="v3"><b>CHARACTER CARD V3</b><span>.json for SillyTavern, RisuAI and other card apps</span></button></li>
+      <li><button type="button" class="out" data-out="png"><b>CHARACTER CARD PNG</b><span>a picture with the card inside it</span></button></li>
+      <li><button type="button" class="out" data-out="prompt"><b>SYSTEM PROMPT</b><span>.txt for any OpenAI-compatible API</span></button></li>
+    </ul>
+    <p class="mono">files are made here, in your browser. nothing is uploaded.</p>
+  </div>
+  </div>
+</section>
+
+<section class="row" id="how" aria-labelledby="how-h">
+  <h2 id="how-h">HOW IT WORKS</h2>
+  <div class="body">
+    <ol>
+      <li>Paste your Venice API key. It stays in this browser, and the page can reach api.venice.ai and nothing else.</li>
+      <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first.</li>
+      <li>Talk. Replies come as a few short texts. Without a key, the characters you write answer from their own examples.</li>
+      <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
+    </ol>
+  </div>
+</section>
+
+<section class="row" id="agents" aria-labelledby="agents-h">
+  <h2 id="agents-h">FOR AGENTS</h2>
+  <div class="body">
+    <p>Copy this into any agent. It reads the skill, writes the character, and hands back the files. Change the second line to who you want.</p>
+    <pre id="agent-prompt" class="pre"></pre>
+    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="llms.txt">llms.txt</a></p>
+    <p>What comes back: a Havre card (.havre.json) to import here, a Character Card V3 for SillyTavern, RisuAI and other card apps, and a plain system prompt for any OpenAI-compatible API.</p>
+  </div>
+</section>
+
+<section class="row" id="costs" aria-labelledby="costs-h">
+  <h2 id="costs-h">COSTS</h2>
+  <div class="body">
+    <p>You pay Venice directly, for what you use. Havre adds nothing. Rough prices, October 2026:</p>
+    <table class="prices">
+      <tbody>
+        <tr><th scope="row">a chat turn</th><td>$0.0007 to $0.005, by model (3,000 tokens in, 150 out)</td></tr>
+        <tr><th scope="row">a hello from a venice character</th><td>one chat turn</td></tr>
+        <tr><th scope="row">a remix</th><td>two short calls; five more for a venice character</td></tr>
+      </tbody>
+    </table>
+    <p class="mono">each card's model list shows venice's price per million tokens.</p>
+  </div>
+</section>
+
+<section class="row" id="plans" aria-labelledby="plans-h">
+  <h2 id="plans-h">PLANS</h2>
+  <div class="body">
+    <p><b>Studio, free.</b> Everything on this page, in your browser: as many characters as you like, import and export, remix with credit.</p>
+    <p><b>Harbor, planned at $8 a month for founding members.</b> Hosted character pages with a link of their own, an API and an MCP server, channels starting with Whop, and payouts to creators. Nothing is charged now. <a href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Havre&amp;venture=havre&amp;plan=Harbor+%28founding%29">Join early access</a>.</p>
+    <p class="mono">early access is a public issue on teahub: no email, nothing charged.</p>
+  </div>
+</section>
+
+<section class="row" id="next" aria-labelledby="next-h">
+  <h2 id="next-h">COMING NEXT</h2>
+  <div class="body">
+    <ul>
+      <li>Photos: a character sends a picture of themselves, made from their card photo, with the price on it.</li>
+      <li>Voice notes: a voice for each character, with the words under it.</li>
+      <li>Hearing you and seeing your photos, if you switch them on.</li>
+      <li>Scenes: two characters take turns from your opening line.</li>
+      <li>A hosted harbor: a page and a link for every character, and an API and an MCP server.</li>
+    </ul>
+  </div>
+</section>
+
+<section class="row" id="fine" aria-labelledby="fine-h">
+  <h2 id="fine-h">FINE PRINT</h2>
+  <div class="body">
+    <p>Characters and conversations are saved in this browser. Export them to keep them anywhere else.</p>
+    <p>Your key stays in this browser and goes only to api.venice.ai; the page's security policy blocks every other address. Conversations run on your Venice account, under Venice's terms.</p>
+    <p>Safe for work only: Havre lists only Venice characters that aren't marked adult.</p>
+    <p>Someone else's character comes in as a link with credit, not a copy, and Remix writes someone new from ideas alone. Names and broad ideas aren't protected by copyright; a character's written expression can be. When in doubt, ask the creator. This isn't legal advice.</p>
+    <p>Havre is independent. It isn't part of Venice.ai and isn't endorsed by Venice.</p>
+  </div>
+</section>
+
+<section class="row last" id="name" aria-labelledby="name-h">
+  <h2 id="name-h">THE NAME</h2>
+  <div class="body">
+    <p><i>Havre</i> means harbor. In July 2025 Venice and Le Havre signed a letter of friendship: two old port cities, both on the UNESCO World Heritage list.</p>
+  </div>
+</section>
+
+<footer class="foot">havre.yolopreneur.lol / a venture on <a href="https://yolopreneur.lol/">yolopreneur.lol</a> / made by claude, october 2026 / not affiliated with venice.ai</footer>
 
 <dialog id="importdlg" class="dlg" aria-labelledby="imp-h">
   <form method="dialog" id="impform">
-    <h2 id="imp-h">Bring a character in</h2>
-    <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a card file">
-      <b>Drop a card here</b><span>Havre JSON, or a character card V1, V2 or V3 (JSON or PNG)</span>
-      <span class="tiny">or press to choose a file</span>
+    <h2 id="imp-h">IMPORT A CARD</h2>
+    <div class="dlgbody">
+      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose a card file">
+        <b>DROP A CARD HERE</b><span>Havre JSON, or a character card V1, V2 or V3 (JSON or PNG)</span>
+        <span class="mono">or press to choose a file</span>
+      </div>
+      <input type="file" id="file" accept=".json,.png,application/json,image/png" hidden>
+      <label>OR PASTE A DESCRIPTION <textarea id="paste" rows="5" placeholder="Name on the first line, then who they are."></textarea></label>
+      <p id="impstatus" class="status" role="status"></p>
+      <p class="actions"><button type="button" class="btn" id="impcancel">CLOSE</button> <button type="button" class="btn solid" id="imp-paste">IMPORT TEXT</button></p>
     </div>
-    <input type="file" id="file" accept=".json,.png,application/json,image/png" hidden>
-    <label>Or paste a description <textarea id="paste" rows="5" placeholder="Name on the first line, then who they are."></textarea></label>
-    <p id="impstatus" class="status" role="status"></p>
-    <div class="row end">
-      <button type="button" class="pill ghost small" id="imp-venice">Find on Venice instead</button>
-      <button type="button" class="pill ghost small" id="impcancel">Close</button>
-      <button type="button" class="pill small" id="imp-paste">Import text</button>
-    </div>
-  </form>
-</dialog>
-
-<dialog id="venicedlg" class="dlg wide-dlg" aria-labelledby="ven-h">
-  <form method="dialog" id="venform">
-    <h2 id="ven-h">Find a character on Venice</h2>
-    <p class="tiny">Public, safe-for-work characters. Havre brings in a link and the credit: the character keeps speaking with its own prompt, through Venice, and you can remix it into someone of your own.</p>
-    <div class="row search">
-      <label class="grow"><span class="sr">Search</span><input type="search" id="vsearch" placeholder="Search Venice characters" autocomplete="off"></label>
-      <button type="submit" class="pill small" id="vgo">Search</button>
-    </div>
-    <p id="venstatus" class="status" role="status"></p>
-    <ul id="vresults" class="vresults"></ul>
-    <div class="row end"><button type="button" class="pill ghost small" id="vclose">Close</button></div>
   </form>
 </dialog>
 
