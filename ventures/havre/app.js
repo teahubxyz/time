@@ -3,6 +3,7 @@
 import * as C from "./card.js";
 import * as A from "./abilities.js";
 import * as M from "./media.js";
+import * as T from "./threads.js";
 import { Venice, VeniceError } from "./venice.js";
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -41,25 +42,36 @@ function box(kind) {
   };
 }
 const local = box("localStorage"), session = box("sessionStorage");
-const K = { cards: "havre.cards.v1", chats: "havre.chats.v1", sel: "havre.selected", key: "havre.key", model: "havre.model",
+const K = { cards: "havre.cards.v1", sel: "havre.selected", key: "havre.key", model: "havre.model",
   sort: "havre.vsort", seeded: "havre.seeded.v1", adult: "havre.adult", adult18: "havre.adult.18", plainModel: "havre.plain.model",
   own: "havre.venice.models", ab: "havre.abilities", voiceOn: "havre.voicenotes", jobs: "havre.clips.pending", refOk: "havre.refs.ok",
-  spent: "havre.spent", cleared: "havre.chats.cleared", backs: "havre.comebacks", jobsDone: "havre.clips.done" };
+  spent: "havre.spent", jobsDone: "havre.clips.done",
+  // your chats: the list of threads, each thread's messages under its own key, the threads deleted (so another tab
+  // doesn't bring them back), the one open, the left column's tab, and when each one's character last texted first
+  threads: "havre.threads.v1", msgs: "havre.msgs.", gone: "havre.threads.gone", open: "havre.open", left: "havre.left",
+  tried: "havre.textfirst", came: "havre.textfirst.others",
+  // the first way conversations were kept, one per character, and which thread each one became
+  chats: "havre.chats.v1", fromV1: "havre.threads.from-v1", cleared: "havre.chats.cleared", backs: "havre.comebacks" };
+const msgKey = (id) => K.msgs + id;
 const PAGE = 24;
-const PLAIN = "_plain";              // a plain chat with a model: no character, no card
+const PLAIN = T.PLAIN;               // a plain chat with a model: no character, no card
 const SORTS = ["featured", "imports", "highestRating", "mostRecent"];
 // what a character hears when they speak first; it stays out of the conversation on screen
 const OPENER = "[Start the conversation: someone new just came to talk to you. Say hello in character, in a line or two.]";
 
 const S = {
-  cards: [], sel: "", chats: {}, key: "", keyRemembered: false, model: C.DEFAULT_MODEL, models: null, modelsError: "",
-  replying: null, demo: {}, rx: null, plain: null, own: {},
+  cards: [], sel: "", key: "", keyRemembered: false, model: C.DEFAULT_MODEL, models: null, modelsError: "",
+  // your chats: every thread with its messages, the one open (null: a new chat with the character in sel, not
+  // started yet), the one the conversation on screen was drawn for, the replies on their way (by thread), what each
+  // character is doing meanwhile ("is typing…"), and a count that goes up whenever the conversation is drawn again
+  threads: {}, open: null, shown: null, busy: new Map(), doing: new Map(), gen: 0, left: "chars",
+  demo: {}, rx: null, plain: null, own: {},
   v: { list: [], offset: 0, more: false, query: "", sort: "featured", tag: "", adult: false, loading: false, asked: 0 },
   // abilities: Venice's other models by type, what was picked, who sends voice notes, clips on their way, the photo
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
   ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25 }, voiceOn: {}, jobs: [], ask: null,
-  rec: null, moving: false, inflight: 0,
+  rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
 const ALLOWANCES = [0.1, 0.25, 1, 5];
@@ -78,12 +90,20 @@ function reserve(usd) {
 }
 function refund(usd) { if (usd > 0) charge(-usd); }
 const card = () => (S.sel === PLAIN ? S.plain : S.cards.find((c) => c.id === S.sel) || S.cards[0] || null);
+/** the chat on screen; null for a new chat with card() that nobody has said anything in yet */
+const thread = () => (S.open && S.threads[S.open]) || null;
+/** whose chat it is: their card, the plain chat's, or null if they've left the harbor */
+const cardOf = (t) => (!t ? null : t.card === PLAIN ? S.plain : S.cards.find((c) => c.id === t.card) || null);
+/** whether this chat is the one on screen */
+const here = (t) => !!t && S.open === t.id;
+const threadsOf = (id) => Object.values(S.threads).filter((t) => t.card === id);
+const latestOf = (id) => T.latestOf(Object.values(S.threads), id);
+/** whether you can see the page (a tab in the background can't be read) */
+const seen = () => document.visibilityState !== "hidden";
 
 // ---------- boot ----------
 function boot() {
   S.cards = (local.get(K.cards, []) || []).map((c) => { try { return C.normalizeCard(c); } catch { return null; } }).filter(Boolean);
-  S.chats = local.get(K.chats, {}) || {};
-  for (const [id, hist] of Object.entries(S.chats)) if (!Array.isArray(hist)) delete S.chats[id];
   S.sel = local.get(K.sel, "") || "";
   retireFirstCast();
   if (S.sel !== PLAIN && !S.cards.some((c) => c.id === S.sel)) S.sel = S.cards[0] ? S.cards[0].id : "";
@@ -93,6 +113,11 @@ function boot() {
   S.model = local.get(K.model, C.DEFAULT_MODEL) || C.DEFAULT_MODEL;
   S.plain = { ...C.normalizeCard({ name: "no character", voice: { short_form: false } }), id: PLAIN, plain: true,
     model: local.get(K.plainModel, C.DEFAULT_MODEL) || C.DEFAULT_MODEL };
+  loadThreads();
+  const open = S.threads[local.get(K.open, "")], c0 = card();
+  S.open = open && c0 && open.card === c0.id ? open.id : c0 ? (latestOf(c0.id) || {}).id || null : null;
+  const left = local.get(K.left, "");
+  S.left = left === "chats" || left === "chars" ? left : Object.keys(S.threads).length ? "chats" : "chars";
   const sort = local.get(K.sort, "featured");
   S.v.sort = SORTS.includes(sort) ? sort : "featured";
   S.v.adult = local.get(K.adult, false) === true && local.get(K.adult18, false) === true;
@@ -102,15 +127,19 @@ function boot() {
   if (!ALLOWANCES.includes(S.ab.allowance)) S.ab.allowance = 0.25;
   S.voiceOn = local.get(K.voiceOn, {}) || {};
   S.jobs = (local.get(K.jobs, []) || []).filter((j) => j && j.queueId && j.model && Date.now() - (j.started || 0) < 23 * 3600e3);
+  pruneEmpty();
   bind();
   renderAll();
+  markRead(thread());
   loadModels();
-  if (S.key) { loadVenice(0); loadBalance(); resumeJobs(); comeBack(card()); }
+  if (S.key) { loadVenice(0); loadBalance(); resumeJobs(); comingBack(); }
+  const t0 = thread();
+  if (S.key && t0 && t0.msgs.length && !T.anyShown(t0.msgs)) speakFirst();   // a hello cut off when its tab closed
   setTimeout(sweepMedia, 4000);
 }
 
 // The first version of Havre arrived with three characters of its own. This one has none, so they leave, unless
-// someone has changed them since; and their drawings went with that version.
+// someone has changed them since; and their drawings went with that version. (Their chats go when the threads load.)
 function retireFirstCast() {
   if (!local.get(K.seeded, false)) return;
   S.cards = S.cards.filter((c) => !(["maren", "taskmaster", "odile"].includes(c.id) && c.updated === c.created));
@@ -118,7 +147,6 @@ function retireFirstCast() {
   local.del(K.seeded);
   if (!S.cards.some((c) => c.id === S.sel)) S.sel = S.cards[0] ? S.cards[0].id : "";
   persistCards(true);
-  persistChats();
 }
 
 // ---------- persistence ----------
@@ -131,57 +159,129 @@ function persistCards(now = false) {
   };
   if (now) go(); else saveTimer = setTimeout(go, 250);
 }
-function persistChats() {
-  mergeChats(local.get(K.chats, {}));                        // what another tab saved meanwhile stays
-  for (const id of Object.keys(S.chats)) {
-    if (id !== PLAIN && !S.cards.some((c) => c.id === id)) delete S.chats[id];
-    else if (S.chats[id].length > 80) S.chats[id].splice(0, S.chats[id].length - 80);    // in place: a reply on its way holds this array
+// ---------- your chats, kept ----------
+/** messages this tab took back (a hello that didn't happen): not brought back from another tab's copy */
+const takenBack = new Set();
+/** a character the cards here know (or the plain chat's) */
+const known = (id) => id === PLAIN || S.cards.some((c) => c.id === id);
+/** a thread's messages as kept, with whose they are: { card, msgs }; null if there are none */
+function readMsgs(id) {
+  const v = local.get(msgKey(id), null);
+  return v && typeof v === "object" && typeof v.card === "string" && Array.isArray(v.msgs) ? { card: v.card, msgs: v.msgs.filter(Boolean) } : null;
+}
+/** the ids of every thread whose messages this browser keeps */
+function storedThreadIds() {
+  const ids = [];
+  try {
+    for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(K.msgs)) ids.push(k.slice(K.msgs.length)); }
+  } catch { /* storage closed off */ }
+  return ids;
+}
+/**
+ * The threads this browser keeps. The list is read, less the threads deleted and the ones whose character has left
+ * (the cards here are the latest at load); a thread whose messages are kept but the list lost (two tabs saving the
+ * list at the same moment) comes back; conversations kept the first way become threads.
+ */
+function loadThreads() {
+  const was = local.get(K.gone, {}) || {}, gone = T.pruneGone(was);
+  if (Object.keys(gone).length !== Object.keys(was).length) local.set(K.gone, gone);
+  S.threads = {};
+  let changed = false;
+  for (const [id, t] of Object.entries(local.get(K.threads, {}) || {})) {
+    if (!t || t.id !== id || gone[id] || !known(t.card)) { local.del(msgKey(id)); changed = true; continue; }
+    const kept = readMsgs(id);
+    S.threads[id] = { ...T.meta(t), msgs: kept ? kept.msgs : [] };
   }
-  if (!local.set(K.chats, S.chats)) full();
-  clearTimeout(sweepTimer);
-  sweepTimer = setTimeout(sweepMedia, 2000);
+  for (const id of storedThreadIds()) {
+    if (S.threads[id]) continue;
+    const kept = readMsgs(id);
+    if (gone[id] || !kept || !known(kept.card) || !T.anyShown(kept.msgs)) { local.del(msgKey(id)); continue; }
+    S.threads[id] = { ...T.fromMessages(id, kept.card, kept.msgs), msgs: kept.msgs };
+    changed = true;
+  }
+  if (fromV1()) changed = true;
+  local.del(K.cleared);
+  local.del(K.backs);
+  if (changed) saveIndex();
+}
+/**
+ * Conversations kept the first way, one per character, become threads: the list first, then each one's messages, and
+ * a conversation leaves the first store only once its thread is safely kept (one that doesn't fit yet stays there for
+ * the next visit). A tab still on the old page may write them again: they join the threads they became before.
+ */
+function fromV1() {
+  const old = local.get(K.chats, null);
+  if (!old || typeof old !== "object") return false;
+  const gone = local.get(K.gone, {}) || {};
+  const ours = Object.fromEntries(Object.entries(old).filter(([id]) => known(id)));
+  const { threads, messages, into } = T.migrate(ours, { newId: mid, into: local.get(K.fromV1, {}) || {} });
+  local.set(K.fromV1, into);
+  const landing = threads.filter((t) => !gone[t.id]);        // one deleted since stays deleted
+  for (const t of landing) {
+    const mine = S.threads[t.id];
+    if (mine) { T.mergeMessages(mine.msgs, messages[t.id], takenBack); mine.at = Math.max(mine.at || 0, t.at); }
+    else S.threads[t.id] = { ...t, msgs: messages[t.id] };
+  }
+  saveIndex();
+  const left = {};
+  for (const t of landing) if (!saveMsgs(S.threads[t.id])) left[t.card] = old[t.card];
+  if (Object.keys(left).length) local.set(K.chats, left); else local.del(K.chats);
+  return true;
+}
+/** a thread's messages, with what another tab added meanwhile: the last T.KEEP of them. false if they didn't fit */
+function saveMsgs(t) {
+  const kept = readMsgs(t.id);
+  if (kept) T.mergeMessages(t.msgs, kept.msgs, takenBack);
+  if (t.msgs.length > T.KEEP) t.msgs.splice(0, t.msgs.length - T.KEEP);       // in place: a reply on its way holds it
+  if (local.set(msgKey(t.id), { card: t.card, msgs: t.msgs })) return true;
+  full();
+  return false;
+}
+/**
+ * The list of threads another tab saved, merged into this one: new threads come with their messages, deleted ones
+ * go. A thread whose character this tab doesn't know yet (another tab just met them) is kept, just not shown.
+ */
+function syncIndex() {
+  const { added, changed, removed } = T.mergeIndex(S.threads, local.get(K.threads, {}) || {}, local.get(K.gone, {}) || {});
+  for (const id of added) { const kept = readMsgs(id); S.threads[id].msgs = kept ? kept.msgs : []; }
+  for (const id of removed) stopThread(id);
+  return added.length + changed.length + removed.length > 0;
+}
+function saveIndex() {
+  syncIndex();
+  const out = {};
+  for (const [id, t] of Object.entries(S.threads)) out[id] = T.meta(t);
+  if (!local.set(K.threads, out)) full();
+}
+/** a thread kept: its messages, and its place in the list (not one deleted meanwhile, here or in another tab) */
+function saveThread(t) {
+  syncIndex();
+  if (!S.threads[t.id]) return;
+  saveMsgs(t);
+  saveIndex();
+  sweepSoon();
+}
+/** chats nothing was ever said in (a hello that never came, a clip that never arrived) go, after a while */
+function pruneEmpty() {
+  const now = Date.now();
+  for (const t of Object.values(S.threads)) {
+    if (now - (t.created || 0) > 10 * 60000 && !T.anyShown(t.msgs) && !S.jobs.some((j) => j.thread === t.id)) dropThread(t.id);
+  }
 }
 let fullSaid = 0;
 function full() {
   if (Date.now() - fullSaid < 60000) return;
   fullSaid = Date.now();
-  toast("This browser won't hold more. Remove a character's pictures, or start a conversation over, to make room.");
+  toast("This browser won't hold more. Delete an old chat, or remove a character's pictures, to make room.");
 }
-/**
- * Messages another tab saved that this one doesn't have: added in place (by id) and put in time order, so a reply
- * on its way still lands in the same conversation. A conversation started over elsewhere is started over here too.
- * Returns whether anything changed.
- */
-function mergeChats(stored) {
-  const cut = local.get(K.cleared, {}) || {};
-  let changed = false;
-  for (const [id, theirs] of Object.entries(stored || {})) {
-    if (!Array.isArray(theirs) || (id !== PLAIN && !S.cards.some((c) => c.id === id))) continue;
-    const mine = S.chats[id] || (S.chats[id] = []);
-    const have = new Map(mine.filter((m) => m && m.id).map((m) => [m.id, m]));
-    let added = false;
-    for (const m of theirs) {
-      if (!m || !m.id || takenBack.has(m.id) || (m.at || 0) <= (cut[id] || 0)) continue;
-      const mineToo = have.get(m.id);
-      if (!mineToo) { mine.push(m); added = true; }
-      else if (m.voice && !mineToo.voice) { mineToo.voice = m.voice; changed = true; }
-    }
-    if (added) { mine.sort((a, b) => (a.at || 0) - (b.at || 0)); changed = true; }
-  }
-  for (const [id, at] of Object.entries(cut)) {
-    const mine = S.chats[id];
-    if (!Array.isArray(mine)) continue;
-    for (let i = mine.length - 1; i >= 0; i--) if ((mine[i].at || 0) <= at) { mine.splice(i, 1); changed = true; }
-  }
-  return changed;
-}
-/** messages this tab took back (a hello that didn't happen): not brought back from another tab's copy */
-const takenBack = new Set();
-// photos, voice notes and clips that no conversation points at any more leave this browser too
+// photos, voice notes and clips that no chat points at any more leave this browser too
 let sweepTimer = 0;
+function sweepSoon() { clearTimeout(sweepTimer); sweepTimer = setTimeout(sweepMedia, 2000); }
 function sweepMedia() {
-  // what this tab holds and what another tab may have saved since: both stay
-  const keep = new Set([...A.mediaIds(S.chats), ...A.mediaIds(local.get(K.chats, {}) || {})]);
+  // what this tab holds, and what another tab may have saved since: both stay
+  const keep = A.mediaIds(Object.fromEntries(Object.values(S.threads).map((t) => [t.id, t.msgs])));
+  for (const id of storedThreadIds()) for (const m of A.mediaIds({ [id]: (readMsgs(id) || {}).msgs })) keep.add(m);
+  for (const m of A.mediaIds(local.get(K.chats, {}) || {})) keep.add(m);
   M.keepOnly(keep).catch(() => {});
 }
 function uniqueId(base) {
@@ -225,7 +325,7 @@ const portraitSrc = (c) => pictureSrc((c && c.portrait) || "");
  */
 function apiPicture(p = "") {
   if (/^data:image\/(png|jpe?g|webp|gif);base64,/i.test(p)) return p;
-  if (OUTERFACE.test(p)) return veniceImg(p, 1080);
+  if (OUTERFACE.test(p)) return p;                          // Venice fetches its own photos by their own address
   return "";
 }
 /** what a photo or a clip of them is made from: their portrait, then the pictures on their card */
@@ -241,7 +341,71 @@ function paintFace(el, src) {
 }
 
 // ---------- render ----------
-function renderAll() { renderGrid(); renderRoster(); renderChat(); renderCard(); updateKeyUI(); }
+function renderAll() { renderLeft(); renderGrid(); renderThreads(); renderRoster(); renderChat(); renderCard(); updateKeyUI(); }
+
+// ---------- your chats ----------
+/** the left column: your chats, or the characters to start one with */
+function setLeft(which, { focus = false } = {}) {
+  S.left = which;
+  local.set(K.left, which);
+  renderLeft();
+  if (focus) $(which === "chats" ? "#lt-chats" : "#lt-chars").focus();
+}
+function renderLeft() {
+  for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"]]) {
+    $(tab).setAttribute("aria-selected", S.left === w ? "true" : "false");
+    $(tab).tabIndex = S.left === w ? 0 : -1;
+    $(panel).hidden = S.left !== w;
+  }
+}
+const faces = new Map();         // each chat's face in the list, kept between drawings so the photos don't flicker
+function threadFace(t, src) {
+  const f = faces.get(t.id);
+  if (f && f.src === src) return f.el;
+  const el = h("span", { class: "face small", "aria-hidden": "true" });
+  paintFace(el, src);
+  faces.set(t.id, { src, el });
+  return el;
+}
+/** your chats, the latest first: who, how long ago, its name or the first thing you said, the last line, what's new */
+function renderThreads() {
+  const ul = $("#threads"), now = Date.now();
+  const list = T.byLatest(Object.values(S.threads).filter((t) => cardOf(t)));
+  let fresh = 0;
+  ul.textContent = "";
+  for (const t of list) {
+    const c = cardOf(t), open = here(t), n = open && seen() ? 0 : T.unread(t, t.msgs);
+    const name = c.plain ? "no character" : c.name, title = T.titleOf(t, t.msgs), busy = S.doing.get(t.id);
+    fresh += n;
+    ul.append(h("li", { "aria-current": open ? "true" : null, "data-thread": t.id },
+      h("button", { type: "button", class: "trow" + (n ? " unread" : ""), onclick: () => openThread(t.id, { scroll: narrow() }),
+        "aria-label": `${name}${title ? ": " + title : ""}${n ? `, ${n} new` : ""}` },
+      threadFace(t, c.plain ? "" : portraitSrc(c)),
+      h("span", { class: "ttx" },
+        h("span", { class: "tline" }, h("span", { class: "tname", text: name }), h("span", { class: "tago", text: T.ago(t.at, now) })),
+        title ? h("span", { class: "ttitle", text: title }) : null,
+        h("span", { class: "tsnip" + (busy ? " doing" : ""), text: busy || T.snippet(t.msgs) || "a new chat" })),
+      n ? h("span", { class: "tnew", "aria-hidden": "true", text: String(n) }) : null)));
+  }
+  for (const id of faces.keys()) if (!S.threads[id]) faces.delete(id);
+  $("#threads-empty").hidden = list.length > 0;
+  const badge = $("#chats-new");
+  badge.textContent = fresh ? String(fresh) : "";
+  badge.hidden = !fresh;
+  $("#lt-chats").setAttribute("aria-label", fresh ? `Chats, ${fresh} new` : "Chats");
+  document.title = fresh ? `(${fresh}) Havre` : "Havre";
+  renderChatsBar();
+}
+/** above your chats: starting a new one */
+function renderChatsBar() {
+  const p = $("#chats-bar"), c = card();
+  p.textContent = "";
+  p.append("start a new chat: ", ...slashed([
+    c && !c.plain ? linkish(`with ${c.name}`, () => selectCard(c.id, { talk: true, open: null, scroll: narrow() })) : null,
+    linkish("without a character", () => selectCard(PLAIN, { talk: true, open: null, scroll: narrow() })),
+    linkish("with someone else", () => setLeft("chars", { focus: true })),
+  ]));
+}
 
 // Venice's characters, a page at a time; without a key, empty frames where they will be
 function ghosts(n = 8) {
@@ -360,40 +524,155 @@ function renderRoster() {
   }
 }
 
-function selectCard(id, { talk = false, scroll = false } = {}) {
-  if (S.replying) { S.replying.abort(); S.replying = null; setBusy(false); }
+/**
+ * Talk to someone: their chat you looked at last, or a new one if you have none with them (`open`: a given thread, or
+ * null for a new chat). Replies on their way in other chats carry on. talk: go to the chat, where they may speak first.
+ */
+function selectCard(id, { talk = false, scroll = false, open } = {}) {
   if (S.ask && !S.ask.busy && S.ask.card !== id) S.ask = null;
   if (S.rec) stopRecording(true);
+  const was = S.sel;
   S.sel = id;
   local.set(K.sel, id);
-  markTiles(); renderRoster(); renderChat(); renderCard();
+  const t = open !== undefined ? open : latestOf(id);
+  S.open = t ? t.id : null;
+  local.set(K.open, S.open);
+  markRead(t);
+  markTiles(); renderRoster(); renderThreads(); renderChat();
+  if (was !== id) renderCard();
   if (!talk) return;
   if (scroll || narrow()) (narrow() ? $("#chat") : $("#studio")).scrollIntoView({ behavior: motion(), block: "start" });
   if (!narrow()) $("#say").focus({ preventScroll: true });
   speakFirst();
 }
-
-// a Venice character, or one of yours with no greeting written, says hello first
-function speakFirst() {
+/** open one of your chats */
+function openThread(id, opts = {}) {
+  const t = S.threads[id];
+  if (t && cardOf(t)) selectCard(t.card, { talk: true, ...opts, open: t });
+}
+/** a new chat with whoever is on screen; the one there stays in your chats */
+function newChat() {
   const c = card();
-  if (!c || c.plain || !S.key || S.replying) return;
-  if ((S.chats[c.id] || []).length) { comeBack(c); return; }
+  if (c && thread()) selectCard(c.id, { talk: true, open: null });
+}
+function renameThread() {
+  const t = thread();
+  if (!t) return;
+  const name = prompt("Name this chat:", T.titleOf(t, t.msgs));
+  if (name == null) return;
+  t.title = name.replace(/\s+/g, " ").trim().slice(0, 80);
+  t.titled = Date.now();
+  saveIndex();
+  renderThreads();
+}
+function deleteThread() {
+  const t = thread(), c = card();
+  if (!t || !confirm(`Delete this chat${c && !c.plain ? " with " + c.name : ""}? It can't be brought back.`)) return;
+  dropThread(t.id);
+  renderThreads(); renderChat(); markTiles(); renderRoster();
+}
+/** a thread's keeping undone: here, and, through the list of deleted threads, in every other tab */
+function forgetThread(id) {
+  local.set(K.gone, T.pruneGone({ ...(local.get(K.gone, {}) || {}), [id]: Date.now() }));
+  delete S.threads[id];
+  local.del(msgKey(id));
+  saveIndex();
+  sweepSoon();
+}
+/** delete a thread: its reply stops, a clip on its way goes to their latest chat, and if it was open, another opens */
+function dropThread(id) {
+  if (!S.threads[id]) return;
+  forgetThread(id);
+  stopThread(id);
+  if (S.jobs.some((j) => j.thread === id)) { for (const j of S.jobs) if (j.thread === id) j.thread = ""; saveJobs(); }
+  if (S.ask && S.ask.thread === id) S.ask.thread = null;
+}
+/** a thread that's gone, deleted here or in another tab: its reply stops, and if it was open, another one opens */
+function stopThread(id) {
+  const ctrl = S.busy.get(id);
+  if (ctrl) ctrl.abort();
+  S.busy.delete(id);
+  S.doing.delete(id);
+  if (S.open === id) {
+    const next = latestOf(S.sel);
+    S.open = next ? next.id : null;
+    local.set(K.open, S.open);
+    S.gen++;
+  }
+}
+/** a thread starts with the first thing said in it: yours, or a character's hello */
+function startThread(c) {
+  const now = Date.now();
+  const t = { id: mid(), card: c.id, title: "", titled: 0, created: now, at: now, read: now, msgs: [] };
+  S.threads[t.id] = t;
+  if (S.sel === c.id && !S.open) {                          // the new chat on screen is this thread now
+    S.open = t.id;
+    local.set(K.open, t.id);
+    if (!S.shown) S.shown = t.id;
+  }
+  saveIndex();
+  return t;
+}
+/** you've seen a thread, up to now (only while the page can be seen) */
+function markRead(t) {
+  if (!t || !seen() || !S.threads[t.id]) return;
+  t.read = Math.max(t.read || 0, Date.now());
+  saveIndex();
+}
+
+// a Venice character, or one of yours with no greeting written, says hello first in a new chat
+async function speakFirst() {
+  const c = card(), t = thread();
+  if (!c || c.plain || !S.key || (t && S.busy.has(t.id))) return;
+  if (t && T.anyShown(t.msgs)) { comeBack(t); return; }
+  if (t && t.msgs.length) {                                   // nothing said in it yet, but a hello was asked for
+    if (await replying(t) || thread() !== t || T.anyShown(t.msgs) || S.busy.has(t.id)) return;    // on its way somewhere
+    for (const m of t.msgs.splice(0)) takenBack.add(m.id);   // cut off (its tab closed): asked again
+    saveThread(t);
+  }
   if (c.engine.venice_character || (!c.greeting && c.persona)) send(OPENER, { hidden: true });
 }
+/** whether a reply is on its way in this chat, in this tab or another (each holds a lock while it waits) */
+async function replying(t) {
+  if (S.busy.has(t.id)) return true;
+  try { return (await navigator.locks.query()).held.some((l) => l.name === "havre-reply-" + t.id); }
+  catch { return Date.now() - (t.at || 0) < 60000; }
+}
 /**
- * You come back after a while, and they text first (when characters act on their own). Once per long gap, whatever
- * happens, in whichever tab gets there first: an attempt is written down before it's made.
+ * After a while, a character texts you first (when characters act on their own): in the chat you open, or in one you
+ * aren't in. Once a quiet spell, in whichever tab gets there first: an attempt is written down before it's made. It's
+ * paid for out of the day's allowance, like everything they do on their own.
  */
-function comeBack(c) {
-  if (!c || c.plain || !S.key || !S.ab.own || S.replying) return;
+function comeBack(t) {
+  const c = cardOf(t);
+  if (!t || !c || c.plain || !S.key || !S.ab.own || S.busy.has(t.id)) return Promise.resolve();
+  if (T.byLatest(threadsOf(c.id))[0] !== t) return Promise.resolve();      // only in their latest chat with you
   const go = () => {
-    const hist = S.chats[c.id] || [], gap = A.since(hist, Date.now()), backs = local.get(K.backs, {}) || {};
-    if (!hist.length || gap < A.BACK_AFTER || (hist.at(-1) || {}).hidden || Date.now() - (backs[c.id] || 0) < A.BACK_AFTER) return;
-    if (!local.set(K.backs, { ...backs, [c.id]: Date.now() })) return;     // can't write it down: don't risk asking twice
-    if ((card() || {}).id === c.id && !S.replying) send(A.comeBack(gap), { hidden: true });
+    const tried = local.get(K.tried, {}) || {};
+    if (!S.threads[t.id] || S.busy.has(t.id) || !T.readyToTextFirst(t.msgs, { now: Date.now(), after: A.BACK_AFTER, tried: tried[t.id] })) return;
+    const kept = Object.fromEntries(Object.entries(tried).filter(([id]) => S.threads[id]));
+    if (!local.set(K.tried, { ...kept, [t.id]: Date.now() })) return;      // can't write it down: don't risk asking twice
+    return send(A.comeBack(A.since(t.msgs, Date.now()), here(t)), { hidden: true, to: t, own: true });
   };
-  if (navigator.locks && navigator.locks.request) navigator.locks.request("havre-comeback", go).catch(() => {});
-  else go();
+  if (navigator.locks && navigator.locks.request) return navigator.locks.request("havre-comeback", go).catch(() => {});
+  return Promise.resolve(go());
+}
+/**
+ * Coming back to Havre after a while: the chat on screen may text first, and so may a few of the other characters you
+ * talk to: at most 3, once every few hours, whichever tab you come back to. Only while the page can be seen.
+ */
+async function comingBack() {
+  if (!S.key || !S.ab.own || !seen()) return;
+  comeBack(thread());
+  if (Date.now() - (Number(local.get(K.came, 0)) || 0) < A.BACK_AFTER) return;
+  const others = T.textFirst(Object.values(S.threads).filter((t) => t.card !== S.sel && cardOf(t)), (t) => t.msgs,
+    { now: Date.now(), after: A.BACK_AFTER, tried: local.get(K.tried, {}) || {}, max: 3 });
+  if (!others.length || !local.set(K.came, Date.now())) return;
+  for (const t of others) {
+    await sleep(1500 + Math.random() * 2500);
+    if (!S.key || !S.ab.own) return;
+    await comeBack(t);
+  }
 }
 
 // ---------- the conversation ----------
@@ -405,7 +684,7 @@ function renderChat() {
   renderChatMeta();
   const locked = !c || (needsKey(c) && !S.key);
   $("#say").disabled = locked;
-  $("#sendbtn").disabled = locked || !!S.replying;
+  syncSend();
   $("#say").placeholder = c && !c.plain ? `say something to ${c.name}` : "say something";
   const kn = $("#keynote");
   kn.hidden = !c || !!S.key;
@@ -417,26 +696,18 @@ function renderChat() {
   renderAsk();
 }
 function renderChatMeta() {
-  const c = card(), meta = $("#who-meta");
+  const c = card(), t = thread(), meta = $("#who-meta");
   meta.textContent = "";
   if (!c) return;
   meta.append(...slashed([
     c.plain ? "just the model, no character" : c.engine.venice_character ? "via venice, with their own prompt" : c.tagline,
     h("span", {}, "model: ", linkish(modelName(c.model), () => openModels("chat"), { id: "model-btn", "aria-label": `Model: ${modelName(c.model)}. Change it` })),
     c.plain ? null : linkish("card", () => openCard("edit")),
-    linkish("start over", startOver, { title: "Start this conversation over" }),
+    t ? linkish("new chat", newChat, { id: "new-chat", title: `A new chat${c.plain ? "" : " with " + c.name}; this one stays in your chats` }) : null,
+    t ? linkish("rename", renameThread, { title: "Name this chat" }) : null,
+    t ? linkish("delete", deleteThread, { title: "Delete this chat" }) : null,
+    narrow() ? linkish("all chats", () => { setLeft("chats"); $("#chars").scrollIntoView({ behavior: motion(), block: "start" }); }) : null,
   ]));
-}
-function startOver() {
-  const c = card();
-  if (!c) return;
-  if (S.replying) { S.replying.abort(); S.replying = null; setBusy(false); }
-  local.set(K.cleared, { ...(local.get(K.cleared, {}) || {}), [c.id]: Date.now() });   // other tabs start over too
-  delete S.chats[c.id];
-  S.demo[c.id] = 0;
-  persistChats();
-  renderLog();
-  speakFirst();
 }
 /** a word under the text box: what failed, what is on its way */
 function err(text) { put(line(text, "havre", "err")); scrollLog(); }
@@ -467,14 +738,16 @@ function put(el) {
 function scrollLog() { const l = $("#log"); l.scrollTop = l.scrollHeight; }
 
 function renderLog() {
-  const log = $("#log"), c = card();
+  S.gen++;                                                    // a reply being played out stops: it's all drawn here now
+  S.shown = S.open;
+  const log = $("#log"), c = card(), t = thread();
   log.textContent = "";
   if (!c) {
     put(line(S.key ? "pick one of venice's characters, or write your own. they talk here."
       : "paste your venice key above, then pick one of venice's characters. or write a character of your own, or import a card: those work without a key.", "havre", "note"));
     return;
   }
-  const hist = S.chats[c.id] || [];
+  const hist = t ? t.msgs : [];
   if (c.plain) {
     if (!hist.length) put(line(S.key ? "a plain chat: no character, just the model you pick above. say anything."
       : "paste your venice key above to chat with a model.", "havre", "note"));
@@ -488,16 +761,17 @@ function renderLog() {
       if (m.voice) put(voiceLine(c, m));
       let last = null;
       for (const b of bubblesOf(c, m.content)) { last = put(line(b, "them")); if (m.id) last.dataset.msg = m.id; }
-      if (last) offerVoice(last, c, m);
+      if (last) offerVoice(last, c, m, t);
     }
   }
   const ideas = hist.some((m) => m.role === "user" && !m.hidden) ? [] : C.suggestions(c);
   if (ideas.length) {
     const row = line("", "havre", "suggest");
     row.querySelector(".who").textContent = "try";
-    row.querySelector(".said").append(...ideas.map((t) => linkish(t, () => send(t))));
+    row.querySelector(".said").append(...ideas.map((x) => linkish(x, () => send(x))));
     put(row);
   }
+  if (t && S.doing.has(t.id)) put(typingLine(t, S.doing.get(t.id)));
   renderJobs();
   scrollLog();
 }
@@ -509,54 +783,97 @@ function messagesFor(c, hist) {
   const api = A.apiHistory(hist);
   return c.plain ? api.slice(-40).map(({ role, content }) => ({ role, content })) : C.chatMessages(c, api);
 }
-function setBusy(on) {
-  const c = card();
-  $("#sendbtn").disabled = on || !c || (needsKey(c) && !S.key);
-  $("#composer").setAttribute("aria-busy", on ? "true" : "false");
+/** the send button: off while the chat on screen waits for its reply (replies in other chats don't hold it up) */
+function syncSend() {
+  const c = card(), t = thread(), waiting = !!t && S.busy.has(t.id);
+  $("#sendbtn").disabled = waiting || !c || (needsKey(c) && !S.key);
+  $("#composer").setAttribute("aria-busy", waiting ? "true" : "false");
 }
+/** "… is typing": a line in the chat, if it's on screen */
+function typingLine(t, text = "is typing…") {
+  const l = line(text, "them", "typing");
+  l.dataset.typing = t.id;
+  return l;
+}
+/** a character is at something in a chat ("is typing…"): it shows there, and in your chats */
+function doing(t, text) {
+  S.doing.set(t.id, text);
+  if (here(t)) {
+    for (const el of $$(`#log [data-typing="${t.id}"]`)) el.remove();
+    put(typingLine(t, text));
+    scrollLog();
+  }
+  renderThreads();
+}
+function done(t) {
+  for (const el of $$(`#log [data-typing="${t.id}"]`)) el.remove();
+  if (S.doing.delete(t.id)) renderThreads();
+}
+/** set aside before, settled after: what wasn't spent goes back, and what it cost beyond comes off */
+function settle(held, cost) { if (cost < held) refund(held - cost); else if (cost > held) charge(cost - held); }
 
 /**
- * Say something, and play the reply. media: a voice note or photo of yours that goes with it ({ kind, id, … });
- * picture: that photo as a data: URI, for a model that can see it.
+ * Say something in a chat (the one on screen, unless `to`) and play the reply; the first thing said in a new chat
+ * starts it. media: a voice note or photo of yours that goes with it ({ kind, id, … }); picture: that photo as a data:
+ * URI, for a model that can see it. own: they're texting first, on their own, so the call is paid for out of the
+ * day's allowance. Going to another chat meanwhile doesn't stop the reply: it lands in its own chat.
  */
-async function send(text, { hidden = false, media = null, picture = "" } = {}) {
-  const c = card();
+async function send(text, { hidden = false, media = null, picture = "", to = null, own = false } = {}) {
+  let t = to || thread();
+  const c = t ? cardOf(t) : card();
   text = text.trim();
-  if ((!text && !media) || !c || S.replying) return;
+  if ((!text && !media) || !c || (t && S.busy.has(t.id))) return;
   const demo = !S.key;
   if (demo && (hidden || media)) return;
-  const hist = (S.chats[c.id] = S.chats[c.id] || []);
+  const model = (S.models || []).find((m) => m.id === (c.model || S.model)) || null;
+  let held = 0;
+  if (own) {                                                  // set aside the most this call can cost
+    held = A.callEstimate(messagesFor(c, [...(t ? t.msgs : []), { role: "user", content: text }]), c.plain ? 2000 : 700, model);
+    if (!reserve(held)) return;
+  }
+  if (!t) { t = startThread(c); if (here(t)) renderChatMeta(); }
+  const hist = t.msgs;
   const said = { id: mid(), role: "user", content: text, at: Date.now(), ...(demo ? { demo: true } : {}), ...(hidden ? { hidden: true } : {}), ...(media ? { media } : {}) };
   hist.push(said);
-  persistChats();
-  for (const el of $$("#log .suggest, #log .note")) el.remove();
-  if (!hidden) put(media ? mediaLine(c, said) : line(text, "me"));
+  t.at = said.at;
+  if (here(t)) markRead(t);
+  saveThread(t);
+  if (here(t)) {
+    for (const el of $$("#log .suggest, #log .note")) el.remove();
+    if (!hidden) put(media ? mediaLine(c, said) : line(text, "me"));
+  }
   const ctrl = new AbortController();
-  S.replying = ctrl;
-  setBusy(true);
-  const typing = put(line("is typing…", "them", "typing"));
-  scrollLog();
+  S.busy.set(t.id, ctrl);
+  syncSend();
+  doing(t, "is typing…");
+  // every tab can tell a reply is on its way here: a lock, held until it's done
+  let finished = false, release = null;
+  try { navigator.locks.request("havre-reply-" + t.id, () => (finished ? null : new Promise((r) => { release = r; }))).catch(() => {}); } catch { /* no locks here */ }
   try {
     let reply;
     if (demo) {
       if (c.plain) throw new Error("Paste your Venice key above to chat.");
       if (c.engine.venice_character) throw new Error(`${c.name} lives on Venice, so they need your Venice key to talk.`);
       await sleep(still ? 250 : 750);
-      const n = S.demo[c.id] || 0;
-      S.demo[c.id] = n + 1;
+      const n = S.demo[t.id] || 0;
+      S.demo[t.id] = n + 1;
       reply = C.demoReply(c, n, text);
     } else {
       const r = await new Venice(S.key).chat({ model: c.model || S.model, characterSlug: c.engine.venice_character || "",
         veniceSystemPrompt: !!c.plain, maxTokens: c.plain ? 2000 : 700,
         messages: A.withPicture(messagesFor(c, hist), picture), signal: ctrl.signal });
+      if (own) { settle(held, A.callCost(r.usage, model)); held = 0; }
       reply = C.stripThinking(r.text);
       if (!reply) throw new Error("Venice sent back an empty reply. Try again, or pick another model on the card.");
     }
-    if (ctrl.signal.aborted) return;
+    if (ctrl.signal.aborted || !S.threads[t.id]) return;
     const msg = { id: mid(), role: "assistant", content: reply, at: Date.now(), ...(demo ? { demo: true } : {}) };
     hist.push(msg);
-    persistChats();
-    typing.remove();
+    const drawn = S.gen;                                      // drawn again from here on, the chat has it all already
+    t.at = msg.at;
+    if (here(t)) markRead(t);
+    saveThread(t);
+    done(t);
     if (!demo) balanceSoon();
     // a voice note with the reply: every reply when they're set to, and, on their own, one back to yours (priced
     // first, and set aside from today's allowance)
@@ -568,55 +885,85 @@ async function send(text, { hidden = false, media = null, picture = "" } = {}) {
     }
     if (!demo && !c.plain && (S.voiceOn[c.id] || mirror)) {
       // a voice note first, then the words under it
-      const rec = put(line("is recording a voice note…", "them", "typing"));
-      scrollLog();
+      doing(t, "is recording a voice note…");
       voicing.add(msg);
       try {
         msg.voice = await makeVoice(c, reply, ctrl.signal);
         if (mirror) msg.voice.own = true;
-        persistChats();
+        saveThread(t);
       } catch (e) {
         refund(mirror);
         if (e && e.name === "AbortError") return;
         msg.voiceError = e.message;
-      } finally { rec.remove(); voicing.delete(msg); }
+      } finally { done(t); voicing.delete(msg); }
       if (ctrl.signal.aborted) return;
-      if (msg.voice) put(voiceLine(c, msg));
-      else err(`the voice note didn't come: ${msg.voiceError}`);
+      if (here(t)) {
+        if (!msg.voice) err(`the voice note didn't come: ${msg.voiceError}`);
+        else if (!placeVoice(t, msg)) put(voiceLine(c, msg));
+      }
       delete msg.voiceError;
     }
-    await play(bubblesOf(c, reply), ctrl.signal, c, msg);
-    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden && !msg.voice) onTheirOwn(c);
+    arrived(t, msg);
+    await play(t, bubblesOf(c, reply), ctrl.signal, c, msg, drawn);
+    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden && !msg.voice) onTheirOwn(t);
   } catch (e) {
     if (e && e.name === "AbortError") return;
-    typing.remove();
-    put(line(e && e.message || "Something went wrong.", "havre", "err"));
+    done(t);
+    const why = e && e.message || "Something went wrong.";
+    if (here(t)) put(line(why, "havre", "err"));
+    else if (!hidden) toast(`${c.plain ? "The plain chat" : c.name}: the reply didn't come. ${why}`);
   } finally {
-    typing.remove();
+    finished = true;
+    if (release) release();
+    refund(held);
+    done(t);
     const last = hist[hist.length - 1];
-    if (hidden && last && last.hidden) { takenBack.add(last.id); hist.pop(); persistChats(); }    // the hello didn't happen
-    if (S.replying === ctrl) S.replying = null;
-    setBusy(false);
-    scrollLog();
+    if (hidden && last && last.hidden) {                      // the hello (or the nudge) didn't happen
+      takenBack.add(last.id);
+      hist.pop();
+      if (hist.length) saveThread(t);
+      else {                                                  // nothing else in it: the chat goes, and its error stays on screen
+        const was = here(t);
+        forgetThread(t.id);
+        if (S.ask && S.ask.thread === t.id) S.ask.thread = null;
+        if (was) { S.open = S.shown = null; local.set(K.open, null); renderChatMeta(); }
+      }
+    }
+    if (S.busy.get(t.id) === ctrl) S.busy.delete(t.id);
+    syncSend();
+    renderThreads();
+    if (here(t)) scrollLog();
   }
 }
+/** something from them landed in a chat: unless it's the chat on screen, it's new, and a word says so */
+function arrived(t, msg) {
+  renderThreads();
+  if (here(t)) return;                                        // (in a tab out of sight, the tab's title says so)
+  const c = cardOf(t);
+  if (c) toast(`${c.plain ? modelName(c.model) : c.name}: ${T.snippet([msg]) || "a message"}`);
+}
 
-async function play(bubbles, signal, c, msg) {
+/**
+ * A reply played out a text at a time, while its chat is on screen and hasn't been drawn again since `drawn` (then
+ * it's all there already).
+ */
+async function play(t, bubbles, signal, c, msg, drawn = S.gen) {
+  const live = () => here(t) && S.gen === drawn && !signal.aborted;
   let last = null;
   for (let i = 0; i < bubbles.length; i++) {
-    if (signal.aborted) return;
+    if (!live()) return;
     if (i > 0) {
-      const t = put(line("is typing…", "them", "typing"));
+      const tl = put(typingLine(t));
       scrollLog();
       await sleep(C.typingDelay(bubbles[i]) * (still ? 0.25 : 1));
-      t.remove();
-      if (signal.aborted) return;
+      tl.remove();
+      if (!live()) return;
     }
     last = put(line(bubbles[i], "them"));
     if (msg && msg.id) last.dataset.msg = msg.id;
     scrollLog();
   }
-  if (last && c && msg) offerVoice(last, c, msg);
+  if (last && c && msg) offerVoice(last, c, msg, t);
 }
 
 // ---------- photos, clips, voice notes, and yours, in the conversation ----------
@@ -676,8 +1023,8 @@ function voiceLine(c, m) {
 }
 /** "hear it" after a reply that came as text: its voice note, made when asked for (once, however often it's clicked) */
 const voicing = new WeakSet();
-function offerVoice(el, c, m) {
-  if (m.voice || m.demo || c.plain || !S.key) return;
+function offerVoice(el, c, m, t) {
+  if (m.voice || m.demo || c.plain || !S.key || !t) return;
   const b = linkish(voicing.has(m) ? "recording…" : "hear it", async () => {
     if (b.disabled || voicing.has(m) || m.voice) return;
     voicing.add(m);
@@ -685,9 +1032,9 @@ function offerVoice(el, c, m) {
     b.textContent = "recording…";
     try {
       m.voice = await makeVoice(c, m.content);
-      persistChats();
+      saveThread(t);
       if (b.isConnected) b.replaceWith(audioEl(m.voice.id));
-      else placeVoice(c, m);
+      else placeVoice(t, m);
       balanceSoon();
     } catch (e) { b.disabled = false; b.textContent = "hear it"; toast(e.message); } finally { voicing.delete(m); }
   }, { class: "linkish hear", "aria-label": `Hear this as a voice note from ${c.name}`, disabled: voicing.has(m) || null });
@@ -707,20 +1054,37 @@ async function makeVoice(c, text, signal) {
   } finally { S.inflight--; }
 }
 const voiceOf = (c, vm) => (vm.voices.includes(c.speech.voice) ? c.speech.voice : vm.voices.includes(A.DEFAULT_VOICE) ? A.DEFAULT_VOICE : vm.voices[0] || c.speech.voice || "");
-/** a photo or clip from a character lands in their conversation, wherever you are now */
-function deliver(c, msg) {
-  if (!S.cards.some((x) => x.id === c.id)) return;          // they left the harbor meanwhile
+/** a photo or clip from a character lands in its chat, wherever you are now; false if the chat or they are gone */
+function deliver(t, msg) {
+  const c = cardOf(t);
+  if (!t || !S.threads[t.id] || !c) return false;
   msg.at = msg.at || Date.now();
   msg.id = msg.id || mid();
-  (S.chats[c.id] = S.chats[c.id] || []).push(msg);
-  persistChats();
-  const cur = card();
-  if (cur && cur.id === c.id) {
+  t.msgs.push(msg);
+  t.at = msg.at;
+  if (here(t)) markRead(t);
+  saveThread(t);
+  if (here(t)) {
     for (const el of $$("#log .suggest, #log .note")) el.remove();
     put(mediaLine(c, msg));
     renderJobs();
     scrollLog();
-  } else toast(`${c.name} sent you ${msg.media.kind === "clip" ? "a clip" : "a photo"}.`);
+  }
+  arrived(t, msg);
+  return true;
+}
+/**
+ * The chat a photo or clip that was asked for goes to: the one of theirs on screen; else the one it was asked in (their
+ * latest, if that one's gone); and one asked for in a new chat starts it.
+ */
+function askThread(a) {
+  const c = S.cards.find((x) => x.id === a.card), t = thread();
+  if (!c) return null;
+  if (t && t.card === c.id) return t;
+  if (a.thread) return S.threads[a.thread] || latestOf(c.id) || startThread(c);
+  const fresh = startThread(c);
+  if (here(fresh)) renderChatMeta();
+  return fresh;
 }
 
 // ---------- the card ----------
@@ -1020,7 +1384,7 @@ function askFor(kind) {
   if (S.ask && S.ask.busy) { toast("One thing at a time: the last one is still on its way."); return; }
   const hint = $("#say").value.trim();
   if (hint) { $("#say").value = ""; growSay(); }
-  S.ask = { kind, card: c.id, hint, shot: "", busy: false, status: "", bad: false, quote: null, quoting: false, opts: null, asked: 0 };
+  S.ask = { kind, card: c.id, thread: S.open, hint, shot: "", busy: false, status: "", bad: false, quote: null, quoting: false, opts: null, asked: 0 };
   loadList(kind === "clip" ? "video" : "inpaint");
   if (!refsOf(c).length) loadList("image");
   renderAsk();
@@ -1126,7 +1490,8 @@ async function writeShot() {
   Object.assign(a, { status: "writing the shot…", bad: false });
   renderAsk();
   try {
-    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(S.chats[c.id] || []), a.hint, a.kind),
+    const t = thread() && thread().card === c.id ? thread() : (a.thread && S.threads[a.thread]) || null;
+    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t ? t.msgs : []), a.hint, a.kind),
       maxTokens: 260, temperature: 0.8 });
     a.shot = A.cleanText(r.text);
     Object.assign(a, a.shot ? { status: "", bad: false } : { status: "The model sent back no shot. Write one yourself, or try again.", bad: true });
@@ -1179,7 +1544,7 @@ async function takePhoto() {
     const id = await M.put(blob);
     if (S.ask === a) S.ask = null;
     renderAsk();
-    deliver(c, { role: "assistant", content: "", media: { kind: "photo", id, shot: a.shot.trim(), model: pm.name, price, ...(blurred ? { blurred: true } : {}) } });
+    deliver(askThread(a), { role: "assistant", content: "", media: { kind: "photo", id, shot: a.shot.trim(), model: pm.name, price, ...(blurred ? { blurred: true } : {}) } });
   } catch (e) {
     a.busy = false;
     Object.assign(a, { status: trouble(e, c), bad: true });
@@ -1213,6 +1578,7 @@ async function firstPortrait() {
       replaceCard(now.portrait ? { ...now, look: { ...looks, references: [portrait, ...now.look.references].slice(0, C.MAX_REFERENCES) } }
         : { ...now, portrait, look: looks });
       renderRoster();
+      renderThreads();
       if ((card() || {}).id === c.id) renderSheet();
     }
     a.busy = false;
@@ -1243,7 +1609,7 @@ async function makeClip() {
   Object.assign(a, { status: "asking venice to start the clip…", bad: false });
   renderAsk();
   try {
-    await startClip(c, cm, a.shot.trim(), { ...a.opts }, a.quote);
+    await startClip(c, cm, a.shot.trim(), { ...a.opts }, a.quote, () => askThread(a));
     if (S.ask === a) S.ask = null;
     renderAsk();
   } catch (e) {
@@ -1253,10 +1619,11 @@ async function makeClip() {
   }
   balanceSoon();
 }
-/** queue a clip at Venice and follow it until it's home */
-async function startClip(c, cm, shot, opts, price) {
+/** queue a clip at Venice and follow it until it's home, in the chat `where()` gives once it's on its way */
+async function startClip(c, cm, shot, opts, price, where) {
   const { queueId, downloadUrl } = await new Venice(S.key).queueVideo({ model: cm.id, prompt: A.clipPrompt(c, shot, cm.promptLimit), images: refsOf(c), ...opts });
-  const job = { id: M.newId(), card: c.id, model: cm.id, name: cm.name, queueId, downloadUrl, shot, price, started: Date.now(), elapsed: 0, expected: 0 };
+  const t = where();
+  const job = { id: M.newId(), card: c.id, thread: t ? t.id : "", model: cm.id, name: cm.name, queueId, downloadUrl, shot, price, started: Date.now(), elapsed: 0, expected: 0 };
   S.jobs.push(job);
   saveJobs();
   renderJobs();
@@ -1271,88 +1638,84 @@ async function startClip(c, cm, shot, opts, price) {
  * showing, or now and then), the character's model decides: a photo or a voice note, sent out of the day's
  * allowance, or a clip, offered with Venice's price for you to take or leave.
  */
-async function onTheirOwn(c) {
-  if (!S.key || !S.ab.own || S.moving || !A.moveLikely(S.chats[c.id])) return;
+async function onTheirOwn(t) {
+  const c = cardOf(t);
+  if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs)) return;
   // the call that decides is paid for too: set aside its most, from what's left today, and settle after
   const model = (S.models || []).find((m) => m.id === (c.model || S.model)) || null;
-  const messages = A.moveMessages(c, A.apiHistory(S.chats[c.id] || [])), most = A.callEstimate(messages, 300, model);
+  const messages = A.moveMessages(c, A.apiHistory(t.msgs)), most = A.callEstimate(messages, 300, model);
   if (!reserve(most)) return;
-  S.moving = true;
+  S.moving.add(t.id);                                         // one move at a time in a chat
   let held = most;
   try {
     const r = await new Venice(S.key).chat({ model: c.model || S.model, messages, schema: A.MOVE_SCHEMA, maxTokens: 300, temperature: 0.7 });
-    const cost = Math.min(most, A.callCost(r.usage, model));
-    refund(held - cost);
+    settle(held, A.callCost(r.usage, model));
     held = 0;
-    if (!S.cards.some((x) => x.id === c.id)) return;          // they left the harbor meanwhile
+    if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
     const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
-    const lately = A.sentLately(S.chats[c.id]);                   // never two photos in a row
-    if (move === "photo" && !lately) await ownPhoto(c, shot);
-    else if (move === "voice") await ownVoice(c);
-    else if (move === "clip" && !lately) await offerClip(c, shot);
-  } catch { /* then they just text */ } finally { refund(held); S.moving = false; }
+    const lately = A.sentLately(t.msgs);                          // never two photos in a row
+    if (move === "photo" && !lately) await ownPhoto(t, shot);
+    else if (move === "voice") await ownVoice(t);
+    else if (move === "clip" && !lately) await offerClip(t, shot);
+  } catch { /* then they just text */ } finally { refund(held); S.moving.delete(t.id); }
 }
-/** a "… is doing something" line while they're at it, if you're in their conversation */
-function busyLine(c, text) {
-  if ((card() || {}).id !== c.id) return { remove() {} };
-  const t = put(line(text, "them", "typing"));
-  scrollLog();
-  return t;
-}
-async function ownPhoto(c, shot) {
+async function ownPhoto(t, shot) {
+  const c = cardOf(t);
   await loadList("inpaint");
   const pm = photoModel(), refs = refsOf(c);
-  if (!pm || !refs.length) return;                              // no picture of them yet: nothing to send
+  if (!c || !pm || !refs.length) return;                        // no picture of them yet: nothing to send
   const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
   if (!reserve(price)) return;                                  // set aside first: nothing else can spend it meanwhile
-  const t = busyLine(c, "is taking a photo…");
+  doing(t, "is taking a photo…");
   try {
     const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, shot, pics.length, pm.promptLimit), images: pics });
     const id = await M.put(blob);
-    t.remove();
-    deliver(c, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(blurred ? { blurred: true } : {}) } });
+    done(t);
+    deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot, model: pm.name, price, own: true, ...(blurred ? { blurred: true } : {}) } });
     balanceSoon();
-  } catch (e) { refund(price); throw e; } finally { t.remove(); }
+  } catch (e) { refund(price); throw e; } finally { done(t); }
 }
-async function ownVoice(c) {
-  const hist = S.chats[c.id] || [], msg = [...hist].reverse().find((m) => m.role === "assistant" && !m.media && !m.demo);
-  if (!msg || msg.voice || voicing.has(msg)) return;
+async function ownVoice(t) {
+  const c = cardOf(t), msg = [...t.msgs].reverse().find((m) => m.role === "assistant" && !m.media && !m.demo);
+  if (!c || !msg || msg.voice || voicing.has(msg)) return;
   await loadList("tts");
   const vm = voiceModel(c), price = vm ? A.voicePrice(vm, A.speakable(msg.content).length) : null;
   if (msg.voice || voicing.has(msg) || !reserve(price)) return;
   voicing.add(msg);
-  const t = busyLine(c, "is recording a voice note…");
+  doing(t, "is recording a voice note…");
   try {
     const v = { ...(await makeVoice(c, msg.content)), own: true };
     if (msg.voice) { refund(price); return; }                   // "hear it" got there first
     msg.voice = v;
-    persistChats();
-    t.remove();
-    placeVoice(c, msg);
+    saveThread(t);
+    done(t);
+    placeVoice(t, msg);
     balanceSoon();
-  } catch (e) { refund(price); throw e; } finally { t.remove(); voicing.delete(msg); }
+  } catch (e) { refund(price); throw e; } finally { done(t); voicing.delete(msg); }
 }
-/** a voice note that came after its words were shown: put it above them, where it would have been */
-function placeVoice(c, m) {
-  if ((card() || {}).id !== c.id || !m.id) return;
+/** a voice note that came after its words were shown: it goes above them, where it would have been */
+function placeVoice(t, m) {
+  if (!here(t) || !m.id) return false;
   const first = $(`#log .line[data-msg="${m.id}"]`);
-  if (!first) return;                                          // the conversation was redrawn: it shows next time
-  first.before(voiceLine(c, m));
+  if (!first) return false;                                    // not drawn yet, or drawn again: it shows with them
+  first.before(voiceLine(cardOf(t), m));
   for (const b of $$(`#log .line[data-msg="${m.id}"] .hear`)) b.remove();
+  return true;
 }
 /** a clip they'd like to send: Venice's price first, and it's made only if you say yes */
-async function offerClip(c, shot) {
+async function offerClip(t, shot) {
+  const c = cardOf(t);
   await loadList("video");
   const cm = clipModel();
-  if (!cm || !refsOf(c).length || S.jobs.some((j) => j.card === c.id)) return;
+  if (!c || !cm || !refsOf(c).length || S.jobs.some((j) => j.card === c.id)) return;
   const opts = A.clipOptions(cm, S.ab.clip);
   const quote = await new Venice(S.key).quoteVideo({ model: cm.id, ...opts });
-  if (quote == null || (card() || {}).id !== c.id) return;
+  if (quote == null || !here(t)) return;
   const li = line("", "them", "offer"), said = $(".said", li);
   const yes = h("button", { type: "button", class: "btn solid small", text: `SEND IT · ${A.usd(quote)}`, onclick: async () => {
     yes.disabled = no.disabled = true;
     S.inflight++;
-    try { await startClip(c, cm, shot, opts, quote); li.remove(); balanceSoon(); }
+    try { await startClip(c, cm, shot, opts, quote, () => (S.threads[t.id] ? t : latestOf(c.id))); li.remove(); balanceSoon(); }
     catch (e) { li.remove(); err(trouble(e, c)); } finally { S.inflight--; }
   } });
   const no = h("button", { type: "button", class: "btn small", text: "NOT NOW", onclick: () => li.remove() });
@@ -1409,8 +1772,8 @@ async function followJob(job) {
       const id = blob ? await M.put(blob) : "";
       dropJob(job);
       const c = S.cards.find((x) => x.id === job.card);
-      if (c) deliver(c, { role: "assistant", content: "", media: { kind: "clip", id, shot: job.shot, model: job.name, price: job.price,
-        ...(link ? { url: link, until: job.started + 24 * 3600e3 } : {}) } });
+      if (c) deliver((job.thread && S.threads[job.thread]) || latestOf(c.id) || startThread(c), { role: "assistant", content: "",
+        media: { kind: "clip", id, shot: job.shot, model: job.name, price: job.price, ...(link ? { url: link, until: job.started + 24 * 3600e3 } : {}) } });
       if (blob) {                                          // home safe: Venice can let go of its copy and its link
         v.completeVideo({ model: job.model, queueId: job.queueId });
         if (job.downloadUrl) v.revokeDownload(job.downloadUrl);
@@ -1434,12 +1797,17 @@ async function followJob(job) {
     }
   }
 }
-/** a line in the conversation for each clip still being made */
+/** the clips on their way to the chat on screen (one whose chat was deleted goes to their latest chat instead) */
+function jobsHere() {
+  const t = thread();
+  if (!t) return [];
+  return S.jobs.filter((j) => (j.thread && S.threads[j.thread] ? j.thread === t.id : j.card === t.card && (latestOf(t.card) || {}).id === t.id));
+}
+/** a line in the chat for each clip still being made */
 function renderJobs() {
-  const log = $("#log"), c = card();
-  for (const el of $$("#log [data-job]")) if (!S.jobs.some((j) => j.id === el.dataset.job && c && j.card === c.id)) el.remove();
-  if (!c) return;
-  for (const j of S.jobs.filter((x) => x.card === c.id)) {
+  const log = $("#log"), mine = jobsHere();
+  for (const el of $$("#log [data-job]")) if (!mine.some((j) => j.id === el.dataset.job)) el.remove();
+  for (const j of mine) {
     let el = $(`#log [data-job="${j.id}"]`);
     if (!el) { el = line("", "them", "typing"); el.dataset.job = j.id; log.append(el); }
     $(".said", el).textContent = `is making a clip with ${j.name}: ${clock(j.elapsed)}${j.expected ? " of about " + clock(j.expected) : ""}`;
@@ -1461,7 +1829,7 @@ async function startRecording() {
   const type = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"].find((t) => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t)) || "";
   let rec;
   try { rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined); } catch { stream.getTracks().forEach((t) => t.stop()); toast("This browser can't record voice notes here."); return; }
-  const r = { rec, stream, chunks: [], t0: Date.now(), ms: 0, timer: 0, cancel: false, done: false, card: c.id };
+  const r = { rec, stream, chunks: [], t0: Date.now(), ms: 0, timer: 0, cancel: false, done: false, to: { card: c.id, thread: S.open, at: Date.now() } };
   rec.ondataavailable = (e) => { if (e.data && e.data.size) r.chunks.push(e.data); };
   rec.onstop = () => {
     if (r.done) return;                                   // once, however it stopped
@@ -1470,7 +1838,7 @@ async function startRecording() {
     r.stream.getTracks().forEach((t) => t.stop());
     if (S.rec === r) S.rec = null;
     renderTools();
-    if (!r.cancel) sendVoice(new Blob(r.chunks, { type: rec.mimeType || type || "audio/webm" }), r.card);
+    if (!r.cancel) sendVoice(new Blob(r.chunks, { type: rec.mimeType || type || "audio/webm" }), r.to);
   };
   S.rec = r;
   rec.start(250);
@@ -1489,11 +1857,15 @@ function stopRecording(cancel = false) {
   r.cancel = cancel;
   try { if (r.rec.state !== "inactive") r.rec.stop(); else r.rec.onstop(); } catch { r.rec.onstop(); }
 }
-/** something of yours is ready to send, but you've moved on to someone else meanwhile: it isn't sent */
-function stillWith(id, what) {
-  if ((card() || {}).id === id) return true;
-  const c = S.cards.find((x) => x.id === id) || (id === PLAIN ? S.plain : null);
-  toast(`You switched away from ${c ? c.name : "them"}, so your ${what} wasn't sent.`);
+/**
+ * Something of yours is ready to send (to: { card, thread, at }), but you've gone to another chat meanwhile: it isn't
+ * sent. From a new chat (no thread yet), the chat it became since then is the same chat.
+ */
+function stillWith(to, what) {
+  const t = thread();
+  if (S.sel === to.card && (S.open === to.thread || (!to.thread && (!t || t.created >= to.at)))) return true;
+  const c = S.cards.find((x) => x.id === to.card) || (to.card === PLAIN ? S.plain : null);
+  toast(`You went to another chat, so your ${what} for ${!c ? "them" : c.plain ? "the plain chat" : c.name} wasn't sent.`);
   return false;
 }
 async function sendVoice(blob, to) {
@@ -1502,7 +1874,7 @@ async function sendVoice(blob, to) {
 }
 async function hearVoice(blob, to) {
   const c = card();
-  if (!c || !S.key || c.id !== to) return;
+  if (!c || !S.key || c.id !== to.card) return;
   if (blob.size < 600) { toast("That voice note was too short to hear."); return; }
   const id = await M.put(blob);
   const note = put(line("hearing your voice note…", "havre", "typing"));
@@ -1515,7 +1887,7 @@ async function hearVoice(blob, to) {
     if (!text) throw new Error("Venice heard no words in that voice note.");
     balanceSoon();
     await idle();
-    if (stillWith(c.id, "voice note")) await send(text, { media: { kind: "voice-in", id } });
+    if (stillWith(to, "voice note")) await send(text, { media: { kind: "voice-in", id } });
   } catch (e) { note.remove(); err(e.message); }
 }
 
@@ -1525,7 +1897,7 @@ async function sendPhoto(file) {
   try { await showPhoto(file); } finally { S.inflight--; }
 }
 async function showPhoto(file) {
-  const c = card();
+  const c = card(), to = { card: S.sel, thread: S.open, at: Date.now() };
   if (!c || !S.key || !S.ab.see) return;
   let pic;
   try { pic = await shrinkImage(file, 1024, "image/jpeg", { svg: false }); } catch { toast("That picture didn't load."); return; }
@@ -1537,7 +1909,7 @@ async function showPhoto(file) {
   const model = c.plain ? S.plain.model : c.model;
   if ((S.models || []).some((m) => m.id === model && m.vision)) {
     await idle();
-    if (stillWith(c.id, "photo")) await send(caption, { media: { kind: "photo-in", id }, picture: pic });
+    if (stillWith(to, "photo")) await send(caption, { media: { kind: "photo-in", id }, picture: pic });
     return;
   }
   const sm = seeModel();
@@ -1551,7 +1923,7 @@ async function showPhoto(file) {
     note.remove();
     if (!saw) throw new Error(`${sm.name} couldn't describe the photo.`);
     await idle();
-    if (stillWith(c.id, "photo")) await send(caption, { media: { kind: "photo-in", id, saw, seer: sm.name } });
+    if (stillWith(to, "photo")) await send(caption, { media: { kind: "photo-in", id, saw, seer: sm.name } });
   } catch (e) { note.remove(); err(e.message); }
 }
 
@@ -1728,6 +2100,7 @@ function saveSheet() {
     const now = card();
     if (!now) return;
     renderRoster();
+    renderThreads();
     $("#who-name").textContent = now.name;
     renderChatMeta();
     $("#card-h").textContent = "CARD: " + now.name.toUpperCase();
@@ -1821,9 +2194,12 @@ async function saveKey(ev) {
   loadVenice(0);
   loadBalance();
   resumeJobs();
+  comingBack();
 }
 function forgetKey() {
-  if (S.replying) { S.replying.abort(); S.replying = null; setBusy(false); }
+  for (const ctrl of S.busy.values()) ctrl.abort();         // every reply on its way stops
+  S.busy.clear();
+  for (const t of Object.values(S.threads)) done(t);
   if (S.rec) stopRecording(true);
   S.ask = null;
   S.key = "";
@@ -2101,29 +2477,35 @@ async function exportAs(kind) {
 
 // ---------- small things ----------
 function growSay() { const say = $("#say"); say.style.height = "auto"; say.style.height = Math.min(150, say.scrollHeight + 2) + "px"; }
-/** wait for a reply on its way to finish, before saying the next thing */
-async function idle() { while (S.replying) await sleep(150); }
-/** nothing on its way: no reply, no photo, no voice note, no recording */
-const quiet = () => !S.replying && !S.moving && !(S.ask && S.ask.busy) && !S.rec && !S.inflight;
+/** wait for the reply on its way in the chat on screen, before saying the next thing there */
+async function idle() { while (thread() && S.busy.has(thread().id)) await sleep(150); }
+/** nothing on its way anywhere: no reply, no photo, no voice note, no recording */
+const quiet = () => !S.busy.size && !S.moving.size && !(S.ask && S.ask.busy) && !S.rec && !S.inflight;
+/** nothing on its way in the chat on screen */
+const quietHere = () => { const t = thread(); return !(t && (S.busy.has(t.id) || S.doing.has(t.id))) && !S.rec; };
 const waiting = new Map();
-/** run fn now if nothing is on its way, else as soon as nothing is (once per name) */
-function whenIdle(name, fn) {
-  waiting.set(name, fn);
-  if (waiting.size > 1) return;
+let waitingOn = false;
+/** run fn as soon as ready() (once per name; the last fn given for a name is the one run) */
+function whenIdle(name, fn, ready = quiet) {
+  waiting.set(name, { fn, ready });
+  if (waitingOn) return;
+  waitingOn = true;
   (async () => {
-    while (!quiet()) await sleep(500);
-    const all = [...waiting.values()];
-    waiting.clear();
-    for (const f of all) f();
+    try {
+      while (waiting.size) {
+        for (const [k, w] of [...waiting]) if (w.ready()) { waiting.delete(k); w.fn(); }
+        if (waiting.size) await sleep(500);
+      }
+    } finally { waitingOn = false; }
   })();
 }
 /** clips another tab started (followed here too, by one tab at a time) or finished (gone here too) */
 function syncJobs() {
-  const done = new Set(local.get(K.jobsDone, []) || []);
+  const home = new Set(local.get(K.jobsDone, []) || []);
   for (const j of local.get(K.jobs, []) || []) {
-    if (j && j.queueId && !done.has(j.queueId) && !S.jobs.some((x) => x.queueId === j.queueId)) { S.jobs.push(j); if (S.key) pollJob(j); }
+    if (j && j.queueId && !home.has(j.queueId) && !S.jobs.some((x) => x.queueId === j.queueId)) { S.jobs.push(j); if (S.key) pollJob(j); }
   }
-  S.jobs = S.jobs.filter((x) => !done.has(x.queueId));
+  S.jobs = S.jobs.filter((x) => !home.has(x.queueId));
   renderJobs();
 }
 async function copyFrom(id, btn) {
@@ -2154,7 +2536,14 @@ function bind() {
   for (const b of $$("button.copy")) b.addEventListener("click", () => copyFrom(b.dataset.copy, b));
 
   const say = $("#say");
-  $("#composer").addEventListener("submit", (e) => { e.preventDefault(); const t = say.value; if (!t.trim() || S.replying) return; say.value = ""; growSay(); send(t); });
+  $("#composer").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const t = say.value;
+    if (!t.trim() || (thread() && S.busy.has(thread().id))) return;
+    say.value = "";
+    growSay();
+    send(t);
+  });
   say.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   say.addEventListener("input", growSay);
   $("#photo-in").addEventListener("change", () => { const pf = $("#photo-in").files[0]; $("#photo-in").value = ""; if (pf) sendPhoto(pf); });
@@ -2232,10 +2621,15 @@ function bind() {
     const pf = $("#portrait-file").files[0];
     $("#portrait-file").value = "";
     if (!pf) return;
-    try { const c = card(); replaceCard({ ...c, portrait: await shrinkImage(pf) }); renderSheet(); picturesChanged(); }
+    try { const c = card(); replaceCard({ ...c, portrait: await shrinkImage(pf) }); renderSheet(); renderThreads(); picturesChanged(); }
     catch { toast("That image didn't load."); }
   });
-  $("#portrait-clear").addEventListener("click", () => { const c = card(); if (!c) return; replaceCard({ ...c, portrait: "" }); renderSheet(); picturesChanged(); });
+  $("#portrait-clear").addEventListener("click", () => {
+    const c = card();
+    if (!c) return;
+    replaceCard({ ...c, portrait: "" });
+    renderSheet(); renderThreads(); picturesChanged();
+  });
   $("#ref-add").addEventListener("click", () => {
     if (!local.get(K.refOk, false)) {
       if (!confirm("Photos and clips of a character are made from their pictures. Add only pictures of the character: art, or pictures you made. Never a photo of a real person.\n\nAdd a picture of the character?")) return;
@@ -2249,15 +2643,15 @@ function bind() {
   $("#speech-on").addEventListener("change", (e) => { e.stopPropagation(); const c = card(); if (c && !c.plain) setVoiceNotes(c, $("#speech-on").checked); });
   $("#delete").addEventListener("click", () => {
     const c = card();
-    if (!c || !confirm(`Remove ${c.name} from your harbor? Export them first if you want to keep a copy.`)) return;
-    if (S.replying) { S.replying.abort(); S.replying = null; setBusy(false); }
+    if (!c || !confirm(`Remove ${c.name} from your harbor? Your chats with them go too. Export them first if you want to keep a copy.`)) return;
+    for (const t of threadsOf(c.id)) dropThread(t.id);                       // their chats go with them
     S.cards = S.cards.filter((x) => x.id !== c.id);
-    delete S.chats[c.id];
-    for (const j of S.jobs.filter((x) => x.card === c.id)) dropJob(j);         // their clips on the way go with them
+    for (const j of S.jobs.filter((x) => x.card === c.id)) dropJob(j);         // and their clips on the way
     if (S.voiceOn[c.id]) { delete S.voiceOn[c.id]; local.set(K.voiceOn, S.voiceOn); }
     if (S.ask && S.ask.card === c.id) S.ask = null;
-    persistChats();
     S.sel = S.cards[0] ? S.cards[0].id : "";
+    S.open = S.sel ? (latestOf(S.sel) || {}).id || null : null;
+    local.set(K.open, S.open);
     persistCards(true);
     renderAll();
   });
@@ -2275,10 +2669,39 @@ function bind() {
   $("#rx-write").addEventListener("click", () => writeFresh());
   for (const b of $$("[data-out]")) b.addEventListener("click", () => exportAs(b.dataset.out));
 
+  // your chats, and the left column's two tabs
+  const left = [$("#lt-chats"), $("#lt-chars")];
+  for (const t of left) {
+    t.addEventListener("click", () => setLeft(t.id === "lt-chats" ? "chats" : "chars"));
+    t.addEventListener("keydown", (e) => {
+      if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+      e.preventDefault();
+      setLeft(t.id === "lt-chats" ? "chars" : "chats", { focus: true });
+    });
+  }
+  // coming back to the tab: what's on screen has been seen, and after a while away, characters text first
+  document.addEventListener("visibilitychange", () => {
+    if (!seen()) return;
+    markRead(thread());
+    renderThreads();
+    comingBack();
+  });
+  setInterval(() => { if (seen()) renderThreads(); }, 60000);   // "3m" becomes "4m"
+
   // another tab changed something: catch up, once nothing is on its way here (a reload mid-photo would waste it)
   addEventListener("storage", (e) => {
     if (e.key === K.cards || e.key === K.key) whenIdle("reload", () => location.reload());
-    else if (e.key === K.chats || e.key === K.cleared) { if (mergeChats(local.get(K.chats, {}))) whenIdle("log", renderLog); }
+    else if (e.key === K.threads || e.key === K.gone) {
+      if (syncIndex()) renderThreads();
+      if (S.shown !== S.open) { renderChat(); markTiles(); renderRoster(); }   // the chat on screen was deleted
+    }
+    else if (e.key && e.key.startsWith(K.msgs)) {
+      const t = S.threads[e.key.slice(K.msgs.length)], kept = t && readMsgs(t.id);
+      if (!kept || !T.mergeMessages(t.msgs, kept.msgs, takenBack)) return;
+      if (here(t)) { markRead(t); whenIdle("log", renderLog, quietHere); }
+      renderThreads();
+    }
+    else if (e.key === K.chats && e.newValue) { if (fromV1()) { saveIndex(); renderThreads(); } }    // a tab still on the first page
     else if (e.key === K.jobs || e.key === K.jobsDone) syncJobs();
     else if (e.key === K.spent) { renderTools(); if ($("#abilitydlg").open) renderAbilities(); }
     else if (e.key === K.ab) {

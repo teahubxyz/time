@@ -280,6 +280,7 @@ test("on their own: a daily allowance, and a hello first after a while", () => {
   assert.equal(A.since([{ role: "user", content: "x", at: now - 9 * 3600e3 }, { role: "assistant", content: "y", at: now - 8 * 3600e3 }], now), 8 * 3600e3);
   assert.equal(A.since([{ role: "user", content: "old, no time" }], now), 0, "no time, no hello");
   assert.match(A.comeBack(8 * 3600e3), /^\[Time passes: about 8 hours since you last talked\. .*Text them first/);
+  assert.match(A.comeBack(8 * 3600e3, false), /^\[Time passes: about 8 hours since you last talked\. Reach out to them first/, "from a chat you aren't in");
   assert.match(A.comeBack(30 * 3600e3), /about a day/);
   assert.match(A.comeBack(80 * 3600e3), /about 3 days/);
 });

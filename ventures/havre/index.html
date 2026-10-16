@@ -43,27 +43,39 @@
 </form>
 
 <main class="studio" id="studio">
-  <section class="chars" id="chars" aria-labelledby="chars-h">
-    <div class="sechead">
-      <h2 id="chars-h">CHARACTERS</h2>
-      <span class="meta">venice's public characters.</span>
+  <section class="chars" id="chars" aria-label="Your chats and the characters">
+    <div class="sechead lefthead">
+      <h2 class="sr">Your chats and the characters</h2>
+      <div role="tablist" aria-label="Your chats and the characters">
+        <button type="button" role="tab" id="lt-chats" aria-controls="lp-chats" aria-selected="false" tabindex="-1">CHATS<span id="chats-new" class="new" hidden></span></button>
+        <span class="sep" aria-hidden="true">/</span>
+        <button type="button" role="tab" id="lt-chars" aria-controls="lp-chars" aria-selected="true">CHARACTERS</button>
+      </div>
     </div>
-    <form class="filters" id="venform" role="search" aria-label="Venice characters">
-      <label class="sr" for="vsearch">Search Venice characters</label>
-      <input id="vsearch" type="search" placeholder="search by name, or #tag" autocomplete="off" maxlength="200">
-      <label class="pick">sort <select id="vsort">
-        <option value="featured">featured</option>
-        <option value="imports">most imported</option>
-        <option value="highestRating">top rated</option>
-        <option value="mostRecent">newest</option>
-      </select></label>
-      <label class="check"><input type="checkbox" id="vadult"> adult (18+)</label>
-      <button type="submit" class="btn" id="vgo">SEARCH</button>
-    </form>
-    <p id="vtags" class="tags" hidden></p>
-    <p id="venstatus" class="status" role="status" aria-live="polite"></p>
-    <ul id="vgrid" class="grid" aria-label="Venice characters"></ul>
-    <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="plain">chat without a character</button> / <button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
+    <div id="lp-chats" role="tabpanel" aria-labelledby="lt-chats" hidden>
+      <p class="filters mono" id="chats-bar"></p>
+      <ul id="threads" class="threads" aria-label="Your chats, the latest first"></ul>
+      <p id="threads-empty" class="mono pad">no chats yet. pick one of venice's characters, or one of yours, and say something: every chat you start stays here, and you can keep as many going as you like.</p>
+    </div>
+    <div id="lp-chars" role="tabpanel" aria-labelledby="lt-chars">
+      <p class="filters mono chars-note">venice's public characters. pick one to start a chat.</p>
+      <form class="filters" id="venform" role="search" aria-label="Venice characters">
+        <label class="sr" for="vsearch">Search Venice characters</label>
+        <input id="vsearch" type="search" placeholder="search by name, or #tag" autocomplete="off" maxlength="200">
+        <label class="pick">sort <select id="vsort">
+          <option value="featured">featured</option>
+          <option value="imports">most imported</option>
+          <option value="highestRating">top rated</option>
+          <option value="mostRecent">newest</option>
+        </select></label>
+        <label class="check"><input type="checkbox" id="vadult"> adult (18+)</label>
+        <button type="submit" class="btn" id="vgo">SEARCH</button>
+      </form>
+      <p id="vtags" class="tags" hidden></p>
+      <p id="venstatus" class="status" role="status" aria-live="polite"></p>
+      <ul id="vgrid" class="grid" aria-label="Venice characters"></ul>
+      <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="plain">chat without a character</button> / <button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
+    </div>
   </section>
 
   <section class="chat" id="chat" aria-labelledby="who-name">
@@ -216,8 +228,8 @@
     <ol>
       <li>Paste your Venice API key. It stays in this browser and goes only to api.venice.ai; the page can reach nothing but Venice.</li>
       <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
-      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Without a key, the characters you write answer from their own examples.</li>
-      <li>More than texts. Characters text first when you come back, and send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. Switch them on, and they hear your voice notes and see your photos.</li>
+      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the characters you write answer from their own examples.</li>
+      <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
     </ol>
   </div>
@@ -246,7 +258,7 @@
         <tr><th scope="row">a voice note</th><td>about $0.0007 with kokoro, up to about $0.04 with the priciest voices</td></tr>
         <tr><th scope="row">hearing your voice note</th><td>$0.006 a minute</td></tr>
         <tr><th scope="row">seeing your photo</th><td>part of the chat turn, or one short call if their model can't see</td></tr>
-        <tr><th scope="row">on their own</th><td>photos and voice notes out of a daily allowance: 25 cents unless you change it, from 10 cents to $5; now and then a short call to decide</td></tr>
+        <tr><th scope="row">on their own</th><td>texting first, photos and voice notes, out of a daily allowance: 25 cents unless you change it, from 10 cents to $5; now and then a short call to decide</td></tr>
         <tr><th scope="row">a remix</th><td>two short calls; five more for a venice character</td></tr>
       </tbody>
     </table>
@@ -276,7 +288,7 @@
 <section class="row" id="fine" aria-labelledby="fine-h">
   <h2 id="fine-h">FINE PRINT</h2>
   <div class="body">
-    <p>Characters and conversations are saved in this browser, and so are the photos, clips and voice notes in them. Export a character to keep them anywhere else.</p>
+    <p>Characters and chats are saved in this browser, and so are the photos, clips and voice notes in them. Export a character to keep them anywhere else.</p>
     <p>Your key stays in this browser and goes only to api.venice.ai. The page's security policy blocks every other address, except the download links Venice hands out for clips from its private video models, which are fetched without your key. Conversations run on your Venice account, under Venice's terms.</p>
     <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older. Photos and clips are for safe-for-work pictures either way: every one asks for that, and for adults only; photos also go through Venice's safe mode, which blurs anything adult; and Havre leaves Venice's adult video models out. They're made only from the pictures on a card, which are for pictures of the character, never a photo of a real person.</p>
     <p>What characters do on their own stays within the daily allowance you set under abilities, and you can switch it off there. A clip is never made without your yes.</p>

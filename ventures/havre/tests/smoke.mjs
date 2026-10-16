@@ -119,6 +119,7 @@ async function fakeVenice(route) {
     const system = b.messages[0] && b.messages[0].role === "system" ? b.messages[0].content : "";
     const last = (b.messages.at(-1) || {}).content || "";
     const lastSaid = typeof last === "string" ? last : "";
+    if (/^take your time/i.test(lastSaid)) await new Promise((r) => setTimeout(r, 1500));    // a slow reply
     let reply;
     if (system.startsWith("You decide whether a character")) {
       const said = (b.messages[1].content.match(/^Them: .*$/gm) || []).at(-1) || "";     // the last thing they said
@@ -360,6 +361,53 @@ async function main() {
     assert.ok(await page.locator("#card-body").isHidden(), "a plain chat has no card");
     assert.equal(await page.locator("#tools button", { hasText: "ask for a photo" }).count(), 0, "a plain chat has nobody to send a photo");
 
+    // ---------- your chats: several at once ----------
+    await page.click("#lt-chats");
+    await count(page, "#threads > li", 3);
+    assert.ok(await page.locator("#vgrid").isHidden(), "one tab at a time");
+    assert.match(await textOf(page, '#threads > li[aria-current="true"]'), /no character.*What is a harbor\?/, "the open chat, named by the first thing said");
+    assert.match(await textOf(page, "#threads > li:nth-child(2)"), /Sable Penrose.*Do you have a boat\?.*Ask me again after the tide\./);
+    // a slow reply from Sable keeps coming while you talk to Captain Ro
+    await page.locator("#threads .trow", { hasText: "Sable Penrose" }).click();
+    await has(page, "#who-name", /^Sable Penrose$/);
+    await page.fill("#say", "Take your time, what's in the boxes?");
+    await page.keyboard.press("Enter");
+    await has(page, '#threads > li[aria-current="true"] .tsnip', /is typing/);
+    await page.locator("#threads .trow", { hasText: "Captain Ro" }).click();
+    await has(page, "#who-name", /^Captain Ro$/);
+    assert.ok(await page.locator("#sendbtn").isEnabled(), "another chat isn't held up by Sable's reply");
+    await answered(page, async () => { await page.fill("#say", "Worms, please"); await page.keyboard.press("Enter"); });
+    await has(page, "#threads .tnew", /^1$/, 5000);
+    await has(page, "#toast", /^Sable Penrose: Mm\. Good question\./);
+    await has(page, "#chats-new", /^1$/);
+    assert.equal(await page.title(), "(1) Havre");
+    assert.equal(await page.locator("#log .said", { hasText: "in the boxes" }).count(), 0, "her reply stays in her chat");
+    await page.locator("#threads .trow", { hasText: "Sable Penrose" }).click();
+    await has(page, "#log .line.me .said", /what's in the boxes\?/);
+    await has(page, "#log .line.them .said", /Ask me again after the tide\./);
+    await count(page, "#threads .tnew", 0);
+    assert.equal(await page.title(), "Havre");
+    // a new chat with her: the old one stays; she says hello again
+    await page.locator("#who-meta").getByRole("button", { name: "new chat" }).click();
+    await count(page, "#threads > li", 4);
+    await has(page, "#log .line.them .said", /Careful, the boxes bite\./);
+    assert.equal(await page.locator("#log .said", { hasText: "in the boxes" }).count(), 0, "a new chat starts clean");
+    assert.equal(await page.locator("#threads .tname", { hasText: "Sable Penrose" }).count(), 2);
+    await shot(page, "desktop-chats.png");
+    // named, then deleted
+    page.once("dialog", (d) => d.accept("Moving day"));
+    await page.locator("#who-meta").getByRole("button", { name: "rename" }).click();
+    await has(page, '#threads > li[aria-current="true"] .ttitle', /^Moving day$/);
+    page.once("dialog", (d) => d.accept());
+    await page.locator("#who-meta").getByRole("button", { name: "delete" }).click();
+    await count(page, "#threads > li", 3);
+    await has(page, "#log .line.me .said", /what's in the boxes\?/);
+    const store = await page.evaluate(() => ({ index: JSON.parse(localStorage.getItem("havre.threads.v1")), gone: JSON.parse(localStorage.getItem("havre.threads.gone")) }));
+    assert.equal(Object.keys(store.index).length, 3);
+    assert.equal(Object.keys(store.gone).length, 1, "remembered as deleted, so another tab won't bring it back");
+    assert.equal(await page.evaluate((id) => localStorage.getItem("havre.msgs." + id), Object.keys(store.gone)[0]), null, "its messages went with it");
+    await page.click("#lt-chars");
+
     // ---------- abilities ----------
     // a photo from Sable: the shot is written from the conversation, the price shows, and it's an edit of her own photo
     await page.locator("#vgrid .tile", { hasText: "Sable Penrose" }).click();
@@ -381,7 +429,7 @@ async function main() {
     assert.ok(edit.url.endsWith("/image/edit"), "one picture: an edit");
     assert.equal(edit.body.model, "grok-imagine-edit");
     assert.equal(edit.body.safe_mode, true, "safe mode, always");
-    assert.equal(edit.body.image, "https://venice.ai/_next/image?url=https%3A%2F%2Fouterface.venice.ai%2Fsable.png&w=1080&q=75", "her own photo, at a size Venice can use");
+    assert.equal(edit.body.image, "https://outerface.venice.ai/sable.png", "her own photo, by the address Venice keeps it at");
     assert.match(edit.body.prompt, /^The reference picture shows Sable Penrose\..*moving boxes/);
     assert.ok(await page.locator("#ask").isHidden(), "the panel closes when the photo arrives");
     await has(page, "#log .line.media .cap", /photo · Grok Imagine · \$0\.03 · save/);
@@ -518,15 +566,28 @@ async function main() {
     await page.getByRole("button", { name: "NOT NOW" }).click();
     await count(page, "#log .line.offer", 0);
     assert.equal(seen.queued.length, queuedBefore, "no clip without a yes");
-    // and when you come back after a while, she texts first
+    // and when you come back after a while, she texts first in her chat, and Captain Ro in his, which isn't on screen
     await page.evaluate(() => {
-      const chats = JSON.parse(localStorage.getItem("havre.chats.v1")), sable = Object.keys(chats).find((k) => k.startsWith("sable"));
-      for (const m of chats[sable]) if (m.at) m.at -= 8 * 3600e3;
-      localStorage.setItem("havre.chats.v1", JSON.stringify(chats));
+      const index = JSON.parse(localStorage.getItem("havre.threads.v1"));
+      for (const t of Object.values(index)) {
+        if (!/^(sable|captain)/.test(t.card)) continue;
+        const key = "havre.msgs." + t.id, kept = JSON.parse(localStorage.getItem(key));
+        for (const m of kept.msgs) if (m.at) m.at -= 8 * 3600e3;
+        localStorage.setItem(key, JSON.stringify(kept));
+        t.at -= 8 * 3600e3;
+      }
+      localStorage.setItem("havre.threads.v1", JSON.stringify(index));
     });
     await page.reload();
     await has(page, "#log .line.them .said", /I kept the kettle warm\./);
-    assert.match(talks().at(-1).messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\./);
+    const nudges = () => talks().filter((b) => /^\[Time passes/.test(String(b.messages.at(-1).content)));
+    assert.match(nudges()[0].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. They just came back to the chat\./);
+    await poll(() => nudges().length === 2, "Captain Ro texting first", 9000);
+    assert.match(nudges()[1].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. Reach out to them first/);
+    await has(page, "#chats-new", /^1$/);
+    await has(page, "#toast", /^Captain Ro: You're back!/);
+    await page.waitForTimeout(300);
+    assert.equal(nudges().length, 2, "one text each, and only from the characters you were last talking to");
     // with today's allowance spent, nothing more happens on their own: not even the call that decides
     await page.evaluate(() => {
       const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -540,6 +601,7 @@ async function main() {
     await page.evaluate(() => localStorage.removeItem("havre.spent"));
 
     // a character with no picture yet: a first portrait from how they look, then the photo
+    await page.click("#lt-chars");
     await page.locator("#vgrid .tile", { hasText: "Wren" }).click();
     await has(page, "#log .line.them .said", /Careful, the boxes bite\./);
     await page.getByRole("button", { name: "ask for a photo" }).click();
@@ -608,6 +670,27 @@ async function main() {
     assert.ok(csp.includes("connect-src https://api.venice.ai https://private-share.venice.ai;"), csp);
     assert.ok(csp.includes("media-src blob: https://private-share.venice.ai;"), csp);
 
+    // two tabs: what's said in one shows in the other, and a chat deleted in one goes from both
+    const p4 = await ctx.newPage();
+    watch(p4, "second tab: ");
+    await venice(p4);
+    await page.click("#lt-chars");
+    await page.click("#plain");
+    await has(page, "#who-name", /^no character$/);
+    await p4.goto(base);
+    await p4.click("#lt-chats");
+    await p4.locator("#threads .trow", { hasText: "no character" }).click();
+    await has(p4, "#log .line.me .said", /^What is a harbor\?$/);
+    const tabsBefore = await page.locator("#threads > li").count();
+    await answered(page, async () => { await page.fill("#say", "Two tabs at once?"); await page.keyboard.press("Enter"); });
+    await has(p4, "#log .line.me .said", /^Two tabs at once\?$/, 5000);
+    p4.once("dialog", (d) => d.accept());
+    await p4.locator("#who-meta").getByRole("button", { name: "delete" }).click();
+    await count(page, "#threads > li", tabsBefore - 1, 5000);
+    await has(page, "#log .line.note .said", /a plain chat: no character/);
+    assert.equal(await page.locator("#log .said", { hasText: "Two tabs at once?" }).count(), 0, "the deleted chat left this tab too");
+    await p4.close();
+
     // the page below the studio
     assert.match(await textOf(page, "#agent-prompt"), /skill\.md/);
     await shot(page, "desktop-full.png", { fullPage: true });
@@ -636,17 +719,30 @@ async function main() {
         seed("taskmaster", "Taskmaster", "2026-10-17T09:00:00.000Z"), seed("odile", "Odile", "2026-10-16T00:00:00.000Z")]));
       localStorage.setItem("havre.seeded.v1", "true");
       localStorage.setItem("havre.selected", JSON.stringify("maren"));
-      localStorage.setItem("havre.chats.v1", JSON.stringify({ maren: [{ role: "user", content: "hi" }] }));
+      // conversations kept the first way, one per character
+      localStorage.setItem("havre.chats.v1", JSON.stringify({ maren: [{ role: "user", content: "hi" }],
+        taskmaster: [{ role: "user", content: "Plan my week" }, { role: "assistant", content: "Monday first." }] }));
     });
     await p2.reload();
     await count(p2, "#roster tr", 1);
-    const left = await p2.evaluate(() => ({ cards: JSON.parse(localStorage.getItem("havre.cards.v1")), seeded: localStorage.getItem("havre.seeded.v1"),
-      chats: JSON.parse(localStorage.getItem("havre.chats.v1") || "{}") }));
+    const left = await p2.evaluate(() => {
+      const threads = JSON.parse(localStorage.getItem("havre.threads.v1") || "{}"), t = Object.values(threads)[0];
+      return { cards: JSON.parse(localStorage.getItem("havre.cards.v1")), seeded: localStorage.getItem("havre.seeded.v1"),
+        v1: localStorage.getItem("havre.chats.v1"), threads: Object.values(threads).map((x) => x.card),
+        kept: t ? JSON.parse(localStorage.getItem("havre.msgs." + t.id)) : null };
+    });
     assert.deepEqual(left.cards.map((c) => c.id), ["taskmaster"]);
     assert.equal(left.cards[0].portrait, "", "the old drawings are gone, so is the link to them");
     assert.equal(left.seeded, null);
-    assert.ok(!("maren" in left.chats));
+    assert.equal(left.v1, null, "the first store is read once and goes");
+    assert.deepEqual(left.threads, ["taskmaster"], "Taskmaster's conversation became a chat; Maren's left with her");
+    assert.equal(left.kept.card, "taskmaster", "a chat's messages know whose they are");
+    assert.deepEqual(left.kept.msgs.map((m) => m.content), ["Plan my week", "Monday first."]);
+    assert.ok(left.kept.msgs.every((m) => m.id), "every message has an id now");
     await has(p2, "#who-name", /^Taskmaster$/);
+    await has(p2, "#log .line.them .said", /^Monday first\.$/);
+    assert.ok(await p2.locator("#lp-chats").isVisible(), "someone with chats sees them first");
+    await count(p2, "#threads > li", 1);
     await old.close();
 
     // ---------- phone ----------
@@ -669,6 +765,12 @@ async function main() {
     await p3.waitForTimeout(500);
     await shot(p3, "phone-chat.png");
     await shot(p3, "phone-full.png", { fullPage: true });
+    // from a chat, back to all of them
+    await p3.locator("#who-meta").getByRole("button", { name: "all chats" }).click();
+    await count(p3, "#threads > li", 1);
+    assert.ok(await p3.locator("#lp-chats").isVisible());
+    await p3.waitForTimeout(400);
+    await shot(p3, "phone-chats.png");
     await phone.close();
   } finally {
     await browser.close();

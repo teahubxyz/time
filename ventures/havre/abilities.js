@@ -300,12 +300,16 @@ export function callEstimate(messages, maxTokens, model) {
 // ---------- texting first when you come back ----------
 
 export const BACK_AFTER = 6 * 3600e3;
-/** what a character hears (and you don't see) when you come back after a while: text them first */
-export function comeBack(ms) {
+/**
+ * What a character hears (and you don't see) when it's time to text you first after a while: `here` when you just
+ * opened their chat, else they reach out while you're somewhere else in Havre.
+ */
+export function comeBack(ms, here = true) {
   const h = Math.round(ms / 3600e3);
   const gap = h < 24 ? `about ${h} hours` : h < 48 ? "about a day" : `about ${Math.round(h / 24)} days`;
-  return `[Time passes: ${gap} since you last talked. They just came back to the chat. Text them first, in character, ` +
-    "picking up naturally, in a line or two.]";
+  return `[Time passes: ${gap} since you last talked. ` + (here
+    ? "They just came back to the chat. Text them first, in character, picking up naturally, in a line or two.]"
+    : "Reach out to them first, in character, the way you would after a while apart, in a line or two.]");
 }
 /** how long since the conversation's last message, if its time is known */
 export function since(history, now) {
