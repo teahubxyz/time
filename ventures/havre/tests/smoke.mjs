@@ -2,10 +2,11 @@
 //
 // Serves this folder on localhost and drives Chromium through the page on a desktop and a phone: the first visit,
 // a card import and a chat without a key, the key and the balance, Venice's characters (photos through Venice's
-// image service, tags, adult ones only once asked for) and one who says hello first, the model picker, a plain
-// chat, the abilities (a photo, voice notes, a clip priced first, your voice note through a fake microphone, your
-// photo seen or described, a first portrait), a remix end to end, the exports, the retirement of the first
-// version's cast, and the page's security policy.
+// image service that stay put between searches, pages seen lately not asked for again, tags, adult ones only once
+// asked for) and one who says hello first, the model picker, a plain chat, several chats at once (and in two tabs),
+// the abilities (a photo, voice notes, a clip priced first, your voice note through a fake microphone, your photo
+// seen or described, a first portrait), a remix end to end, the exports, the retirement of the first version's cast
+// and its conversations, and the page's security policy.
 // Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
 // site serves (tools/build.sh copies them to shots/).
 //
@@ -295,20 +296,27 @@ async function main() {
     assert.ok(seen.photos[0].startsWith("https://venice.ai/_next/image?url=https%3A%2F%2Fouterface.venice.ai%2Fsable.png&w="), seen.photos[0]);
     assert.equal(await page.locator("#vgrid .noface").count(), 1, "no photo is an empty frame");
     await has(page, "#balance", /^balance \$12\.50$/);
+    // a new search draws a character's tile again only if something about them changed: their photo stays put
+    await page.evaluate(() => { document.querySelector('#vgrid .tile[data-slug="sable-penrose"] img').dataset.kept = "yes"; });
     let asked = seen.characters.length;
     await page.selectOption("#vsort", "imports");
     await poll(() => seen.characters.length > asked, "a sorted search");
     assert.ok(seen.characters.at(-1).includes("sortBy=imports"), "the sort reaches Venice");
+    await until(page, () => document.querySelector("#venstatus").textContent === "", null, "the sorted page");
     await count(page, "#vgrid li:not(.ghost)", 2);
     await has(page, "#vgrid .nm", /Wren/);
-    // a tag narrows the list, and comes off again
+    assert.equal(await page.locator('#vgrid img[data-kept="yes"]').count(), 1, "Sable's photo wasn't drawn again");
+    // a tag narrows the list, and comes off again: the page from before comes back without asking Venice
     asked = seen.characters.length;
     await page.getByRole("button", { name: "Only characters tagged neighbor" }).click();
     await poll(() => seen.characters.length > asked, "a search by tag");
     assert.ok(seen.characters.at(-1).includes("tags=neighbor"));
     await count(page, "#vgrid li:not(.ghost)", 1);
+    asked = seen.characters.length;
     await page.getByRole("button", { name: "Show every tag, not just neighbor" }).click();
     await count(page, "#vgrid li:not(.ghost)", 2);
+    assert.equal(seen.characters.length, asked, "a page seen a moment ago isn't asked for again");
+    assert.equal(await page.locator('#vgrid img[data-kept="yes"]').count(), 1, "nor is her photo drawn again");
     // adult characters, once someone says they're 18 or older
     page.once("dialog", (d) => d.accept());
     await page.check("#vadult");
@@ -316,8 +324,13 @@ async function main() {
     assert.ok(!seen.characters.at(-1).includes("isAdult"), "every character, adult ones too");
     await has(page, "#vgrid .x18", /18\+/);
     assert.equal(await page.evaluate(() => localStorage.getItem("havre.adult.18")), "true");
+    asked = seen.characters.length;
     await page.uncheck("#vadult");
     await count(page, "#vgrid li:not(.ghost)", 2);
+    assert.equal(seen.characters.length, asked, "the page without them comes back without asking either");
+    // the same search again asks Venice afresh
+    await page.click("#vgo");
+    await poll(() => seen.characters.length > asked, "the same search, asked again");
 
     // one of them says hello first, through Venice, with their own prompt
     const chatsBefore = seen.chats.length;

@@ -46,6 +46,8 @@ const K = { cards: "havre.cards.v1", sel: "havre.selected", key: "havre.key", mo
   sort: "havre.vsort", seeded: "havre.seeded.v1", adult: "havre.adult", adult18: "havre.adult.18", plainModel: "havre.plain.model",
   own: "havre.venice.models", ab: "havre.abilities", voiceOn: "havre.voicenotes", jobs: "havre.clips.pending", refOk: "havre.refs.ok",
   spent: "havre.spent", jobsDone: "havre.clips.done",
+  // the pages of Venice's characters this tab saw lately (in sessionStorage, so they last as long as the tab)
+  pages: "havre.venice.pages",
   // your chats: the list of threads, each thread's messages under its own key, the threads deleted (so another tab
   // doesn't bring them back), the one open, the left column's tab, and when each one's character last texted first
   threads: "havre.threads.v1", msgs: "havre.msgs.", gone: "havre.threads.gone", open: "havre.open", left: "havre.left",
@@ -414,11 +416,10 @@ function ghosts(n = 8) {
 }
 function renderGrid() {
   const ul = $("#vgrid");
-  ul.textContent = "";
   const cur = card(), now = cur && cur.engine.venice_character;
   const showing = !!S.key && S.v.list.length > 0;
-  if (!showing) ul.append(...ghosts());
-  else for (const v of S.v.list) ul.append(tile(v, now));
+  ul.replaceChildren(...(showing ? S.v.list.map((v) => tileFor(v, now)) : ghosts()));
+  if (showing) markTiles();
   $("#vpager").hidden = !showing || (S.v.offset === 0 && !S.v.more);
   $("#vprev").disabled = S.v.offset === 0 || S.v.loading;
   $("#vnext").disabled = !S.v.more || S.v.loading;
@@ -441,12 +442,27 @@ function renderTags() {
     : linkish("#" + t, () => setTag(t), { "aria-label": `Only characters tagged ${t}` })))));
 }
 function setTag(t) { S.v.tag = t; loadVenice(0); }
+/**
+ * Each character's tile, kept between drawings (the last few pages' worth), so a new search, a tag or another page
+ * doesn't make their photos blink. A tile is drawn again only when what it shows changes.
+ */
+const tiles = new Map();
+function tileFor(v, now) {
+  const looks = JSON.stringify([v.name, v.description, v.photo, v.adult]), kept = tiles.get(v.slug);
+  tiles.delete(v.slug);                                    // the latest drawn go last, so the oldest go first
+  const li = kept && kept.looks === looks ? kept.li : tile(v, now);
+  tiles.set(v.slug, { looks, li });
+  if (tiles.size > 4 * PAGE) tiles.delete(tiles.keys().next().value);
+  return li;
+}
 function tile(v, now) {
   const here = S.cards.some((c) => c.engine.venice_character === v.slug), on = now === v.slug;
   const ph = h("span", { class: "ph" });
   paintFace(ph, veniceImg(v.photo));
+  // talking to them uses what Venice says about them now (their model, say), not what it said when the tile was drawn
+  const talk = () => talkTo(S.v.list.find((x) => x.slug === v.slug) || v);
   return h("li", {}, h("button", { type: "button", class: "tile", "aria-pressed": on ? "true" : "false", "data-slug": v.slug,
-    "aria-label": `Talk to ${v.name}`, title: v.description ? v.description.slice(0, 300) : null, onclick: () => talkTo(v) },
+    "aria-label": `Talk to ${v.name}`, title: v.description ? v.description.slice(0, 300) : null, onclick: talk },
   ph, h("span", { class: "tx" }, h("span", { class: "nm", text: v.name }),
     v.description ? h("span", { class: "ds", text: v.description }) : null,
     h("span", { class: "go", text: on ? "talking now" : here ? "talk again" : "talk" }),
@@ -463,27 +479,45 @@ function markTiles() {
 }
 function vStatus(text, bad = false) { const s = $("#venstatus"); s.textContent = text; s.classList.toggle("bad", bad); }
 
-async function loadVenice(offset = 0, { paging = false } = {}) {
+// The pages of Venice's characters this tab saw in the last 10 minutes come back at once, without asking Venice
+// again: another page and back, a tag and off again, a reload. Searching again for the same thing asks afresh.
+const PAGES_FOR = 10 * 60000;
+const pageKey = (offset) => JSON.stringify([S.v.query, S.v.sort, S.v.tag, S.v.adult, offset]);
+function keptPage(key) {
+  const p = (session.get(K.pages, {}) || {})[key];
+  return p && Array.isArray(p.list) && Date.now() - p.at < PAGES_FOR ? p : null;
+}
+function keepPage(key, list, more) {
+  const now = Date.now(), all = { ...(session.get(K.pages, {}) || {}), [key]: { list, more, at: now } };
+  const recent = Object.entries(all).filter(([, p]) => p && now - p.at < PAGES_FOR).sort((a, b) => b[1].at - a[1].at).slice(0, 30);
+  if (!session.set(K.pages, Object.fromEntries(recent))) session.del(K.pages);
+}
+async function loadVenice(offset = 0, { paging = false, fresh = false } = {}) {
   if (!S.key) { renderGrid(); return; }
-  const asked = ++S.v.asked;
+  const asked = ++S.v.asked, key = pageKey(offset), kept = !fresh && keptPage(key);
+  if (kept) { showPage(kept, offset, paging); return; }
   S.v.loading = true;
   vStatus("asking venice for characters…");
   renderGrid();
   try {
     const { list, more } = await new Venice(S.key).characterPage({ search: S.v.query, sort: S.v.sort, tags: S.v.tag,
       adult: S.v.adult, limit: PAGE, offset });
+    keepPage(key, list, more);
     if (asked !== S.v.asked) return;                      // a newer search is on its way
-    Object.assign(S.v, { list, more, offset, loading: false });
-    vStatus(list.length ? "" : S.v.query || S.v.tag ? `nothing matched${S.v.query ? " “" + S.v.query + "”" : ""}${S.v.tag ? " in #" + S.v.tag : ""}.`
-      : "venice sent back no characters.");
-    renderGrid();
-    if (paging) $("#chars").scrollIntoView({ behavior: motion(), block: "start" });
+    showPage({ list, more }, offset, paging);
   } catch (e) {
     if (asked !== S.v.asked) return;
     S.v.loading = false;
     vStatus(e.message, true);
     renderGrid();
   }
+}
+function showPage({ list, more }, offset, paging) {
+  Object.assign(S.v, { list, more, offset, loading: false });
+  vStatus(list.length ? "" : S.v.query || S.v.tag ? `nothing matched${S.v.query ? " “" + S.v.query + "”" : ""}${S.v.tag ? " in #" + S.v.tag : ""}.`
+    : "venice sent back no characters.");
+  renderGrid();
+  if (paging) $("#chars").scrollIntoView({ behavior: motion(), block: "start" });
 }
 
 function talkTo(v) {
@@ -2191,6 +2225,7 @@ async function saveKey(ev) {
   keyStatus(S.keyRemembered ? "saved on this device." : "saved for this tab.", false, true);
   renderChat();
   resetRemix();
+  session.del(K.pages);                                     // a new key: Venice is asked afresh
   loadVenice(0);
   loadBalance();
   resumeJobs();
@@ -2208,6 +2243,8 @@ function forgetKey() {
   S.v.list = [];
   S.v.more = false;
   S.v.offset = 0;
+  session.del(K.pages);
+  tiles.clear();
   $("#keyremember").checked = false;
   updateKeyUI();
   keyStatus("forgotten.", false, true);
@@ -2565,8 +2602,9 @@ function bind() {
   $("#venform").addEventListener("submit", (e) => {
     e.preventDefault();
     if (!S.key) return needKey("paste your venice key first.");
-    S.v.query = $("#vsearch").value.trim();
-    loadVenice(0);
+    const q = $("#vsearch").value.trim(), again = q === S.v.query;
+    S.v.query = q;
+    loadVenice(0, { fresh: again });                        // the same search again asks Venice afresh
   });
   $("#vsort").addEventListener("change", () => {
     S.v.sort = $("#vsort").value;
