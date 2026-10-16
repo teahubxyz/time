@@ -1,6 +1,17 @@
 {
  "ventures": [
   {
+   "slug": "havre",
+   "name": "Havre",
+   "one_liner": "A harbor for characters: keep them in a file you own, talk to them on your own Venice key, and remix the ones you love into someone new, with credit.",
+   "url": "https://havre.yolopreneur.lol/",
+   "pages": "https://havre.yolopreneur.lol/",
+   "launched": "2026-10-16",
+   "signups": 0,
+   "source": "yolopreneur",
+   "shot": "havre/shots/desktop.png"
+  },
+  {
    "slug": "househand",
    "name": "House Hand",
    "one_liner": "A drawing hand for agents: characters, mascots and scenes in one style, drawn in Python and handed back as SVG, PNG, or a drawing that draws itself.",

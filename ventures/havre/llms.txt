@@ -1,0 +1,23 @@
+# Havre
+
+> A harbor for characters: keep them in a file you own, talk to them on your own Venice key, and remix the ones you love into someone new, with credit.
+
+Read skill.md first and follow it. card.js and venice.js are ES modules with no dependencies (Node 20+ or a browser).
+
+## Files
+
+- [skill.md](https://havre.yolopreneur.lol/skill.md): how to write a Havre character, export it, talk to it through Venice, and remix with credit
+- [card.schema.json](https://havre.yolopreneur.lol/card.schema.json): the card format (havre: 1), as JSON Schema
+- [card.js](https://havre.yolopreneur.lol/card.js): read, check and convert cards (Character Card V1/V2/V3, PNG cards, system prompts), and the similarity check
+- [venice.js](https://havre.yolopreneur.lol/venice.js): the Venice API calls the studio makes
+
+## Examples
+
+- [Maren](https://havre.yolopreneur.lol/cast/maren.havre.json): the harbormaster, a guide
+- [Taskmaster](https://havre.yolopreneur.lol/cast/taskmaster.havre.json): a coach with a flow (assess, plan, execute)
+- [Odile](https://havre.yolopreneur.lol/cast/odile.havre.json): the lighthouse keeper, a storyteller
+
+## Coming next
+
+- A hosted harbor with a page per character
+- An API and an MCP server to create, update and talk to characters

@@ -1,0 +1,71 @@
+{
+ "$schema": "https://json-schema.org/draft/2020-12/schema",
+ "$id": "https://havre.yolopreneur.lol/card.schema.json",
+ "title": "Havre card",
+ "description": "A character as a file its person keeps: who they are, how they talk, how they meet someone new, and where they came from. Format 1. Read https://havre.yolopreneur.lol/skill.md for how to write one.",
+ "type": "object",
+ "required": ["havre", "name"],
+ "anyOf": [
+  { "required": ["persona"], "properties": { "persona": { "minLength": 1 } } },
+  { "required": ["engine"], "properties": { "engine": { "required": ["venice_character"] } } }
+ ],
+ "additionalProperties": false,
+ "properties": {
+  "havre": { "const": 1, "description": "The format version." },
+  "id": { "type": "string", "pattern": "^[a-z0-9](?:[a-z0-9-]{0,46}[a-z0-9])?$", "description": "A lowercase slug, unique in a harbor. Also the file name: <id>.havre.json." },
+  "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+  "tagline": { "type": "string", "maxLength": 200, "description": "One line under the name." },
+  "greeting": { "type": "string", "maxLength": 4000, "description": "The first thing they say. Blank lines split it into separate texts." },
+  "persona": { "type": "string", "maxLength": 20000, "description": "The system prompt, in the second person (You are ...). {{char}} and {{user}} are filled in." },
+  "voice": {
+   "type": "object", "additionalProperties": false,
+   "properties": {
+    "short_form": { "type": "boolean", "default": true, "description": "Reply like texts: one to three short messages, no paragraphs." },
+    "notes": { "type": "string", "maxLength": 2000, "description": "How they talk, as traits." }
+   }
+  },
+  "flow": {
+   "type": "array", "maxItems": 8, "description": "Optional stages for meeting someone new, taken in order (assess, plan, execute...).",
+   "items": {
+    "type": "object", "additionalProperties": false, "required": ["stage", "goal"],
+    "properties": {
+     "stage": { "type": "string", "maxLength": 40 },
+     "goal": { "type": "string", "maxLength": 600 },
+     "next": { "type": "string", "maxLength": 400, "description": "When to move to the next stage." }
+    }
+   }
+  },
+  "examples": {
+   "type": "array", "maxItems": 12, "description": "Sample exchanges. They teach the voice, and they are what a visitor without a key hears.",
+   "items": {
+    "type": "object", "additionalProperties": false, "required": ["character"],
+    "properties": { "user": { "type": "string", "maxLength": 2000 }, "character": { "type": "string", "maxLength": 4000 } }
+   }
+  },
+  "tags": { "type": "array", "maxItems": 12, "items": { "type": "string", "maxLength": 40 } },
+  "model": { "type": "string", "maxLength": 120, "description": "A Venice model id, e.g. zai-org-glm-5-2." },
+  "engine": {
+   "type": "object", "additionalProperties": false,
+   "properties": { "venice_character": { "type": "string", "description": "Speak through a public Venice character by its slug (its own prompt, unseen)." } }
+  },
+  "portrait": { "type": "string", "description": "An image URL, a path next to the card, or a data: URI." },
+  "creator": { "type": "string", "maxLength": 120 },
+  "license": { "enum": ["remix-with-credit", "all-rights-reserved", "cc-by-4.0", "cc0"], "default": "remix-with-credit" },
+  "lineage": {
+   "type": "array", "maxItems": 50, "description": "Where this character came from. Entries are only ever added.",
+   "items": {
+    "type": "object", "additionalProperties": false, "required": ["relation"],
+    "properties": {
+     "relation": { "enum": ["ported-from", "inspired-by", "forked-from"] },
+     "name": { "type": "string", "maxLength": 120 },
+     "creator": { "type": "string", "maxLength": 120 },
+     "ref": { "type": "string", "maxLength": 500, "description": "venice:<slug>, a URL, or sha256:<hex> of the source text." },
+     "at": { "type": "string", "description": "YYYY-MM-DD" },
+     "note": { "type": "string", "maxLength": 500 }
+    }
+   }
+  },
+  "created": { "type": "string", "format": "date-time" },
+  "updated": { "type": "string", "format": "date-time" }
+ }
+}
