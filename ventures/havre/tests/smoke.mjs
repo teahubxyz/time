@@ -724,12 +724,23 @@ async function main() {
     // the photo model turns the photo down: the panel says so, with the next photo model a click away
     refusing.add("grok-imagine-edit");
     const editsWren = seen.edits.length, refusedWren = seen.refused.length;
+    assert.equal(await page.locator("#ask-saw").count(), 0, "nothing to see before a refusal");
     await page.click("#ask-go");
     await has(page, "#ask .status", /^Venice turned that down as against its content rules\. Change the shot, or try another model\.$/);
     assert.deepEqual(seen.refused.slice(refusedWren), ["grok-imagine-edit"]);
     assert.equal(seen.edits.length, editsWren, "nothing made");
     await has(page, "#ask-alt", /^TRY FIRERED · \$0\.04$/);
     await has(page, "#ask-go", /^TRY AGAIN · \$0\.03$/);
+    // what venice saw: the call, its answer as it came, the words a filter may weigh, and the prompt, a click away
+    await has(page, "#ask details.saw summary", /^what venice saw$/);
+    assert.equal(await page.locator("#ask details.saw").evaluate((d) => d.open), false, "folded until asked");
+    const sawWren = await textOf(page, "#ask-saw");
+    assert.match(sawWren, /^Grok Imagine \(grok-imagine-edit\) · image\/edit · 1 picture · safe mode on\n/);
+    assert.match(sawWren, /\nvenice: 422 — Your prompt violates the content policy of Venice\.ai or the model provider\n/);
+    assert.match(sawWren, /\nwords a filter may weigh \(ages, youth\): none havre knows of\. a real person's name, or a public figure's, is turned down too\.\nprompt:\n/);
+    assert.match(sawWren, /\nprompt:\nThe reference picture shows Wren\. Safe for work: everyone in it is an adult, fully clothed\. Keep their face, so it's clearly them\. How they look: Thirties, wiry.*New photo: .*moving boxes.* A natural photo with no text in it\.$/s);
+    await page.locator("#ask details.saw summary").click();
+    await has(page, "#ask details.saw .acts button", /^COPY$/);
     await shot(page, "desktop-ask-refused.png");
     await page.click("#ask-alt");
     await has(page, "#toast", /^Photo model: FireRed, from now on\.$/);

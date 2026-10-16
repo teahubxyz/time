@@ -6,7 +6,11 @@
 export const BASE = "https://api.venice.ai/api/v1";
 
 export class VeniceError extends Error {
-  /** refused: Venice turned it down as against its content rules (its own, or the ones of the model's maker) */
+  /**
+   * refused: Venice turned it down as against its content rules (its own, or the ones of the model's maker). One that
+   * comes from Venice's answer also carries the answer (said, code, body), and one from a picture or clip call carries
+   * what was sent (sent: endpoint, model, pictures, safe_mode, prompt), for the page's "what venice saw".
+   */
   constructor(message, status, refused = false) { super(message); this.status = status; this.refused = !!refused; }
 }
 
@@ -19,7 +23,17 @@ function failure(status, body) {
   const said = String((e && typeof e === "object" ? e.message : e) || (body && body.message) || "").slice(0, 240);
   const code = String((e && typeof e === "object" && e.code) || (body && body.code) || "");
   const refused = status === 422 && (/CONTENT_POLICY/i.test(code) || /content polic|violat|moderat|blocked|safety/i.test(said) || !said);
-  return new VeniceError(explain(status, said, refused), status, refused);
+  const err = new VeniceError(explain(status, said, refused), status, refused);
+  // Venice's answer as it came, for the "what venice saw" block: its words, its code, and the body when it says nothing
+  err.said = said;
+  err.code = code;
+  err.body = body == null ? "" : (() => { try { return JSON.stringify(body).slice(0, 600); } catch { return ""; } })();
+  return err;
+}
+/** what a picture or a clip call sent, kept on the error it failed with (sent), so the page can show it */
+function sent(e, what) {
+  if (e && e.name !== "AbortError") e.sent = what;
+  return e;
 }
 function explain(status, said, refused) {
   // Venice's own words for it ("violates the content policy of Venice.ai or the model provider") say no more than this
@@ -103,10 +117,13 @@ export class Venice {
   async editImage({ model, prompt, images, safe = true, signal } = {}) {
     const pics = (images || []).filter(Boolean);
     if (!pics.length) throw new VeniceError("A photo needs at least one picture of the character.", 0);
-    const safe_mode = safe !== false;
-    const res = pics.length === 1
-      ? await this.raw("/image/edit", { body: { model, prompt, image: imageInput(pics[0]), safe_mode, output_format: "webp" }, signal })
-      : await this.raw("/image/multi-edit", { body: { modelId: model, prompt, images: pics.map(imageInput), safe_mode, output_format: "webp" }, signal });
+    const safe_mode = safe !== false, endpoint = pics.length === 1 ? "image/edit" : "image/multi-edit";
+    let res;
+    try {
+      res = pics.length === 1
+        ? await this.raw("/image/edit", { body: { model, prompt, image: imageInput(pics[0]), safe_mode, output_format: "webp" }, signal })
+        : await this.raw("/image/multi-edit", { body: { modelId: model, prompt, images: pics.map(imageInput), safe_mode, output_format: "webp" }, signal });
+    } catch (e) { throw sent(e, { endpoint, model, pictures: pics.length, safe_mode, prompt }); }
     return { blob: await res.blob(), blurred: res.headers && res.headers.get ? res.headers.get("x-venice-is-blurred") === "true" : false };
   }
 
@@ -117,7 +134,9 @@ export class Venice {
   async generateImage({ model, prompt, aspect = "", safe = true, signal } = {}) {
     const body = { model, prompt, safe_mode: safe !== false, format: "webp", return_binary: true };
     if (aspect) body.aspect_ratio = aspect;
-    const res = await this.raw("/image/generate", { body, signal });
+    let res;
+    try { res = await this.raw("/image/generate", { body, signal }); }
+    catch (e) { throw sent(e, { endpoint: "image/generate", model, pictures: 0, safe_mode: body.safe_mode, prompt }); }
     return { blob: await res.blob(), blurred: res.headers && res.headers.get ? res.headers.get("x-venice-is-blurred") === "true" : false };
   }
 
@@ -163,7 +182,9 @@ export class Venice {
     const pics = images.filter(Boolean);
     if (/reference-to-video/.test(model)) { if (pics.length) body.reference_image_urls = pics.slice(0, 4); }
     else if (pics.length) body.image_url = pics[0];
-    const d = await this.call("/video/queue", { method: "POST", body, signal });
+    let d;
+    try { d = await this.call("/video/queue", { method: "POST", body, signal }); }
+    catch (e) { throw sent(e, { endpoint: "video/queue", model, pictures: Math.min(pics.length, /reference-to-video/.test(model) ? 4 : 1), prompt }); }
     if (!d || !d.queue_id) throw new VeniceError("Venice didn't start the clip.", 0);
     return { queueId: d.queue_id, downloadUrl: typeof d.download_url === "string" ? d.download_url : "" };
   }

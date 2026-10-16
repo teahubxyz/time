@@ -155,8 +155,12 @@ them only from pictures the person can see on the card.
 Word those rules for what's wanted, never by naming what they rule out: content filters (Venice's, and the ones of
 the models' makers) read the words, not the "no" in front of them, so a rule that names what it forbids gets a
 harmless prompt turned down. When Venice turns one down anyway (a 422 its docs call `CONTENT_POLICY_VIOLATION`;
-`VeniceError.refused`), offer the next model (`A.another(list, tried, kind)`) instead of a dead end. A photo a
-character starts on their own tries one other model, then says in the chat that it didn't come.
+`VeniceError.refused`), offer the next model (`A.another(list, tried, kind)`) instead of a dead end, and show what
+was sent and what came back: the error carries Venice's answer as it came (`said`, `code`, `body`) and the call
+(`sent`: endpoint, model, pictures, safe mode, prompt), and `A.filterWords(prompt)` lists the words in the prompt a
+filter may weigh (ages, youth), since Venice's stock line never says which. Havre's photo panel shows all of it
+under "what venice saw". A photo a character starts on their own tries one other model, then says in the chat that
+it didn't come.
 
 The one exception is an `adult` character, once the person has said they're 18 or older: when every picture on their
 card was made with AI (never one that was uploaded, which could be of anyone), their photos and clips can be adult.

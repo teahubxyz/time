@@ -432,6 +432,48 @@ test("venice: what Venice says when it turns something down, and when a 422 is s
   await assert.rejects(v.speak({ model: "m", input: "x" }), said(/busy at Venice/, false, 503));
 });
 
+test("venice: an error carries Venice's answer as it came, and a picture or clip call carries what it sent", async () => {
+  const answers = {
+    "/image/edit": { status: 422, body: { error: { code: "CONTENT_POLICY_VIOLATION", message: "Your prompt violates the content policy of Venice.ai or the model provider" } } },
+    "/image/multi-edit": { status: 422, body: {} },
+    "/image/generate": { status: 400, body: { error: "Invalid request parameters", details: { prompt: "too long" } } },
+    "/video/queue": { status: 422, body: { error: "Your prompt violates the content policy of Venice.ai or the model provider" } },
+    "/audio/speech": { status: 503, body: { error: "The model is at capacity." } },
+  };
+  const v = new Venice("sk", { fetch: fake((p) => answers[p] || { status: 404, body: {} }).f });
+  const caught = async (p) => { try { await p; } catch (e) { return e; } assert.fail("no error"); };
+  let e = await caught(v.editImage({ model: "qwen-edit-uncensored", prompt: "Hard rule. The reference picture shows Mara.", images: ["data:image/png;base64,AA"], safe: false }));
+  assert.deepEqual([e.said, e.code, e.refused], ["Your prompt violates the content policy of Venice.ai or the model provider", "CONTENT_POLICY_VIOLATION", true]);
+  assert.deepEqual(e.sent, { endpoint: "image/edit", model: "qwen-edit-uncensored", pictures: 1, safe_mode: false, prompt: "Hard rule. The reference picture shows Mara." });
+  e = await caught(v.editImage({ model: "m", prompt: "p", images: ["a", "b", "c"] }));
+  assert.deepEqual([e.said, e.code, e.body], ["", "", "{}"], "nothing said: the body as it came");
+  assert.deepEqual(e.sent, { endpoint: "image/multi-edit", model: "m", pictures: 3, safe_mode: true, prompt: "p" });
+  e = await caught(v.generateImage({ model: "g", prompt: "Portrait photo of Wren." }));
+  assert.deepEqual([e.status, e.refused, e.said, e.code], [400, false, "Invalid request parameters", ""]);
+  assert.match(e.body, /"details":\{"prompt":"too long"\}/, "the body keeps what the message leaves out");
+  assert.deepEqual(e.sent, { endpoint: "image/generate", model: "g", pictures: 0, safe_mode: true, prompt: "Portrait photo of Wren." });
+  e = await caught(v.queueVideo({ model: "wan-3-0-reference-to-video", prompt: "She waves.", duration: "5s", images: ["a", "b", "c", "d", "e"] }));
+  assert.deepEqual(e.sent, { endpoint: "video/queue", model: "wan-3-0-reference-to-video", pictures: 4, prompt: "She waves." }, "a clip: as many pictures as go");
+  assert.equal(e.refused, true);
+  e = await caught(v.speak({ model: "m", input: "x" }));
+  assert.deepEqual([e.status, e.said, e.sent], [503, "The model is at capacity.", undefined], "a voice note sends no picture prompt");
+  e = await caught(v.editImage({ model: "m", prompt: "p", images: [] }));
+  assert.equal(e.sent, undefined, "nothing was sent");
+});
+
+test("the words in a prompt a content filter may weigh, for what venice saw", () => {
+  assert.deepEqual(A.filterWords(A.photoPrompt(mara, "On the stage, in a navy coat.", 1, 1500, { adult: true })), ["18"], "the 18+ rule's own age, once");
+  assert.deepEqual(A.filterWords(A.photoPrompt(ines, "On deck.", 1, 1500)), [], "a safe-for-work photo: none");
+  assert.deepEqual(A.filterWords("A young woman in her early twenties, a schoolgirl's satchel, 21 years old, with her little sister, a girl of nine, and their son."),
+    ["young", "schoolgirl", "21", "girl", "son"]);
+  assert.deepEqual(A.filterWords("Her boyfriend, a person at a girlish party, babies everywhere, 2 students"), ["girlish", "babies", "students"], "boyfriend and person aren't boy or son");
+  assert.deepEqual(A.filterWords("18 or older; 25+; 3 yo; a teen"), ["18", "25", "3 yo", "teen"]);
+  assert.equal(A.filterWords("a b c d e f g h".replace(/\w/g, (c) => "girl " + c)).length, 1, "each word once");
+  assert.equal(A.filterWords(["young", "youth", "teen", "teenager", "tween", "kid", "child", "baby", "petite", "pupil"].join(" ")).length, 8, "at most eight");
+  assert.deepEqual(A.filterWords(""), []);
+  assert.deepEqual(A.filterWords(null), []);
+});
+
 // ---------- on their own ----------
 test("on their own: a move is considered when asked to show or say something, when the reply shows something, or now and then", () => {
   const u = (content, extra = {}) => ({ role: "user", content, ...extra }), a = (content, extra = {}) => ({ role: "assistant", content, ...extra });

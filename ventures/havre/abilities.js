@@ -403,6 +403,24 @@ export function underage(texts, re = UNDERAGE) {
   return "";
 }
 
+// Words a content filter (Venice's, or the model maker's) may weigh in a picture prompt, for the "what venice saw" block
+// under a picture that was turned down: Havre's own under-18 words, and the softer ones about age and youth that pass its
+// check (it goes by apparent age; a filter reads "young", "girl" or an age as it likes). Venice's stock line never says
+// which words it read, so these are the ones to look at first. Ages are any two-figure number written as one.
+const FILTER = new RegExp("\\b(?:" + [...YOUNG, ...CHILDREN, "young\\w*", "youth\\w*", "girls?", "girlish", "girly", "boys?", "boyish",
+  "students?", "petite", "bab(?:y|ies)", "daughters?", "sons?", "nieces?", "nephews?", "pupils?", "lolita", "barely legal",
+  "fresh(?:man|men)", "sophomores?", "\\d{1,2}(?=\\s*(?:\\+|or older|and up|years?|yrs?|y\\.?o\\b))"].join("|") + ")\\b", "gi");
+/** the words in a prompt a content filter may weigh (FILTER), each once, in order, at most eight */
+export function filterWords(text) {
+  const out = [];
+  for (const m of str(text, 200000).matchAll(FILTER)) {
+    const w = m[0].toLowerCase();
+    if (!out.includes(w)) out.push(w);
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 /** everything a card says about them */
 const cardWords = (card) => [card.name, card.tagline, card.greeting, card.persona, card.voice && card.voice.notes,
   card.look && card.look.description, ...(card.tags || []), ...(card.examples || []).flatMap((e) => [e.user, e.character]),

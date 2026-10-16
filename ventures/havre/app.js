@@ -1545,7 +1545,7 @@ function askFor(kind) {
   if (hint) { $("#say").value = ""; growSay(); }
   // refused: the photo models that turned this photo down (each gets the next one a click away)
   S.ask = { kind, card: c.id, thread: S.open, hint, shot: "", busy: false, status: "", bad: false, quote: null, quoting: false, opts: null, asked: 0,
-    refused: [] };
+    refused: [], detail: null };
   loadList(kind === "clip" ? "video" : "inpaint");
   if (!refsOf(c).length) loadList("image");
   renderAsk();
@@ -1645,6 +1645,7 @@ function renderAsk() {
     : `safe for work, and never a real person. a ${what} runs on your venice key.` }));
   if (ad.why) box.append(h("p", { class: "mono", id: "ask-why", text: ad.why }));
   if (a.status) box.append(h("p", { class: "status" + (a.bad ? " bad" : ""), role: "status", text: a.status }));
+  if (a.status && a.bad && a.detail) box.append(sawBlock(a.detail));
   syncAsk();
   if (was) { const t = $("#ask-shot"); if (t && !t.disabled) { t.focus({ preventScroll: true }); t.setSelectionRange(was[0], was[1]); } }
   else if (focusId) { const el = document.getElementById(focusId); if (el && !el.disabled) el.focus({ preventScroll: true }); }
@@ -1696,7 +1697,7 @@ async function writeShot() {
   const c = S.cards.find((x) => x.id === a.card);
   if (!c) return;
   a.busy = true;
-  Object.assign(a, { status: "writing the shot…", bad: false });
+  Object.assign(a, { status: "writing the shot…", bad: false, detail: null });
   renderAsk();
   try {
     const t = askChat(a), adult = adultFor(c, t, a.hint).ok;
@@ -1740,6 +1741,25 @@ function trouble(e, c) {
   return e.status === 400 && c.engine.venice_character && !c.look.references.length
     ? `Venice couldn't use ${c.name}'s photo (${e.message}). Add a picture of them on their card (card → look) and try again.` : e.message;
 }
+/** what was sent to Venice and what it answered, for the block under a failure (venice.js sent); null when it never got that far */
+const saw = (e, m) => (e && e.sent ? { ...e.sent, name: (m && m.name) || e.sent.model, status: e.status, code: e.code || "", said: e.said || "", body: e.body || "" } : null);
+/**
+ * Under a photo or a clip that didn't come: the model and the call, Venice's answer as it came, the words in the prompt
+ * a content filter may weigh (abilities.js filterWords), and the prompt itself, to read or copy. Venice's stock line
+ * ("violates the content policy of Venice.ai or the model provider") never says which words, so this is how to find them.
+ */
+function sawBlock(d) {
+  const words = A.filterWords(d.prompt), n = d.pictures || 0;
+  const call = [d.name === d.model ? d.model : `${d.name} (${d.model})`, d.endpoint, n ? `${n} picture${n === 1 ? "" : "s"}` : "",
+    d.safe_mode == null ? "" : `safe mode ${d.safe_mode ? "on" : "off"}`].filter(Boolean).join(" · ");
+  const answer = d.said || (d.body && d.body !== "{}" ? d.body : "") || "nothing more";
+  const text = [call, `venice: ${d.status || "no answer"}${d.code ? " " + d.code : ""} — ${answer}`,
+    `words a filter may weigh (ages, youth): ${words.length ? words.map((w) => `“${w}”`).join(", ") : "none havre knows of"}. a real person's name, or a public figure's, is turned down too.`,
+    "prompt:", String(d.prompt || "")].join("\n");
+  const copy = h("button", { type: "button", class: "btn small", text: "COPY" });
+  copy.addEventListener("click", () => copyFrom("ask-saw", copy));
+  return h("details", { class: "saw" }, h("summary", { text: "what venice saw" }), h("pre", { class: "saw", id: "ask-saw", text }), h("div", { class: "acts" }, copy));
+}
 async function takePhoto() {
   const a = S.ask;
   if (!a || a.busy || !a.shot.trim()) return;
@@ -1753,7 +1773,7 @@ async function takePhoto() {
   const refs = refsOf(c).slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, refs.length);
   if (price == null || !refs.length) return;                   // never without the price on the button
   a.busy = true;
-  Object.assign(a, { status: `taking the photo with ${pm.name}…`, bad: false });
+  Object.assign(a, { status: `taking the photo with ${pm.name}…`, bad: false, detail: null });
   renderAsk();
   try {
     const { blob, blurred } = await new Venice(S.key).editImage({ model: pm.id, prompt: A.photoPrompt(c, a.shot, refs.length, pm.promptLimit, { adult }),
@@ -1766,7 +1786,7 @@ async function takePhoto() {
   } catch (e) {
     a.busy = false;
     if (e.refused && !a.refused.includes(pm.id)) a.refused.push(pm.id);     // the next model is a click away (askAlt)
-    Object.assign(a, { status: trouble(e, c), bad: true });
+    Object.assign(a, { status: trouble(e, c), bad: true, detail: saw(e, pm) });  // and what Venice saw is a click away (sawBlock)
     renderAsk();
   }
   balanceSoon();
@@ -1781,7 +1801,7 @@ async function firstPortrait() {
   if (!c || !pm || pm.price == null) return;
   if (refsOf(c).length) { renderAsk(); writeShot(); return; }   // they've had a picture since: no portrait to pay for
   a.busy = true;
-  Object.assign(a, { status: c.look.description ? `drawing ${c.name} with ${pm.name}…` : "imagining how they look…", bad: false });
+  Object.assign(a, { status: c.look.description ? `drawing ${c.name} with ${pm.name}…` : "imagining how they look…", bad: false, detail: null });
   renderAsk();
   try {
     const v = new Venice(S.key), look = await lookOf(c, v);
@@ -1797,7 +1817,7 @@ async function firstPortrait() {
     writeShot();
   } catch (e) {
     a.busy = false;
-    Object.assign(a, { status: redraw(e), bad: true });
+    Object.assign(a, { status: redraw(e), bad: true, detail: saw(e, pm) });
     renderAsk();
   }
   balanceSoon();
@@ -1984,7 +2004,7 @@ async function makeClip() {
   const cm = askClipModel(a);
   if (!cm || !quoteFits(a)) return;                             // only at the price on the button
   a.busy = true;
-  Object.assign(a, { status: "asking venice to start the clip…", bad: false });
+  Object.assign(a, { status: "asking venice to start the clip…", bad: false, detail: null });
   renderAsk();
   try {
     await startClip(c, cm, a.shot.trim(), { ...a.opts }, a.quote, () => askThread(a), { adult });
@@ -1992,7 +2012,7 @@ async function makeClip() {
     renderAsk();
   } catch (e) {
     a.busy = false;
-    Object.assign(a, { status: trouble(e, c), bad: true });
+    Object.assign(a, { status: trouble(e, c), bad: true, detail: saw(e, cm) });
     renderAsk();
   }
   balanceSoon();
