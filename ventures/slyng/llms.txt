@@ -1,0 +1,10 @@
+# SLYNG
+
+> Sling sats and notes on nostr: aim at someone you follow, pull back for more, let go to send. Sats go as zaps
+> (NIP-57) from the sender's own wallet; notes go private and gift-wrapped (NIP-17). No account, no server.
+
+An agent can aim; only a person lets go. To aim, make a link:
+https://slyng.yolopreneur.lol/#to=<npub, nprofile, hex key or name@domain>&sats=<1 to 21000>&note=<URL-encoded text>
+
+- [SLYNG](https://slyng.yolopreneur.lol/): the slingshot, in the browser
+- [skill.md](https://slyng.yolopreneur.lol/skill.md): how to make a SLYNG link, or sling by yourself with your own key and wallet

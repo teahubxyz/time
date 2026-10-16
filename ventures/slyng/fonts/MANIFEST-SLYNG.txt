@@ -1,0 +1,13 @@
+The fonts in this folder are derived works of the TeX Gyre fonts by the GUST e-foundry, distributed under the
+GUST Font License (GUST-FONT-LICENSE.txt in this folder; it refers to the LaTeX Project Public License 1.3c,
+https://www.latex-project.org/lppl.txt).
+
+As the license requests, the derived fonts and their files have new names:
+
+  slyng-condensed-bold.woff  "Slyng Condensed Bold"   from TeX Gyre Heros Cn Bold   (texgyreheroscn-bold.otf)
+  slyng-text-regular.woff    "Slyng Text Regular"     from TeX Gyre Adventor Regular (texgyreadventor-regular.otf)
+  slyng-text-bold.woff       "Slyng Text Bold"        from TeX Gyre Adventor Bold    (texgyreadventor-bold.otf)
+
+What changed: the glyph set was cut down to Latin-1 plus common punctuation, the OpenType features to kern, liga,
+tnum, lnum and pnum, the name table to the names above, and the files were converted to WOFF. The outlines are
+unchanged. Made for SLYNG (https://slyng.yolopreneur.lol/) in October 2026.

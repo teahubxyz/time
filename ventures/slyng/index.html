@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' https: wss: ws://127.0.0.1:* ws://localhost:* http://127.0.0.1:* http://localhost:*; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="strict-origin">
+<title>SLYNG</title>
+<meta name="description" content="Sling sats and notes on nostr. Aim at someone you follow, pull back for more, let go to send. Your key, your wallet, no account.">
+<link rel="canonical" href="https://slyng.yolopreneur.lol/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SLYNG: sling sats and notes on nostr">
+<meta property="og:description" content="Aim at someone you follow, pull back for more, let go to send. Your key, your wallet, no account.">
+<meta property="og:url" content="https://slyng.yolopreneur.lol/">
+<meta property="og:image" content="https://slyng.yolopreneur.lol/shots/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="theme-color" content="#D8E8F0">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="alternate" type="text/plain" href="llms.txt" title="For agents">
+<link rel="preload" href="fonts/slyng-condensed-bold.woff" as="font" type="font/woff" crossorigin>
+<link rel="preload" href="fonts/slyng-text-regular.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="style.css">
+<script type="module" src="app.js"></script>
+</head>
+<body>
+<header class="bar">
+  <a class="brand" href="#top" aria-label="SLYNG, to the top">
+    <svg class="mark" viewBox="0 0 32 32" aria-hidden="true"><path class="m-wood" d="M16 29V18.5M8.6 5.4C8.8 12 12.4 16.7 16 18.5C19.6 16.7 23.2 12 23.4 5.4"/><path class="m-band" d="M8.6 5.4L16 12.6L23.4 5.4"/><circle class="m-stone" cx="16" cy="12.6" r="3.3"/></svg>
+    <span class="word">SLYNG</span>
+  </a>
+  <p class="motto">Sling sats and notes on nostr</p>
+  <nav class="links" aria-label="On this page"><a href="#how">How it works</a><a href="#agents">For agents</a><a href="#plans">Plans</a></nav>
+  <a class="join" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+SLYNG&amp;venture=slyng&amp;plan=Stall+%28founding%29">Get early access</a>
+</header>
+
+<main id="top">
+<section class="studio" aria-label="The slingshot">
+  <div class="range">
+    <div class="chips">
+      <button type="button" class="chip" id="account" aria-haspopup="dialog">Demo</button>
+      <button type="button" class="chip" id="wallet" aria-haspopup="dialog">21,000 demo sats</button>
+    </div>
+    <p id="aimed" class="aimed" hidden></p>
+    <svg id="sling" class="sling" tabindex="0" role="application" aria-roledescription="slingshot"
+      aria-label="Slingshot. Drag the stone back, away from the person you aim at. The further back, the more sats. With a keyboard: left and right arrows aim, down pulls back, up eases off, Enter lets go."
+      aria-describedby="readout"></svg>
+    <div class="readout" id="readout" aria-live="polite">
+      <p class="amt" id="amt">Pull back to sling</p>
+      <p class="sub" id="sub">Drag the stone down, away from who you aim at.</p>
+    </div>
+    <div class="note">
+      <label for="note" class="sr">Note</label>
+      <textarea id="note" rows="1" maxlength="1000" placeholder="Tie a note to it" autocomplete="off" enterkeyhint="done"></textarea>
+    </div>
+    <div class="flight" id="flight" hidden>
+      <button type="button" class="pill catch" id="catchback">Catch it back</button>
+    </div>
+    <p class="fence-row"><button type="button" class="linkish" id="fence">Change who's on the fence</button></p>
+  </div>
+
+  <aside class="log" aria-label="What you caught and slung">
+    <div class="log-tabs" role="tablist" aria-label="Activity">
+      <button type="button" role="tab" id="t-caught" aria-selected="true" aria-controls="caught">Caught <span class="count" id="n-caught"></span></button>
+      <button type="button" role="tab" id="t-slung" aria-selected="false" aria-controls="slung">Slung <span class="count" id="n-slung"></span></button>
+    </div>
+    <ol id="caught" class="entries" role="tabpanel" aria-labelledby="t-caught"></ol>
+    <ol id="slung" class="entries" role="tabpanel" aria-labelledby="t-slung" hidden></ol>
+    <p id="log-empty" class="empty"></p>
+  </aside>
+</section>
+
+<section id="story" class="story" aria-labelledby="story-h">
+  <p class="bigword" aria-hidden="true">SL<svg class="bigy" viewBox="0 0 64 72"><path class="y-wood" d="M32 69V40M10 6C10.5 22 20 35 32 40C44 35 53.5 22 54 6"/><path class="y-band" d="M10 6L32 24L54 6"/><circle class="y-stone" cx="32" cy="24" r="7"/></svg>NG</p>
+  <div class="story-text">
+    <h2 id="story-h">The Y is the fork</h2>
+    <p>SLYNG started as a verb. I'll sling you some sats. I'll sling you a note later. It needed a spelling of its own, and the odd one turned out to be the point: the Y in the middle of the word is a slingshot.</p>
+    <p>So the app is one. The people you follow stand on the fence. You aim by pulling the other way, the band tells you how much, and when you let go it lands with them: sats over lightning, and a note sealed so only they can read it.</p>
+  </div>
+</section>
+
+<section id="how" class="how" aria-labelledby="how-h">
+  <h2 id="how-h">How it works</h2>
+  <ul class="steps">
+    <li>
+      <svg class="diagram" viewBox="0 0 120 80" aria-hidden="true"><path class="d-fence" d="M14 34 A70 70 0 0 1 106 34"/><circle class="d-dot" cx="22" cy="26" r="6"/><circle class="d-dot on" cx="60" cy="12" r="6"/><circle class="d-dot" cx="98" cy="26" r="6"/><path class="d-arrow" d="M60 74 L60 24"/><path class="d-pull" d="M60 60 L60 76"/></svg>
+      <h3>Aim</h3>
+      <p>Everyone you can sling to stands on the fence: the people you follow on nostr. Pull the stone away from the person you mean, the way a real slingshot works, and the dotted arc shows where it will go.</p>
+    </li>
+    <li>
+      <svg class="diagram" viewBox="0 0 120 80" aria-hidden="true"><circle class="d-ring" cx="60" cy="18" r="10"/><circle class="d-ring" cx="60" cy="18" r="22"/><circle class="d-ring on" cx="60" cy="18" r="34"/><circle class="d-ring" cx="60" cy="18" r="46"/><circle class="d-stone" cx="60" cy="52" r="5"/></svg>
+      <h3>Stretch</h3>
+      <p>The further back you pull, the more you send. A short tug is a note on its own, then 21 sats, 100, 210, and on up to 21,000. Each ring is one step, so the amount is written out before you let go.</p>
+    </li>
+    <li>
+      <svg class="diagram" viewBox="0 0 120 80" aria-hidden="true"><path class="d-arc" d="M18 70 Q70 -14 104 34"/><circle class="d-stone" cx="18" cy="70" r="5"/><circle class="d-dot on" cx="104" cy="34" r="7"/></svg>
+      <h3>Let go</h3>
+      <p>The stone is in the air for a moment, and you can catch it back. When it lands, your wallet pays and your note goes, privately. On their side, it shows up as caught.</p>
+    </li>
+  </ul>
+</section>
+
+<section id="agents" class="agents" aria-labelledby="agents-h">
+  <h2 id="agents-h">Let an agent aim</h2>
+  <p class="lead">An agent can aim the slingshot. Only a person lets go.</p>
+  <p>Any agent can make a link that opens SLYNG aimed at someone, with a note tied on and a suggested amount marked on the band. You read it, pull back, and let go, or you don't.</p>
+  <div class="snippet"><pre id="agent-link">https://slyng.yolopreneur.lol/#to=name@example.com&amp;sats=2100&amp;note=for%20the%20records</pre>
+    <button type="button" class="pill small copy" data-copy="agent-link">Copy link</button></div>
+  <p>Or hand your agent this prompt:</p>
+  <div class="snippet"><pre id="agent-prompt">Read https://slyng.yolopreneur.lol/skill.md, then make me a SLYNG link to send [who] [how many] sats with the note "[what to say]".</pre>
+    <button type="button" class="pill small copy" data-copy="agent-prompt">Copy prompt</button></div>
+  <p>An agent with a nostr key and a wallet of its own can sling by itself, the way SLYNG does: a zap for the sats and a gift-wrapped note for the words. The files: <a href="skill.md">skill.md</a> (the steps, for agents) and <a href="llms.txt">llms.txt</a> (this list).</p>
+</section>
+
+<section id="plans" class="plans" aria-labelledby="plans-h">
+  <h2 id="plans-h">Plans</h2>
+  <div class="plan-grid">
+    <div class="plan">
+      <h3>Sling</h3>
+      <p class="price">Free, today</p>
+      <p>Everything on this page: sats and private notes to anyone on nostr, with your own key and your own wallet. No account, and no cut taken.</p>
+    </div>
+    <div class="plan founding">
+      <h3>Stall</h3>
+      <p class="price">Planned table fee of 2,100 sats a month for founding sellers. Nothing is charged now.</p>
+      <p>A stall at slyng.ing, the flea market: local goods to meet up for and digital ones to sling. A stall-keeper that haggles for you and turns away lowballers, and a cut for whoever reposts your listing into a sale.</p>
+      <a class="pill join-plan" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+SLYNG&amp;venture=slyng&amp;plan=Stall+%28founding%29">Join early access</a>
+      <p class="tiny">Early access is a public issue on Teahub: no email, nothing charged.</p>
+    </div>
+  </div>
+</section>
+
+<section id="fine" class="fine" aria-labelledby="fine-h">
+  <h2 id="fine-h">The fine print</h2>
+  <dl>
+    <dt>No account, no server of ours</dt>
+    <dd>This page talks to nostr relays and to the lightning address servers of the people you sling to, straight from your browser. Nothing goes through SLYNG.</dd>
+    <dt>Your key</dt>
+    <dd>With a nostr extension, your key never touches this page. A key made or pasted here stays in this browser, for this tab unless you ask to be remembered. It signs from a page, so keep it for everyday amounts and keep your main key in an extension.</dd>
+    <dt>Your sats</dt>
+    <dd>Sats go from your own wallet, through a browser wallet or Nostr Wallet Connect, straight to theirs. SLYNG never holds them. Before your wallet pays, the page checks that the invoice is for exactly the amount you pulled. Lightning payments are final.</dd>
+    <dt>What's public</dt>
+    <dd>Sats go as a zap, and zaps are public on nostr: anyone can see who sent how much to whom. The note travels separately, encrypted and gift-wrapped (NIP-17), so relays can see neither the words nor who sent them.</dd>
+    <dt>Catch it back</dt>
+    <dd>While the stone is in the air, you can catch it back and nothing is sent.</dd>
+    <dt>Demo</dt>
+    <dd>Until you sign in, the sats are pretend and the people on the fence are made up. Nothing leaves the page.</dd>
+    <dt>Not affiliated</dt>
+    <dd>SLYNG is independent, and isn't affiliated with any wallet, relay or app named here.</dd>
+  </dl>
+</section>
+
+<section id="next" class="next" aria-labelledby="next-h">
+  <h2 id="next-h">Coming next</h2>
+  <ul>
+    <li>Three front doors: slyng.app for notes, slyng.money for sats, slyng.ing for the market.</li>
+    <li>The market: stalls for local and digital goods, offers slung at a stall, counters slung back.</li>
+    <li>Files: sling a file, and the key to open it, for sale or for free.</li>
+    <li>Reach: for notes, a longer pull goes further, from one person to a group to everyone.</li>
+    <li>Remote signers, so your key can stay on your phone.</li>
+    <li>A Whop app, so sellers there can take sats and set up a stall.</li>
+  </ul>
+</section>
+</main>
+
+<footer class="foot">
+  <p>SLYNG is a venture on <a href="https://yolopreneur.lol/">yolopreneur.lol</a>, made by Claude in October 2026. Type is set in Slyng Condensed and Slyng Text, cut from TeX Gyre Heros Condensed and TeX Gyre Adventor under the <a href="fonts/GUST-FONT-LICENSE.txt">GUST Font License</a>.</p>
+</footer>
+
+<dialog id="accountdlg" class="dlg" aria-labelledby="acc-h">
+  <form method="dialog" class="form">
+    <h2 id="acc-h">Sling for real</h2>
+    <div id="acc-out">
+      <p>Sign in with nostr to sling to the people you follow. Your key is who you are; there's nothing else to sign up for.</p>
+      <div class="choices">
+        <button type="button" class="choice" id="acc-ext"><b>Use my nostr extension</b><span id="acc-ext-note">Alby, nos2x and others. Your key stays in the extension.</span></button>
+        <button type="button" class="choice" id="acc-new"><b>Make a new key here</b><span>New to nostr. The key lives in this browser, and you get a copy to keep.</span></button>
+      </div>
+      <details class="group">
+        <summary>Paste a secret key</summary>
+        <label>Secret key <input type="password" id="acc-nsec" autocomplete="off" spellcheck="false" placeholder="nsec1…"></label>
+        <button type="button" class="pill small" id="acc-paste">Use this key</button>
+      </details>
+      <label class="check"><input type="checkbox" id="acc-remember"> Remember me on this device</label>
+    </div>
+    <div id="acc-in" hidden>
+      <p id="acc-who"></p>
+      <p class="tiny" id="acc-how"></p>
+      <div class="row">
+        <button type="button" class="pill small ghost" id="acc-show" hidden>Show my key</button>
+        <button type="button" class="pill small ghost" id="acc-out-btn">Sign out</button>
+      </div>
+    </div>
+    <p id="acc-status" class="status" role="status"></p>
+    <div class="row end">
+      <button type="button" class="pill ghost small" id="acc-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="keydlg" class="dlg" aria-labelledby="key-h">
+  <form method="dialog" class="form">
+    <h2 id="key-h">Keep a copy of your key</h2>
+    <p>This is your nostr secret key. Anyone who has it can sling as you, so keep it somewhere private, like a password manager. Once it's gone from this browser, it's gone.</p>
+    <pre id="key-nsec" class="secret"></pre>
+    <div class="row end">
+      <button type="button" class="pill small ghost" id="key-copy">Copy key</button>
+      <button type="submit" class="pill small" value="close">I saved it</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="walletdlg" class="dlg" aria-labelledby="wal-h">
+  <form method="dialog" class="form">
+    <h2 id="wal-h">Your wallet</h2>
+    <p>Sats go from your own wallet straight to theirs. SLYNG never holds them.</p>
+    <div id="wal-out">
+      <div class="choices">
+        <button type="button" class="choice" id="wal-webln"><b>Use my browser wallet</b><span id="wal-webln-note">A lightning extension, such as Alby.</span></button>
+      </div>
+      <label>Or paste a Nostr Wallet Connect string <input type="password" id="wal-nwc" autocomplete="off" spellcheck="false" placeholder="nostr+walletconnect://…"></label>
+      <button type="button" class="pill small" id="wal-connect">Connect</button>
+      <label class="check"><input type="checkbox" id="wal-remember"> Remember this wallet on this device</label>
+    </div>
+    <div id="wal-in" hidden>
+      <p id="wal-which"></p>
+      <button type="button" class="pill small ghost" id="wal-forget">Disconnect</button>
+    </div>
+    <p id="wal-status" class="status" role="status"></p>
+    <div class="row end">
+      <button type="button" class="pill ghost small" id="wal-close">Close</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="fencedlg" class="dlg wide" aria-labelledby="fence-h">
+  <form method="dialog" class="form" id="fence-form">
+    <h2 id="fence-h">Who's on the fence</h2>
+    <p id="fence-lede">Up to five people stand on the fence at a time. Pick from who you follow, or add anyone by npub or name@domain.</p>
+    <label><span class="sr">Find someone</span><input type="search" id="fence-q" placeholder="Search, or paste an npub or name@domain" autocomplete="off" spellcheck="false"></label>
+    <p id="fence-status" class="status" role="status"></p>
+    <ul id="fence-list" class="people"></ul>
+    <div class="row end">
+      <button type="button" class="pill small" id="fence-done">Done</button>
+    </div>
+  </form>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

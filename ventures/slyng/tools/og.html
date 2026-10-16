@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>SLYNG share card</title>
+<style>
+@font-face { font-family: "Slyng Condensed"; src: url("../fonts/slyng-condensed-bold.woff") format("woff"); font-weight: 700; }
+@font-face { font-family: "Slyng Text"; src: url("../fonts/slyng-text-regular.woff") format("woff"); font-weight: 400; }
+html, body { margin: 0; width: 1200px; height: 630px; overflow: hidden; background: #D8E8F0; color: #15243B; }
+.card { position: relative; width: 1200px; height: 630px; box-sizing: border-box; padding: 70px 84px; }
+.word { font: 700 300px/0.82 "Slyng Condensed", sans-serif; letter-spacing: 0.02em; display: flex; align-items: flex-end; margin: 26px 0 0; }
+.word svg { height: 0.74em; width: auto; margin: 0 0.035em; overflow: visible; }
+.motto { font: 400 44px/1.2 "Slyng Text", sans-serif; margin: 46px 0 0; }
+.url { position: absolute; right: 84px; bottom: 62px; font: 400 28px "Slyng Text", sans-serif; color: #4A5B73; }
+.arc { position: absolute; right: 70px; top: 54px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <svg class="arc" width="330" height="170" viewBox="0 0 330 170" aria-hidden="true">
+    <path d="M10 160 Q170 -40 300 70" fill="none" stroke="#15243B" stroke-opacity="0.5" stroke-width="5" stroke-dasharray="1 18" stroke-linecap="round"/>
+    <circle cx="300" cy="70" r="26" fill="#FBFCFD" stroke="#E2412E" stroke-width="6"/>
+  </svg>
+  <p class="word">SL<svg viewBox="0 0 64 72"><path d="M32 69V40M10 6C10.5 22 20 35 32 40C44 35 53.5 22 54 6" fill="none" stroke="#8A5A35" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M10 6L32 24L54 6" fill="none" stroke="#E2412E" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="32" cy="24" r="7" fill="#F0A532" stroke="#A86814" stroke-width="1.5"/></svg>NG</p>
+  <p class="motto">Sling sats and notes on nostr.</p>
+  <p class="url">slyng.yolopreneur.lol</p>
+</div>
+</body>
+</html>

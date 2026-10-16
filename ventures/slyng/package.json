@@ -1,0 +1,7 @@
+{
+  "name": "slyng",
+  "private": true,
+  "type": "module",
+  "description": "Sling sats and notes on nostr. A static venture page on yolopreneur.lol.",
+  "scripts": { "test": "node --test tests/*.test.js" }
+}
