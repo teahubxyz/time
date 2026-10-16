@@ -2,7 +2,7 @@
 // Pure functions, no DOM: the page imports this module, and so do the tests (node --test) and agents.
 //
 //   a Havre card   { havre: 1, id, name, tagline, greeting, persona, voice, flow, examples, tags, model,
-//                    engine, portrait, creator, license, lineage, created, updated }
+//                    engine, portrait, look, speech, creator, license, lineage, created, updated }
 //   in             Havre JSON, Character Card V1 / V2 / V3 (JSON or PNG), or plain text
 //   out            Havre JSON, Character Card V3 + V2 (JSON, or a PNG card), a plain system prompt
 //   remix          two passes, like a clean room: one reads the source and writes down only ideas, the other
@@ -31,7 +31,11 @@ export const RELATIONS = ["ported-from", "inspired-by", "forked-from"];
 
 const str = (v, max = 20000) => (typeof v === "string" ? v : v == null ? "" : String(v)).slice(0, max);
 const arr = (v) => (Array.isArray(v) ? v : []);
+const obj = (v) => (v && typeof v === "object" && !Array.isArray(v) ? v : {});
 const nowIso = () => new Date().toISOString();
+/** a picture a card can carry: a data: URI of a raster image, an https URL, or a path next to the card */
+const isPicture = (s) => /^data:image\/(png|jpe?g|webp|gif);base64,/i.test(s) || /^https:\/\//i.test(s) || (!!s && !/^[a-z][a-z0-9+.-]*:/i.test(s) && !s.startsWith("//"));
+export const MAX_REFERENCES = 3;
 
 export function slugify(s) {
   const out = str(s, 200).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "")
@@ -47,8 +51,8 @@ export function newCard(partial = {}) {
 
 export function normalizeCard(o = {}) {
   const name = str(o.name, 120).trim() || "Unnamed";
-  const voice = o.voice && typeof o.voice === "object" ? o.voice : {};
-  const engine = o.engine && typeof o.engine === "object" ? o.engine : {};
+  const voice = obj(o.voice), engine = obj(o.engine), look = obj(o.look), speech = obj(o.speech);
+  const speed = Number(speech.speed);
   const card = {
     havre: HAVRE,
     id: slugify(o.id || name),
@@ -67,6 +71,15 @@ export function normalizeCard(o = {}) {
     model: str(o.model, 120).trim() || DEFAULT_MODEL,
     engine: engine.venice_character ? { venice_character: slugify(engine.venice_character) } : {},
     portrait: str(o.portrait, 2_000_000).trim(),
+    // how they look (photos and clips are made from the portrait and these pictures) and how they sound in a voice note
+    look: {
+      description: str(look.description, 1500).trim(),
+      references: [...new Set(arr(look.references).map((r) => str(r, 3_000_000).trim()).filter(isPicture))].slice(0, MAX_REFERENCES),
+    },
+    speech: {
+      model: str(speech.model, 120).trim(), voice: str(speech.voice, 120).trim(), mood: str(speech.mood, 500).trim(),
+      speed: Number.isFinite(speed) && speed > 0 ? Math.min(4, Math.max(0.25, Math.round(speed * 100) / 100)) : 1,
+    },
     creator: str(o.creator, 120).trim(),
     license: LICENSES[o.license] ? o.license : "remix-with-credit",
     lineage: arr(o.lineage).slice(0, 50).map(normalizeLineage).filter(Boolean),

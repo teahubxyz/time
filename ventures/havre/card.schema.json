@@ -49,6 +49,22 @@
    "properties": { "venice_character": { "type": "string", "description": "Speak through a public Venice character by its slug (its own prompt, unseen)." } }
   },
   "portrait": { "type": "string", "description": "An image URL, a path next to the card, or a data: URI." },
+  "look": {
+   "type": "object", "additionalProperties": false, "description": "How they look. Photos and clips of them are made from the portrait and these pictures.",
+   "properties": {
+    "description": { "type": "string", "maxLength": 1500, "description": "Their appearance in a sentence or two: apparent age (an adult), face, hair, build, clothes." },
+    "references": { "type": "array", "maxItems": 3, "description": "More pictures of the character besides the portrait, best as data: URIs (PNG, JPEG, WebP or GIF) so they travel with the card; https URLs and paths next to the card are allowed. Havre makes photos and clips only from pictures kept in the card itself (and a Venice character's own photo). Pictures of the character only, never a photo of a real person.", "items": { "type": "string" } }
+   }
+  },
+  "speech": {
+   "type": "object", "additionalProperties": false, "description": "How they sound in a voice note (Venice text-to-speech).",
+   "properties": {
+    "model": { "type": "string", "maxLength": 120, "description": "A Venice voice model id, e.g. tts-kokoro. Empty: Havre's default." },
+    "voice": { "type": "string", "maxLength": 120, "description": "One of that model's voices, e.g. af_sky." },
+    "mood": { "type": "string", "maxLength": 500, "description": "How they deliver it, e.g. warm, teasing, a little sleepy. Models that take a style prompt use it; the others ignore it." },
+    "speed": { "type": "number", "minimum": 0.25, "maximum": 4, "default": 1 }
+   }
+  },
   "creator": { "type": "string", "maxLength": 120 },
   "license": { "enum": ["remix-with-credit", "all-rights-reserved", "cc-by-4.0", "cc0"], "default": "remix-with-credit" },
   "lineage": {

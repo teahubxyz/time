@@ -3,7 +3,9 @@
 // Serves this folder on localhost and drives Chromium through the page on a desktop and a phone: the first visit,
 // a card import and a chat without a key, the key and the balance, Venice's characters (photos through Venice's
 // image service, tags, adult ones only once asked for) and one who says hello first, the model picker, a plain
-// chat, a remix end to end, the exports, the retirement of the first version's cast, and the page's security policy.
+// chat, the abilities (a photo, voice notes, a clip priced first, your voice note through a fake microphone, your
+// photo seen or described, a first portrait), a remix end to end, the exports, the retirement of the first
+// version's cast, and the page's security policy.
 // Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
 // site serves (tools/build.sh copies them to shots/).
 //
@@ -51,7 +53,34 @@ function serve() {
 
 // ---------- a stand-in for api.venice.ai that answers like it does ----------
 const PIXEL = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==", "base64");
-const seen = { characters: [], chats: [], photos: [] };
+const seen = { characters: [], chats: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
+/** a short WAV of silence: something an audio element can load */
+function wav(ms = 300) {
+  const n = Math.round(8000 * ms / 1000), b = Buffer.alloc(44 + n * 2);
+  b.write("RIFF", 0); b.writeUInt32LE(36 + n * 2, 4); b.write("WAVEfmt ", 8); b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22);
+  b.writeUInt32LE(8000, 24); b.writeUInt32LE(16000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write("data", 36); b.writeUInt32LE(n * 2, 40);
+  return b;
+}
+const CLIP = Buffer.from("not really an mp4, but a video element won't complain");
+const MEDIA_MODELS = {
+  inpaint: [
+    { id: "grok-imagine-edit", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { inpaint: { usd: 0.03 }, resolutions: { "1K": { usd: 0.03 }, "2K": { usd: 0.04 } } },
+      constraints: { combineImages: true, promptCharacterLimit: 1500 } } },
+    { id: "nano-banana-2-edit", model_spec: { name: "Nano Banana 2", privacy: "anonymized", pricing: { inpaint: { usd: 0.1 } }, constraints: { combineImages: true, maxInputImages: 6 } } }],
+  image: [{ id: "grok-imagine-image", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { resolutions: { "1K": { usd: 0.03 } } }, constraints: { aspectRatios: ["1:1", "9:16"] } } }],
+  tts: [{ id: "tts-kokoro", model_spec: { name: "Kokoro", privacy: "private", pricing: { input: { usd: 3.5 } }, voices: ["af_bella", "af_sky", "am_adam"], default_format: "mp3" } },
+    { id: "tts-qwen3-1-7b", model_spec: { name: "Qwen 3 TTS 1.7B", privacy: "private", pricing: { input: { usd: 112.5 } }, voices: ["Serena", "Dylan"], default_format: "mp3" } }],
+  asr: [{ id: "nvidia/parakeet-tdt-0.6b-v3", model_spec: { name: "Parakeet", privacy: "private", pricing: { per_audio_second: { usd: 0.0001 } } } }],
+  video: [
+    { id: "grok-imagine-1-5-reference-to-video-private", model_spec: { name: "Grok Imagine 1.5 R2V", privacy: "private", constraints: { model_type: "image-to-video",
+      durations: ["3s", "5s", "10s"], resolutions: ["480p", "720p"], aspect_ratios: ["16:9", "9:16"], audio: true, audio_configurable: false, prompt_character_limit: 4096 } } },
+    { id: "wan-2-7-enhanced-image-to-video", model_spec: { name: "Wan 2.7 Enhanced", privacy: "anonymized", constraints: { model_type: "image-to-video", durations: ["5s"] } } },
+    { id: "seedance-2-0-reference-to-video-basic", model_spec: { name: "Seedance 2.0 R2V", privacy: "anonymized", constraints: { model_type: "image-to-video",
+      durations: ["4s", "5s"], resolutions: ["480p", "720p"], aspect_ratios: [], audio: true, audio_configurable: true } } }],
+};
+/** the chat calls where someone talks: not the ones deciding what a character does on their own */
+const talks = () => seen.chats.filter((b) => !/^You decide whether/.test(String((b.messages[0] || {}).content || "")));
+const multipart = (req) => (req.headers()["content-type"] || "").startsWith("multipart/form-data");
 const CHARACTERS = [
   { slug: "sable-penrose", name: "Sable Penrose", description: "Your new neighbor needs help moving in.", author: "btrzm",
     photoUrl: "https://outerface.venice.ai/sable.png", adult: false, webEnabled: false, modelId: "zai-org-glm-5-2", tags: ["neighbor"], stats: { imports: 25752 } },
@@ -66,6 +95,8 @@ async function fakeVenice(route) {
     return route.fulfill({ status: 204, headers: { ...cors, "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS" } });
   }
   if (url.includes("/models")) {
+    const type = new URL(url).searchParams.get("type");
+    if (MEDIA_MODELS[type]) return ok({ data: MEDIA_MODELS[type] });
     return ok({ data: [
       { id: "zai-org-glm-5-2", model_spec: { name: "GLM 5.2", privacy: "private", traits: ["default"], availableContextTokens: 198000,
         capabilities: { supportsFunctionCalling: true, supportsReasoning: true }, pricing: { input: { usd: 1.4 }, output: { usd: 4.4 } } } },
@@ -86,9 +117,29 @@ async function fakeVenice(route) {
     const b = JSON.parse(body);
     seen.chats.push(b);
     const system = b.messages[0] && b.messages[0].role === "system" ? b.messages[0].content : "";
-    const lastSaid = (b.messages.at(-1) || {}).content || "";
+    const last = (b.messages.at(-1) || {}).content || "";
+    const lastSaid = typeof last === "string" ? last : "";
     let reply;
-    if (system.startsWith("You read a character")) {
+    if (system.startsWith("You decide whether a character")) {
+      const said = (b.messages[1].content.match(/^Them: .*$/gm) || []).at(-1) || "";     // the last thing they said
+      reply = /^Them:.*\bSend me a pic/i.test(said) ? JSON.stringify({ move: "photo", shot: "The character from the reference picture holds up a mug in a half-unpacked kitchen." })
+        : /^Them:.*\bFilm the harbor/i.test(said) ? JSON.stringify({ move: "clip", shot: "The character from the reference pictures pans across the harbor at dusk." })
+        : /^Them:.*\bWhisper it/i.test(said) ? JSON.stringify({ move: "voice", shot: "" }) : JSON.stringify({ move: "nothing", shot: "" });
+    } else if (lastSaid.startsWith("[Time passes")) {
+      reply = "You're back!\n\nI kept the kettle warm.";
+    } else if (system.startsWith("You write the shot for a photo")) {
+      reply = "Shot: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight.";
+    } else if (system.startsWith("You write the shot for a video clip")) {
+      reply = "The character from the reference pictures waves from the doorway as the camera drifts closer.";
+    } else if (system.startsWith("You describe how an original character looks")) {
+      reply = "Thirties, wiry, a knitted cap, a reefer jacket with the collar up, salt in the stubble.";
+    } else if (Array.isArray(last) && last[0].text.startsWith("Describe this photo")) {
+      assert.match(last[1].image_url.url, /^data:image\/jpeg;base64,/, "the photo goes as a JPEG data URI");
+      reply = "A small red square on a white table.";
+    } else if (Array.isArray(last)) {
+      assert.equal(last[1].type, "image_url", "a model that can see gets the photo itself");
+      reply = "Nice photo.\n\nIs that your boat?";
+    } else if (system.startsWith("You read a character")) {
       reply = JSON.stringify({ archetype: "gruff shopkeeper", premise: "keeps a log of every newcomer", setting: "a small port town",
         drives: ["help newcomers settle"], fears: ["losing the logbook"], voice: ["wry", "plain"], quirks: ["counts boats"],
         relationships: ["grudging guide to the user"], boundaries: ["won't oversell"], themes: ["arrival"] });
@@ -106,7 +157,42 @@ async function fakeVenice(route) {
     }
     return ok({ choices: [{ message: { role: "assistant", content: reply } }], usage: { total_tokens: 42 } });
   }
+  const file = (bytes, type, headers = {}) => route.fulfill({ status: 200, contentType: type, body: bytes, headers: { ...cors, ...headers } });
+  if (url.endsWith("/image/edit") || url.endsWith("/image/multi-edit")) {
+    seen.edits.push({ url, body: JSON.parse(body) });
+    return file(PIXEL, "image/webp");
+  }
+  if (url.endsWith("/image/generate")) { seen.generated.push(JSON.parse(body)); return file(PIXEL, "image/webp"); }
+  if (url.endsWith("/audio/speech")) { seen.speech.push(JSON.parse(body)); return file(wav(), "audio/wav"); }
+  if (url.endsWith("/audio/transcriptions")) {
+    assert.ok(multipart(req), "a voice note goes as a form");
+    seen.heard.push(body);
+    return ok({ text: "hello from the mic", duration: 1.2 });
+  }
+  if (url.endsWith("/video/quote")) { const q = JSON.parse(body); seen.quotes.push(q); return ok({ quote: q.duration === "10s" ? 0.94 : 0.47 }); }
+  if (url.endsWith("/video/queue")) {
+    const q = JSON.parse(body);
+    seen.queued.push(q);
+    return ok({ model: q.model, queue_id: "q-" + seen.queued.length,
+      ...(/-private$/.test(q.model) ? { download_url: "https://private-share.venice.ai/v1/share/read/clip-" + seen.queued.length } : {}) });
+  }
+  if (url.endsWith("/video/retrieve")) {
+    const q = JSON.parse(body);
+    seen.retrieved.push(q);
+    if (seen.retrieved.filter((r) => r.queue_id === q.queue_id).length < 2) return ok({ status: "PROCESSING", average_execution_time: 60000, execution_duration: 20000 });
+    return /-private$/.test(q.model) ? ok({ status: "COMPLETED", average_execution_time: 60000, execution_duration: 61000 }) : file(CLIP, "video/mp4");
+  }
+  if (url.endsWith("/video/complete")) { seen.completed.push(JSON.parse(body)); return ok({ success: true }); }
   return ok({ error: "not found" }, 404);
+}
+/** Venice's private-share links: the clip once, then the link is revoked */
+async function fakeShare(route) {
+  const req = route.request(), cors = { "access-control-allow-origin": "*", "access-control-allow-methods": "GET,DELETE" };
+  seen.shares.push(req.method() + " " + req.url());
+  assert.ok(!req.headers().authorization, "no key goes to a download link");
+  if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers: cors });
+  if (req.method() === "DELETE") return route.fulfill({ status: 204, headers: cors });
+  return route.fulfill({ status: 200, contentType: "video/mp4", body: CLIP, headers: cors });
 }
 
 // ---------- small waits ----------
@@ -117,6 +203,14 @@ const count = (page, sel, n, timeout) => until(page, ([s, n]) => document.queryS
 const has = (page, sel, re, timeout) => until(page, ([s, src, fl]) => [...document.querySelectorAll(s)].some((el) => new RegExp(src, fl).test(el.textContent)),
   [sel, re.source, re.flags], `${sel} to read ${re}`, timeout);
 const textOf = (page, sel) => page.locator(sel).first().evaluate((el) => el.textContent);
+/** do something, then wait for one more reply matching re than there was before */
+async function answered(page, act, re = /Ask me again after the tide\./, timeout = 10000) {
+  const sel = "#log .line.them .said", n = () => page.evaluate(([s, src, fl]) => [...document.querySelectorAll(s)].filter((e) => new RegExp(src, fl).test(e.textContent)).length, [sel, re.source, re.flags]);
+  const before = await n();
+  await act();
+  await until(page, ([s, src, fl, k]) => [...document.querySelectorAll(s)].filter((e) => new RegExp(src, fl).test(e.textContent)).length > k,
+    [sel, re.source, re.flags, before], "a new reply reading " + re, timeout);
+}
 async function poll(fn, what, timeout = 7000) {
   for (const t0 = Date.now(); !(await fn());) {
     if (Date.now() - t0 > timeout) throw new Error("timed out waiting for " + what);
@@ -139,14 +233,16 @@ async function main() {
   };
   const venice = async (page) => {
     await page.route(/^https:\/\/api\.venice\.ai\//, fakeVenice);
+    await page.route(/^https:\/\/private-share\.venice\.ai\//, fakeShare);
     // Venice's photos only come through its image service; asked for directly, they're refused
     await page.route(/^https:\/\/venice\.ai\/_next\/image\?/, (r) => { seen.photos.push(r.request().url()); r.fulfill({ status: 200, contentType: "image/png", body: PIXEL }); });
     await page.route(/^https:\/\/outerface\.venice\.ai\//, (r) => r.fulfill({ status: 403, contentType: "application/json", body: "{}" }));
   };
   if (SHOTS) await mkdir(SHOTS, { recursive: true });
   const shot = async (page, name, opts = {}) => { if (SHOTS) await page.screenshot({ path: join(SHOTS, name), ...opts }); };
+  // a fake microphone (a steady tone), allowed without asking: for recording a voice note
   const browser = await pw.chromium.launch({ executablePath: process.env.CHROME || undefined,
-    args: (process.env.CHROME_FLAGS || "").split(/\s+/).filter(Boolean) });
+    args: [...(process.env.CHROME_FLAGS || "").split(/\s+/).filter(Boolean), "--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"] });
   try {
     // ---------- desktop ----------
     const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
@@ -247,7 +343,7 @@ async function main() {
     await page.fill("#say", "Do you have a boat?");
     await page.keyboard.press("Enter");
     await has(page, "#log .line.them .said", /Ask me again after the tide\./);
-    assert.equal(seen.chats.at(-1).model, "tiny-model");
+    assert.equal(talks().at(-1).model, "tiny-model");
     await page.waitForTimeout(400);
     await shot(page, "desktop-chat.png");
 
@@ -257,11 +353,212 @@ async function main() {
     await page.fill("#say", "What is a harbor?");
     await page.keyboard.press("Enter");
     await has(page, "#log .line.them .said", /Mm\. Good question\.\n\nAsk me again after the tide\./);
-    const plain = seen.chats.at(-1);
+    const plain = talks().at(-1);
     assert.equal(plain.messages[0].role, "user", "no system prompt of Havre's");
     assert.equal(plain.venice_parameters.include_venice_system_prompt, true);
     assert.ok(!plain.venice_parameters.character_slug);
     assert.ok(await page.locator("#card-body").isHidden(), "a plain chat has no card");
+    assert.equal(await page.locator("#tools button", { hasText: "ask for a photo" }).count(), 0, "a plain chat has nobody to send a photo");
+
+    // ---------- abilities ----------
+    // a photo from Sable: the shot is written from the conversation, the price shows, and it's an edit of her own photo
+    await page.locator("#vgrid .tile", { hasText: "Sable Penrose" }).click();
+    await has(page, "#who-name", /^Sable Penrose$/);
+    await page.fill("#say", "on moving day");
+    await page.getByRole("button", { name: "ask for a photo" }).click();
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /moving boxes/.test(t.value); }, null, "the shot");
+    assert.equal(await page.inputValue("#say"), "", "what was typed became the request");
+    const shotAsk = talks().at(-1);
+    assert.match(shotAsk.messages[0].content, /^You write the shot for a photo/);
+    assert.match(shotAsk.messages[1].content, /What was asked for: on moving day/);
+    assert.ok(!shotAsk.venice_parameters.character_slug, "the shot is written outside the character");
+    assert.match(await textOf(page, "#ask"), /from 1 picture of Sable Penrose · model: Grok Imagine · \$0\.03/);
+    assert.match(await textOf(page, "#ask-go"), /^TAKE THE PHOTO · \$0\.03$/);
+    await shot(page, "desktop-ask-photo.png");
+    await page.click("#ask-go");
+    await until(page, () => { const i = document.querySelector("#log .pic img"); return !!i && i.src.startsWith("blob:") && i.complete && i.naturalWidth > 0; }, null, "the photo in the chat");
+    const edit = seen.edits.at(-1);
+    assert.ok(edit.url.endsWith("/image/edit"), "one picture: an edit");
+    assert.equal(edit.body.model, "grok-imagine-edit");
+    assert.equal(edit.body.safe_mode, true, "safe mode, always");
+    assert.equal(edit.body.image, "https://venice.ai/_next/image?url=https%3A%2F%2Fouterface.venice.ai%2Fsable.png&w=1080&q=75", "her own photo, at a size Venice can use");
+    assert.match(edit.body.prompt, /^The reference picture shows Sable Penrose\..*moving boxes/);
+    assert.ok(await page.locator("#ask").isHidden(), "the panel closes when the photo arrives");
+    await has(page, "#log .line.media .cap", /photo · Grok Imagine · \$0\.03 · save/);
+    // the photo is in the conversation the model reads next, as something it sent
+    await answered(page, async () => { await page.fill("#say", "Cute."); await page.keyboard.press("Enter"); });
+    assert.match(talks().at(-1).messages.at(-1).content, /^\(You sent me a photo: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight\.\)\n\nCute\.$/);
+
+    // voice notes: one on request ("hear it"), then every reply, in the voice on her card
+    const hears = page.getByRole("button", { name: "Hear this as a voice note from Sable Penrose" });
+    assert.ok(await hears.count() >= 2, "text replies offer a voice note");
+    await hears.last().click();
+    await until(page, () => [...document.querySelectorAll("#log audio")].some((a) => a.src.startsWith("blob:")), null, "a voice note");
+    assert.deepEqual(seen.speech.at(-1), { input: "Mm. Good question. Ask me again after the tide.", model: "tts-kokoro", speed: 1, voice: "af_sky" });
+    await page.getByRole("button", { name: "voice notes: off" }).click();
+    await has(page, "#tools", /voice notes: on/);
+    const spoke = seen.speech.length;
+    await answered(page, async () => { await page.fill("#say", "Say it out loud"); await page.keyboard.press("Enter"); });
+    assert.ok(seen.speech.length > spoke, "a voice note with the reply");
+    await until(page, () => { const l = [...document.querySelectorAll("#log .line")]; const i = l.findLastIndex((x) => x.querySelector("audio")); return i >= 0 && i < l.length - 1 && /Ask me again/.test(l.at(-1).textContent); },
+      null, "the voice note, then the words under it");
+    await page.getByRole("button", { name: "voice notes: on" }).click();
+
+    // her voice and mood live on her card
+    await page.locator("#who-meta").getByRole("button", { name: "card" }).click();
+    await page.locator("#speech-group summary").click();
+    await count(page, "#speech-voice option", 3);
+    await page.selectOption("#speech-voice", "am_adam");
+    await page.fill('[name="speech_mood"]', "dry, a little tired");
+    await page.locator("#speech-model").getByRole("button", { name: "Change the voice model" }).click();
+    await count(page, "#mlist tr", 2);
+    assert.match(await textOf(page, "#mhead"), /VOICES/);
+    await page.getByRole("button", { name: "Use Qwen 3 TTS 1.7B" }).click();
+    await until(page, () => document.querySelector("#speech-voice").value === "Serena", null, "a voice of the new model");
+    await page.click("#speech-sample");
+    await until(page, () => { const a = document.querySelector("#speech-status audio"); return !!a && a.src.startsWith("blob:"); }, null, "a sample");
+    assert.deepEqual(seen.speech.at(-1), { input: "Hi, I'm Sable Penrose. Your new neighbor needs help moving in.", model: "tts-qwen3-1-7b", speed: 1, voice: "Serena", prompt: "dry, a little tired" });
+    await until(page, () => (JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Sable Penrose").speech || {}).model === "tts-qwen3-1-7b", null, "her card saved");
+    const sable = await page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Sable Penrose"));
+    assert.deepEqual(sable.speech, { model: "tts-qwen3-1-7b", voice: "Serena", mood: "dry, a little tired", speed: 1 });
+    // a picture of her for the reference sheet
+    page.once("dialog", (d) => d.accept());
+    await page.locator("#look-group summary").click();
+    await page.click("#ref-add");
+    await page.setInputFiles("#ref-file", { name: "sable.png", mimeType: "image/png", buffer: PIXEL });
+    await count(page, "#refs .ref", 2);
+
+    // a clip: priced by Venice first, then made, then home
+    await page.locator("#chat").scrollIntoViewIfNeeded();
+    await page.getByRole("button", { name: "ask for a clip" }).click();
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /waves from the doorway/.test(t.value); }, null, "the clip's shot");
+    await has(page, "#ask", /venice's price: \$0\.47/);
+    assert.deepEqual(seen.quotes.at(-1), { model: "grok-imagine-1-5-reference-to-video-private", duration: "5s", resolution: "720p", aspect_ratio: "9:16" });
+    await page.locator("#ask select").first().selectOption("10s");
+    assert.ok(await page.locator("#ask-go").isDisabled(), "the old price goes the moment the clip changes");
+    await has(page, "#ask-go", /^MAKE THE CLIP · \$0\.94$/);
+    assert.ok(await page.locator("#ask-go").isEnabled());
+    await page.locator("#ask select").first().selectOption("5s");
+    await has(page, "#ask-go", /^MAKE THE CLIP · \$0\.47$/);
+    await shot(page, "desktop-ask-clip.png");
+    await page.click("#ask-go");
+    await has(page, "#log [data-job] .said", /is making a clip with Grok Imagine 1\.5 R2V/);
+    const queued = seen.queued.at(-1);
+    assert.equal(queued.model, "grok-imagine-1-5-reference-to-video-private");
+    assert.equal(queued.reference_image_urls.length, 2, "her photo and the picture on her card");
+    assert.match(queued.reference_image_urls[1], /^data:image\/webp;base64,/);
+    assert.match(queued.prompt, /^The reference pictures show Sable Penrose\. .*waves from the doorway/);
+    await until(page, () => { const v = document.querySelector("#log video"); return !!v && v.src.startsWith("blob:"); }, null, "the clip in the chat", 15000);
+    assert.equal(await page.locator("#log [data-job]").count(), 0, "the progress line goes when the clip arrives");
+    assert.deepEqual(seen.shares.filter((s) => !s.startsWith("OPTIONS")), ["GET https://private-share.venice.ai/v1/share/read/clip-1", "DELETE https://private-share.venice.ai/v1/share/read/clip-1"]);
+    assert.deepEqual(seen.completed, [{ model: queued.model, queue_id: "q-1" }]);
+    assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem("havre.clips.pending")).length), 0);
+    await has(page, "#log .line.media .cap", /clip · Grok Imagine 1\.5 R2V · \$0\.47/);
+
+    // hearing and seeing: off until switched on
+    assert.equal(await page.getByRole("button", { name: "record a voice note" }).count(), 0);
+    await page.getByRole("button", { name: "abilities" }).click();
+    await count(page, "#ablist tr", 6);
+    await page.getByLabel("let them hear my voice notes").check();
+    await page.getByLabel("let them see my photos").check();
+    await shot(page, "desktop-abilities.png");
+    await page.click("#abclose");
+    // your voice note: recorded, heard, answered
+    await ctx.grantPermissions(["microphone"]);
+    await page.getByRole("button", { name: "record a voice note" }).click();
+    await has(page, "#tools .rec", /recording/);
+    await page.waitForTimeout(1300);
+    await answered(page, () => page.getByRole("button", { name: "stop and send" }).click());
+    await has(page, "#log .line.me .words", /^hello from the mic$/);
+    assert.match(seen.heard.at(-1), /name="model"\r\n\r\nnvidia\/parakeet-tdt-0\.6b-v3/);
+    assert.match(seen.heard.at(-1), /filename="voice-note\.(webm|ogg|m4a)"/);
+    await until(page, () => { const a = [...document.querySelectorAll("#log .line.me audio")].at(-1); return !!a && a.src.startsWith("blob:"); }, null, "your voice note in the chat");
+    assert.equal(talks().at(-1).messages.at(-1).content, "(You sent me a short video: The character from the reference pictures waves from the doorway as the camera drifts closer.)\n\nhello from the mic",
+      "what you said, after a word about the clip she sent");
+    // your photo, to a model that can see (she talks through Tiny now)
+    const red = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#c00"; g.fillRect(8, 8, 48, 48); return c.toDataURL("image/png"); });
+    const redPng = Buffer.from(red.split(",")[1], "base64");
+    await page.fill("#say", "my boat");
+    await page.setInputFiles("#photo-in", { name: "boat.png", mimeType: "image/png", buffer: redPng });
+    await has(page, "#log .line.them .said", /Is that your boat\?/);
+    const looked = talks().at(-1).messages.at(-1);
+    assert.equal(looked.content[0].text, "[a photo] my boat");
+    assert.match(looked.content[1].image_url.url, /^data:image\/jpeg;base64,/);
+    // and to a model that can't: a model that can see describes it first
+    await page.click("#plain");
+    await answered(page, () => page.setInputFiles("#photo-in", { name: "boat.png", mimeType: "image/png", buffer: redPng }));
+    await has(page, "#log .line.me .cap", /Tiny told them: A small red square on a white table\./);
+    assert.equal(talks().at(-1).model, "zai-org-glm-5-2");
+    assert.equal(talks().at(-1).messages.at(-1).content, "[a photo: A small red square on a white table.]");
+
+    // on their own: asked for a picture in passing, Sable decides to send one, out of the day's allowance
+    await page.locator("#vgrid .tile", { hasText: "Sable Penrose" }).click();
+    await has(page, "#tools", /on their own: on/);
+    const pics = await page.locator("#log .pic img").count();
+    const spent = () => page.evaluate(() => (JSON.parse(localStorage.getItem("havre.spent")) || { usd: 0 }).usd);
+    const spentBefore = await spent();
+    assert.ok(spentBefore > 0 && spentBefore < 0.01, "her voice note back to yours came out of the allowance: " + spentBefore);
+    await answered(page, async () => { await page.fill("#say", "Send me a pic of your kitchen"); await page.keyboard.press("Enter"); });
+    await count(page, "#log .pic img", pics + 1, 10000);
+    await has(page, "#log .line.media .cap", /photo · Grok Imagine · \$0\.03 · on their own/);
+    assert.match(seen.edits.at(-1).body.prompt, /holds up a mug in a half-unpacked kitchen/);
+    const delta = await spent() - spentBefore;
+    assert.ok(delta >= 0.03 && delta < 0.031, "the photo (and the little call that chose it) came out of the day's allowance: " + delta);
+    // a voice note when she'd rather say it
+    const notes = await page.locator("#log audio").count();
+    await answered(page, async () => { await page.fill("#say", "Whisper it to me"); await page.keyboard.press("Enter"); });
+    await count(page, "#log audio", notes + 1, 10000);
+    await has(page, "#log .line.media .cap", /voice note · Serena · \$[0-9.]+ · on their own/);
+    // a clip she'd like to send: offered with Venice's price, made only on a yes
+    const queuedBefore = seen.queued.length;
+    await answered(page, async () => { await page.fill("#say", "Film the harbor for me"); await page.keyboard.press("Enter"); });
+    await has(page, "#log .line.offer", /wants to send you a 5s clip: .*pans across the harbor at dusk/, 10000);
+    await has(page, "#log .line.offer button", /^SEND IT · \$0\.47$/);
+    await shot(page, "desktop-offer.png");
+    await page.getByRole("button", { name: "NOT NOW" }).click();
+    await count(page, "#log .line.offer", 0);
+    assert.equal(seen.queued.length, queuedBefore, "no clip without a yes");
+    // and when you come back after a while, she texts first
+    await page.evaluate(() => {
+      const chats = JSON.parse(localStorage.getItem("havre.chats.v1")), sable = Object.keys(chats).find((k) => k.startsWith("sable"));
+      for (const m of chats[sable]) if (m.at) m.at -= 8 * 3600e3;
+      localStorage.setItem("havre.chats.v1", JSON.stringify(chats));
+    });
+    await page.reload();
+    await has(page, "#log .line.them .said", /I kept the kettle warm\./);
+    assert.match(talks().at(-1).messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\./);
+    // with today's allowance spent, nothing more happens on their own: not even the call that decides
+    await page.evaluate(() => {
+      const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      localStorage.setItem("havre.spent", JSON.stringify({ day, usd: 0.25 }));
+    });
+    const decided = seen.chats.length - talks().length, photosNow = await page.locator("#log .pic img").count();
+    await answered(page, async () => { await page.fill("#say", "Send me a pic of your garden"); await page.keyboard.press("Enter"); });
+    await page.waitForTimeout(800);
+    assert.equal(seen.chats.length - talks().length, decided, "no deciding once the allowance is spent");
+    assert.equal(await page.locator("#log .pic img").count(), photosNow, "and no photo");
+    await page.evaluate(() => localStorage.removeItem("havre.spent"));
+
+    // a character with no picture yet: a first portrait from how they look, then the photo
+    await page.locator("#vgrid .tile", { hasText: "Wren" }).click();
+    await has(page, "#log .line.them .said", /Careful, the boxes bite\./);
+    await page.getByRole("button", { name: "ask for a photo" }).click();
+    await has(page, "#ask", /has no picture yet/);
+    await has(page, "#ask-portrait", /^MAKE A FIRST PORTRAIT · \$0\.03$/);
+    await page.click("#ask-portrait");
+    await until(page, () => { const t = document.querySelector("#ask-shot"); return !!t && /moving boxes/.test(t.value); }, null, "the shot after the portrait");
+    assert.match(seen.generated.at(-1).prompt, /^Portrait photo of Wren, an original adult character: Thirties, wiry.*stubble\. Safe for work/);
+    assert.equal(seen.generated.at(-1).safe_mode, true);
+    await until(page, () => !!JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Wren").portrait, null, "Wren's card saved");
+    const wren = await page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Wren"));
+    assert.match(wren.portrait, /^data:image\/webp;base64,/);
+    assert.match(wren.look.description, /^Thirties, wiry/);
+    await page.click("#ask-go");
+    await until(page, () => [...document.querySelectorAll("#log .pic img")].some((i) => i.src.startsWith("blob:")), null, "Wren's photo");
+    assert.match(seen.edits.at(-1).body.image, /^[A-Za-z0-9+/]+=*$/, "a picture of the card's own goes as base64");
+    // photos and voice notes stay through a reload, from this browser's own store
+    await page.reload();
+    await until(page, () => [...document.querySelectorAll("#log .pic img")].some((i) => i.src.startsWith("blob:") && i.complete && i.naturalWidth > 0), null, "the photo after a reload");
 
     // remix with credit, end to end, from the card that came in
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Remix Captain Ro" }).click();
@@ -279,7 +576,7 @@ async function main() {
     await shot(page, "desktop-remix.png");
     await page.locator("#rx-draft button", { hasText: "KEEP IN HARBOR" }).click();
     await has(page, "#who-name", /^Ines Corbel$/);
-    await count(page, "#roster tr", 3);
+    await count(page, "#roster tr", 4);
     const kept = await page.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Ines Corbel"));
     assert.equal(kept.lineage[0].relation, "inspired-by");
     assert.equal(kept.lineage[0].name, "Captain Ro");
@@ -303,12 +600,13 @@ async function main() {
     }
     await page.click("#import");
     await page.setInputFiles("#file", png);
-    await count(page, "#roster tr", 4);
+    await count(page, "#roster tr", 5);
 
-    // the security policy: nothing but api.venice.ai
+    // the security policy: nothing but api.venice.ai (and its private-share links for clips)
     assert.equal(await page.evaluate(() => fetch("https://example.com/").then(() => "reached", () => "blocked")), "blocked");
     const csp = await page.evaluate(() => document.querySelector("meta[http-equiv=Content-Security-Policy]").content);
-    assert.ok(csp.includes("connect-src https://api.venice.ai;"), csp);
+    assert.ok(csp.includes("connect-src https://api.venice.ai https://private-share.venice.ai;"), csp);
+    assert.ok(csp.includes("media-src blob: https://private-share.venice.ai;"), csp);
 
     // the page below the studio
     assert.match(await textOf(page, "#agent-prompt"), /skill\.md/);

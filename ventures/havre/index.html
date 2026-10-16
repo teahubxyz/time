@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://venice.ai https://outerface.venice.ai; font-src 'none'; connect-src https://api.venice.ai; media-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob: https://venice.ai https://outerface.venice.ai; font-src 'none'; connect-src https://api.venice.ai https://private-share.venice.ai; media-src blob: https://private-share.venice.ai; object-src 'none'; base-uri 'none'; form-action 'none'">
 <meta name="referrer" content="strict-origin">
 <title>Havre</title>
 <meta name="description" content="A harbor for characters. Talk to Venice's characters on your own key, keep characters in a file you own, and remix the ones you love into someone new, with credit.">
@@ -72,12 +72,15 @@
       <span class="meta" id="who-meta"></span>
     </div>
     <ol id="log" class="log" role="log" aria-live="polite" aria-label="Conversation"></ol>
+    <div id="ask" class="ask" hidden></div>
     <form id="composer" class="composer">
       <div class="sayrow">
         <label for="say" class="sr">Message</label>
         <textarea id="say" rows="1" placeholder="say something" autocomplete="off" enterkeyhint="send"></textarea>
         <button type="submit" class="btn solid" id="sendbtn">SEND</button>
       </div>
+      <p id="tools" class="tools" hidden></p>
+      <input type="file" id="photo-in" accept="image/png,image/jpeg,image/webp" hidden>
       <p id="keynote" class="keynote" hidden></p>
     </form>
   </section>
@@ -126,7 +129,7 @@
       </div>
       <div class="col">
         <label class="check"><input type="checkbox" name="short_form"> short-form: replies come as a few short texts</label>
-        <label>VOICE <input name="voice_notes" maxlength="2000" placeholder="clipped, wry, asks one question at a time"></label>
+        <label>HOW THEY TALK <input name="voice_notes" maxlength="2000" placeholder="clipped, wry, asks one question at a time"></label>
         <details class="group" id="flow-group">
           <summary>FLOW <span class="hint">optional stages for meeting someone new</span></summary>
           <ol id="flow" class="items"></ol>
@@ -136,6 +139,25 @@
           <summary>EXAMPLES <span class="hint">they teach the voice; without a key, replies come from these</span></summary>
           <ol id="examples" class="items"></ol>
           <button type="button" class="btn small" id="ex-add">ADD AN EXAMPLE</button>
+        </details>
+        <details class="group" id="look-group">
+          <summary>LOOK <span class="hint">their photos and clips are made from these pictures</span></summary>
+          <div class="refs" id="refs"></div>
+          <p class="mono"><button type="button" class="linkish" id="ref-add">add a picture</button> <span class="hint">up to three besides the portrait. pictures of the character only, never a photo of a real person.</span></p>
+          <input type="file" id="ref-file" accept="image/png,image/jpeg,image/webp" hidden>
+          <label>HOW THEY LOOK <textarea name="look_description" rows="3" maxlength="1500" placeholder="sixties, tall, grey braid, oilskin coat, reading glasses on a cord"></textarea></label>
+        </details>
+        <details class="group" id="speech-group">
+          <summary>VOICE NOTES <span class="hint">how they sound when they send one</span></summary>
+          <p class="mono" id="speech-model"></p>
+          <div class="two">
+            <label>VOICE <select name="speech_voice" id="speech-voice"></select></label>
+            <label>SPEED <select name="speech_speed" id="speech-speed"><option value="0.85">slower</option><option value="1">normal</option><option value="1.15">faster</option><option value="1.3">fast</option></select></label>
+          </div>
+          <label>MOOD <input name="speech_mood" maxlength="500" placeholder="warm, teasing, a little sleepy"></label>
+          <p class="hint">qwen 3 voices take the mood; other voice models ignore it.</p>
+          <label class="check"><input type="checkbox" id="speech-on"> replies come with a voice note</label>
+          <p class="mono"><button type="button" class="btn small" id="speech-sample">HEAR A SAMPLE</button> <span id="speech-status" class="status" role="status"></span></p>
         </details>
         <label>TAGS <input name="tags" maxlength="400" placeholder="comma, separated"></label>
         <div class="two">
@@ -192,9 +214,10 @@
   <h2 id="how-h">HOW IT WORKS</h2>
   <div class="body">
     <ol>
-      <li>Paste your Venice API key. It stays in this browser, and the page can reach api.venice.ai and nothing else.</li>
+      <li>Paste your Venice API key. It stays in this browser and goes only to api.venice.ai; the page can reach nothing but Venice.</li>
       <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
       <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Without a key, the characters you write answer from their own examples.</li>
+      <li>More than texts. Characters text first when you come back, and send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
     </ol>
   </div>
@@ -205,7 +228,7 @@
   <div class="body">
     <p>Copy this into any agent. It reads the skill, writes the character, and hands back the files. Change the second line to who you want.</p>
     <pre id="agent-prompt" class="pre"></pre>
-    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="llms.txt">llms.txt</a></p>
+    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="abilities.js">abilities.js</a> / <a href="llms.txt">llms.txt</a></p>
     <p>What comes back: a Havre card (.havre.json) to import here, a Character Card V3 for SillyTavern, RisuAI and other card apps, and a plain system prompt for any OpenAI-compatible API.</p>
   </div>
 </section>
@@ -218,10 +241,16 @@
       <tbody>
         <tr><th scope="row">a chat turn</th><td>$0.0007 to $0.005, by model (3,000 tokens in, 150 out)</td></tr>
         <tr><th scope="row">a hello from a venice character</th><td>one chat turn</td></tr>
+        <tr><th scope="row">a photo</th><td>$0.02 to $0.34, by model ($0.03 on grok imagine), plus a short call to write the shot</td></tr>
+        <tr><th scope="row">a clip</th><td>venice prices it before it's made: about $0.50 for five seconds</td></tr>
+        <tr><th scope="row">a voice note</th><td>about $0.0007 with kokoro, up to about $0.04 with the priciest voices</td></tr>
+        <tr><th scope="row">hearing your voice note</th><td>$0.006 a minute</td></tr>
+        <tr><th scope="row">seeing your photo</th><td>part of the chat turn, or one short call if their model can't see</td></tr>
+        <tr><th scope="row">on their own</th><td>photos and voice notes out of a daily allowance: 25 cents unless you change it, from 10 cents to $5; now and then a short call to decide</td></tr>
         <tr><th scope="row">a remix</th><td>two short calls; five more for a venice character</td></tr>
       </tbody>
     </table>
-    <p class="mono">the model picker shows venice's price per million tokens, and your balance shows next to your key.</p>
+    <p class="mono">the model pickers show venice's prices, what you ask for shows its price before you pay, and your balance shows next to your key.</p>
   </div>
 </section>
 
@@ -238,9 +267,6 @@
   <h2 id="next-h">COMING NEXT</h2>
   <div class="body">
     <ul>
-      <li>Photos: a character sends a picture of themselves, made from their card photo, with the price on it.</li>
-      <li>Voice notes: a voice for each character, with the words under it.</li>
-      <li>Hearing you and seeing your photos, if you switch them on.</li>
       <li>Scenes: two characters take turns from your opening line.</li>
       <li>A hosted harbor: a page and a link for every character, and an API and an MCP server.</li>
     </ul>
@@ -250,9 +276,11 @@
 <section class="row" id="fine" aria-labelledby="fine-h">
   <h2 id="fine-h">FINE PRINT</h2>
   <div class="body">
-    <p>Characters and conversations are saved in this browser. Export them to keep them anywhere else.</p>
-    <p>Your key stays in this browser and goes only to api.venice.ai; the page's security policy blocks every other address. Conversations run on your Venice account, under Venice's terms.</p>
-    <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older.</p>
+    <p>Characters and conversations are saved in this browser, and so are the photos, clips and voice notes in them. Export a character to keep them anywhere else.</p>
+    <p>Your key stays in this browser and goes only to api.venice.ai. The page's security policy blocks every other address, except the download links Venice hands out for clips from its private video models, which are fetched without your key. Conversations run on your Venice account, under Venice's terms.</p>
+    <p>Adult characters stay hidden unless you switch them on and confirm you're 18 or older. Photos and clips are for safe-for-work pictures either way: every one asks for that, and for adults only; photos also go through Venice's safe mode, which blurs anything adult; and Havre leaves Venice's adult video models out. They're made only from the pictures on a card, which are for pictures of the character, never a photo of a real person.</p>
+    <p>What characters do on their own stays within the daily allowance you set under abilities, and you can switch it off there. A clip is never made without your yes.</p>
+    <p>Hearing and seeing are off until you switch them on. Your voice note goes to Venice to be written down, and your photo goes to the model you talk to, or to the one that describes it.</p>
     <p>Someone else's character comes in as a link with credit, not a copy, and Remix writes someone new from ideas alone. Names and broad ideas aren't protected by copyright; a character's written expression can be. When in doubt, ask the creator. This isn't legal advice.</p>
     <p>Havre is independent. It isn't part of Venice.ai and isn't endorsed by Venice.</p>
   </div>
@@ -292,12 +320,26 @@
       <input id="msearch" type="search" placeholder="search models: a name, private, uncensored…" autocomplete="off">
       <div class="mtable">
         <table class="table models">
-          <thead><tr><th scope="col">MODEL</th><th scope="col">PRIVACY</th><th scope="col">CAN</th><th scope="col">$ IN / OUT</th><th scope="col">CONTEXT</th></tr></thead>
+          <thead id="mhead"><tr><th scope="col">MODEL</th><th scope="col">PRIVACY</th><th scope="col">CAN</th><th scope="col">$ IN / OUT</th><th scope="col">CONTEXT</th></tr></thead>
           <tbody id="mlist"></tbody>
         </table>
       </div>
-      <p class="mono">private: what you say is used for the reply and not kept. anonymized: venice passes it to the model's maker without saying who you are, and they can read it. prices are per million tokens.</p>
+      <p class="mono" id="mnote">private: what you send is used for the answer and not kept. anonymized: venice passes it to the model's maker without saying who you are, and they can read it. prices are per million tokens.</p>
       <p class="actions"><button type="button" class="btn" id="mclose">CLOSE</button></p>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="abilitydlg" class="dlg wide" aria-labelledby="ab-h">
+  <form method="dialog" id="abform">
+    <h2 id="ab-h">ABILITIES</h2>
+    <div class="dlgbody">
+      <p class="mono">what characters can do besides texting, and what you can send them, on your venice key. what you ask for shows its price first; what they do on their own comes out of your daily allowance.</p>
+      <div class="tablewrap flush">
+        <table class="table abilities"><tbody id="ablist"></tbody></table>
+      </div>
+      <p class="mono">photos and clips are asked for safe for work, of adults, never of a real person; photos also go through venice's safe mode. they, and voice notes, are kept in this browser.</p>
+      <p class="actions"><button type="button" class="btn" id="abclose">CLOSE</button></p>
     </div>
   </form>
 </dialog>

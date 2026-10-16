@@ -14,7 +14,8 @@ Everything you need is at https://havre.yolopreneur.lol/:
 
 - `card.schema.json`: the format, as JSON Schema.
 - `card.js`: reading, checking and converting cards (an ES module, no dependencies; works in Node 20+ and browsers).
-- `venice.js`: the few Venice API calls Havre makes.
+- `venice.js`: the Venice API calls Havre makes: chat, characters, models, photos, voice notes, hearing and clips.
+- `abilities.js`: the prompts and rules behind photos, clips, voice notes, hearing and seeing.
 
 ## A card
 
@@ -35,6 +36,8 @@ Everything you need is at https://havre.yolopreneur.lol/:
   "model": "zai-org-glm-5-2",
   "engine": {},
   "portrait": "",
+  "look": { "description": "Forties, short dark curls, a big knitted cardigan, headphones round her neck.", "references": [] },
+  "speech": { "model": "tts-kokoro", "voice": "af_bella", "mood": "warm, unhurried", "speed": 1 },
   "creator": "",
   "license": "remix-with-credit",
   "lineage": [],
@@ -62,6 +65,14 @@ Save it as `<id>.havre.json`. Only `havre` (always 1), `name` and `persona` are 
    { "stage": "plan", "goal": "Propose one plan and ask them to say go.", "next": "they say go." },
    { "stage": "execute", "goal": "Say: Switching to EXECUTION MODE. Then one concrete step at a time, each ending with when to report back." }]
   ```
+- **look** (optional): how they look. `description` is a sentence or two (an adult; face, hair, build, clothes).
+  `references` holds up to three more pictures besides the `portrait`, best as data: URIs (PNG, JPEG, WebP or GIF)
+  so they travel with the card. Havre makes photos and clips of the character from the portrait and these, when
+  they're kept in the card (or the character's own photo on Venice). Pictures of the character only: art, or
+  pictures the person made. Never a photo of a real person.
+- **speech** (optional): how they sound in a voice note. `model` is a Venice voice model (`tts-kokoro` if empty),
+  `voice` one of its voices, `mood` a short delivery note ("warm, teasing") that Qwen 3 voices follow, and `speed`
+  0.25 to 4.
 - **license**: `remix-with-credit` (the default), `all-rights-reserved`, `cc-by-4.0` or `cc0`.
 - **lineage**: where the character came from, as `{ relation, name, creator, ref, at, note }` with relation
   `ported-from`, `inspired-by` or `forked-from` and ref `venice:<slug>`, a URL, or `sha256:<hex>` of the source text.
@@ -106,6 +117,29 @@ curl https://api.venice.ai/api/v1/chat/completions \
 
 Split the reply into texts with `C.splitBubbles(reply)`. To talk through a public Venice character instead (its own
 prompt, which nobody else can read), leave out the system message and set `venice_parameters.character_slug`.
+
+## Photos, clips and voice notes
+
+In Havre a character can send more than texts. `abilities.js` has the prompts and `venice.js` the calls:
+
+- **A photo**: a text model writes the shot from the conversation (`A.shotMessages(card, A.apiHistory(history), ask)`),
+  then `venice.editImage({ model, prompt: A.photoPrompt(card, shot, n), images })` edits the character's own
+  pictures (`/image/edit`, or `/image/multi-edit` for several). Safe mode is always on. A character with no picture
+  yet gets a first portrait from `A.portraitPrompt(card)` through `/image/generate`.
+- **A clip**: the same kind of shot (`kind: "clip"`), priced first with `venice.quoteVideo()`, then
+  `venice.queueVideo()` with a reference-to-video model and the character's pictures, polled with
+  `venice.retrieveVideo()`. Always show the price before queueing.
+- **A voice note**: `venice.speak({ model, voice, input: A.speakable(reply), mood, speed })` (`/audio/speech`).
+- **Hearing and seeing** (only if the person switches them on): `venice.transcribe()` turns their voice note into
+  words; their photo goes to a model that can see (`A.withPicture(messages, dataUrl)`), or is described by one first.
+- **On their own**: after a reply where it fits (they were asked to show or say something, or the reply is about
+  something worth showing), `A.moveMessages(card, history)` with `A.MOVE_SCHEMA` lets the character's model choose a
+  photo, a voice note, a clip or nothing. Havre sends photos and voice notes out of a daily allowance the person sets,
+  never two photos in a row, and only offers a clip, with Venice's price, for the person to accept. After a long gap
+  (`A.BACK_AFTER`), the character texts first (`A.comeBack(ms)`).
+
+Rules for photos and clips: safe for work, everyone shown is an adult, never a real or identifiable person. Make
+them only from pictures the person can see on the card.
 
 ## Remix with credit
 
