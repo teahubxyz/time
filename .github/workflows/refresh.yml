@@ -1,0 +1,95 @@
+name: refresh
+# Refresh a venture that lives on gh-pages and makes some of its own files (fonts, art, screenshots, generated
+# code): run ventures/<slug>/tools/build.sh on the runner, in place, then commit what changed to gh-pages in one
+# commit and ask Teahub pages to pull. Actions -> refresh -> Run workflow.
+# `from` takes the venture's folder from another branch (say, a rework in progress), so the new version is built and
+# lands whole instead of file by file. The build runs in a checkout without credentials; only ventures/<slug>/ comes
+# back. Chrome for screenshots: CHROME (Playwright's Chromium is installed when the runner has none), with
+# CHROME_FLAGS for running as root.
+on:
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "The venture: ventures/<slug>/ on gh-pages, with a tools/build.sh"
+        required: true
+        type: string
+      from:
+        description: "Branch to take the venture's folder from (empty: gh-pages itself)"
+        required: false
+        type: string
+permissions:
+  contents: write
+concurrency:
+  group: venture          # the venture loop and seed write gh-pages too: take turns
+  cancel-in-progress: false
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: check the inputs
+        env:                     # inputs reach the scripts through the environment, never interpolated into them
+          SLUG: ${{ inputs.slug }}
+          FROM: ${{ inputs.from }}
+        run: |
+          printf '%s' "$SLUG" | grep -Eqx '[a-z0-9]([a-z0-9-]{0,40}[a-z0-9])?' || { echo "::error::bad slug: $SLUG"; exit 1; }
+          [ -z "$FROM" ] || printf '%s' "$FROM" | grep -Eqx '[A-Za-z0-9._/-]{1,100}' || { echo "::error::bad branch: $FROM"; exit 1; }
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.from || 'gh-pages' }}
+          path: work
+          fetch-depth: 1
+          sparse-checkout: ventures/${{ inputs.slug }}
+          persist-credentials: false   # the build that runs next must not find a token in .git/config
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: find Chrome, or install Playwright's Chromium
+        run: |
+          set -eu
+          for c in google-chrome google-chrome-stable chromium chromium-browser; do
+            if command -v "$c" >/dev/null 2>&1; then
+              echo "CHROME=$(command -v "$c")" >> "$GITHUB_ENV"; echo "using $(command -v "$c")"; exit 0
+            fi
+          done
+          echo "no Chrome on this runner: installing Playwright's Chromium"
+          npx -y playwright@1.55.0 install --with-deps chromium > /tmp/pw.log 2>&1 || { tail -20 /tmp/pw.log; exit 1; }
+          c=$(find "$HOME/.cache/ms-playwright" -type f -name chrome -path '*chrome-linux*' | head -1)
+          [ -n "$c" ] && [ -x "$c" ] || { echo "::error::no Chromium after the install"; exit 1; }
+          echo "CHROME=$c" >> "$GITHUB_ENV"; echo "using $c"
+      - name: build
+        env:
+          SLUG: ${{ inputs.slug }}
+          CHROME_FLAGS: "--no-sandbox --disable-dev-shm-usage --disable-gpu"
+        run: |
+          set -eu
+          [ -f "work/ventures/$SLUG/tools/build.sh" ] || { echo "::error::ventures/$SLUG has no tools/build.sh"; exit 1; }
+          sh "work/ventures/$SLUG/tools/build.sh"
+      - uses: actions/checkout@v5
+        with:
+          ref: gh-pages
+          path: pages
+          fetch-depth: 1
+      - name: commit what changed
+        env:
+          SLUG: ${{ inputs.slug }}
+          FROM: ${{ inputs.from }}
+        run: |
+          set -eu
+          [ -f "pages/ventures/ventures.json" ] || { echo "::error::no ledger on gh-pages"; exit 1; }
+          rm -rf "pages/ventures/$SLUG"
+          cp -R "work/ventures/$SLUG" "pages/ventures/$SLUG"
+          find "pages/ventures/$SLUG" -name __pycache__ -type d -prune -exec rm -rf {} +
+          cd pages
+          git add --all "ventures/$SLUG"
+          if git diff --cached --quiet; then echo "nothing changed in ventures/$SLUG"; exit 0; fi
+          git diff --cached --stat | tail -25
+          git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.teahub.xyz' \
+            commit -q -m "ventures: refresh $SLUG${FROM:+ from $FROM}"
+          if ! git push -q origin HEAD:gh-pages; then   # gh-pages moved under us: replay this one commit on top
+            git pull -q --rebase origin gh-pages
+            git push -q origin HEAD:gh-pages
+          fi
+          echo "refreshed: ventures/$SLUG -> https://$SLUG.yolopreneur.lol/"
+      - name: tell Teahub pages to pull
+        run: curl -fsS -X POST "https://yolopreneur.lol/_hook/${GITHUB_REPOSITORY}" || echo "pages pulls by itself within five minutes"
