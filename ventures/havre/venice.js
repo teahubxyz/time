@@ -98,9 +98,12 @@ export class Venice {
     return { blob: await res.blob(), blurred: res.headers && res.headers.get ? res.headers.get("x-venice-is-blurred") === "true" : false };
   }
 
-  /** a picture from words alone (a first portrait), with safe mode on. Returns { blob, blurred }. */
-  async generateImage({ model, prompt, aspect = "", signal } = {}) {
-    const body = { model, prompt, safe_mode: true, format: "webp", return_binary: true };
+  /**
+   * A picture from words alone (a portrait for a character's card). Venice's safe mode is on unless safe is false,
+   * which Havre passes only for an adult character (abilities.js adultCheck, drawn). Returns { blob, blurred }.
+   */
+  async generateImage({ model, prompt, aspect = "", safe = true, signal } = {}) {
+    const body = { model, prompt, safe_mode: safe !== false, format: "webp", return_binary: true };
     if (aspect) body.aspect_ratio = aspect;
     const res = await this.raw("/image/generate", { body, signal });
     return { blob: await res.blob(), blurred: res.headers && res.headers.get ? res.headers.get("x-venice-is-blurred") === "true" : false };

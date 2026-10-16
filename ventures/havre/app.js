@@ -1297,6 +1297,9 @@ const adultPhotoModels = () => (S.lists.inpaint ? S.lists.inpaint.filter(A.isAdu
 const adultPhotoModel = () => A.chosen(adultPhotoModels(), S.ab.adultPhoto, "adultPhoto");
 const adultClipModels = () => (S.lists.video ? S.lists.video.filter(A.isAdultClipModel) : null);
 const adultClipModel = () => A.chosen(adultClipModels(), S.ab.adultClip, "adultClip");
+const adultPortraitModels = () => (S.lists.image ? S.lists.image.filter(A.isAdultPhotoModel) : null);
+// an adult character's portrait: an uncensored model if Venice has one, else the usual one (without safe mode either way)
+const adultPortraitModel = () => A.chosen(adultPortraitModels(), "", "adultPortrait") || portraitModel();
 const voiceModel = (c) => A.chosen(S.lists.tts, c && c.speech ? c.speech.model : "", "voice");
 const hearModel = () => A.chosen(S.lists.asr, S.ab.hearModel, "hearing");
 const seeModel = () => A.seer(S.models, S.ab.seeModel);
@@ -1316,7 +1319,7 @@ const KINDS = {
   clip: { title: "CLIP MODEL", type: "video", head: ["MODEL", "PRIVACY", "LENGTHS", "SIZES", "SOUND"], search: "search clip models…",
     note: "reference-to-video models: they keep the character the way their pictures show them. venice prices each clip before it's made. " + TEXT_NOTE },
   adultPhoto: { title: "ADULT PHOTO MODEL", type: "inpaint", head: ["MODEL", "PRIVACY", "PICTURES", "$ A PHOTO"], search: "search uncensored photo models…",
-    note: "for adult characters' photos: an edit of pictures made here with ai, with venice's safe mode off and the 18+ rule first in every prompt. only venice's uncensored photo models are here. " + TEXT_NOTE },
+    note: "for adult characters' photos, and the pictures made for their card from the ones they have: an edit of pictures made here with ai, with venice's safe mode off and the 18+ rule first in every prompt. only venice's uncensored photo models are here. " + TEXT_NOTE },
   adultClip: { title: "ADULT CLIP MODEL", type: "video", head: ["MODEL", "PRIVACY", "LENGTHS", "SIZES", "SOUND"], search: "search uncensored clip models…",
     note: "for adult characters' clips: venice's uncensored reference-to-video models, from pictures made here with ai, with the 18+ rule first in every prompt. venice prices each clip before it's made. " + TEXT_NOTE },
   voice: { title: "VOICE MODEL", type: "tts", head: ["MODEL", "PRIVACY", "VOICES", "$ A MILLION CHARACTERS"], search: "search voice models…",
@@ -1476,14 +1479,14 @@ function renderTools() {
 function openAbilities() {
   if (!$("#abilitydlg").open) $("#abilitydlg").showModal();
   renderAbilities();
-  for (const t of ["inpaint", "video", "tts", "asr"]) loadList(t);
+  for (const t of ["inpaint", "image", "video", "tts", "asr"]) loadList(t);
   loadModels();
 }
 function renderAbilities() {
   const tb = $("#ablist"), c = card(), real = !!c && !c.plain;
   tb.textContent = "";
   const pm = photoModel(), cm = clipModel(), hm = hearModel(), sm = seeModel(), vm = real ? voiceModel(c) : null;
-  const apm = adultPhotoModel(), acm = adultClipModel();
+  const apm = adultPhotoModel(), acm = adultClipModel(), aim = adultPortraitModel();
   const change = (kind, m) => linkish(m ? m.name : "…", () => openModels(kind), { "aria-label": `Change the ${KINDS[kind].title.toLowerCase()}` });
   const tick = (label, on, set) => {
     const i = h("input", { type: "checkbox" });
@@ -1512,8 +1515,8 @@ function renderAbilities() {
       S.ab.adult = on;
       saveAb();
       adultChanged();
-    }), ["photos: ", change("adultPhoto", apm), " · clips: ", change("adultClip", acm),
-      " · only from pictures made here with ai, with the 18+ rule first in every prompt; never anyone under 18, never a real person"]),
+    }), ["photos: ", change("adultPhoto", apm), " · clips: ", change("adultClip", acm), ` · portraits: ${aim ? aim.name : "…"}`,
+      " · without safe mode, only from pictures made here with ai, with the 18+ rule first in every prompt; never anyone under 18, never a real person"]),
     row("VOICE NOTES", real ? tick(`${c.name} replies with voice notes`, !!S.voiceOn[c.id], (on) => setVoiceNotes(c, on))
       : "pick a character: their voice and mood are on their card.",
     real ? ["voice: ", change("voice", vm), ` (${vm ? voiceOf(c, vm) : c.speech.voice || A.DEFAULT_VOICE})`, vm && vm.perMChars != null ? ` · about ${A.usd(A.voicePrice(vm, 200))} a reply` : ""] : ""),
@@ -1568,7 +1571,7 @@ function renderAsk() {
     h("button", { type: "button", class: "x", "aria-label": "Close", text: "×", disabled: a.busy || null, onclick: closeAsk })));
   const refs = refsOf(c);
   if (!refs.length) {
-    const pm = portraitModel();
+    const pm = drawPlan(c).model;
     box.append(h("p", { class: "mono", text: (c.portrait || c.look.references.length
       ? `${c.name}'s pictures can't be used for ${what}s: a drawing kept as an SVG, or a link to another site. add a png, jpeg or webp picture on their card (card → look), or make a first portrait from how they look.`
       : `${c.name} has no picture yet, and ${what}s are made from their pictures. add one on their card (card → look), or make a first portrait from how they look.`) }));
@@ -1741,10 +1744,10 @@ async function takePhoto() {
 }
 /** a character with no picture at all: how they look, in words (if their card doesn't say), then a portrait from that */
 async function firstPortrait() {
-  const a = S.ask, pm = portraitModel();
-  if (!a || a.busy || !pm || pm.price == null) return;
-  const c = S.cards.find((x) => x.id === a.card);
-  if (!c) return;
+  const a = S.ask;
+  if (!a || a.busy) return;
+  const c = S.cards.find((x) => x.id === a.card), pm = c && drawPlan(c).model;
+  if (!c || !pm || pm.price == null) return;
   if (refsOf(c).length) { renderAsk(); writeShot(); return; }   // they've had a picture since: no portrait to pay for
   a.busy = true;
   Object.assign(a, { status: c.look.description ? `drawing ${c.name} with ${pm.name}…` : "imagining how they look…", bad: false });
@@ -1753,7 +1756,7 @@ async function firstPortrait() {
     const v = new Venice(S.key), look = await lookOf(c, v);
     a.status = `drawing ${c.name} with ${pm.name}…`;
     renderAsk();
-    const portrait = await drawPicture(c, look, pm, v);
+    const portrait = await drawPicture(c, look, v);
     const now = S.cards.find((x) => x.id === c.id);
     if (now && !refsOf(now).length) keepPicture(now, portrait, look);
     a.busy = false;
@@ -1799,12 +1802,13 @@ function noteMade(pic, from = []) {
 }
 /**
  * Whether a character's photos and clips can be adult now, and if not, why ({ ok, why }; see abilities.js adultCheck):
- * t is the chat it's for (its last few messages are read too), shot what the camera will see.
+ * t is the chat it's for (its last few messages are read too), shot what the camera will see. drawn: a picture for
+ * their card drawn from words, which is made from none of the pictures on it.
  */
-function adultFor(c, t = null, shot = "") {
+function adultFor(c, t = null, shot = "", { drawn = false } = {}) {
   const made = madeKeys();
   const said = t ? t.msgs.filter((m) => m && !m.demo).slice(-12).flatMap((m) => [typeof m.content === "string" ? m.content : "", m.media && m.media.shot]) : [];
-  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)), shot, said });
+  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)), shot, said, drawn });
 }
 /** under the adult box on their card: whether their photos and clips can be adult, and if not, why */
 function renderAdultNote(c) {
@@ -1817,23 +1821,38 @@ function renderAdultNote(c) {
 /** the adult switch, or what you've said about your age, changed: what shows it catches up */
 function adultChanged() {
   const c = card();
-  if (c && !c.plain) renderAdultNote(c);
+  if (c && !c.plain) { renderAdultNote(c); renderMakers(); }
   if ($("#abilitydlg").open) renderAbilities();
   if (S.ask && !S.ask.busy) { if (S.ask.kind === "clip") { S.ask.opts = null; requote(); } else renderAsk(); }
 }
 
 // ---------- pictures for a character's card, made with AI ----------
 const BLURRED = "Venice's safe mode blurred that picture, so it wasn't kept. Change how they look on their card (look), then try again.";
+/** a picture for their card that safe mode blurred: for a character marked adult, why safe mode was on */
+const blurredWhy = (ad) => (ad && ad.why ? `Venice's safe mode blurred that picture, so it wasn't kept. It was on because ${ad.why}` : BLURRED);
 /** how they look, in words: what their card says, else a description their model writes now */
 async function lookOf(c, v) {
   if (c.look.description) return c.look.description;
   return A.cleanText((await v.chat({ model: c.model || S.model, messages: A.lookMessages(c), maxTokens: 200, temperature: 0.9 })).text, 1500);
 }
-/** a picture of them drawn from how they look, by an image model, as a data: URI (one safe mode blurred isn't kept) */
-async function drawPicture(c, look, pm, v) {
-  const { blob, blurred } = await v.generateImage({ model: pm.id, prompt: A.portraitPrompt({ ...c, look: { ...c.look, description: look } }, pm.promptLimit),
-    aspect: pm.aspects.includes("1:1") ? "1:1" : "" });
-  if (blurred) throw new Error(BLURRED);
+/**
+ * What draws a picture of them from how they look: { model, adult, ad }. An adult character's (abilities.js
+ * adultCheck, drawn) goes to an uncensored model, without safe mode.
+ */
+function drawPlan(c, look = c.look.description) {
+  const ad = adultFor({ ...c, look: { ...c.look, description: look } }, null, "", { drawn: true });
+  return { model: ad.ok ? adultPortraitModel() : portraitModel(), adult: ad.ok, ad };
+}
+/**
+ * A picture of them drawn from how they look (checked too, if it was written just now), as a data: URI. An adult
+ * character's opens with the 18+ rule and goes without safe mode; any other one that safe mode blurs isn't kept.
+ */
+async function drawPicture(c, look, v) {
+  const { model: pm, adult, ad } = drawPlan(c, look);
+  if (!pm) throw new Error(S.listErr.image || "Venice has no model for that right now.");
+  const { blob, blurred } = await v.generateImage({ model: pm.id, prompt: A.portraitPrompt({ ...c, look: { ...c.look, description: look } }, pm.promptLimit, { adult }),
+    aspect: pm.aspects.includes("1:1") ? "1:1" : "", safe: !adult });
+  if (blurred) throw new Error(blurredWhy(ad));
   return shrinkImage(blob, 512, "image/webp", { svg: false });
 }
 /**
@@ -1855,13 +1874,15 @@ let drawing = false;
 function lookStatus(sel, text, bad = false) { const s = $(sel); s.textContent = text; s.classList.toggle("bad", bad); }
 /**
  * What a picture made for their card would be: a portrait is drawn from how they look; another picture is made from
- * the pictures they have (so it's still them), or drawn too when they have none. { model, pictures, price, list }.
+ * the pictures they have (so it's still them), or drawn too when they have none. An adult character's goes without
+ * safe mode, on an uncensored model: one drawn from words always, one made from their pictures only when every one of
+ * those was made here (abilities.js adultCheck). { model, pictures, price, list, adult }.
  */
 function makerPlan(c, as) {
   const refs = as === "portrait" ? [] : refsOf(c);
-  if (!refs.length) { const m = portraitModel(); return { model: m, pictures: [], price: m ? m.price : null, list: "image" }; }
-  const m = photoModel(), pictures = refs.slice(0, Math.max(1, m ? m.maxIn : 1));
-  return { model: m, pictures, price: m ? A.photoPrice(m, pictures.length) : null, list: "inpaint" };
+  if (!refs.length) { const { model: m, adult } = drawPlan(c); return { model: m, pictures: [], price: m ? m.price : null, list: "image", adult }; }
+  const adult = adultFor(c).ok, m = adult ? adultPhotoModel() : photoModel(), pictures = refs.slice(0, Math.max(1, m ? m.maxIn : 1));
+  return { model: m, pictures, price: m ? A.photoPrice(m, pictures.length) : null, list: "inpaint", adult };
 }
 /** the two links that make a picture for their card, with what the next one costs */
 function renderMakers() {
@@ -1880,7 +1901,7 @@ async function makePicture(as = "") {
   if (!S.key) return needKey("pictures need your venice key.");
   if (as !== "portrait" && c.portrait && c.look.references.length >= C.MAX_REFERENCES) return;
   await loadList(makerPlan(c, as).list);
-  const { model: pm, pictures, price, list } = makerPlan(c, as);
+  const { model: pm, pictures, price, list, adult } = makerPlan(c, as);
   if (!pm || price == null) { lookStatus(st, S.listErr[list] || "Venice has no model for that right now.", true); return; }
   if (as === "portrait" && c.portrait && !confirm(`Replace ${c.name}'s portrait with a new one, drawn from how they look? It costs ${A.usd(price)} on your Venice key.`)) return;
   drawing = true;
@@ -1891,14 +1912,15 @@ async function makePicture(as = "") {
     let look = "", pic;
     if (pictures.length) {
       lookStatus(st, `making a picture of ${c.name} with ${pm.name}…`);
-      const { blob, blurred } = await v.editImage({ model: pm.id, prompt: A.photoPrompt(c, A.sheetView(c.look.references.length), pictures.length, pm.promptLimit), images: pictures });
-      if (blurred) throw new Error(BLURRED);
+      const { blob, blurred } = await v.editImage({ model: pm.id, prompt: A.photoPrompt(c, A.sheetView(c.look.references.length), pictures.length, pm.promptLimit, { adult }),
+        images: pictures, safe: !adult });
+      if (blurred) throw new Error(blurredWhy(adultFor(c)));
       pic = await shrinkImage(blob, 768, "image/webp", { svg: false });
     } else {
       if (!c.look.description) lookStatus(st, "imagining how they look…");
       look = await lookOf(c, v);
       lookStatus(st, `drawing ${c.name} with ${pm.name}…`);
-      pic = await drawPicture(c, look, pm, v);
+      pic = await drawPicture(c, look, v);
     }
     const now = S.cards.find((x) => x.id === c.id);
     if (now) keepPicture(now, pic, look, as, pictures);
@@ -2491,6 +2513,7 @@ function saveSheet() {
     $("#rx-from").textContent = now.name;
     renderNameNote(now);
     renderAdultNote(now);
+    renderMakers();
   }, 120);
 }
 

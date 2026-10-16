@@ -22,9 +22,10 @@ export const PREFER = {
   clip: ["grok-imagine-1-5-reference-to-video-private", "grok-imagine-reference-to-video-private"],
   voice: ["tts-kokoro"],
   hearing: ["nvidia/parakeet-tdt-0.6b-v3", "openai/whisper-large-v3"],
-  // an adult character's photos and clips: Venice's uncensored models, the private ones first
+  // an adult character's photos, clips and portraits: Venice's uncensored models, the private ones first
   adultPhoto: ["qwen-edit-uncensored", "qwen-image-2-1-turbo-edit", "seedream-v5-lite-edit"],
   adultClip: ["minimax-h3-max-reference-to-video", "wan-3-0-reference-to-video", "wan-2-7-reference-to-video"],
+  adultPortrait: ["krea-2-turbo", "chroma", "qwen-image-3"],
 };
 export const DEFAULT_VOICE = "af_sky";
 
@@ -42,7 +43,7 @@ export function chosen(list, id, kind) {
 export const isClipModel = (m) => !!m && m.ref && !m.uncensored && !/enhanced/i.test(m.id);
 /** an adult character's clips come from the uncensored reference-to-video models, and only from them */
 export const isAdultClipModel = (m) => !!m && m.ref && !!m.uncensored;
-/** and their photos from the uncensored photo models: the others refuse, or blur */
+/** and their photos and portraits from the uncensored image models: the others refuse, or blur */
 export const isAdultPhotoModel = (m) => !!m && !!m.uncensored;
 
 /** a model that describes your photo when the character's own model can't see: the cheapest private one that can */
@@ -170,9 +171,14 @@ export function clipPrompt(card, shot, limit = 2500, { adult = false } = {}) {
   if (adult) return clip(`${KEEP_ADULT} The reference pictures show ${card.name}. Keep how they look exactly. ${str(shot).trim()}`, limit);
   return clip(`The reference pictures show ${card.name}. Keep how they look exactly. ${KEEP} ${str(shot).trim()}`, limit);
 }
-/** a first portrait, when a character has no picture at all */
-export function portraitPrompt(card, limit = 1500) {
+/**
+ * A portrait drawn from how they look (a first one, or a new one for their card). adult: an adult character's
+ * (adultCheck, drawn), which keeps every rule but the one about work, and opens with the 18+ rule.
+ */
+export function portraitPrompt(card, limit = 1500, { adult = false } = {}) {
   const look = ((card.look && card.look.description) || card.tagline || "an original character").trim().replace(/[.!?…]+$/, "");
+  if (adult) return clip(`${KEEP_ADULT} Portrait photo of ${card.name}, an original adult character: ${look}. Head and shoulders, ` +
+    "soft light, plain background, no text.", limit);
   return clip(`Portrait photo of ${card.name}, an original adult character: ${look}. ${KEEP} Head and shoulders, soft light, ` +
     "plain background, no text.", limit);
 }
@@ -371,15 +377,16 @@ const cardWords = (card) => [card.name, card.tagline, card.greeting, card.person
  * Whether an adult character's photos and clips can be adult, and if not, why (a sentence for the page; "" for a
  * character who isn't marked adult). They can when you've said you're 18 or older (of18), adult pictures are on (on),
  * every picture on their card was made here with AI (made(picture): a picture someone uploaded could be of anyone), and
- * nothing on their card, in the shot or in the last few messages (said) says anyone is under 18.
+ * nothing on their card, in the shot or in the last few messages (said) says anyone is under 18. drawn: a picture for
+ * their card drawn from words, made from none of the pictures on it, so those don't count.
  */
-export function adultCheck(card, { of18 = false, on = true, made = () => false, shot = "", said = [] } = {}) {
+export function adultCheck(card, { of18 = false, on = true, made = () => false, shot = "", said = [], drawn = false } = {}) {
   if (!card || !card.adult || card.plain) return { ok: false, why: "" };
   const sfw = "so their photos and clips stay safe for work.";
   if (!on) return { ok: false, why: "adult photos and clips are switched off under abilities." };
   if (!of18) return { ok: false, why: "adult photos and clips wait until you say you're 18 or older, under abilities." };
-  const pics = [card.portrait, ...((card.look && card.look.references) || [])].filter(Boolean);
-  if (!pics.length) return { ok: false, why: `${card.name} has no picture made here yet (card → look: make one with ai), ${sfw}` };
+  const pics = drawn ? [] : [card.portrait, ...((card.look && card.look.references) || [])].filter(Boolean);
+  if (!drawn && !pics.length) return { ok: false, why: `${card.name} has no picture made here yet (card → look: make one with ai), ${sfw}` };
   if (!pics.every((p) => made(p))) return { ok: false, why: `a picture on their card wasn't made here with ai (it was uploaded, or came from venice), ${sfw}` };
   const onCard = underage(cardWords(card), UNDERAGE_CARD);
   if (onCard) return { ok: false, why: `their card says “${onCard}”, which sounds like someone under 18, ${sfw}` };

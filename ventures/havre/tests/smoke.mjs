@@ -75,6 +75,8 @@ function picture(n) {
 }
 let pictures = 0;
 const newPicture = () => picture(++pictures);
+// Venice's safe mode judges the picture, not the prompt: set, the next one drawn with safe mode on comes back blurred
+let blurNext = false;
 const seen = { characters: [], chats: [], memories: [], photos: [], edits: [], generated: [], speech: [], heard: [], quotes: [], queued: [], retrieved: [], shares: [], completed: [] };
 /** a short WAV of silence: something an audio element can load */
 function wav(ms = 300) {
@@ -91,7 +93,9 @@ const MEDIA_MODELS = {
     { id: "nano-banana-2-edit", model_spec: { name: "Nano Banana 2", privacy: "anonymized", pricing: { inpaint: { usd: 0.1 } }, constraints: { combineImages: true, maxInputImages: 6 } } },
     { id: "qwen-edit-uncensored", model_spec: { name: "Qwen Edit Uncensored", privacy: "private", uncensored: true, pricing: { inpaint: { usd: 0.04 } },
       constraints: { combineImages: true, promptCharacterLimit: 1500 } } }],
-  image: [{ id: "grok-imagine-image", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { resolutions: { "1K": { usd: 0.03 } } }, constraints: { aspectRatios: ["1:1", "9:16"] } } }],
+  image: [{ id: "grok-imagine-image", model_spec: { name: "Grok Imagine", privacy: "private", pricing: { resolutions: { "1K": { usd: 0.03 } } }, constraints: { aspectRatios: ["1:1", "9:16"] } } },
+    { id: "krea-2-turbo", model_spec: { name: "Krea 2 Turbo", privacy: "private", uncensored: true, pricing: { resolutions: { "1K": { usd: 0.04 } } },
+      constraints: { aspectRatios: ["1:1", "9:16"], promptCharacterLimit: 5000 } } }],
   tts: [{ id: "tts-kokoro", model_spec: { name: "Kokoro", privacy: "private", pricing: { input: { usd: 3.5 } }, voices: ["af_bella", "af_sky", "am_adam"], default_format: "mp3" } },
     { id: "tts-qwen3-1-7b", model_spec: { name: "Qwen 3 TTS 1.7B", privacy: "private", pricing: { input: { usd: 112.5 } }, voices: ["Serena", "Dylan"], default_format: "mp3" } }],
   asr: [{ id: "nvidia/parakeet-tdt-0.6b-v3", model_spec: { name: "Parakeet", privacy: "private", pricing: { per_audio_second: { usd: 0.0001 } } } }],
@@ -203,7 +207,12 @@ async function fakeVenice(route) {
     seen.edits.push({ url, body: JSON.parse(body) });
     return file(newPicture(), "image/webp");
   }
-  if (url.endsWith("/image/generate")) { seen.generated.push(JSON.parse(body)); return file(newPicture(), "image/webp"); }
+  if (url.endsWith("/image/generate")) {
+    const g = JSON.parse(body), blur = blurNext && g.safe_mode !== false;
+    seen.generated.push(g);
+    if (blur) blurNext = false;
+    return file(newPicture(), "image/webp", blur ? { "x-venice-is-blurred": "true", "access-control-expose-headers": "x-venice-is-blurred" } : {});
+  }
   if (url.endsWith("/audio/speech")) { seen.speech.push(JSON.parse(body)); return file(wav(), "audio/wav"); }
   if (url.endsWith("/audio/transcriptions")) {
     assert.ok(multipart(req), "a voice note goes as a form");
@@ -564,7 +573,7 @@ async function main() {
     await count(page, "#ablist tr", 8);
     // adult photos and clips: on for someone who said they're 18 or older (for Venice's adult characters, above)
     await has(page, "#ablist tr", /^ADULT characters marked adult send adult photos and clips/);
-    await has(page, "#ablist tr", /photos: Qwen Edit Uncensored · clips: Wan 3\.0 Reference · only from pictures made here with ai/);
+    await has(page, "#ablist tr", /photos: Qwen Edit Uncensored · clips: Wan 3\.0 Reference · portraits: Krea 2 Turbo · without safe mode, only from pictures made here with ai/);
     assert.ok(await page.getByLabel("characters marked adult send adult photos and clips").isChecked());
     await page.getByLabel("let them hear my voice notes").check();
     await page.getByLabel("let them see my photos").check();
@@ -849,11 +858,54 @@ async function main() {
     await has(page, "#adult-note", /^a picture on their card wasn't made here with ai \(it was uploaded, or came from venice\)/);
     await page.click("#ref-make");
     await count(page, "#refs .ref", 4);
+    assert.equal(seen.edits.at(-1).body.safe_mode, true, "a picture made from an uploaded one keeps safe mode on");
+    assert.equal(seen.edits.at(-1).body.modelId || seen.edits.at(-1).body.model, "grok-imagine-edit");
     await page.getByRole("button", { name: "Remove picture 4" }).click();
     await count(page, "#refs .ref", 3);
     await has(page, "#adult-note", /wasn't made here with ai/);
     await page.getByRole("button", { name: "Remove picture 2" }).click();
     await count(page, "#refs .ref", 2);
+    await has(page, "#adult-note", /^their photos and clips can be adult/);
+    // the pictures for her card skip safe mode too, with the 18+ rule first: a portrait drawn from words, on an
+    // uncensored model (safe mode would blur this one), then one made from the pictures she has
+    await has(page, "#portrait-make", /^make one with ai · \$0\.04$/);
+    const portraitWas = (await inesNow()).portrait, drawnBefore = seen.generated.length;
+    blurNext = true;
+    page.once("dialog", (d) => d.accept());
+    await page.click("#portrait-make");
+    await until(page, (p) => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.id === "ines-corbel").portrait !== p, portraitWas, "her new portrait, kept");
+    const adultDrawn = seen.generated.at(-1);
+    assert.equal(seen.generated.length, drawnBefore + 1);
+    assert.equal(adultDrawn.model, "krea-2-turbo");
+    assert.equal(adultDrawn.safe_mode, false, "no safe mode for an adult character's portrait");
+    assert.ok(adultDrawn.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), adultDrawn.prompt);
+    assert.equal(blurNext, true, "so nothing was blurred");
+    blurNext = false;
+    await has(page, "#adult-note", /^their photos and clips can be adult/);
+    await has(page, "#ref-make", /^make one with ai · \$0\.04$/);
+    const editedBefore = seen.edits.length;
+    await page.click("#ref-make");
+    await count(page, "#refs .ref", 3);
+    const sheetEdit = seen.edits.at(-1).body;
+    assert.equal(seen.edits.length, editedBefore + 1);
+    assert.equal(sheetEdit.modelId || sheetEdit.model, "qwen-edit-uncensored");
+    assert.equal(sheetEdit.safe_mode, false);
+    assert.ok(sheetEdit.prompt.startsWith("Hard rule: everyone shown is an adult, 18 or older"), sheetEdit.prompt);
+    await has(page, "#adult-note", /^their photos and clips can be adult/);
+    // with adult pictures switched off, safe mode is back on, and a blur says why
+    await page.getByRole("button", { name: "abilities" }).click();
+    await page.getByLabel("characters marked adult send adult photos and clips").uncheck();
+    await page.click("#abclose");
+    await has(page, "#portrait-make", /^make one with ai · \$0\.03$/);
+    blurNext = true;
+    page.once("dialog", (d) => d.accept());
+    await page.click("#portrait-make");
+    await has(page, "#portrait-status", /^Venice's safe mode blurred that picture, so it wasn't kept\. It was on because adult photos and clips are switched off under abilities\.$/);
+    assert.equal(seen.generated.at(-1).safe_mode, true);
+    assert.equal(blurNext, false, "it was blurred");
+    await page.getByRole("button", { name: "abilities" }).click();
+    await page.getByLabel("characters marked adult send adult photos and clips").check();
+    await page.click("#abclose");
     await has(page, "#adult-note", /^their photos and clips can be adult/);
     // a shot that mentions someone under 18 stays safe for work: the other model, its price, and safe mode on
     await page.locator("#chat").scrollIntoViewIfNeeded();

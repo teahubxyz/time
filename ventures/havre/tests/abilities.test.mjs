@@ -112,6 +112,28 @@ test("adult characters: the 18+ rule is the first thing every photo and clip pro
   assert.equal(A.shotMessages(mara, [], "")[0].content, A.PHOTO_SYSTEM, "safe for work unless asked");
 });
 
+test("adult characters: a portrait for their card opens with the 18+ rule too, and is drawn whatever pictures they have", () => {
+  const p = A.portraitPrompt(mara, 1500, { adult: true });
+  assert.ok(p.startsWith(A.ADULT_ONLY), p);
+  assert.match(p, /Never a real, identifiable person\. No gore\. Portrait photo of Mara Vell, an original adult character: /);
+  assert.ok(!/Safe for work/.test(p));
+  assert.ok(A.portraitPrompt({ ...mara, look: { description: "x ".repeat(3000) } }, 400, { adult: true }).startsWith(A.ADULT_ONLY), "a long look can't push it out");
+  assert.match(A.portraitPrompt(mara), /Safe for work/, "without adult, as before");
+  // drawn from words, it's made from none of the pictures on their card: those don't count, everything else does
+  const drawn = { of18: true, made: () => false, drawn: true };
+  assert.deepEqual(A.adultCheck({ ...mara, look: { references: ["data:image/png;base64,UPLD"] } }, drawn), { ok: true, why: "" });
+  assert.deepEqual(A.adultCheck({ ...mara, portrait: "", look: { references: [] } }, drawn), { ok: true, why: "" });
+  assert.match(A.adultCheck({ ...mara, look: { description: "a schoolgirl", references: [] } }, drawn).why, /“schoolgirl”/);
+  assert.match(A.adultCheck(mara, { ...drawn, of18: false }).why, /until you say you're 18 or older/);
+  assert.match(A.adultCheck(mara, { ...drawn, on: false }).why, /switched off under abilities/);
+  assert.deepEqual(A.adultCheck({ ...mara, adult: false }, drawn), { ok: false, why: "" });
+  assert.match(A.adultCheck({ ...mara, portrait: "", look: { references: [] } }, { ...drawn, drawn: false }).why, /no picture made here yet/);
+  // and it's drawn on an uncensored image model, the private ones first
+  const images = [{ id: "grok-imagine-image", privacy: "private" }, { id: "qwen-image-3", uncensored: true, privacy: "anonymized" },
+    { id: "krea-2-turbo", uncensored: true, privacy: "private" }];
+  assert.equal(A.chosen(images.filter(A.isAdultPhotoModel), "", "adultPortrait").id, "krea-2-turbo");
+});
+
 test("adult characters: their clips and photos come from Venice's uncensored models, and nobody else's do", () => {
   const video = [{ id: "minimax-h3-max-reference-to-video", ref: true, uncensored: true, privacy: "private" },
     { id: "grok-imagine-1-5-reference-to-video-private", ref: true, privacy: "private" }, { id: "wan-3-0-image-to-video", ref: false, uncensored: true }];
@@ -232,6 +254,11 @@ test("venice: an adult character's photo goes with safe mode off, and only when 
   assert.equal(calls[1].body.safe_mode, false);
   for (const safe of [undefined, true, 0, "no"]) await v.editImage({ model: "m", prompt: "p", images: ["data:image/webp;base64,QUJD"], safe });
   assert.deepEqual(calls.slice(2).map((c) => c.body.safe_mode), [true, true, true, true], "anything else: on");
+  // and a portrait for their card, drawn from words
+  await v.generateImage({ model: "krea-2-turbo", prompt: "p", aspect: "1:1", safe: false });
+  assert.deepEqual(calls.at(-1).body, { model: "krea-2-turbo", prompt: "p", safe_mode: false, format: "webp", return_binary: true, aspect_ratio: "1:1" });
+  for (const safe of [undefined, true, 0, "no"]) await v.generateImage({ model: "m", prompt: "p", safe });
+  assert.deepEqual(calls.slice(-4).map((c) => c.body.safe_mode), [true, true, true, true], "anything else: on");
 });
 
 test("venice: a voice note sends the mood as the style prompt; hearing sends the recording as a form", async () => {
