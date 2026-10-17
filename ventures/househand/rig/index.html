@@ -1,0 +1,619 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>House Hand rig</title>
+<meta name="description" content="Pose Bunny and Unicorn by dragging their hands, feet and head, then blend two poses into one animated SVG.">
+<meta property="og:title" content="House Hand rig">
+<meta property="og:description" content="Pose Bunny and Unicorn by dragging their hands, feet and head, then blend two poses into one animated SVG.">
+<link rel="icon" href="../favicon.svg" type="image/svg+xml">
+<style>
+@font-face { font-family: "Fredoka"; src: url("../fonts/fredoka.woff2") format("woff2"); font-weight: 300 700;
+  font-display: swap; }
+:root {
+  --paper: #FFEAD2;  /* the house cream, the sheet every character is drawn on */
+  --sheet: #FFF6EC;
+  --ink: #2B2135;    /* the house line */
+  --muted: #6A5672;
+  --rule: #E9CFB2;
+  --pink: #FF8FD6;
+  --stage-w: min(100%, calc((100vh - 262px) * 0.8));   /* the stage and its strip fit the first screen */
+}
+* { box-sizing: border-box; }
+html { color-scheme: light; }
+body { margin: 0; background: var(--paper); color: var(--ink);
+  font: 400 1rem/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+h1, legend, button, .brand, .chips label { font-family: "Fredoka", ui-rounded, "SF Pro Rounded", system-ui, sans-serif; }
+a { color: var(--ink); text-decoration-color: var(--pink); text-decoration-thickness: 3px; text-underline-offset: 0.22em; }
+a:hover { text-decoration-color: var(--ink); }
+:focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; border-radius: 8px; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 0 clamp(16px, 3vw, 32px) 56px; }
+
+header { padding: 14px 0 16px; }
+.brand { font-weight: 600; font-size: 1.15rem; text-decoration: none; }
+h1 { margin: 6px 0 6px; font-weight: 600; font-size: clamp(2rem, 3.6vw, 2.5rem); line-height: 1; letter-spacing: -0.015em; }
+header p { margin: 0; color: var(--muted); max-width: 72ch; }
+
+.app { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 24px 40px; align-items: start; }
+.stage-col { position: sticky; top: 12px; }
+.frame { width: var(--stage-w); min-width: 240px; margin: 0 auto; border: 3px solid var(--ink); border-radius: 24px;
+  background: var(--paper); overflow: hidden; }
+.stage { position: relative; width: 100%; aspect-ratio: 640 / 800; touch-action: none; }
+.stage > svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#loading { position: absolute; inset: 0; display: grid; place-items: center; padding: 28px; text-align: center;
+  color: var(--muted); font-size: 1.05rem; }
+.handle { cursor: grab; }
+.handle .hit { fill: transparent; }
+.handle .dot { fill: rgba(255, 143, 214, 0.38); stroke: var(--ink); stroke-width: 3; }
+.handle:hover .dot, .handle.on .dot { fill: var(--pink); }
+.handle:focus { outline: none; }
+.handle:focus-visible .dot { fill: var(--pink); stroke-width: 6; }
+.handle.body .dot { fill: rgba(255, 246, 236, 0.55); stroke-dasharray: 7 5; }
+.handle.body .pip { fill: var(--ink); }
+.handle.body:hover .dot, .handle.body.on .dot, .handle.body:focus-visible .dot { fill: var(--pink); stroke-dasharray: none; }
+#handles.dragging, #handles.dragging .handle { cursor: grabbing; }
+
+button { font-weight: 500; font-size: 1rem; line-height: 1; color: var(--ink); background: var(--sheet);
+  border: 3px solid var(--ink); border-radius: 999px; padding: 0.55em 1.05em; cursor: pointer; }
+button:hover { background: #fff; }
+button:active { transform: translateY(1px); }
+button.primary { background: var(--pink); font-weight: 600; }
+button.primary:hover { background: #FFA9E0; }
+button[disabled] { opacity: 0.45; cursor: default; transform: none; }
+button[disabled]:hover { background: var(--sheet); }
+button.primary[disabled]:hover { background: var(--pink); }
+
+.keys { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px;
+  border-top: 3px solid var(--ink); background: var(--sheet); }
+.key { display: flex; align-items: center; gap: 6px; }
+.keys .primary { margin-left: auto; }
+.thumb { position: relative; width: 36px; height: 45px; padding: 0; border: 2px dashed var(--muted); border-radius: 10px;
+  background: var(--paper); overflow: hidden; display: grid; place-items: center; font-weight: 600; font-size: 1.1rem; }
+.thumb:not([disabled]) { border: 2px solid var(--ink); }
+.thumb[disabled] { opacity: 1; color: var(--muted); }
+.thumb img { position: absolute; inset: 0; width: 100%; height: 100%; }
+.thumb span { position: relative; }
+.thumb img + span { position: absolute; left: 4px; top: 3px; font-size: 0.8rem; }
+.exports { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px auto 0; width: var(--stage-w); min-width: 240px; }
+.note { min-height: 3em; margin: 10px auto 0; width: var(--stage-w); min-width: 240px; color: var(--muted);
+  font-size: 0.95rem; }
+
+.panel { display: grid; }
+fieldset { min-width: 0; margin: 0; padding: 14px 0 16px; border: 0; border-top: 3px solid var(--rule); display: grid; gap: 10px; }
+legend { float: left; width: 100%; padding: 0 0 2px; font-weight: 500; font-size: 1.25rem; line-height: 1.2; }
+.row { display: grid; grid-template-columns: 8.4em minmax(0, 1fr) 3.4em; align-items: center; gap: 10px; }
+.row.pick { grid-template-columns: 8.4em minmax(0, 1fr); }
+.row output { text-align: right; white-space: nowrap; color: var(--muted); font-size: 0.92rem; font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; margin: 0; accent-color: var(--pink); }
+select { width: 100%; font: inherit; color: var(--ink); background: var(--sheet); border: 2px solid var(--ink);
+  border-radius: 10px; padding: 0.3em 0.45em; }
+.chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.chips input { position: absolute; opacity: 0; pointer-events: none; }
+.chips label { border: 2px solid var(--ink); border-radius: 999px; padding: 0.3em 0.85em; cursor: pointer;
+  background: var(--sheet); font-weight: 500; line-height: 1.2; }
+.chips input:checked + label { background: var(--pink); }
+.chips input:focus-visible + label { outline: 3px solid var(--ink); outline-offset: 2px; }
+.presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.presets button { padding: 0.45em 0.9em; }
+.hint { margin: 0; color: var(--muted); font-size: 0.92rem; }
+.stack { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.stack li { display: flex; align-items: center; gap: 8px; min-height: 2.4em; padding: 0 6px 0 12px;
+  border: 2px solid var(--ink); border-radius: 12px; background: var(--sheet); }
+.stack li > span:first-child { flex: 1; }
+.stack li.fixed { border-style: dashed; border-color: var(--muted); background: transparent; color: var(--muted); }
+.stack li.line { min-height: 0; padding: 4px 0 0; border: 0; border-top: 2px dashed var(--muted); border-radius: 0;
+  background: transparent; color: var(--muted); font-size: 0.85rem; }
+.stack li.gone { color: var(--muted); background: transparent; }
+.stack button { width: 2em; height: 2em; padding: 0; display: grid; place-items: center; font-size: 0.8rem; }
+.stack button svg { width: 12px; height: 12px; }
+.panel-actions { display: flex; gap: 8px; }
+.panel-actions button { padding: 0.45em 0.9em; }
+[hidden] { display: none !important; }
+
+@media (max-width: 860px) {
+  .app { grid-template-columns: 1fr; }
+  .stage-col { position: static; }
+  :root { --stage-w: min(100%, calc(72vh * 0.8)); }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <a class="brand" href="../">house hand</a>
+  <h1>Pose and animate</h1>
+  <p>Drag the pink handles to move the hands, feet and head, and the ring at the hips to move the body. Save two poses
+  as A and B, then play: the blend is one SVG
+  that animates itself. Everything is drawn by <a href="../house.py">house.py</a>, running in your browser.
+  <a href="hello.svg">Watch Bunny and Unicorn say hello</a>, a longer piece animated with the same rig.</p>
+</header>
+
+<div class="app">
+  <div class="stage-col">
+    <div class="frame">
+    <div class="stage">
+      <svg id="art" viewBox="0 0 640 800" aria-hidden="true"></svg>
+      <svg id="handles" viewBox="0 0 640 800" role="group" aria-label="Pose handles: move each with the arrow keys, or Shift and the arrow keys for bigger steps"></svg>
+      <div id="loading" role="status">Loading Python in your browser. About 10 MB, the first time only.</div>
+    </div>
+    <div class="keys">
+      <div class="key">
+        <button class="thumb" id="loadA" type="button" disabled aria-label="Pose A is empty"><span>A</span></button>
+        <button id="saveA" type="button" disabled>Save A</button>
+      </div>
+      <div class="key">
+        <button class="thumb" id="loadB" type="button" disabled aria-label="Pose B is empty"><span>B</span></button>
+        <button id="saveB" type="button" disabled>Save B</button>
+      </div>
+      <button class="primary" id="play" type="button" disabled>Play</button>
+    </div>
+    </div>
+    <div class="exports">
+      <button id="dlStill" type="button" disabled>Download SVG</button>
+      <button id="dlAnim" type="button" disabled>Download animated SVG</button>
+      <button id="copyPose" type="button" disabled>Copy pose</button>
+    </div>
+    <p class="note" id="note" aria-live="polite"></p>
+  </div>
+
+  <form class="panel" id="panel" onsubmit="return false">
+    <fieldset>
+      <legend>Character</legend>
+      <div class="chips" role="radiogroup" aria-label="Character">
+        <input type="radio" name="who" id="who-bunny" value="bunny" checked><label for="who-bunny">Bunny</label>
+        <input type="radio" name="who" id="who-unicorn" value="unicorn"><label for="who-unicorn">Unicorn</label>
+      </div>
+      <div class="chips" role="radiogroup" aria-label="View">
+        <input type="radio" name="view" id="v-front" value="front" checked><label for="v-front">front</label>
+        <input type="radio" name="view" id="v-q" value="q"><label for="v-q">¾ left</label>
+        <input type="radio" name="view" id="v-qr" value="qr"><label for="v-qr">¾ right</label>
+        <input type="radio" name="view" id="v-side" value="side"><label for="v-side">side left</label>
+        <input type="radio" name="view" id="v-sider" value="sider"><label for="v-sider">side right</label>
+        <input type="radio" name="view" id="v-back" value="back"><label for="v-back">back</label>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Poses</legend>
+      <div class="presets" id="presets"></div>
+    </fieldset>
+    <fieldset>
+      <legend>Hands</legend>
+      <label class="row pick"><span>Left hand</span><select data-k="hands.0"></select></label>
+      <label class="row"><span>Left turn</span><input type="range" data-k="hand_rot.0" data-unit="°" min="-120" max="120" step="1"><output></output></label>
+      <label class="row pick"><span>Right hand</span><select data-k="hands.1"></select></label>
+      <label class="row"><span>Right turn</span><input type="range" data-k="hand_rot.1" data-unit="°" min="-120" max="120" step="1"><output></output></label>
+      <p class="hint">Left and right as you see them. In profile only the near arm shows.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Body</legend>
+      <label class="row"><span>Lean</span><input type="range" data-k="lean" min="-0.3" max="0.3" step="0.01"><output></output></label>
+      <label class="row"><span>Across</span><input type="range" data-k="body_dx" min="-200" max="200" step="1"><output></output></label>
+      <label class="row"><span>Hop</span><input type="range" data-k="hop" min="-48" max="90" step="1"><output></output></label>
+      <label class="row"><span>Left arm bend</span><input type="range" data-k="arm_bend.0" min="-0.5" max="0.5" step="0.01"><output></output></label>
+      <label class="row"><span>Right arm bend</span><input type="range" data-k="arm_bend.1" min="-0.5" max="0.5" step="0.01"><output></output></label>
+      <label class="row"><span>Left leg bend</span><input type="range" data-k="leg_bend.0" min="-0.4" max="0.4" step="0.01"><output></output></label>
+      <label class="row"><span>Right leg bend</span><input type="range" data-k="leg_bend.1" min="-0.4" max="0.4" step="0.01"><output></output></label>
+      <p class="hint">Drag the ring at the hips to move the body while the feet stay planted: down to crouch, up to
+      stretch, sideways to shift the weight. Hold Shift to move the whole character, feet and all.</p>
+    </fieldset>
+    <fieldset id="layers">
+      <legend>Layers</legend>
+      <ol class="stack" id="stack" aria-label="Layers, front to back"></ol>
+      <div class="panel-actions"><button type="button" id="layersAuto">Auto</button></div>
+      <p class="hint">Front to back. Move an arm past the body to bring it in front or put it behind, or below the line to
+      hide it. Auto lets the view decide: in ¾ the arm and leg nearer you are on top.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Face</legend>
+      <label class="row pick"><span>Eyes</span><select data-k="eyes"></select></label>
+      <label class="row pick"><span>Mouth</span><select data-k="mouth_kind"></select></label>
+    </fieldset>
+    <fieldset id="bunnyEars">
+      <legend>Ears</legend>
+      <label class="row pick"><span>Her right ear</span><select data-k="ears.0.0"></select></label>
+      <label class="row"><span>Tilt</span><input type="range" data-k="ears.0.1" data-unit="°" min="-40" max="40" step="1"><output></output></label>
+      <label class="row pick"><span>Her left ear</span><select data-k="ears.1.0"></select></label>
+      <label class="row"><span>Tilt</span><input type="range" data-k="ears.1.1" data-unit="°" min="-40" max="40" step="1"><output></output></label>
+    </fieldset>
+    <fieldset id="unicornBits" hidden>
+      <legend>Ears and tail</legend>
+      <label class="row pick"><span>Ears</span><select data-k="mood"></select></label>
+      <label class="row"><span>Tail swish</span><input type="range" data-k="swish" min="0" max="1" step="0.01"><output></output></label>
+      <p class="hint">The tail and the long mane show in ¾, profile and back views.</p>
+    </fieldset>
+    <fieldset>
+      <legend>Blend</legend>
+      <label class="row"><span>Loop length</span><input type="range" id="secs" data-unit=" s" min="0.6" max="3" step="0.1" value="1.2"><output id="secsOut">1.2 s</output></label>
+      <p class="hint">Everything you drag or slide morphs from A to B. What can't morph, like another view or face, switches
+      halfway.</p>
+    </fieldset>
+  </form>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pyodide@0.26.4/pyodide.js"></script>
+<script>
+(() => {
+  const PYODIDE = "https://cdn.jsdelivr.net/npm/pyodide@0.26.4/";
+  const PY_FILES = ["house.py", "gen_phly.py", "gen_bunny.py", "gen_unicorn.py", "rig.py", "rigplay.py"];
+  const OPTIONS = {
+    hands: ["open", "wave", "point", "fist", "peace", "pinch", "thumbsup"],
+    eyes: ["dot", "happy", "wide", "closed", "flat", "heart"],
+    mouth_kind: ["smile", "open", "grin", "small", "o", "flat", "smirk", "frown", "none"],
+    ears: ["up", "flop", "hang", "droop"],
+    mood: ["up", "alert", "out", "droop"],
+  };
+  const STAND_BOW = 0.09, ARM_BOW = -0.2;   // figure()'s own bends: a standing leg, an aimed arm
+  // arms in limb widths from each shoulder, legs from each hip; left and right as you see them
+  const PRESETS = {
+    rest:  { arms: [[-3.3, 6.9], [3.95, 6.65]], hands: ["open", "open"], hand_rot: [-34, 54] },
+    wave:  { arms: [[-3.3, 6.9], [4.4, -2.9]], hands: ["open", "wave"], hand_rot: [-34, -16], head_dx: -3 },
+    cheer: { arms: [[-4.6, -2.6], [4.6, -2.6]], hands: ["open", "open"], hand_rot: [16, -16], hop: 24, head_dy: -4 },
+    point: { arms: [[-3.3, 6.9], [6.2, 0.6]], hands: ["open", "point"], hand_rot: [-34, 0], lean: 0.04, head_dx: 6 },
+    hop:   { arms: [[-4.2, 1.5], [4.2, 1.5]], hands: ["open", "open"], hand_rot: [0, 0], hop: 40,
+             legs: [[-1.6, 6.2], [1.6, 6.2]], leg_bend: [-0.12, -0.12] },
+    shrug: { arms: [[-3.2, 3.4], [3.2, 3.4]], hands: ["open", "open"], hand_rot: [70, -70], head_dy: 8 },
+  };
+  const BLEND_FIELDS = { who: "character", view: "view", eyes: "eyes", mouth_kind: "mouth" };
+  const HANDLES = [["body", 0, "body"], ["hand", 0, "left hand"], ["hand", 1, "right hand"], ["foot", 0, "left foot"],
+                   ["foot", 1, "right foot"], ["head", 0, "head"]];
+  const LAYER_KEYS = ["arm_z", "front_arm", "front_leg"];
+  const SVGNS = "http://www.w3.org/2000/svg";
+
+  const $ = s => document.querySelector(s);
+  const art = $("#art"), hs = $("#handles"), note = $("#note"), panel = $("#panel");
+  let rp = null, pose = null, standing = null, geo = null, playing = false, animSvg = null, drag = null;
+  const keys = { A: null, B: null }, thumbs = { A: null, B: null };
+  const say = text => { note.textContent = text || ""; };
+  const r3 = v => Math.round(v*1000)/1000;
+  const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+  const get = (o, path) => path.split(".").reduce((v, k) => v == null ? v : v[k], o);
+  const put = (o, path, val) => { const ks = path.split("."), last = ks.pop(); ks.reduce((v, k) => v[k], o)[last] = val; };
+  const fmt = (el, v) => Number(v).toFixed(+el.step < 1 ? 2 : 0).replace("-", "\u2212") + (el.dataset.unit || "");
+  const py = (fn, ...args) => rp[fn](...args.map(a => typeof a === "string" || typeof a === "number" ? a : JSON.stringify(a)));
+
+  // ---------- the panel ----------
+  function fillSelects() {
+    for (const sel of panel.querySelectorAll("select")) {
+      for (const v of OPTIONS[sel.dataset.k.split(".")[0]]) sel.add(new Option(v, v));
+    }
+    for (const name of Object.keys(PRESETS)) {
+      const b = document.createElement("button");
+      b.type = "button"; b.textContent = name; b.onclick = () => applyPreset(name);
+      $("#presets").append(b);
+    }
+  }
+  function syncPanel() {
+    for (const el of panel.querySelectorAll("[data-k]")) {
+      const v = get(pose, el.dataset.k);
+      if (v === undefined) continue;
+      el.value = v;
+      const out = el.parentElement.querySelector("output");
+      if (out) out.textContent = fmt(el, v);
+    }
+    panel.querySelector(`[name=who][value="${pose.who}"]`).checked = true;
+    panel.querySelector(`[name=view][value="${pose.view}"]`).checked = true;
+    $("#bunnyEars").hidden = pose.who !== "bunny";
+    $("#unicornBits").hidden = pose.who !== "unicorn";
+  }
+  panel.addEventListener("input", e => {
+    const el = e.target;
+    if (!rp) return;
+    if (el.name === "who" || el.name === "view") {
+      pose[el.name] = el.value;
+      delete pose.ears;                                 // each view has its own ear pair...
+      for (const k of LAYER_KEYS) delete pose[k];       // ...and its own near and far limbs
+      pose = JSON.parse(py("ready", pose));             // legs planted where this view stands them
+      standing = structuredClone(pose.legs);
+      syncPanel(); stop(); render();
+      return;
+    }
+    if (!el.dataset.k) return;
+    const v = el.type === "range" ? parseFloat(el.value) : el.value;
+    put(pose, el.dataset.k, v);
+    const out = el.parentElement.querySelector("output");
+    if (out) out.textContent = fmt(el, v);
+    stop(); render();
+  });
+  function applyPreset(name) {
+    Object.assign(pose, { lean: 0, hop: 0, head_dx: 0, head_dy: 0, arm_bend: [ARM_BOW, ARM_BOW],
+                          leg_bend: [STAND_BOW, STAND_BOW], legs: structuredClone(standing) },
+                  structuredClone(PRESETS[name]));
+    syncPanel(); stop(); render();
+    say(`${name[0].toUpperCase()}${name.slice(1)}. Drag a handle to make it yours.`);
+  }
+
+  // ---------- drawing ----------
+  let queued = false;
+  function render() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => {
+      queued = false;
+      if (playing) return;
+      const snap = structuredClone(pose);
+      geo = JSON.parse(py("render", snap));
+      geo.pose = snap;                                  // the pose these positions belong to
+      art.innerHTML = `<rect width="640" height="800" fill="#FFEAD2"/>${geo.svg}`;
+      placeHandles();
+      renderStack();
+    });
+  }
+  const handleEls = HANDLES.map(([kind, i, name]) => {
+    const g = document.createElementNS(SVGNS, "g");
+    g.setAttribute("class", "handle"); g.setAttribute("tabindex", "0"); g.setAttribute("role", "button");
+    g.setAttribute("aria-roledescription", "drag handle"); g.setAttribute("aria-label", `Move the ${name}`);
+    g.setAttribute("display", "none");
+    g.dataset.kind = kind; g.dataset.i = i;
+    if (kind === "body") g.classList.add("body");
+    g.innerHTML = kind === "body" ? `<circle class="hit" r="32"/><circle class="dot" r="19"/><circle class="pip" r="4.5"/>`
+                                  : `<circle class="hit" r="30"/><circle class="dot" r="${kind === "head" ? 18 : 15}"/>`;
+    hs.append(g);
+    return g;
+  });
+  const handleAt = (kind, i) => kind === "hand" ? geo.hands[i] : kind === "foot" ? geo.feet[i] :
+                                kind === "body" ? geo.body : geo.head;
+  function placeHandles() {
+    for (const el of handleEls) {
+      const p = !playing && geo && handleAt(el.dataset.kind, +el.dataset.i);
+      if (!p) { el.setAttribute("display", "none"); continue; }
+      el.removeAttribute("display");
+      el.setAttribute("transform", `translate(${p[0].toFixed(1)} ${(p[1] - geo.hop).toFixed(1)})`);
+    }
+  }
+
+  // ---------- layers: what's drawn over what, front to back ----------
+  const NAMES = { arm: ["Left arm", "Right arm"], leg: ["Left leg", "Right leg"] };
+  const CHEVRON = d => `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="${d}" fill="none" stroke="currentColor"
+    stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  const UP = CHEVRON("M2 8 L6 4 L10 8"), DOWN = CHEVRON("M2 4 L6 8 L10 4");
+  let refocus = null;
+  function armSequence() {          // the arms, the body and the line below which nothing is drawn: front to back
+    const { arm_z: z, arm_order: order } = geo.layers, top = [...order].reverse();
+    return [...top.filter(i => z[i] === "front"), "body", ...top.filter(i => z[i] === "behind"), "line",
+            ...[0, 1].filter(i => z[i] !== "front" && z[i] !== "behind")];
+  }
+  function renderStack() {
+    const list = $("#stack");
+    if (!geo || !geo.layers) return;
+    const seq = armSequence(), legs = [...geo.layers.leg_order].reverse();
+    const item = (kind, i, up, down) => `<li><span>${NAMES[kind][i]}</span>` +
+      `<button type="button" data-move="${kind} ${i} -1" aria-label="Move the ${NAMES[kind][i].toLowerCase()} up a layer"${up ? "" : " disabled"}>${UP}</button>` +
+      `<button type="button" data-move="${kind} ${i} 1" aria-label="Move the ${NAMES[kind][i].toLowerCase()} down a layer"${down ? "" : " disabled"}>${DOWN}</button></li>`;
+    let html = `<li class="fixed"><span>Head</span></li>`;
+    const armAt = k => item("arm", seq[k], k > 0, k < seq.length - 1);
+    let k = 0;
+    for (; seq[k] !== "body"; k++) html += armAt(k);
+    html += `<li class="fixed"><span>${pose.who === "bunny" ? "Body and skirt" : "Body"}</span></li>`;
+    for (k++; seq[k] !== "line"; k++) html += armAt(k);
+    legs.forEach((i, j) => { html += item("leg", i, j > 0, j < 1); });
+    html += `<li class="line"><span>Not drawn</span></li>`;
+    for (k++; k < seq.length; k++) html += armAt(k).replace("<li>", `<li class="gone">`);
+    list.innerHTML = html;
+    if (refocus) {
+      const b = list.querySelector(`[data-move="${refocus}"]`) ||
+                list.querySelector(`[data-move^="${refocus.split(" ").slice(0, 2).join(" ")} "]:not([disabled])`);
+      if (b && !b.disabled) b.focus(); else if (b) b.parentElement.querySelector("button:not([disabled])")?.focus();
+      refocus = null;
+    }
+  }
+  $("#stack").addEventListener("click", e => {
+    const b = e.target.closest("button[data-move]");
+    if (!b || !geo) return;
+    const [kind, si, sd] = b.dataset.move.split(" "), i = +si, d = +sd;
+    if (kind === "leg") {
+      pose.front_leg = d < 0 ? i : 1 - i;          // up puts this leg over the other, down under it
+    } else {
+      const seq = armSequence(), at = seq.indexOf(i), to = at + d;
+      [seq[at], seq[to]] = [seq[to], seq[at]];
+      const body = seq.indexOf("body"), line = seq.indexOf("line");
+      pose.arm_z = [0, 1].map(a => { const p = seq.indexOf(a); return p < body ? "front" : p < line ? "behind" : "hidden"; });
+      pose.front_arm = seq.indexOf(0) < seq.indexOf(1) ? 0 : 1;   // the higher of the two, where they share a side
+      if (pose.arm_z[i] === "hidden") say(`${NAMES.arm[i]} hidden. Move it up past the line to draw it again.`);
+    }
+    refocus = b.dataset.move;
+    stop(); render();
+  });
+  $("#layersAuto").onclick = () => {
+    pose.arm_z = [null, null]; pose.front_arm = null; pose.front_leg = null;
+    stop(); render();
+    say("Layers back to auto: the view decides which arm and leg go on top.");
+  };
+
+  // ---------- dragging, with a pointer or the arrow keys ----------
+  function moveTo(kind, i, x, y, whole) {  // put this handle at (x, y), in the drawing's coordinates before the hop
+    const { lw, pose: was } = geo;
+    x = clamp(x, 16, 624); y = clamp(y, 16, 784);
+    if (kind === "body") {
+      const [bx, by] = geo.body, ddx = x - bx, ddy = y - by;
+      if (whole) {                          // the whole character, feet and all, along the floor
+        pose.body_dx = clamp(Math.round(was.body_dx + ddx), -200, 200);
+        syncPanel(); render(); return;
+      }
+      // the body goes and the feet stay: each leg takes the move back, as far as the legs reach
+      const legsFor = f => was.legs.map(([lx, ly]) => [lx - f*ddx/lw, ly - f*ddy/lw]);
+      const reach = f => legsFor(f).every(([lx, ly]) => { const n = Math.hypot(lx, ly); return n >= 2 && n <= 9.2; })
+                         && was.hop - f*ddy >= -48;                 // a deep crouch, no lower
+      let f = 1;
+      if (!reach(1)) {
+        let lo = 0, hi = 1;
+        for (let k = 0; k < 20; k++) { const m = (lo + hi)/2; if (reach(m)) lo = m; else hi = m; }
+        f = lo;
+      }
+      const dx = clamp(f*ddx, -200 - was.body_dx, 200 - was.body_dx), k = ddx ? dx/ddx : 1;
+      pose.legs = legsFor(Math.min(f, k)).map(([a, b]) => [r3(a), r3(b)]);
+      pose.body_dx = r3(was.body_dx + Math.min(f, k)*ddx);
+      pose.hop = r3(was.hop - Math.min(f, k)*ddy);
+      syncPanel(); render(); return;
+    }
+    if (kind === "hand") {
+      const [ax, ay] = geo.arm_anchors[i], [hx, hy] = geo.hands[i];
+      const ox = hx - (ax + was.arms[i][0]*lw), oy = hy - (ay + was.arms[i][1]*lw);   // the hand sits past the arm's end
+      const dx = (x - ox - ax)/lw, dy = (y - oy - ay)/lw;
+      const len = Math.hypot(dx, dy), k = len > 9.5 ? 9.5/len : len < 1.5 ? 1.5/Math.max(len, 1e-6) : 1;
+      pose.arms[i] = [r3(dx*k), r3(dy*k)];
+    } else if (kind === "foot") {
+      const [ax, ay] = geo.leg_anchors[i];
+      const floor = Math.max(standing[0][1], standing[1][1]) + was.hop/lw;       // not through the floor
+      const dx = (x - ax)/lw, dy = Math.min((y - ay)/lw, floor);
+      const len = Math.hypot(dx, dy), k = len > 9.2 ? 9.2/len : len < 2 ? 2/Math.max(len, 1e-6) : 1;
+      pose.legs[i] = [r3(dx*k), r3(dy*k)];
+    } else {
+      pose.head_dx = clamp(Math.round(was.head_dx + x - geo.head[0]), -36, 36);
+      pose.head_dy = clamp(Math.round(was.head_dy + y - geo.head[1]), -20, 20);
+    }
+    render();
+  }
+  function svgPoint(e) {
+    const p = hs.createSVGPoint(); p.x = e.clientX; p.y = e.clientY;
+    return p.matrixTransform(hs.getScreenCTM().inverse());
+  }
+  hs.addEventListener("pointerdown", e => {
+    const h = e.target.closest(".handle");
+    if (!h || !geo || playing) return;
+    e.preventDefault();
+    hs.setPointerCapture(e.pointerId);
+    const kind = h.dataset.kind, i = +h.dataset.i, p = svgPoint(e), [x, y] = handleAt(kind, i);
+    drag = { kind, i, el: h, dx: p.x - x, dy: p.y + geo.hop - y };      // where on the handle it was picked up
+    h.classList.add("on"); hs.classList.add("dragging");
+  });
+  hs.addEventListener("pointermove", e => {
+    if (!drag) return;
+    const p = svgPoint(e);
+    moveTo(drag.kind, drag.i, p.x - drag.dx, p.y + geo.hop - drag.dy, e.shiftKey);
+  });
+  function endDrag() {
+    if (!drag) return;
+    drag.el.classList.remove("on"); hs.classList.remove("dragging"); drag = null;
+  }
+  for (const t of ["pointerup", "pointercancel", "lostpointercapture"]) hs.addEventListener(t, endDrag);
+  hs.addEventListener("keydown", e => {
+    const h = e.target.closest && e.target.closest(".handle");
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!h || !d || !geo || playing) return;
+    e.preventDefault();
+    const kind = h.dataset.kind, i = +h.dataset.i, step = e.shiftKey ? 24 : 6, [x, y] = handleAt(kind, i);
+    moveTo(kind, i, x + d[0]*step, y + d[1]*step);
+  });
+
+  // ---------- A, B and the blend ----------
+  function saveKey(k) {
+    keys[k] = structuredClone(pose);
+    if (thumbs[k]) URL.revokeObjectURL(thumbs[k]);
+    thumbs[k] = URL.createObjectURL(new Blob([py("still", keys[k])], { type: "image/svg+xml" }));
+    const b = $(`#load${k}`);
+    b.innerHTML = `<img alt="" src="${thumbs[k]}"><span>${k}</span>`;
+    b.disabled = false; b.setAttribute("aria-label", `Put pose ${k} back on the stage`);
+    animSvg = null;
+    const both = keys.A && keys.B;
+    $("#play").disabled = $("#dlAnim").disabled = !both;
+    const other = k === "A" ? "B" : "A";
+    say(both ? `${k} saved. Press Play to see A blend into B and back.` : `${k} saved. Now make pose ${other} and press Save ${other}.`);
+    if (playing) { stop(); play(); }
+  }
+  function loadKey(k) {
+    pose = structuredClone(keys[k]);
+    standing = JSON.parse(py("standing", pose)).legs;
+    syncPanel(); stop(); render();
+    say(`Pose ${k} is back on the stage. Change it and save it again.`);
+  }
+  function buildAnim() {
+    const res = JSON.parse(py("animate_ab", keys.A, keys.B, +$("#secs").value));
+    if (!res.error) return res.svg;
+    const diff = Object.keys(BLEND_FIELDS).filter(f => keys.A[f] !== keys.B[f]).map(f => BLEND_FIELDS[f]);
+    const list = diff.length > 1 ? `${diff.slice(0, -1).join(", ")} and ${diff[diff.length - 1]}` : diff[0];
+    say(diff.length ? `A and B can't blend: different ${list}. Save both with the same character, view, eyes and mouth.`
+                    : `A and B can't blend: they're drawn with different shapes. Save both with the same character, view, eyes and mouth.`);
+    return null;
+  }
+  function play() {
+    say("Blending A and B…");
+    setTimeout(() => {                                  // let the message paint first
+      if (!animSvg) animSvg = buildAnim();
+      if (!animSvg) return;
+      playing = true;
+      $("#play").textContent = "Stop";
+      placeHandles();
+      art.innerHTML = animSvg.replace(/^<svg[^>]*>/, "").replace(/<\/svg>\s*$/, "");
+      if (art.setCurrentTime) art.setCurrentTime(0);
+      say("Playing: one SVG that animates itself, with no script. Download it below, or stop to keep posing.");
+    }, 30);
+  }
+  function stop() {
+    if (!playing) return;
+    playing = false;
+    $("#play").textContent = "Play";
+    say("Stopped. Keep posing, or press Play again.");
+    render();
+  }
+  function download(name, text) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "image/svg+xml" }));
+    a.download = name;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  }
+  $("#saveA").onclick = () => saveKey("A");
+  $("#saveB").onclick = () => saveKey("B");
+  $("#loadA").onclick = () => loadKey("A");
+  $("#loadB").onclick = () => loadKey("B");
+  $("#play").onclick = () => playing ? stop() : play();
+  $("#secs").oninput = e => {
+    $("#secsOut").textContent = `${(+e.target.value).toFixed(1)} s`;
+    animSvg = null;
+    if (playing) { playing = false; play(); }
+  };
+  $("#dlStill").onclick = () => { download(`${pose.who}-pose.svg`, py("still", pose)); say("Downloaded this pose as an SVG."); };
+  $("#dlAnim").onclick = () => {
+    const svg = animSvg || buildAnim();
+    if (!svg) return;
+    animSvg = svg;
+    download(`${keys.A.who}-a-to-b.svg`, svg);
+    say(`Downloaded the blend: ${Math.round(svg.length/1000)} KB, and it plays in any browser.`);
+  };
+  $("#copyPose").onclick = async () => {
+    const text = JSON.stringify(pose);
+    try { await navigator.clipboard.writeText(text); say("Pose copied, as JSON. Paste it to an agent with rigplay.py, or keep it."); }
+    catch (err) { say(text); }
+  };
+
+  // ---------- start ----------
+  async function boot() {
+    fillSelects();
+    const loading = $("#loading");
+    const fail = text => { loading.textContent = text; };
+    if (typeof loadPyodide !== "function") {
+      fail("Python didn't load. The page gets it from cdn.jsdelivr.net, so it needs to be online. Reload to try again.");
+      return;
+    }
+    try {
+      const pyodide = await loadPyodide({ indexURL: PYODIDE });
+      loading.textContent = "Loading the drawing code…";
+      const texts = await Promise.all(PY_FILES.map(async f => {
+        const r = await fetch("py/" + f);
+        if (!r.ok) throw new Error(`py/${f} answered ${r.status}`);
+        return r.text();
+      }));
+      pyodide.FS.mkdirTree("/rig");
+      PY_FILES.forEach((f, k) => pyodide.FS.writeFile("/rig/" + f, texts[k]));
+      pyodide.runPython("import sys; sys.path.insert(0, '/rig')");
+      rp = pyodide.pyimport("rigplay");
+      pose = JSON.parse(py("ready", { who: "bunny", view: "front", eyes: "happy", mouth_kind: "open", lean: 0, hop: 0,
+                                      head_dx: 0, head_dy: 0, ...PRESETS.rest }));
+    } catch (err) {
+      fail(`The rig didn't load (${err.message}). Reload to try again.`);
+      return;
+    }
+    standing = structuredClone(pose.legs);
+    syncPanel();
+    loading.remove();
+    for (const id of ["saveA", "saveB", "dlStill", "copyPose"]) $("#" + id).disabled = false;
+    render();
+    say("Drag a pink handle, or start from a pose.");
+  }
+  boot();
+})();
+</script>
+</body>
+</html>

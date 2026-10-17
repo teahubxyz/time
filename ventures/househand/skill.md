@@ -13,10 +13,12 @@ Everything you need is at https://househand.yolopreneur.lol/:
 
 - `house.py`: the drawing library. Python 3.9 or later, standard library only.
 - `drawon.py`: turns a finished SVG into one that draws itself, stroke by stroke.
+- `rig.py`: animates a character: key poses in, one SVG that moves by itself out.
 - `skill.md`: this file.
 
 ```sh
-curl -O https://househand.yolopreneur.lol/house.py -O https://househand.yolopreneur.lol/drawon.py
+curl -O https://househand.yolopreneur.lol/house.py -O https://househand.yolopreneur.lol/drawon.py \
+     -O https://househand.yolopreneur.lol/rig.py
 ```
 
 ## A first drawing
@@ -62,8 +64,9 @@ Start every drawing from `figure()` and change one thing at a time.
 - Limbs are single curves of constant width. Never an angular elbow or knee.
 - Hands are three fingers and a thumb. The thumb is 1.15 times a finger's width, shorter, and low on the palm. Feet
   have four toes.
-- Every garment opening (cuff, hem, collar) is an ellipse with a lip (`opening()`). Sleeves and trouser legs are 1.6 to
-  1.7 times the limb (`sleeve()`).
+- Every sleeve, trouser and collar opening is an ellipse with a lip (`opening()`). Sleeves and trouser legs are 1.6 to
+  1.7 times the limb (`sleeve()`). A skirt is seen from a little above, like the rest of the figure: its hem is the
+  near edge, bowing down, and the legs come out from under it (`figure(skirt=...)` draws it that way).
 - Detail matches size: a small thing is a silhouette plus one mark.
 - No tangents. No contour grazing another, no shape sitting exactly on a horizontal line (a rim, a horizon, the edge
   of the sheet). Overlap clearly or leave a gap.
@@ -85,9 +88,12 @@ most:
 | `arms`, `legs` | `((dx, dy), (dx, dy))`: where each hand or foot goes, in limb widths from the shoulder or hip; `None` hangs |
 | `hands` | a pose per hand: `open`, `point`, `fist`, `peace`, `pinch`, `thumbsup`, `grip`, `wave` |
 | `props` | per hand, an SVG string or a function `(x, y, rot, fw)` that draws what the hand holds (use with `grip`) |
-| `eyes`, `mouth_kind` | eyes `dot`, `wide`, `closed`, `happy`, `flat`; mouth `smile`, `flat`, `small`, `o`, `open`, `grin`, `smirk`, `frown`, `none` |
+| `eyes`, `mouth_kind` | eyes `dot`, `wide`, `closed`, `happy`, `flat`, `heart`; mouth `smile`, `flat`, `small`, `o`, `open`, `grin`, `smirk`, `frown`, `none` |
 | `accessories` | any of `glasses`, `scarf`, `bow`, `badge` |
 | `lean`, `head_dx`, `head_dy` | the line of action: torso lean and head offset |
+| `arm_bow`, `leg_bow` | how far each limb bends, as a fraction of its length (one number, or one per limb); below zero bows a knee or elbow outward |
+| `arm_z` | per arm, `front` (over the torso), `behind` (under it), `hidden`, or `None` to let the view decide |
+| `front_arm`, `front_leg` | which arm and which leg (0 or 1, as you see them) is drawn over the other; `None` puts the nearer one on top |
 | `under`, `mid`, `over` | functions `(g)` for parts behind everything, under the torso, or on top (ears, tails) |
 | `ground_shadow` | a soft shadow under the feet |
 | `uid` | a unique id per figure, so clip paths don't collide |
@@ -125,9 +131,50 @@ also plays in an ordinals explorer once inscribed. Inscribe it compressed
 (`ord wallet inscribe --fee-rate N --file wave-draws.svg --compress`): a self-drawing SVG often shrinks to about a
 tenth of its size, and the fee with it.
 
-## Animation
+## Make it move
 
-For a loop, write the scene as `frame(t)` returning a whole SVG. Ease with small back-eased pops, rising wipes and
-sine bobs; keep the face the same across the loop. Render the frames with Playwright, then
-`ffmpeg -framerate 24 -i f%04d.png -vf format=yuv420p -c:v libx264 -crf 18 loop.mp4` for video, or palettegen and
-paletteuse for a GIF.
+A character from `figure()` is already a rig. A pose is a dict of its arguments (where the hands and feet go, the
+lean, the head, the hand poses, the face), and every pose in one view draws the same shapes with the same path
+commands, so only numbers change from pose to pose. `rig.py` reads poses off a timeline, draws a frame for each, and
+merges the frames into one SVG in which every shape tweens with SMIL. It needs no script and plays anywhere an SVG
+does, including an `<img>` tag.
+
+```python
+from house import *
+from rig import Timeline, animate, page, ease, overshoot
+
+def draw(p):
+    hop = p.pop("hop", 0.0)          # lift the whole figure: the rig animates transforms too
+    body = figure(320, 720, view="front", shirt=MINT, pants=SKY, shoes=YEL, hair=(PINK, "cap"), uid="w", **p)
+    return f'<g transform="translate(0 {-hop:.1f})">{body}</g>'
+
+LEFT = dict(arms=(None, (2.4, -6.2)), hands=("open", "wave"), hand_rot=(0, -26), head_dx=-3.0, lean=-0.01, hop=0.0)
+RIGHT = dict(LEFT, arms=(None, (4.8, -4.4)), hand_rot=(0, 30), head_dx=4.0, lean=0.03, hop=6.0)
+tl = Timeline([(0.0, LEFT), (0.3, RIGHT, overshoot), (0.6, LEFT, ease)], loop=True)
+open("wave-loop.svg", "w").write(page(animate(draw, tl, T=0.6, fps=12), 640, 800))
+```
+
+- `Timeline(keys, loop=True)` takes key poses at times in seconds. A key can name the easing of the move into it:
+  `ease` (slow in and out, the default), `ease_in`, `ease_out`, `overshoot` (past the mark and back) or `linear`.
+  Numbers and tuples of numbers blend between keys; anything else (a hand pose, the eyes, the view) switches halfway.
+- `animate(draw, tl, T, fps=12, cuts=True, tolerance=0.3)` returns the moving drawing. Wrap it in `page(body, w, h)`.
+  A shape that changes kind on some frames (an eye that blinks shut, a mouth that opens) is swapped for its other
+  version on those frames. A change of view, or of which limb is drawn over which, changes the whole drawing: with
+  `cuts=True` the rig cuts to a copy drawn that way, which is how a spin works; without it, `animate` raises
+  `RigError` naming the first difference. `tolerance` (px) drops keys that a straight tween reproduces that closely,
+  for a smaller file.
+- The house rate is 12 frames a second, with the tweening in between.
+- Anticipate a big move and follow it through: crouch before a jump, rise fast, hang at the top, fall fast (a height
+  of `4*h*u*(1 - u)` over the jump), let the knees take the landing, and let ears, hair or a tail overshoot and settle
+  a frame or two after the body.
+- The first frame is what a viewer without SMIL sees, so start on the pose that stands for the whole.
+- Check it frame by frame before handing it back: pause the SVG in a browser at a few times
+  (`svg.pauseAnimations(); svg.setCurrentTime(t)`) and look at each one, or draw `draw(tl(t))` as stills.
+
+`rig/hello.svg` on the site is a longer piece made this way: Bunny and Unicorn crouch, jump, spin, land, wave and
+turn to each other. The playground at `rig/` poses them by hand; Copy pose gives the pose as JSON, which
+`rigplay.py` (served with the playground under `rig/py/`) draws.
+
+For a scene that isn't one character, write it as `frame(t)` returning a whole SVG, render the frames with
+Playwright, then `ffmpeg -framerate 24 -i f%04d.png -vf format=yuv420p -c:v libx264 -crf 18 loop.mp4` for video, or
+palettegen and paletteuse for a GIF.

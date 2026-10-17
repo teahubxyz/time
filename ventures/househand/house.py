@@ -95,7 +95,23 @@ def ear(x, cy, h, side=1, fill=SKIN):
     d = f"M{x} {cy-r} C{x+side*r*2.1} {cy-r*1.2} {x+side*r*2.1} {cy+r*1.2} {x} {cy+r} C{x-side*r*0.15} {cy+r*0.5} {x-side*r*0.15} {cy-r*0.5} {x} {cy-r} Z"
     return outline(d, fill)
 
+HEART = shade(PINK, 0.75, 0.18)           # heart eyes: the house pink, deepened until it reads on skin
+
+def heart_path(cx, cy, w, h):
+    """a heart centred on (cx, cy): two round lobes and a soft point, w wide and h tall"""
+    t, b = cy - h*0.30, cy + h*0.55
+    return (f"M{cx:.1f} {t:.1f} "
+            f"C{cx - w*0.10:.1f} {cy - h*0.62:.1f} {cx - w*0.58:.1f} {cy - h*0.66:.1f} {cx - w*0.5:.1f} {cy - h*0.08:.1f} "
+            f"C{cx - w*0.44:.1f} {cy + h*0.22:.1f} {cx - w*0.16:.1f} {cy + h*0.38:.1f} {cx:.1f} {b:.1f} "
+            f"C{cx + w*0.16:.1f} {cy + h*0.38:.1f} {cx + w*0.44:.1f} {cy + h*0.22:.1f} {cx + w*0.5:.1f} {cy - h*0.08:.1f} "
+            f"C{cx + w*0.58:.1f} {cy - h*0.66:.1f} {cx + w*0.10:.1f} {cy - h*0.62:.1f} {cx:.1f} {t:.1f} Z")
+
 def eye(cx, cy, s, kind="dot"):
+    """dot | far (a dot seen from the side) | wide | closed | happy | flat | heart. heart+ is a heart mid-beat (a size
+    up, for animation); a -far suffix narrows a heart for the far eye of a three-quarter view."""
+    if kind.startswith("heart"):
+        k = 1.25 if "+" in kind else 1.0
+        return flat(heart_path(cx, cy - s*0.05, s*1.7*k*(0.62 if kind.endswith("-far") else 1.0), s*1.5*k), HEART, 1, "fx")
     if kind == "dot":    return f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{s*0.5:.1f}" ry="{s*0.55:.1f}" fill="{INK}"/>'
     if kind == "far":    return f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{s*0.28:.1f}" ry="{s*0.55:.1f}" fill="{INK}"/>'
     if kind == "wide":   return f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{s*0.62:.1f}" ry="{s*0.7:.1f}" fill="{INK}"/>'
@@ -135,7 +151,7 @@ def head(x, y, w, h, fill=SKIN, view="front", eyes="dot", mouth_kind="smile", sh
     elif view in ("q", "qr"):
         f = 1 if view == "q" else -1
         nx = x + w*(0.6 if f == 1 else 0.4); fx = x + w*(0.2 if f == 1 else 0.8)
-        out += [ear_(x+w, y+h/2, h, 1, fill) if f == 1 else ear_(x, y+h/2, h, -1, fill), eye(nx, ey, s, eyes), eye(fx, ey, s, "far" if eyes == "dot" else eyes), mouth(x+w/2 - f*w*0.12, my, w*0.24, mouth_kind)]
+        out += [ear_(x+w, y+h/2, h, 1, fill) if f == 1 else ear_(x, y+h/2, h, -1, fill), eye(nx, ey, s, eyes), eye(fx, ey, s, "far" if eyes == "dot" else eyes + "-far" if eyes.startswith("heart") else eyes), mouth(x+w/2 - f*w*0.12, my, w*0.24, mouth_kind)]
     elif view in ("side", "sider"):
         f = 1 if view == "side" else -1
         ex = x + w*(0.2 if f == 1 else 0.8); e0 = x+3 if f == 1 else x+w-3; hm = w*0.16
@@ -202,11 +218,12 @@ def finger_curve(p, q, bend=0.0):
     c = (mx + nx*bend*L, my + ny*bend*L)
     return f"M{p[0]:.1f} {p[1]:.1f} Q{c[0]:.1f} {c[1]:.1f} {q[0]:.1f} {q[1]:.1f}"
 
-def hand(cx, cy, pose="open", fw=24, prop=None, rot=0, fill=SKIN, wrist=True, scale=1.0, palm=1.0):
+def hand(cx, cy, pose="open", fw=24, prop=None, rot=0, fill=SKIN, wrist=True, scale=1.0, palm=1.0, join=""):
     """house hand: 3 fingers + thumb. palm = soft disc r≈1.35·fw. thumb 1.15× finger width, shorter, low on the palm.
     rot rotates the whole hand (degrees, 0 = fingers up). grips draw far fingers → prop → palm + near fingers.
     palm < 1 shrinks only the disc (fingers keep their roots and reach): use it when scale > 1 makes the palm wider
-    than the wrist, or the disc shows as a fifth lobe in the silhouette."""
+    than the wrist, or the disc shows as a fifth lobe in the silhouette. join: svg drawn over the palm's outline and under
+    the fingers (the arm's own fill, so the palm grows out of the arm instead of sitting on it as a ringed knob)."""
     fw = fw*scale; R = fw*1.35; TW = fw*1.15; RP = R*palm
     def F(ang, length, bend=0.0, w=fw):
         a = math.radians(ang + rot)
@@ -228,8 +245,9 @@ def hand(cx, cy, pose="open", fw=24, prop=None, rot=0, fill=SKIN, wrist=True, sc
     def fil(fs):  return "".join(tube_fill(d, w, fill) for d, w in fs)
     allf = fingers + ([thumb] if thumb else [])
     if pose != "grip":
-        return "\n".join([wr, ink(allf), fil(allf), palm, fil(allf)])
-    return "\n".join([wr, ink(far), fil(far), prop or "", ink(near + [thumb]), fil(near + [thumb]), palm, fil(near + [thumb])])
+        return "\n".join([wr, ink(allf), fil(allf), palm] + ([join] if join else []) + [fil(allf)])
+    return "\n".join([wr, ink(far), fil(far), prop or "", ink(near + [thumb]), fil(near + [thumb]), palm] + ([join] if join else [])
+                     + [fil(near + [thumb])])
 
 def bare_foot(cx, cy, view="side", flip=1, fill=SKIN):
     """house foot: 4 toes, big toe ~1.6×. ankle = continuous tube."""
@@ -249,9 +267,10 @@ def bare_foot(cx, cy, view="side", flip=1, fill=SKIN):
     return "\n".join(out)
 
 # ---------- garments ----------
-def opening(cx, cy, rx, ry, fill, rot=0, lw=LW):
-    """an ellipse with a lip: the opening of a tube (cuff, hem, collar). the lip is a second contour inside."""
-    return outline(ellipse_path(cx, cy, rx, ry, rot), shade(fill), lw) + line(_arc_inner(cx, cy, rx*0.72, ry*0.55, rot), lw)
+def opening(cx, cy, rx, ry, fill, rot=0, lw=LW, lip=(0.72, 0.55)):
+    """an ellipse with a lip: the opening of a tube (cuff, hem, collar). the lip is a second contour inside, `lip` of
+    the opening's width and depth (a wide, flat opening wants a shorter, shallower lip, or it runs into the rim)."""
+    return outline(ellipse_path(cx, cy, rx, ry, rot), shade(fill), lw) + line(_arc_inner(cx, cy, rx*lip[0], ry*lip[1], rot), lw)
 def _arc_inner(cx, cy, rx, ry, rot):
     k = 0.5523; c, s = math.cos(math.radians(rot)), math.sin(math.radians(rot))
     def P(x, y): return f"{cx + x*c - y*s:.1f} {cy + x*s + y*c:.1f}"
@@ -326,6 +345,14 @@ def splash(cx, cy, r, fill, hi=None):
     return "".join(out)
 
 # ---------- the figure ----------
+SHOULDERS = {"low": (0.1, 1.0), "classic": (-0.3, 0.0)}   # where the arms leave the torso: (out, down) in limb widths
+CLASSIC = False   # True: figure() draws as the dojo did (arms tucked under the chin, the collar, legs in passes); the
+                  # kata generators set it, so the sheets stay exactly as they were drawn and graded
+NEAR = {"q": 1, "qb": 0, "side": 0, "qr": 0, "qbr": 1, "sider": 1}   # which arm and leg is nearer us, by view: in
+# three-quarter, the side turned toward us (away from where they look, so the arm on the side they face starts behind the
+# chest: a shoulder over the chest reads as a hunch); in profile, the arm the poses draw (the other one hides)
+NEAR_CLASSIC = {"q": 0, "qb": 1, "side": 0, "qr": 1, "qbr": 0, "sider": 1}   # the dojo's: the arm on the side they face
+
 def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view="front",
            skin=SKIN, shirt=LAV, pants=SKY, shoes=YEL, hair=None, garments="volume",
            lean=0.0, head_dx=0.0, head_dy=0.0, arms=None, legs=None, hands=("open", "open"), hand_rot=(0, 0),
@@ -334,11 +361,13 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
            human_ears=True, skirt=None, legwear=None, under=None, over=None, mid=None, hand_palm=(1.0, 1.0),
            sleeve_frac=0.55, sleeve_ratio=1.7, skirt_len=0.36, skirt_flare=1.32, cuff_ry=0.3,
            shoe_fn=None, shoes_under=False, torso_fold=True, leg_stack=False, hem_frac=0.86, hem_ry=None,
-           garment_tuck=False, collar=True, skirt_fold=True):
+           garment_tuck=False, collar=None, skirt_fold=True, arm_bow=None, leg_bow=None, shoulders=None,
+           limbs=None, arm_z=(None, None), front_arm=None, front_leg=None):
     """a whole on-model character. heads = height in heads. lean = torso lean (fraction, +right).
     arms/legs = ((dx,dy),(dx,dy)) hand/foot targets relative to the shoulder/hip, in units of lw; None = hanging.
     garments: 'volume' (sleeves/trousers 1.7×, cuffs with lips) | 'skin' (same width as limb, no openings) | 'none'.
-    skirt: a colour → flared skirt from the waist with a hem opening (ellipse + lip); legs come out of the hem in
+    skirt: a colour → flared skirt from the waist, seen from a little above: the hem is its near edge and the legs
+    come out from under it (classic: a hem opening, ellipse + lip, over the legs' tops); the legs are in
     `legwear` (default skin) instead of trousers. under/over: callables(g) → svg drawn first / last, where g is the
     figure's geometry (head box, shoulders, hips, view) — for parts that live behind or on top of everything
     (bunny ears, tails, custom hair). mid: callable(g) drawn just under the torso — above the skirt and the
@@ -350,7 +379,21 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
     minor axis (default: cuff_ry) — a higher, flatter hem leaves more of the boot below it. garment_tuck: end sleeves
     and trouser legs inside their openings (see sleeve()). collar=False drops the neck opening: on a small figure the
     head hides its upper half and what shows below the chin (outline + lip) closes up into a lens of solid ink.
-    skirt_fold=False drops the skirt's fold dash (when a tail or prop sits where it would start)."""
+    skirt_fold=False drops the skirt's fold dash (when a tail or prop sits where it would start).
+    arm_bow / leg_bow: how far each limb bows, as a fraction of its length (one number, or one per limb; None keeps the
+    defaults: a hanging arm 0.1, an aimed arm -0.2, a standing leg 0.09, an aimed leg 0.16, mirrored per side). The
+    rig's bend control (rig.py).
+    shoulders: "low" (the default: each arm leaves the torso at its top corner, below the chin, so it doesn't seem to
+    grow from the neck), "classic", or (out, down) in limb widths. collar: None draws the neck opening only where enough
+    of it shows below the chin to read as one (True, False force it). limbs: "whole" (the default) draws each leg whole,
+    skin, trouser and shoe, the far leg first, so a leg that crosses the other covers it properly; "classic" draws all
+    the skin, then all the trousers and shoes. Layering: arm_z per arm "front" (over the torso), "behind" (under it, as
+    the far arm of a three-quarter view is), "hidden" (not drawn) or None (the view decides; in profile the far arm
+    isn't drawn unless asked for); front_arm / front_leg pick which arm or leg is drawn over the other (None: the near
+    one). What was decided is left in the geometry as g["layers"] (arm_z, arm_order, leg_order: drawn first to last)."""
+    if shoulders is None: shoulders = "classic" if CLASSIC else "low"
+    if limbs is None: limbs = "classic" if CLASSIC else "whole"
+    if collar is None and CLASSIC: collar = True
     H = head_h*heads; head_w = head_h/1.2
     legs_len = H*0.48
     hip_y = ground - legs_len
@@ -379,7 +422,26 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
         else:
             fx, fy = cx + hip_dx + sx*((r*0.55+lw*0.3) if vw > 0.8 else lw*0.35), ground - lw*0.9
         bow = 0.09*sx if not (legs and legs[i]) else 0.16*sx
+        lb = leg_bow[i] if isinstance(leg_bow, (tuple, list)) else leg_bow
+        if lb is not None: bow = lb*sx
         leg_pts.append((limb_curve((hx, hy), (fx, fy), bow), s, fx, fy))
+        g.setdefault("hip_roots", []).append((hx, hy))
+    near = (NEAR_CLASSIC if limbs == "classic" else NEAR).get(view)
+    leg_order = [0, 1] if near is None else [1 - near, near]          # far leg first
+    if front_leg is not None: leg_order = [1 - front_leg, front_leg]
+    if limbs == "classic": leg_order = [0, 1]
+    whole = limbs != "classic"
+    def draw_shoe(i):
+        cur, s, fx, fy = leg_pts[i]
+        if view in ("front", "back", "q", "qr"):
+            flip = s if view in ("front", "back") else (1 if view == "qr" else -1)
+        else:
+            flip = 1 if view == "sider" else -1
+        out.append(part("shoes", (shoe_fn or shoe)(fx - flip*lw*0.7, fy + lw*0.9, lw*2.4, lw*1.5, flip, shoes)))
+    def draw_shoes():
+        for i in (0, 1): draw_shoe(i)
+    def trouser(i):
+        out.append(part("legs", sleeve(leg_pts[i][0], lw, pants, frac=hem_frac, ratio=1.6, cuff_ry=cuff_ry if hem_ry is None else hem_ry, tuck=garment_tuck)))
     if skirt:
         hem_y = (y1 - r*0.5) + (ground - (y1 - r*0.5))*skirt_len
         a, b = r*0.86, r*skirt_flare; ry = b*0.2; y_w = y1 - r*1.1; k = 0.5523
@@ -387,36 +449,50 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
                 f"C{cx-b:.1f} {hem_y+ry*k:.1f} {cx-b*k:.1f} {hem_y+ry:.1f} {cx:.1f} {hem_y+ry:.1f} "
                 f"C{cx+b*k:.1f} {hem_y+ry:.1f} {cx+b:.1f} {hem_y+ry*k:.1f} {cx+b:.1f} {hem_y:.1f} "
                 f"C{cx+b-r*0.04:.1f} {hem_y-(hem_y-y_w)*0.25:.1f} {cx+a+r*0.1:.1f} {y_w+(hem_y-y_w)*0.45:.1f} {cx+a:.1f} {y_w:.1f} Z")
+        g.update(hem_y=hem_y, hem_rx=b)
+        if whole:
+            # seen from a little above, as the rest of her is: the hem is the skirt's near edge, bowing down, and the
+            # legs come out from under it, so they go in first and the skirt over them. (The dojo drew an opening you
+            # could see into, with the legs behind it: two points of view at once.)
+            y_in = hem_y - lw*0.2                  # each leg starts just inside the hem
+            for li in leg_order:
+                cur = leg_pts[li][0]
+                lo, hi = 0.0, 1.0
+                for _ in range(30):
+                    m = (lo + hi)/2
+                    if bez(*cur, m)[1] < y_in: lo = m
+                    else: hi = m
+                out.append(part("legs", tube(cpath(split(*cur, lo)[1]), lw, legwear or skin)))
+                draw_shoe(li)
         out.append(part("skirt", outline(body, skirt)))
         if shadow:
             out.append(part("skirt", f'<clipPath id="{uid}k"><path d="{body}"/></clipPath><g clip-path="url(#{uid}k)">'
                        + flat(f"M{cx+a*0.3:.1f} {y_w:.1f} C{cx+b*0.62:.1f} {y_w+(hem_y-y_w)*0.4:.1f} {cx+b*0.58:.1f} {hem_y-ry:.1f} {cx+b*0.5:.1f} {hem_y+ry*2:.1f} L{cx+b+30:.1f} {hem_y+ry*2:.1f} L{cx+b+30:.1f} {y_w:.1f} Z", shade(skirt), 1, "s") + "</g>"))
         if view != "back" and skirt_fold:     # the back view keeps at most one fold line (the bodice's)
             out.append(part("skirt", fold((cx-b*0.62, hem_y-(hem_y-y_w)*0.42), (cx-b*0.74, hem_y-ry*1.4), 0.12)))
-        g.update(hem_y=hem_y, hem_rx=b)
-        for cur, s, fx, fy in leg_pts:            # the legs come out of the hem: start them inside it...
+        for li in ([] if whole else leg_order):    # the dojo's: the legs come out of the hem: start them inside it...
+            cur, s, fx, fy = leg_pts[li]
             lo, hi = 0.0, 1.0
             for _ in range(30):
                 m = (lo + hi)/2
                 if bez(*cur, m)[1] < hem_y - ry + lw*0.5 + LW*0.5 + 2: lo = m   # the round top stays inside the opening
                 else: hi = m
             out.append(part("legs", tube(cpath(split(*cur, lo)[1]), lw, legwear or skin)))
-        out.append(part("skirt", opening(cx, hem_y, b, ry, skirt)))  # ...and lay the opening over their tops, as a cuff sits over a wrist
-    def draw_shoes():
-        for cur, s, fx, fy in leg_pts:
-            if view in ("front", "back", "q", "qr"):
-                flip = s if view in ("front", "back") else (1 if view == "qr" else -1)
-            else:
-                flip = 1 if view == "sider" else -1
-            out.append(part("shoes", (shoe_fn or shoe)(fx - flip*lw*0.7, fy + lw*0.9, lw*2.4, lw*1.5, flip, shoes)))
-    if not skirt:
+        if not whole:                              # ...and lay the opening over their tops, as a cuff sits over a wrist
+            out.append(part("skirt", opening(cx, hem_y, b, ry, skirt)))
+    if not skirt and whole:                     # each leg whole, far to near: a leg that crosses the other covers it
+        for li in leg_order:
+            out.append(part("legs", tube(cpath(leg_pts[li][0]), lw, pants if garments == "skin" else skin)))
+            if shoes_under: draw_shoe(li)
+            if garments == "volume": trouser(li)
+            if not shoes_under: draw_shoe(li)
+    elif not skirt:
         for cur, s, fx, fy in leg_pts:
             out.append(part("legs", tube(cpath(cur), lw, pants if garments == "skin" else skin)))
         if shoes_under: draw_shoes()
         if garments == "volume":
-            for cur, s, fx, fy in leg_pts:
-                out.append(part("legs", sleeve(cur, lw, pants, frac=hem_frac, ratio=1.6, cuff_ry=cuff_ry if hem_ry is None else hem_ry, tuck=garment_tuck)))
-    if skirt or not shoes_under: draw_shoes()
+            for i in (0, 1): trouser(i)
+    if (skirt and not whole) or (not skirt and not whole and not shoes_under): draw_shoes()
     if mid:
         out.append(part("mid", mid(g)))
     # ---- torso ----
@@ -432,15 +508,26 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
     # ---- arms ----
     arm_len = (y1 + legs_len*0.22) - (y0 + sw*0.1)
     arm_pts = []
+    out_, down_ = SHOULDERS.get(shoulders, shoulders) if not isinstance(shoulders, (tuple, list)) else shoulders
     for i, s in enumerate((-1, 1)):
-        ax = cx + dx_sh + s*(sw/2 - lw*0.3); ay = y0 + sw*0.12
+        if shoulders == "classic":                 # the dojo's roots: tucked under the chin
+            ax = cx + dx_sh + s*(sw/2 - lw*0.3); ay = y0 + sw*0.12
+        elif view in ("side", "sider"):            # in profile the shoulder sits mid-torso, a little toward the back
+            ax = cx + dx_sh + (1 if view == "side" else -1)*sw*0.06; ay = y0 + sw*0.14 + down_*lw
+        else:                                      # out from the top corner of the bean, down below the chin; the near
+            # shoulder of a three-quarter view sits further out, so its sleeve caps the torso's edge, not the chest
+            o = out_ + (0.3 if shoulders == "low" and view in ("q", "qr", "qb", "qbr") and i == near else 0.0)
+            ax = cx + dx_sh + s*(sw/2 + o*lw); ay = y0 + sw*0.14 + down_*lw
         if arms and arms[i]:
             hx, hy = ax + arms[i][0]*lw, ay + arms[i][1]*lw
             bow = -0.2*s
         else:
             hx, hy = cx + s*(r + lw*0.7), ay + arm_len
             bow = 0.1*s
+        ab = arm_bow[i] if isinstance(arm_bow, (tuple, list)) else arm_bow
+        if ab is not None: bow = ab*s
         arm_pts.append((limb_curve((ax, ay), (hx, hy), bow), s, hx, hy))
+        g.setdefault("arm_roots", []).append((ax, ay))
     def draw_arm(i):
         cur, s, hx, hy = arm_pts[i]
         o = [tube(cpath(cur), lw, skin)]
@@ -450,19 +537,39 @@ def figure(cx, ground, head_h=110, heads=4.7, belly_r=62, sw_f=0.72, lw=30, view
         rot = math.degrees(math.atan2(-ty, tx)) - 90   # fingers continue along the limb
         px, py = hx + tx*lw*0.12, hy + ty*lw*0.12
         pr = props[i](px, py, rot + hand_rot[i], lw*0.38*hand_scale[i]) if callable(props[i]) else props[i]
-        o.append(hand(px, py, hands[i], fw=lw*0.38, rot=rot + hand_rot[i], fill=skin, wrist=False, scale=hand_scale[i], prop=pr, palm=hand_palm[i]))
+        pa, join = hand_palm[i], ""
+        if whole:              # the palm at least as wide as the wrist, and the arm's fill run over the palm's outline:
+            # one silhouette from shoulder to fingertips (a narrower palm left the arm's round end showing past it)
+            pa = max(pa, 0.5/(0.38*1.35*hand_scale[i]))
+            L = math.hypot(cur[3][0] - cur[0][0], cur[3][1] - cur[0][1]) or 1
+            t0 = max(1 - 1.1*lw/L, sleeve_frac + 0.12 if garments == "volume" else 0.5)   # the wrist, clear of the cuff
+            if t0 < 0.97: join = tube_fill(cpath(split(*cur, t0)[1]), lw, skin)
+        o.append(hand(px, py, hands[i], fw=lw*0.38, rot=rot + hand_rot[i], fill=skin, wrist=False, scale=hand_scale[i], prop=pr, palm=pa, join=join))
         return "\n".join(o)
-    near = {"q": 0, "qb": 1, "side": 0, "qr": 1, "qbr": 0, "sider": 1}.get(view)
-    far_first = view in ("q", "qr", "qb", "qbr")
-    if far_first:
-        # far arm goes behind the torso: re-insert before the torso block
-        torso_idx = len(out) - (3 if garments == "volume" else 1) - (1 if shadow else 0) - (1 if mid else 0)
-        out.insert(torso_idx, part("arm-far", draw_arm(1 - near)))
-        out.append(part("arm-near", draw_arm(near)))
-    elif view in ("side", "sider"):
-        out.append(part("arm-near", draw_arm(near)))
-    else:
-        out.append(part("arm", draw_arm(0))); out.append(part("arm", draw_arm(1)))
+    zs = []
+    for i in (0, 1):
+        z = arm_z[i] if isinstance(arm_z, (tuple, list)) else arm_z
+        beside = arm_pts[i][1]*(arm_pts[i][2] - (cx + dx_sh)) > r*0.8      # the hand out past its own side of the body
+        if z is None and near is None:   # front and back: an arm beside the body is tucked behind its edge (so the
+            # shoulder doesn't show as a cap on the chest); one reaching in front of it or across it comes in front
+            z = "front" if not whole or not beside else "behind"
+        elif z is None:        # three-quarter: the far arm goes behind (unless it reaches across the chest), the near one
+            # in front; in profile the far one hides
+            if i == near: z = "front"
+            elif view in ("q", "qr", "qb", "qbr"): z = "front" if whole and not beside else "behind"
+        zs.append(z)
+    arm_order = [0, 1] if near is None else [1 - near, near]
+    if front_arm is not None: arm_order = [1 - front_arm, front_arm]
+    torso_idx = len(out) - (3 if garments == "volume" else 1) - (1 if shadow else 0) - (1 if mid else 0)
+    g["layers"] = dict(arm_z=list(zs), arm_order=list(arm_order), leg_order=list(leg_order))   # as drawn: for editors
+    for i in arm_order:        # behind: under the torso (and under mid, the tail); front: over it; "hidden": not drawn
+        if zs[i] == "behind":
+            out.insert(torso_idx, part("arm-far", draw_arm(i))); torso_idx += 1
+    for i in arm_order:
+        if zs[i] == "front":
+            out.append(part("arm" if near is None else ("arm-near" if i == near else "arm-far"), draw_arm(i)))
+    if collar is None:         # only where enough of the opening shows below the chin to read as one
+        collar = (y0 + sw*0.29) - (head_y + head_h) >= 3*LW
     if garments == "volume" and collar:
         out.append(part("collar", opening(cx + dx_sh, y0 + sw*0.16, head_w*0.66, sw*0.13, shirt)))
     # ---- head ----
