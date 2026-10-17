@@ -222,6 +222,7 @@ prh = {**pr, "head": {"sha": "abc"}}
 chk = {7: {"pr": {**prh, "state": "open"}, "statuses": [{"status": "pending", "context": "ci"}, {"status": "success", "context": "lint"}]}}
 run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh], None, chk), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert "# Checks\n- ci: pending\n- lint: success\n\n# Diff" in seen["user"], seen["user"]
+assert "means that context reported success" in seen["system"] and "tests or builds passed" not in seen["system"]
 assert "evidence you can rely on" in seen["system"] and "pending check is not yet evidence" in seen["system"]
 run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert "# Checks\n(checks unavailable)\n\n# Diff" in seen["user"], seen["user"]
@@ -395,6 +396,12 @@ assert h.call("open_pr", {"title": "T", "summary": "round two"}) == "updated PR 
 assert w.patched[0][0] == 9 and "round two" in w.patched[0][1]["body"] and "Closes #1" in w.patched[0][1]["body"]
 h2 = tm.Hands(2, "time/card-2"); h2.label = "kimi"
 assert h2.call("open_pr", {"title": "T", "summary": "s"}) == "opened PR #42" and len(w.opened) == 1, "a closed PR is not reopened"
+# no duplicate "Closes #N": added when the summary lacks it, left alone when it has it (#1 is not satisfied by #12)
+for summ, n in (("s", 1), ("s\n\nCloses #1", 1), ("s\n\ncloses #1.", 1), ("s\n\nCloses #12", 2)):
+    w = World([], prs=[{"number": 9, "state": "open", "head": {"ref": "time/card-1"}}]); tm.http = w.http
+    h = tm.Hands(1, "time/card-1"); h.label = "kimi"; h.call("open_pr", {"title": "T", "summary": summ})
+    body = w.patched[0][1]["body"]
+    assert body.lower().count("closes #1") == n and body.count("Closes #1\n") + body.count("Closes #1.") <= 1, (summ, body)
 # the Cursor worker answers an objection too: on the PR's own branch, no new PR, the review text in the prompt
 w = objected_world()
 w = run(w, {**K, "TIME_WORKER": "cursor"})

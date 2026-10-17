@@ -875,7 +875,8 @@ class Hands:
             note = ("\n" + "; ".join(kept)) if kept else ""
             return f"exit {p.returncode}\n{(p.stdout + p.stderr)[-6000:]}{note}"
         if name == "open_pr":
-            body = f"{a['summary']}\n\nCloses #{self.n}\n\n<sub>worker: {self.label} via Time</sub>"
+            closes = "" if re.search(rf"\bcloses #{self.n}(?!\d)", a["summary"], re.I) else f"\n\nCloses #{self.n}"  # once only
+            body = f"{a['summary']}{closes}\n\n<sub>worker: {self.label} via Time</sub>"
             if (old := open_pr_for(self.branch)):  # a revision: the PR is open already, so say what changed there
                 gh("PATCH", f"/repos/{REPO}/pulls/{old['number']}", {"title": a["title"][:200], "body": body}, as_time=True)
                 self.pr = old["number"]
@@ -1026,7 +1027,7 @@ def review(card: dict, pr: dict, done: str) -> dict:
                   + REVIEW_PROMPT.format(pr=pr["number"], repo=REPO, n=card["number"], title=card["title"], done=done)
                   .replace("Leave one PR comment that", "Your reply is posted as the PR comment. It")
                   + "\nThe checks listed under # Checks are the head commit's real statuses: evidence you can rely on "
-                    "(a success there means those tests or builds passed). A pending check is not yet evidence either way.")
+                    "(a success there means that context reported success). A pending check is not yet evidence either way.")
         text = think(seat, model, effort, system, user)
         gh("POST", f"/repos/{REPO}/issues/{pr['number']}/comments",
            {"body": f"{text}\n\n<sub>review by {seat} · {model or SEATS[seat]['default']} · via Time</sub>"})
