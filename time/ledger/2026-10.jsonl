@@ -183,3 +183,13 @@
 {"at":"2026-10-17T18:23:24Z","model":"claude-sonnet-5-5","in":52210,"out":1496,"usd":0.11938}
 {"at":"2026-10-17T18:23:31Z","model":"claude-sonnet-5-5","in":53661,"out":655,"usd":0.113872}
 {"at":"2026-10-17T18:23:43Z","model":"claude-sonnet-5-5","in":54212,"out":1549,"usd":0.123914}
+{"at":"2026-10-17T18:27:28Z","model":"claude-haiku-5-5","in":14087,"out":3022,"usd":0.00292}
+{"at":"2026-10-17T18:27:32Z","model":"claude-sonnet-5-5","in":1363,"out":26,"usd":0.002986}
+{"at":"2026-10-17T18:27:34Z","model":"claude-sonnet-5-5","in":1891,"out":100,"usd":0.004782}
+{"at":"2026-10-17T18:27:36Z","model":"claude-sonnet-5-5","in":3064,"out":115,"usd":0.007278}
+{"at":"2026-10-17T18:27:38Z","model":"claude-sonnet-5-5","in":5804,"out":98,"usd":0.012588}
+{"at":"2026-10-17T18:27:44Z","model":"claude-sonnet-5-5","in":7456,"out":857,"usd":0.023482}
+{"at":"2026-10-17T18:27:49Z","model":"claude-sonnet-5-5","in":8267,"out":820,"usd":0.024734}
+{"at":"2026-10-17T18:27:55Z","model":"claude-sonnet-5-5","in":9230,"out":918,"usd":0.02764}
+{"at":"2026-10-17T18:27:59Z","model":"claude-sonnet-5-5","in":10126,"out":226,"usd":0.022512}
+{"at":"2026-10-17T18:28:11Z","model":"claude-haiku-5-5","in":2565,"out":1767,"usd":0.00114}
