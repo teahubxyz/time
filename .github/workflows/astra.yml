@@ -1,6 +1,8 @@
 name: astra
 # The slow loop: once a day, one planning call (TIME_ASTRA_SEAT, default `opus`) reads the board and the ledger and
-# labels a few cards `ready` for the heartbeat. It writes its reasoning to the "Astra log" issue; reply there to steer it.
+# labels a few cards `queued` for the heartbeat to promote. It writes its reasoning to the "Astra log" issue; reply there to steer it.
+# With TIME_ASTRA_PITCH (and TIME_ASTRA_BOARD) set, several seats propose slates and a board ranks them, the venture
+# ceremony turned inward: only cards two seats want get queued.
 # Guardrails are code: TIME_ASTRA_MAX_READY (2) / TIME_ASTRA_MAX_NEW (2) per day, nothing while an `andon` is open,
 # and the same spend caps as every other call. Off until TIME_ASTRA=on.
 on:
@@ -27,6 +29,8 @@ jobs:
           TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # repo secret: Astra's issues and labels go out as the `time` bot
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
           TIME_ASTRA_SEAT: ${{ vars.TIME_ASTRA_SEAT }}
+          TIME_ASTRA_PITCH: ${{ vars.TIME_ASTRA_PITCH }}   # the board: seats that each propose a slate (unset: one planner)
+          TIME_ASTRA_BOARD: ${{ vars.TIME_ASTRA_BOARD }}   # the board: seats that rank the field (default: the pitching seats)
           TIME_ASTRA_MAX_READY: ${{ vars.TIME_ASTRA_MAX_READY }}
           TIME_ASTRA_MAX_NEW: ${{ vars.TIME_ASTRA_MAX_NEW }}
           TIME_SPINE: ${{ vars.TIME_SPINE }}
