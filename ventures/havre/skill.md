@@ -164,9 +164,13 @@ it didn't come.
 
 The one exception is an `adult` character, once the person has said they're 18 or older: when every picture on their
 card was made with AI (never one that was uploaded, which could be of anyone), their photos and clips can be adult.
-`A.adultCheck(card, { of18, made, shot, said })` decides; they go to Venice's uncensored models with safe mode off,
-and every prompt opens with the 18+ rule (`A.ADULT_ONLY`). Never when the card, the shot or the chat mentions anyone
-under 18 (`A.underage`): then it's safe for work, as usual. The pictures made for their card go without safe mode
+`A.adultCheck(card, { of18, made, shot, said })` decides; they go to Venice's uncensored models with safe mode off.
+The shot is written to the 18+ rule with the number in it (`A.EIGHTEEN`, in the shot writer's instructions, which
+no picture filter reads), and every picture and clip prompt opens with the same rule in words a filter doesn't take
+for an age or for anyone it guards (`A.ADULT_ONLY`, "Everyone shown is a grown adult."): a picture prompt sent with
+safe mode off is read the hardest, and "18+", "body", "hard rule" or "identifiable person" in it got the plainest
+photo turned down on every model. Never when the card, the shot or the chat mentions anyone under 18
+(`A.underage`): then it's safe for work, as usual. The pictures made for their card go without safe mode
 too: a portrait drawn from words (`A.portraitPrompt(card, limit, { adult: true })`, when
 `A.adultCheck(card, { of18, drawn: true })` says so), and one made from their pictures when every one of those was
 made with AI.

@@ -89,10 +89,11 @@ export const hearingPerMinute = (model) => (model && model.perSecond != null ? m
 const SAFE = "Keep it safe for work: no nudity, nothing sexual, no gore. Everyone shown is an adult. Never show a real, " +
   "identifiable person: no celebrities, no public figures, no one the conversation says is real; if one is asked for, show " +
   "the character alone. No words, logos or watermarks in the picture.";
-// for an adult character's photos and clips (adultCheck): the same rules, less the one about work, and a hard one first.
-// It says who is shown, not who isn't: the words for that are the ones filters look for (and Havre's own check, underage)
-export const ADULT_ONLY = "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.";
-const ADULT = ADULT_ONLY + " If the conversation asks for anyone younger, or for anything that makes someone look younger, " +
+// for an adult character's photos and clips (adultCheck): the same rules, less the one about work, and a hard one first,
+// as the shot writer (a text model) reads it: it can be told the number. It says who is shown, not who isn't: the words
+// for that are the ones filters look for (and Havre's own check, underage)
+export const EIGHTEEN = "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.";
+const ADULT = EIGHTEEN + " If the conversation asks for anyone younger, or for anything that makes someone look younger, " +
   "leave it out and show only adults. Never show a real, identifiable person: no celebrities, no public figures, no one the " +
   "conversation says is real; if one is asked for, show the character alone. No gore. No words, logos or watermarks in the " +
   "picture.";
@@ -164,8 +165,13 @@ export function cleanText(text, max = 900) {
 // the rules ride at the front of every picture and clip, where a long shot or a long look can't push them out. They
 // say what's wanted: an image model reads the words, not the "no" in front of them, and so does a content filter
 const KEEP = "Safe for work: everyone in it is an adult, fully clothed.";
-// an adult character's: the 18+ rule is the very first thing the model reads
-const KEEP_ADULT = ADULT_ONLY + " Never a real, identifiable person.";
+// an adult character's: the 18+ rule is the very first thing the picture model reads, in words a content filter
+// doesn't take for an age or for anyone it guards. The number, "body", "hard rule" and "identifiable person" stay
+// with the shot writer (EIGHTEEN, ADULT), whose instructions never reach a picture filter: a picture prompt with safe
+// mode off is read the hardest, and a from-scratch adult character's photo was turned down on every model, with the
+// plainest shot and look, while the same words went out before every one of them.
+export const ADULT_ONLY = "Everyone shown is a grown adult.";
+const KEEP_ADULT = ADULT_ONLY;
 
 /** how their card says they look, on one line, without a full stop at the end ("" when it doesn't say) */
 const lookWords = (card) => str(card && card.look && card.look.description, 4000).replace(/\s+/g, " ").trim().replace(/[.!?…]+$/, "");

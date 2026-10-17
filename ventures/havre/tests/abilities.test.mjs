@@ -131,7 +131,7 @@ test("pictures made from their pictures keep their face and follow how their car
   const drawn = A.portraitPrompt(long);
   assert.ok(drawn.length <= 1500);
   assert.match(drawn, /… Safe for work: everyone in it is an adult, fully clothed\. Head and shoulders, soft light, plain background, no text\.$/);
-  assert.match(A.portraitPrompt(long, 1500, { adult: true }), /^Hard rule.*Portrait photo of Ines Corbel.*… Head and shoulders, soft light, plain background, no text\.$/);
+  assert.match(A.portraitPrompt(long, 1500, { adult: true }), /^Everyone shown is a grown adult\. Portrait photo of Ines Corbel.*… Head and shoulders, soft light, plain background, no text\.$/);
   assert.match(A.portraitPrompt({ ...bare, tagline: "Ferry pilot." }), /an original adult character: Ferry pilot\. Safe for work/);
   assert.match(A.portraitPrompt({ ...bare, tagline: "" }), /an original adult character: an original character\. Safe for work/);
 });
@@ -141,12 +141,15 @@ const mara = C.normalizeCard({ name: "Mara Vell", persona: "You are Mara Vell, a
   portrait: "data:image/webp;base64,AAAA", look: { references: ["data:image/webp;base64,BBBB"] } });
 
 test("adult characters: the 18+ rule is the first thing every photo and clip prompt says, and the shot's", () => {
-  assert.equal(A.ADULT_ONLY, "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.");
+  // the shot writer, a text model, is told the number; the picture model reads the same rule in words no filter takes
+  // for an age (or for anyone it guards): a picture prompt with safe mode off is read the hardest
+  assert.equal(A.EIGHTEEN, "Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body.");
+  assert.equal(A.ADULT_ONLY, "Everyone shown is a grown adult.");
   for (const p of [A.photoPrompt(mara, "On the stage.", 1, 1500, { adult: true }), A.photoPrompt(mara, "On the stage.", 2, 1500, { adult: true }),
     A.clipPrompt(mara, "She bows.", 2500, { adult: true })]) {
-    assert.ok(p.startsWith(A.ADULT_ONLY), p);
+    assert.ok(p.startsWith(A.ADULT_ONLY + " The reference picture"), p);
     assert.ok(!/Safe for work/.test(p));
-    assert.match(p, /Never a real, identifiable person\./);
+    assert.ok(!/\d|identifiable|hard rule|body/i.test(p), "no age, no one it guards, nothing for a filter to read: " + p);
   }
   assert.ok(A.photoPrompt(mara, "x ".repeat(3000), 1, 400, { adult: true }).startsWith(A.ADULT_ONLY), "a long shot can't push it out");
   assert.ok(A.clipPrompt(mara, "x ".repeat(3000), 400, { adult: true }).startsWith(A.ADULT_ONLY));
@@ -156,7 +159,7 @@ test("adult characters: the 18+ rule is the first thing every photo and clip pro
   assert.equal(A.shotMessages(mara, [], "", "clip", { adult: true })[0].content, A.CLIP_SYSTEM_ADULT);
   assert.equal(A.moveMessages(mara, [], { adult: true })[0].content, A.MOVE_SYSTEM_ADULT);
   for (const s of [A.PHOTO_SYSTEM_ADULT, A.CLIP_SYSTEM_ADULT, A.MOVE_SYSTEM_ADULT]) {
-    assert.ok(s.includes(A.ADULT_ONLY), "the shot is written to the same rule");
+    assert.ok(s.includes(A.EIGHTEEN), "the shot is written to the 18+ rule, number and all");
     assert.ok(!/safe for work/i.test(s));
     assert.match(s, /Never show a real, identifiable person/);
   }
@@ -173,7 +176,7 @@ test("the words Havre puts in a picture or a clip are none a content filter turn
       A.clipPrompt(bare, "She waves.", 2500, { adult }), A.portraitPrompt(who, 1500, { adult }), A.portraitPrompt({ ...bare, tagline: "" }, 1500, { adult })]) {
       assert.ok(!TRIPS.test(p), `“${(p.match(TRIPS) || [])[0]}” in: ${p}`);
       assert.equal(A.underage(p), "", p);
-      if (adult) assert.ok(p.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older, with a grown adult face and body."), p);
+      if (adult) assert.ok(p.startsWith("Everyone shown is a grown adult. "), p);
       else assert.match(p, /Safe for work: everyone in it is an adult, fully clothed\./);
     }
   }
@@ -190,8 +193,8 @@ test("the words Havre puts in a picture or a clip are none a content filter turn
 test("adult characters: a portrait for their card opens with the 18+ rule too, and is drawn whatever pictures they have", () => {
   const p = A.portraitPrompt(mara, 1500, { adult: true });
   assert.ok(p.startsWith(A.ADULT_ONLY), p);
-  assert.match(p, /Never a real, identifiable person\. Portrait photo of Mara Vell, an original adult character: /);
-  assert.ok(!/Safe for work/.test(p));
+  assert.match(p, /^Everyone shown is a grown adult\. Portrait photo of Mara Vell, an original adult character: /);
+  assert.ok(!/Safe for work|\d|identifiable/.test(p));
   assert.ok(A.portraitPrompt({ ...mara, look: { description: "x ".repeat(3000) } }, 400, { adult: true }).startsWith(A.ADULT_ONLY), "a long look can't push it out");
   assert.match(A.portraitPrompt(mara), /Safe for work/, "without adult, as before");
   // drawn from words, it's made from none of the pictures on their card: those don't count, everything else does
@@ -462,7 +465,8 @@ test("venice: an error carries Venice's answer as it came, and a picture or clip
 });
 
 test("the words in a prompt a content filter may weigh, for what venice saw", () => {
-  assert.deepEqual(A.filterWords(A.photoPrompt(mara, "On the stage, in a navy coat.", 1, 1500, { adult: true })), ["18"], "the 18+ rule's own age, once");
+  assert.deepEqual(A.filterWords(A.photoPrompt(mara, "On the stage, in a navy coat.", 1, 1500, { adult: true })), [], "an adult photo's prompt: none");
+  assert.deepEqual(A.filterWords(A.EIGHTEEN), ["18"], "the number stays with the shot writer");
   assert.deepEqual(A.filterWords(A.photoPrompt(ines, "On deck.", 1, 1500)), [], "a safe-for-work photo: none");
   assert.deepEqual(A.filterWords("A young woman in her early twenties, a schoolgirl's satchel, 21 years old, with her little sister, a girl of nine, and their son."),
     ["young", "schoolgirl", "21", "girl", "son"]);

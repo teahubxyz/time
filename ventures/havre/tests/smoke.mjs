@@ -120,6 +120,8 @@ const handWritten = (o) => "Sure! Here it is:\n```json\n" + JSON.stringify(o, nu
 const talks = () => seen.chats.filter((b) => !/^You (decide whether|keep the memory)/.test(String((b.messages[0] || {}).content || "")));
 /** words a content filter turns a prompt down for: none of them are Havre's own (abilities.test.mjs has the rest) */
 const TRIPS = /\b(?:sex\w*|nud\w*|naked|gor[ey]|minors?|child\w*|kids?|school\w*|teen\w*|under[\s-]?(?:18|eighteen|age\w*)|young\w*)\b/i;
+// and in a picture prompt sent with safe mode off, which a filter reads the hardest: no age, nothing it guards
+const ADULT_TRIPS = /\d|identifiable|hard rule|\bbody\b/i;
 const multipart = (req) => (req.headers()["content-type"] || "").startsWith("multipart/form-data");
 const CHARACTERS = [
   { slug: "sable-penrose", name: "Sable Penrose", description: "Your new neighbor needs help moving in.", author: "btrzm",
@@ -913,8 +915,8 @@ async function main() {
     const adultEdit = seen.edits.at(-1).body;
     assert.equal(adultEdit.modelId || adultEdit.model, "qwen-edit-uncensored");
     assert.equal(adultEdit.safe_mode, false, "safe mode off, for her");
-    assert.ok(adultEdit.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), adultEdit.prompt);
-    assert.ok(!TRIPS.test(adultEdit.prompt), "nothing in it for a content filter to turn down: " + adultEdit.prompt);
+    assert.ok(adultEdit.prompt.startsWith("Everyone shown is a grown adult. The reference picture"), adultEdit.prompt);
+    assert.ok(!TRIPS.test(adultEdit.prompt) && !ADULT_TRIPS.test(adultEdit.prompt), "nothing in it for a content filter to turn down: " + adultEdit.prompt);
     await has(page, "#log .line.media .cap", /photo · Qwen Edit Uncensored · \$0\.04 · 18\+ · save/);
     // a clip from her: an uncensored model, priced first, its shot written to the 18+ rule too
     await page.getByRole("button", { name: "ask for a clip" }).click();
@@ -952,8 +954,8 @@ async function main() {
     assert.equal(seen.generated.length, drawnBefore + 1);
     assert.equal(adultDrawn.model, "krea-2-turbo");
     assert.equal(adultDrawn.safe_mode, false, "no safe mode for an adult character's portrait");
-    assert.ok(adultDrawn.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), adultDrawn.prompt);
-    assert.ok(!TRIPS.test(adultDrawn.prompt), adultDrawn.prompt);
+    assert.ok(adultDrawn.prompt.startsWith("Everyone shown is a grown adult. Portrait photo of Ines Corbel"), adultDrawn.prompt);
+    assert.ok(!TRIPS.test(adultDrawn.prompt) && !ADULT_TRIPS.test(adultDrawn.prompt), adultDrawn.prompt);
     assert.equal(blurNext, true, "so nothing was blurred");
     blurNext = false;
     await has(page, "#adult-note", /^their photos and clips can be adult/);
@@ -965,7 +967,8 @@ async function main() {
     assert.equal(seen.edits.length, editedBefore + 1);
     assert.equal(sheetEdit.modelId || sheetEdit.model, "qwen-edit-uncensored");
     assert.equal(sheetEdit.safe_mode, false);
-    assert.ok(sheetEdit.prompt.startsWith("Hard rule, 18+ only: everyone shown is an adult, 18 or older"), sheetEdit.prompt);
+    assert.ok(sheetEdit.prompt.startsWith("Everyone shown is a grown adult. The reference picture"), sheetEdit.prompt);
+    assert.ok(!ADULT_TRIPS.test(sheetEdit.prompt), sheetEdit.prompt);
     await has(page, "#adult-note", /^their photos and clips can be adult/);
     // with adult pictures switched off, safe mode is back on, and a blur says why
     await page.getByRole("button", { name: "abilities" }).click();
