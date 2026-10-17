@@ -478,6 +478,94 @@ if _sh.which("node"):
         assert res.returncode == 0 and "aicharts: all good" in res.stdout, res.stdout[-2000:] + res.stderr[-2000:]
         print("ALL OK 41")
 
+# ---------- Astra: the single planner, then the board for internal work (offline: fake forge, scripted seats) ----------
+aspec = importlib.util.spec_from_file_location("astra", Path(__file__).resolve().parent / "astra.py")
+astra = importlib.util.module_from_spec(aspec); aspec.loader.exec_module(astra)
+assert astra.vt.tm is astra.tm   # the board's seats spend through Astra's own governor and ledger
+
+def astra_world(issues):
+    """One day's forge for Astra: these open issues, no PRs, nothing closed, no spend, no spine. Records what Astra does."""
+    rec = {"labels": [], "new": [], "comments": []}
+    nums = {"n": 100}
+    def gh(method, path, body=None, **kw):
+        if method == "GET" and ("state=closed" in path or "/pulls?" in path or "/comments" in path):
+            return []
+        if method == "GET" and "/contents/" in path:
+            raise RuntimeError("GET -> 404 (no spine in the test)")
+        raise AssertionError(f"astra made an unexpected call: {method} {path}")
+    astra.tm.gh = gh
+    astra.tm.issues = lambda q: [dict(i) for i in issues]
+    astra.tm.budget = lambda: (0.0, 5.0, 0.0, 100.0)
+    astra.tm.is_time = lambda c: True
+    astra.tm.label = lambda n, name: rec["labels"].append((n, name))
+    def new_issue(title, body, labels):
+        nums["n"] += 1; rec["new"].append((nums["n"], title, body, labels)); return {"number": nums["n"]}
+    astra.tm.new_issue = new_issue
+    astra.tm.comment = lambda n, text, meta: rec["comments"].append((n, text, meta))
+    return rec
+
+def _issue(n, title, body="", labels=()):
+    return {"number": n, "title": title, "body": body, "labels": [{"name": l} for l in labels], "updated_at": "2026-10-17T00:00:00Z"}
+
+astra_issues = [_issue(1, "Astra log", "the log", ["astra"]),
+                _issue(2, "Fix the flaky heartbeat test", "- pin the clock\n\nDONE: test green three runs"),
+                _issue(3, "Big refactor", "- everything"),                       # no DONE line: never queueable
+                _issue(4, "Already moving", "- x\n\nDONE: y", ["ready"])]         # already in flight: never queued again
+for _k in ("TIME_ASTRA_PITCH", "TIME_ASTRA_BOARD", "TIME_ASTRA_MAX_NEW", "TIME_ASTRA_MAX_READY"):
+    os.environ.pop(_k, None)
+
+# the single planner, as before: one call, its JSON applied under the guards
+rec = astra_world(astra_issues)
+astra.tm.think = lambda seat, model, effort, system, user: (
+    '{"note": "finish first", "queue": [4, 2, 3], "new": [{"title": "Add a retry to the heartbeat", "body": "- retry once\\n\\nDONE: tests green", "queue": true}]}')
+assert astra.tick() == 0
+assert rec["labels"] == [(2, "queued"), (101, "queued")], rec["labels"]   # #4 is already moving; #3 falls outside the cap of two
+assert [t for _, t, _, _ in rec["new"]] == ["Add a retry to the heartbeat"] and "DONE: tests green" in rec["new"][0][2]
+(n, text, meta), = rec["comments"]
+assert n == 1 and "Astra (opus)" in text and "Queued: #2" in text and "New cards: #101" in text and "a human's): #4" in text and meta["board"] == [], text
+print("ALL OK astra 1")
+
+# the board: two planners each propose a slate, the field folds duplicates, the board ranks it, the quorum decides
+os.environ["TIME_ASTRA_PITCH"] = "sonnet, haiku"
+slates = {"sonnet": '{"note": "unblock the test, then a small retry", "cards": [{"issue": 2, "why": "flaky"}, '
+                    '{"title": "Add a retry to the heartbeat", "body": "- retry once\\n\\nDONE: tests green", "why": "cheap"}, {"issue": 4, "why": "move it"}]}',
+          "haiku": '{"note": "same test; and a rewrite", "cards": [{"issue": 2, "why": "flaky too"}, '
+                   '{"title": "Add a retry to the heartbeat!", "body": "- retry twice\\n\\nDONE: green", "why": "same idea"}, '
+                   '{"title": "Rewrite everything", "body": "- all of it\\n\\nDONE: never", "why": "big"}, {"issue": 3, "why": "no done line"}]}'}
+ranks = {"sonnet": '{"ranking": ["#2", "new-2", "new-3"], "reason": "finish first"}',
+         "haiku": '{"ranking": ["new-2", "#2", "new-2"], "reason": "small and checkable"}'}
+def seated(seat, model, effort, system, user):
+    assert "Board:" in user or "ranking the cards" in user, (system[:60], user[:60])   # slates read the board; the vote reads the field
+    return slates[seat] if "one of the planners" in system else ranks[seat]
+astra.tm.think = seated
+rec = astra_world(astra_issues)
+assert astra.tick() == 0
+assert rec["labels"] == [(2, "queued"), (101, "queued")], rec["labels"]
+assert [t for _, t, _, _ in rec["new"]] == ["Add a retry to the heartbeat"], rec["new"]   # "Rewrite everything" had one backer: never opened
+(n, text, meta), = rec["comments"]
+assert "board of sonnet, haiku" in text and meta["board"] == ["sonnet", "haiku"], text
+assert "| #2 Fix the flaky heartbeat test | sonnet, haiku | 5 | 2 | picked |" in text, text
+assert "| new-2 Add a retry to the heartbeat | sonnet, haiku | 5 | 2 | picked |" in text, text
+assert "| new-3 Rewrite everything | haiku | 1 | 1 |  |" in text and "`haiku` ranked new-2, #2:" in text, text
+assert "| #4" not in text and "| #3" not in text, text   # the guards dropped them before the vote, so the board never saw them
+print("ALL OK astra 2")
+
+# no quorum: a card one seat alone wants is not queued; the cap on new cards still holds
+ranks = {"sonnet": '{"ranking": ["new-3"], "reason": "bold"}', "haiku": '{"ranking": [], "reason": "nothing worth it"}'}
+rec = astra_world(astra_issues)
+assert astra.tick() == 0 and rec["labels"] == [] and rec["new"] == [] and "No card was wanted by two seats" in rec["comments"][0][1]
+ranks = {"sonnet": '{"ranking": ["new-2", "#2"], "reason": "r"}', "haiku": '{"ranking": ["new-2", "#2"], "reason": "r"}'}
+os.environ["TIME_ASTRA_MAX_NEW"] = "0"
+rec = astra_world(astra_issues)
+assert astra.tick() == 0 and rec["labels"] == [(2, "queued")] and rec["new"] == [], (rec["labels"], rec["new"])
+os.environ["TIME_ASTRA_BOARD"] = "opus"   # a board of one seat can never reach the quorum of two
+ranks["opus"] = '{"ranking": ["#2"], "reason": "r"}'
+rec = astra_world(astra_issues)
+assert astra.tick() == 0 and rec["labels"] == [] and "board of opus" in rec["comments"][0][1]
+for _k in ("TIME_ASTRA_PITCH", "TIME_ASTRA_BOARD", "TIME_ASTRA_MAX_NEW"):
+    os.environ.pop(_k, None)
+print("ALL OK astra 3")
+
 # ---------- venture loop: still GitHub-shaped (Pages, author_association, per_page). Ported in its own card;
 # until then these run only with TIME_TEST_VENTURE=1 against the old fake.
 if not os.environ.get("TIME_TEST_VENTURE"):
