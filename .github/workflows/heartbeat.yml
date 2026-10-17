@@ -37,7 +37,11 @@ jobs:
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # user-level secret on teahubxyz (docs/decisions.md on the spine)
           TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # repo secret: the `time` bot opens and merges PRs (Gitea denies that to the Actions identity)
-          TIME_SEAT_CLAUDE: ${{ secrets.TIME_SEAT_CLAUDE }}   # the `claude` seat: the reviewer's verdict is a real Gitea review by its own user (#76)
+          TIME_SEAT_CLAUDE: ${{ secrets.TIME_SEAT_CLAUDE }}   # umbrella seat, retired once the per-seat tokens below are in use (#76)
+          TIME_SEAT_HAIKU: ${{ secrets.TIME_SEAT_HAIKU }}     # one Gitea user per seat (model line): a seat's verdict is a real review by its own user (#76)
+          TIME_SEAT_SONNET: ${{ secrets.TIME_SEAT_SONNET }}
+          TIME_SEAT_OPUS: ${{ secrets.TIME_SEAT_OPUS }}
+          TIME_SEAT_FABLE: ${{ secrets.TIME_SEAT_FABLE }}
           TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}   # org owners etc.; collaborators are trusted without being listed
           TIME_RUN_IMAGE: node:22-bookworm   # the worker's shell runs in a throwaway container, not next to these secrets
           TIME_MODE: ${{ vars.TIME_MODE }}
