@@ -281,6 +281,14 @@ assert not merged(w) and "objected" in w.posted[0][1]
 # protected paths -> human merges
 w = run(pr_world(files=[".github/workflows/ci.yml"]), {**K, "TIME_AUTOMERGE": "on"})
 assert not merged(w) and "protected paths" in w.posted[0][1]
+# the default protects all of .github/, the engine included; TIME_PROTECTED can narrow that to the workflow dirs, which stay
+# protected whatever it says
+w = run(pr_world(files=[".github/time/time.py", "CHANGELOG.md"]), {**K, "TIME_AUTOMERGE": "on"}); assert not merged(w)
+NARROW = ".github/workflows/,.gitea/workflows/,deploy,infra/,.env,secret"
+w = run(pr_world(files=[".github/time/time.py", "CHANGELOG.md"]), {**K, "TIME_AUTOMERGE": "on", "TIME_PROTECTED": NARROW}); assert merged(w)
+w = run(pr_world(files=[".gitea/workflows/ci.yml"]), {**K, "TIME_AUTOMERGE": "on", "TIME_PROTECTED": "deploy"})
+assert not merged(w) and "protected paths" in w.posted[0][1]
+os.environ.pop("TIME_PROTECTED", None)
 # failing or missing checks block the merge even when approved
 w = run(pr_world(checks=[{"status": "failure", "context": "ci"}]), {**K, "TIME_AUTOMERGE": "on"})
 assert not merged(w) and "checks are failing" in w.posted[0][1]

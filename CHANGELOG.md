@@ -18,6 +18,7 @@
 - The second fix round escalates to Kimi's code model (`venice:kimi code`) instead of grok 4.7: still a different model from the first round, at a fraction of the cost. `TIME_VENTURE_ESCALATE` overrides it.
 
 ### Added
+- `TIME_PROTECTED` now governs every protected path except the workflow directories (`.github/workflows/`, `.gitea/workflows/`), which stay a human's merge whatever it says. The default still protects all of `.github/`; a repo that trusts its reviewer can set `TIME_PROTECTED=.github/workflows/,.gitea/workflows/,deploy,infra/,.env,secret` so the engine under `.github/time/` merges itself on Approve + green like any other code.
 - Objections go back to the worker. `/time retry` on a card whose PR is open hands the worker the reviewer's latest comments (marked as the reviewer's, strangers' left out) on the same branch; `open_pr` on an open PR updates its description instead of failing; the card goes back to `dispatched`, so the next beat reviews again and an objection older than the push no longer counts.
 - A batch's children start in the tick that spawned them (GitHub lists a card made a moment ago only later, so they used to wait a tick).
 - Build briefs keep claims to what the code does: no promised features or schedules, and the trending repos are the wave a venture rides, never something it "builds on". Fix rounds take a failing claim off the page rather than building a feature in a hurry. In the first live batch, every fix round was a claim the code didn't back.

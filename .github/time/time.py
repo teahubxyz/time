@@ -542,7 +542,9 @@ def verdict(pr: dict, since: str) -> str | None:
 
 def touches_protected(pr_number: int) -> list[str]:
     paths = [p.strip() for p in (os.environ.get("TIME_PROTECTED") or DEFAULT_PROTECTED).split(",") if p.strip()]
-    paths = list(dict.fromkeys([".github/", ".gitea/", *paths]))  # workflows stay a human's merge whatever TIME_PROTECTED says
+    # workflows stay a human's merge whatever TIME_PROTECTED says; the rest is TIME_PROTECTED's call: the default keeps all
+    # of .github/, and a repo that trusts its reviewer can narrow it so the engine under .github/time/ lands like other code
+    paths = list(dict.fromkeys([".github/workflows/", ".gitea/workflows/", *paths]))
     files, page = [], 1
     while True:  # every file, not the first 100; a rename counts under both names
         batch = gh("GET", f"/repos/{REPO}/pulls/{pr_number}/files?limit=100&page={page}")
