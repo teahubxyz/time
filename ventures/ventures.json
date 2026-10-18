@@ -439,6 +439,22 @@
    "planned": "2026-10-18",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "huebrain",
+   "name": "Huebrain",
+   "one_liner": "Tap yes or no on 20 colors, watch a tiny neural net learn your taste live in your browser, and get a wallpaper of your color brain to send to a friend.",
+   "for_whom": "Dana, 31, repainting her living room with her partner. They can't agree on colors, and she wants a fun way to show what she actually likes before they argue over paint chips.",
+   "url": "https://huebrain.yolopreneur.lol/",
+   "pages": "https://huebrain.yolopreneur.lol/",
+   "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Huebrain&venture=huebrain&plan=Pro+%28early+access%29",
+   "signal": 152,
+   "card": 150,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "planned": "2026-10-18",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-18"
