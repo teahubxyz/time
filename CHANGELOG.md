@@ -35,4 +35,5 @@
 - The studio index at `/ventures/` wears the Time site's blueprint theme (title block, grid paper, type), with each launched venture's laptop screenshot.
 - The headless-Chrome check fails a launch page where something sits on top of the product (a page fixed to the screen's height lets the next section slide over it).
 - The board sees the studio's own ventures: pitches that repeat one (by slug, name or an earlier slug) are set aside before the vote, since the week's trending list barely moves from day to day.
+- Cards adopt an open PR that already closes them. A `ready` card with no beats and an open PR whose body closes it (or a card whose body says `PR: #N`) gets a `pr` beat with `adopted: true` and a review in the same tick, then lands through `land()` on Approve + green like any card PR, instead of launching a worker to build it again. No launch is counted and no worker budget is spent; closed and merged PRs are never adopted; dry-run says what it would adopt. Work built outside the worker (Codex, a seat's chat) no longer waits for a human merge.
 - Hands-off upgrade support with spec planner, auto-merge, and Venice worker integration

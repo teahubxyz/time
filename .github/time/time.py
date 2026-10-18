@@ -988,6 +988,26 @@ def linked_prs(prs: list[dict], n: int) -> list[dict]:
     return [p for p in prs if pat.search(p.get("body") or "")]
 
 
+def adoptable(prs: list[dict], card: dict) -> dict | None:
+    """An open PR built outside the worker that already answers this card: one whose body closes it, or the one the card's
+    own body names with `PR: #N`. Closed and merged PRs are never adopted."""
+    is_open = lambda p: p.get("state", "open") == "open" and not p.get("merged_at")
+    found = [p for p in linked_prs(prs, card["number"]) if is_open(p)]
+    if found:
+        return found[0]
+    m = re.search(r"^\s*PR:\s*#(\d+)\s*$", card.get("body") or "", re.M | re.I)
+    if not m:
+        return None
+    num = int(m.group(1))
+    p = next((p for p in prs if p.get("number") == num), None)
+    if p is None:  # older than the list tick() reads
+        try:
+            p = gh("GET", f"/repos/{REPO}/pulls/{num}")
+        except Exception:  # noqa: BLE001 - a bad number just means nothing to adopt
+            return None
+    return p if is_open(p) else None
+
+
 def pr_diff(number: int, limit: int = 100_000) -> str:
     req = urllib.request.Request(f"{GH}/repos/{REPO}/pulls/{number}.diff",
                                  headers={"Authorization": f"Bearer {os.environ['GITHUB_TOKEN']}"})
@@ -1112,6 +1132,23 @@ def tick() -> None:
     for card, last, done, blocked, capped, revision, revised_at in plan:
         n, state = card["number"], (last or {}).get("beat")
         try:
+            # work built outside the worker (Codex, a seat's chat): an open PR that already closes this card is reviewed and
+            # landed like any card PR, instead of launching a worker to build it again. No launch, no worker budget.
+            # `would-dispatch` is only a dry-run marker (nothing was built), so going live still adopts; a dry run doesn't repeat itself
+            if (state in (None, "needs-done") or (state == "would-dispatch" and mode == "live")) and not revision \
+                    and (adopt := adoptable(prs, card)):
+                if mode != "live":
+                    comment(n, f"⏱️ Time (dry run): would adopt open PR #{adopt['number']}, which already answers this card, "
+                            "and review it instead of dispatching a worker.\n\n"
+                            "- Goes for real once `TIME_MODE=live`", {"beat": "would-dispatch", "mode": mode, "adopt": adopt["number"]})
+                    continue
+                rv = review(card, adopt, done or "")
+                launches_today += 1 if rv.get("review") == "cursor" else 0
+                note = {"off": "No reviewer is set (`TIME_REVIEW`).", "cursor": "A Cursor agent is reviewing it.",
+                        "venice": f"`{rv.get('seat')}` reviewed it on the PR."}.get(rv["review"], rv["review"])
+                comment(n, f"⏱️ Time: adopted PR #{adopt['number']}, built outside the worker. {note}",
+                        {"beat": "pr", "pr": adopt["number"], "adopted": True, "launched": rv.get("review") == "cursor", **rv})
+                continue
             if state in (None, "needs-done", "would-dispatch") and not done:
                 if state != "needs-done":
                     comment(n, "⏱️ Time: this is labelled `ready` but has no `DONE:` line, so there's nothing to dispatch "

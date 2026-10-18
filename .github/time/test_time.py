@@ -328,6 +328,47 @@ wm = pr_world(); wm.gh_pr[7]["pr"]["merged_at"] = iso()
 w = run(wm, K); assert w.issues[1]["state"] == "closed" and w.issues[2]["labels"] == ["ready"]
 print("ALL OK 3")
 
+# 13b a ready card with an open PR that closes it adopts the PR: `pr` beat (adopted), a review, no worker, no launch
+import io, contextlib
+tm.think = lambda seat, model, effort, system, user: "**Approve** matches the card"
+tm.pr_diff = lambda n, limit=0: "diff --git a b"
+def adopt_world(prbody="Summary\n\nCloses #1", state="open", cbody=D, merged_at=None):
+    prd = {"number": 7, "state": state, "merged_at": merged_at, "head": {"sha": "abc", "ref": "codex/x"}, "html_url": "u",
+           "created_at": iso(2), "title": "x", "body": prbody}
+    return World([card(1, cbody)], {}, [prd], None, {7: {"pr": prd, "statuses": [{"status": "success", "context": "ci"}], "files": [".github/time/time.py"]}})
+KA = {**K, "TIME_REVIEW": "venice:kimi", "TIME_WORKER": "cursor"}
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    w = run(adopt_world(), KA)
+assert "launches_today=0/5" in out.getvalue()
+b = tm.beats_of(w.comments[1])
+assert [x["beat"] for x in b] == ["pr"] and b[0]["pr"] == 7 and b[0]["adopted"] is True and not b[0].get("launched"), b
+assert w.launched == [] and w.opened == [] and w.comments[7][-1]["body"].startswith("**Approve**"), "reviewed, nothing built"
+# next tick, automerge on, Approve + green -> merged (engine paths included: TIME_PROTECTED lets them through)
+w = run(w, {**KA, "TIME_AUTOMERGE": "on", "TIME_PROTECTED": NARROW})
+assert merged(w) and w.issues[1]["state"] == "closed" and w.launched == []
+os.environ.pop("TIME_PROTECTED", None)
+# a ready card with no PR is dispatched as today
+w = run(World([card(1, D)]), K); assert len(w.launched) == 1 and tm.beats_of(w.comments[1])[0]["beat"] == "dispatched"
+# a PR that closes another card, a closed PR and a merged one are not adopted
+for wx in (adopt_world("Closes #11"), adopt_world(state="closed"), adopt_world(merged_at=iso(1))):
+    wx = run(wx, KA); assert len(wx.launched) == 1 and "pr" not in [x["beat"] for x in tm.beats_of(wx.comments[1])]
+# `PR: #N` in the card adopts without `Closes`; a closed one named there does not
+w = run(adopt_world("no closing line", cbody=D + "\n\nPR: #7"), KA)
+assert tm.beats_of(w.comments[1])[0]["adopted"] is True and w.launched == []
+w = run(adopt_world("no closing line", state="closed", cbody=D + "\n\nPR: #7"), KA); assert len(w.launched) == 1
+# dry run says what it would adopt, and builds nothing
+w = run(adopt_world(), {})
+assert "would adopt open PR #7" in w.posted[0][1] and w.launched == [] and w.comments.get(7) is None
+# dry run first, then live: the `would-dispatch` beat doesn't stop adoption, and no worker is launched
+w = run(adopt_world(), {}); n0 = len(w.posted)
+w = run(w, {}); assert len(w.posted) == n0, "dry run doesn't repeat itself"
+w = run(w, KA)
+assert w.launched == [] and tm.beats_of(w.comments[1])[-1]["adopted"] is True and w.comments[7][-1]["body"].startswith("**Approve**")
+# `PR: #N` must stand alone on its line (quoted or example text doesn't adopt)
+w = run(adopt_world("no closing line", cbody=D + "\n\nPR: #7 is an example"), KA); assert len(w.launched) == 1
+print("ALL OK 13b")
+
 # 14 TIME_WORKER=venice:kimi -> the seat edits on its branch, is refused on workflows, opens a PR that closes the card
 w = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk"})
 assert w.launched == [], "no Cursor launch"
