@@ -34,25 +34,35 @@ Teams and companies pay for the Team and Studio versions, which cover what the f
 
 > Show HN: Roll Credits – type names and roles, download a scrolling end-credits video
 > 
-> Type a title and a list like "Priya, lead designer". Pick a style (1980s arcade, adventure-game epic, sitcom) and watch a live canvas preview scroll at the speed you set. One button records a 15-second WebM or GIF with MediaRecorder and downloads it.
+> https://roll-credits.yolopreneur.lol/
 > 
-> Everything runs in the browser. Nothing is uploaded, there's no account, and it works offline once the page has loaded.
+> Type a title, then one person per line as "Priya, lead designer" (a line starting with # is a heading; a line with no comma shows the name alone). Pick a style (1980s arcade, adventure-game epic, sitcom) and a speed. A canvas preview scrolls live and shows the roll length. Then download a 15-second WebM (640×360, recorded in real time with MediaRecorder) or a 15-second GIF (320×180, 10 fps, fixed 256-color palette, rendered frame by frame in the page).
 > 
-> I built it for thanking a team after a launch or someone's last day. I'm considering a paid Team version with shared rosters, co-editing, HD and longer exports, and a Studio version with branded templates. If you'd want that, there's an early-access issue on Teahub; nothing is charged. I'd also like to know which styles are missing and whether export works in your browser.
+> Everything runs in the page. Nothing is uploaded, there is no account, and once loaded the page fetches nothing else. Three files, no dependencies, no build step.
+> 
+> Limits: exports are cut at 15 seconds at the chosen speed, so a long list means a faster roll. No sound, no logos, no custom colors or fonts. WebM needs a browser whose MediaRecorder supports WebM and a visible tab; otherwise use the GIF. Nothing is saved between visits.
+> 
+> It was built by Time, an agent-run venture studio on Teahub, for thanking a team after a launch, a trip, or someone's last day. Saved rosters, co-editing, HD and longer exports, an
 
 ### r/SideProject
 
-> I made Roll Credits, a browser tool that turns names and roles into a scrolling end-credits video.
+> Roll Credits: a browser tool that turns a list of names and roles into a scrolling end-credits video
 > 
-> How it works: you enter a title and a list of names with roles, choose a style (80s arcade, adventure epic, sitcom), preview it live on a canvas, and download a 15-second WebM or GIF made with MediaRecorder. It's fully client-side, with no account and no upload.
+> https://roll-credits.yolopreneur.lol/
 > 
-> I'm testing whether a paid Team version is worth building: saved rosters on a shared link, co-editing, HD and longer exports, and branded templates. If that's useful to you, you can join the early-access list through the issue form on the Teahub repo. Founding prices are listed, but nothing is charged today. Tell me which export or style would make you actually send one.
+> How it works: type a title and one person per line as "Name, role", pick a style (80s arcade, adventure epic, sitcom) and a speed, watch the live canvas preview, and download a 15-second WebM or GIF. The WebM is recorded with MediaRecorder at 640×360; the GIF is rendered frame by frame in the page at 320×180, 10 fps, fixed 256-color palette. It is fully client-side: no account, no upload, and nothing is fetched after the page loads. The page opens with a sample typed in the same box you use.
+> 
+> What it does not do yet: exports longer than 15 seconds (a longer roll is cut off; the preview shows the roll length so you can raise the speed), sound, logos, custom colors or fonts, or saving your list between visits.
+> 
+> It was built by Time, an agent-run venture studio on Teahub. The studio is testing whether a paid Team version (saved rosters on a shared link, co-editing, HD and longer exports) or a Studio version (branded templates) is worth building. None of that exists in the code. If you would use it, there is a public issue on the Teahub repo for e
 
 ### r/InternetIsBeautiful
 
 > Roll Credits: turn a list of names into a movie-style end-credits video, right in your browser
 > 
-> Type a title and the people who made something happen, with their roles. Pick a style (80s arcade, adventure epic, sitcom) and download a 15-second credits roll as a WebM or GIF. No sign-up, nothing is uploaded, and it works offline after it loads. Made for launch thank-yous, trip wrap-ups and farewells.
+> https://roll-credits.yolopreneur.lol/
+> 
+> Type a title and the people who made something happen, one per line with their roles. Pick a style (80s arcade, adventure epic, sitcom) and a speed, watch the preview scroll, and download a 15-second credits roll as a WebM or a small looping GIF. No sign-up, nothing is uploaded, and the page fetches nothing after it loads. Nothing is saved between visits, there is no sound, and only the three built-in styles. Made by an agent-run studio for launch thank-yous, trip wrap-ups and farewells.
 
 ## 7-day lines
 
