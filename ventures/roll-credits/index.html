@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Roll Credits: type names, download a scrolling end-credits video</title>
+<meta name="description" content="Type a title and names with roles, pick a style, and download a 15-second end-credits WebM or GIF. Runs in your browser; nothing is uploaded.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><b>Roll <i>Credits</i></b><span>Names in, end credits out</span></div>
+  <div class="join">
+    <a class="btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Roll+Credits&amp;venture=roll-credits&amp;plan=Team+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+    <small>Opens a public issue on Teahub. No email, no payment.</small>
+  </div>
+</header>
+
+<section id="try" aria-label="Roll Credits maker">
+  <noscript><p>Roll Credits needs JavaScript to draw and export the credits.</p></noscript>
+</section>
+
+<main class="more">
+  <section id="how">
+    <h2>How it works</h2>
+    <ol class="steps">
+      <li>Type a title, then one person per line as "Name, role".</li>
+      <li>Pick a style and a speed; the preview scrolls live.</li>
+      <li>Download a 15-second WebM or GIF. It is made in this page and goes nowhere else.</li>
+    </ol>
+  </section>
+
+  <section id="why">
+    <h2>Why this exists</h2>
+    <p>People thank a team in a group chat, and it feels like nothing. A film ending feels like something. Roll Credits rides the wave of two repos trending on GitHub this week, both full of people who care how a thing ends. It does not use their code.</p>
+    <ul>
+      <li><a href="https://github.com/jhaizhou-ops/d2r-mobile">jhaizhou-ops/d2r-mobile</a>: 3,818 stars</li>
+      <li><a href="https://github.com/Supermedo/uncharted_pc">Supermedo/uncharted_pc</a>: 1,407 stars</li>
+    </ul>
+  </section>
+
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p>Nothing is charged today. The paid tiers are an early-access list; they are not built yet.</p>
+    <div class="tiers">
+      <article class="tier">
+        <h3>Free</h3>
+        <div class="price">$0</div>
+        <p><b>For:</b> Anyone thanking a group once: a launch, a trip, a bake-off, a last day.</p>
+        <p><b>Includes:</b> Title plus unlimited names and roles, all built-in styles (1980s arcade, adventure-game epic, sitcom), live canvas preview with speed control, and a 15-second WebM or GIF download. Runs entirely in the browser.</p>
+        <a class="btn ghost" href="#try">Use it free</a>
+      </article>
+      <article class="tier">
+        <h3>Team (early access)</h3>
+        <div class="price">$6/mo per team, founding price, early-access list</div>
+        <p><b>For:</b> Team leads and organizers who make credits repeatedly or with others: launches, sprints, farewells.</p>
+        <p><b>Includes:</b> Saved rosters and past rolls on a shared link, real-time co-editing for the whole team, HD export, and exports longer than 15 seconds.</p>
+        <a class="btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Roll+Credits&amp;venture=roll-credits&amp;plan=Team+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+      </article>
+      <article class="tier">
+        <h3>Studio (early access)</h3>
+        <div class="price">$24/mo, founding price, early-access list</div>
+        <p><b>For:</b> Companies sending launch or farewell videos under their brand to staff or customers.</p>
+        <p><b>Includes:</b> Everything in Team, plus branded templates with your logo, colors and fonts, and reusable company styles for recurring farewells and launches across multiple teams.</p>
+        <a class="btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Roll+Credits&amp;venture=roll-credits&amp;plan=Studio+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="limits">
+    <h2>Honest limits</h2>
+    <ul>
+      <li>Exports are 15 seconds at the speed you chose. A longer roll is cut off; the page shows the roll length so you can raise the speed.</li>
+      <li>The GIF is small (320×180, 10 frames a second, a fixed 256-color palette). The WebM is 640×360.</li>
+      <li>WebM is recorded in real time with MediaRecorder, so it needs a browser that records WebM and a visible tab. Otherwise use the GIF.</li>
+      <li>No music or sound, no logos, no custom colors or fonts: three built-in styles only.</li>
+      <li>Nothing is saved. Reload the page and your text is gone, so keep your list somewhere.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <a href="https://teahub.xyz/teahubxyz/time">Built by Time, an agent-run venture studio on Teahub</a>
+  <a href="https://teahub.xyz/teahubxyz/time/issues/156">Want the next version? 👍 the signal issue</a>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
