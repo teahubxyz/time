@@ -60,7 +60,7 @@
   {
    "slug": "docscope",
    "name": "Docscope",
-   "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside \u2014 author names, tracked deletions, embedded thumbnails, leftover comments \u2014 dissected live in your browser, nothing uploaded.",
+   "one_liner": "Drop a .docx, .xlsx or .pptx and see everything hidden inside — author names, tracked deletions, embedded thumbnails, leftover comments — dissected live in your browser, nothing uploaded.",
    "for_whom": "Consultants, lawyers, journalists and developers who email Office files and want to know exactly what metadata and draft remnants they're about to leak (or need to parse).",
    "url": "https://docscope.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Docscope&venture=docscope&plan=Pro+%28founding%29",
@@ -81,7 +81,7 @@
   {
    "slug": "doodleloop",
    "name": "Doodleloop",
-   "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute \u2014 no app, no account, nothing uploaded.",
+   "one_liner": "Drop in a drawing or photo, pick a motion style, and walk away with a looping animated GIF in under a minute — no app, no account, nothing uploaded.",
    "for_whom": "A parent who just photographed their kid's latest crayon masterpiece taped to the fridge and wants to text the family a version where the rocket actually wiggles and the sun really shines.",
    "url": "https://doodleloop.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Doodleloop&venture=doodleloop&plan=Studio+%E2%80%94+Founding+%28early+access%29",
@@ -123,8 +123,8 @@
   {
    "slug": "anthem",
    "name": "Anthem",
-   "one_liner": "Anthem turns any name into an 8-bar theme song you can play, remix, and send to a friend \u2014 entirely in the browser, nothing uploaded.",
-   "for_whom": "The friend in the group chat who wants to do better than 'HBD \ud83c\udf89' \u2014 they type the birthday person's name and send back their personal theme song.",
+   "one_liner": "Anthem turns any name into an 8-bar theme song you can play, remix, and send to a friend — entirely in the browser, nothing uploaded.",
+   "for_whom": "The friend in the group chat who wants to do better than 'HBD 🎉' — they type the birthday person's name and send back their personal theme song.",
    "url": "https://anthem.yolopreneur.lol/",
    "pages": "https://anthem.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Anthem&venture=anthem&plan=Anthem+Studio+%28Founding%29",
@@ -144,8 +144,8 @@
   {
    "slug": "wavehello",
    "name": "Wavehello",
-   "one_liner": "Record a laugh, a voicemail, or an 'I love you' and get beautiful soundwave art as a PNG in seconds \u2014 free, no account, nothing uploaded.",
-   "for_whom": "Someone hunting for a gift no store sells \u2014 a partner, a new parent, a grandkid \u2014 who has a voice memo that matters and wishes it could hang on a wall.",
+   "one_liner": "Record a laugh, a voicemail, or an 'I love you' and get beautiful soundwave art as a PNG in seconds — free, no account, nothing uploaded.",
+   "for_whom": "Someone hunting for a gift no store sells — a partner, a new parent, a grandkid — who has a voice memo that matters and wishes it could hang on a wall.",
    "url": "https://wavehello.yolopreneur.lol/",
    "pages": "https://wavehello.yolopreneur.lol/",
    "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Wavehello&venture=wavehello&plan=Print+%28founding%29",
@@ -186,7 +186,7 @@
   {
    "slug": "glitztype",
    "name": "Glitztype",
-   "one_liner": "Type a name or a word and get gloriously retro WordArt \u2014 rainbow gradients, arches, chrome, neon \u2014 as a transparent PNG in seconds, free, no account, nothing uploaded.",
+   "one_liner": "Type a name or a word and get gloriously retro WordArt — rainbow gradients, arches, chrome, neon — as a transparent PNG in seconds, free, no account, nothing uploaded.",
    "for_whom": "Nadia, the office manager who makes every birthday banner, farewell card and break-room sign, and still misses the 1997 WordArt gallery.",
    "url": "https://glitztype.yolopreneur.lol/",
    "pages": "https://glitztype.yolopreneur.lol/",
@@ -425,5 +425,5 @@
    "shot": "supertestnet/shots/desktop.png"
   }
  ],
- "refreshed": "2026-10-14"
+ "refreshed": "2026-10-18"
 }
