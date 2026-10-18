@@ -1,6 +1,6 @@
 """Time: the clock for a Gitea-native agent factory. stdlib only; runs on Gitea Actions (prod: teahub.xyz).
 
-    python3 .github/time/time.py mention     # on issue/comment events: answer @seat [model] [effort]
+    python3 .github/time/time.py mention     # on issue/comment events: answer @seat [model] [effort]; @codex / @claude act as their own users
     python3 .github/time/time.py heartbeat   # on schedule: plan specs, dispatch `ready` cards, merge approved PRs, pull the next card
 
 Ledger = this Gitea repo. Brains = Venice (VENICE_API_KEY) or Claude (ANTHROPIC_API_KEY), per seat in .github/time/seats.json.
@@ -25,6 +25,7 @@ import threading
 import json
 import os
 import re
+import signal
 import sys
 import time
 import urllib.error
@@ -168,25 +169,67 @@ def resolve(seat: str, word: str) -> str | None:
     return min(near, key=lambda i: (len(i), i)) if near else None
 
 
+CLAUDE_PICK = ("haiku", "sonnet", "opus", "fable")  # `@claude sonnet`: which Claude brain; opus without a word
+AGENT_SEATS = {"claude": "Claude (Anthropic)", "codex": "Codex CLI (OpenAI)"}  # seats that are not in seats.json: they post as their own Gitea users
+
+
+def _plain(text: str) -> str:
+    """What counts as speech: no code, no quoted lines."""
+    text = re.sub(r"```.*?```|`[^`]*`", "", text, flags=re.S)
+    return "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(">"))
+
+
 def mentions(text: str) -> dict[str, tuple[str | None, str | None]]:
     if MARK in text:
         return {}
-    text = re.sub(r"```.*?```|`[^`]*`", "", text, flags=re.S)
-    text = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(">"))
-    chat_seats = [k for k, v in SEATS.items() if v.get("route") != "cli"]  # a CLI seat (Codex) has no chat route
+    text = _plain(text)
+    chat_seats = [k for k, v in SEATS.items() if v.get("route") != "cli"] + list(AGENT_SEATS)  # a CLI seat (Codex ladder) has no chat route
     pat = re.compile(r"(?<![\w@/.-])@(" + "|".join(chat_seats) + r")\b((?:[ \t]+[^\s@`]+){0,2})", re.I)
     out = {}
     for m in pat.finditer(text):
         seat, model, effort = m.group(1).lower(), None, None
         for w in m.group(2).split():
             w = w.strip(",.:;!?)(").lower()
-            if model is None and (r := resolve(seat, w)) and not (w in EFFORTS and w not in SEATS[seat].get("aliases", {})):
+            r = (SEATS[w]["default"] if w in CLAUDE_PICK else None) if seat == "claude" else None if seat == "codex" else resolve(seat, w)
+            if model is None and r and not (w in EFFORTS and w not in SEATS.get(seat, {}).get("aliases", {})):
                 model = r
             elif effort is None and w in EFFORTS:
                 effort = EFFORTS[w]
             else:
                 break
         out[seat] = (model, effort)
+    return out
+
+
+ARROW = re.compile(r"\s*(?:→|->|=>)\s*")
+
+
+def plan(text: str) -> list[list[tuple[dict, str]]]:
+    """The launcher's grammar. One chain per line that mentions a seat; chains are independent (parallel). In a chain an
+    arrow separates stages: `@claude draft the spec → @codex implement it → @haiku review` runs claude, then codex on
+    claude's reply, then haiku. Several seats in one stage, without an arrow, run side by side. A stage is (the seats it
+    mentions, its own words)."""
+    if MARK in text:
+        return []
+    chains = []
+    for line in _plain(text).splitlines():
+        stages = [(found, seg.strip()) for seg in ARROW.split(line) if (found := mentions(seg))]
+        if stages:
+            chains.append(stages)
+    return chains
+
+
+def handoff(reply: str, me: str) -> list[list[tuple[dict, str]]]:
+    """A reply that ends by mentioning another seat hands the thread to it: the chains on the reply's last line, minus
+    the seat itself (no one hands off to itself). A mention in the middle of a sentence is just a mention."""
+    lines = [l for l in reply.strip().splitlines() if l.strip()]
+    out = []
+    last = lines[-1] if lines and re.match(r"\s*(?:[-*]\s+|→\s*|->\s*)?@", lines[-1]) else ""  # the line starts with the mention
+    for stages in plan(last):
+        stages = [({k: v for k, v in found.items() if k != me}, ask) for found, ask in stages]
+        stages = [s for s in stages if s[0]]
+        if stages:
+            out.append(stages)
     return out
 
 
@@ -358,7 +401,7 @@ def ledger_lines(month: str) -> list[dict]:
     return _ledger_files[month][0]
 
 
-def book(model: str, usage: dict) -> None:
+def book(model: str, usage: dict, **extra) -> None:
     """One ledger line per call. `in` counts every prompt token; `cached` says how many of them were read from the cache
     (a tenth of the input price) and `written` how many were written to it (a quarter more than the input price)."""
     p = price_of(model)
@@ -368,7 +411,7 @@ def book(model: str, usage: dict) -> None:
         atexit.register(flush_ledger)
     usd = round(((i - r - w) * p[0] + r * p[0] * 0.1 + w * p[0] * 1.25 + o * p[1]) / 1e6, 6) if p else None
     LEDGER.append({"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": model, "in": i, "out": o,
-                   "usd": usd, **({"cached": r, "written": w} if r or w else {})})
+                   "usd": usd, **({"cached": r, "written": w} if r or w else {}), **extra})
 
 
 def flush_ledger() -> None:
@@ -466,7 +509,210 @@ def think(seat: str, model: str | None, effort: str | None, system: str, user: s
 
 RULES = """You were @mentioned in an issue or PR thread of a small agent factory. Reply as yourself, in the thread.
 Answer what was asked, concretely and briefly. You can't run code or browse; say so if the ask needs that.
-Never invent links, numbers or results. If you are only mentioned in passing, reply with exactly NO_REPLY."""
+Never invent links, numbers or results. If you are only mentioned in passing, reply with exactly NO_REPLY.
+To hand the thread to another seat (@codex, @claude, @haiku...), end your reply with a last line that starts with its
+@mention and says what you want of it; Time then runs that seat on your reply. Otherwise don't @mention a seat on your last line."""
+
+HANDOFF_MAX = 6  # seat runs one trusted comment may set off, handoffs included (TIME_HANDOFF_MAX): a ping-pong ends here
+
+
+def post_as(issue: int, seat: str, text: str, meta: dict) -> str:
+    """Post a reply as the seat's own Gitea user when it has a token (`TIME_SEAT_<SEAT>`); else, or if Gitea refuses, as
+    Time. Always marked, so the event our own comment fires is skipped and a handoff is never dispatched twice."""
+    token = seat_token(seat)
+    if token:
+        try:
+            http("POST", f"{GH}/repos/{REPO}/issues/{issue}/comments", token,
+                 {"body": f"{text}\n\n{MARK}{json.dumps(meta, separators=(',', ':'))} -->"})
+            return seat
+        except RuntimeError as e:
+            print(f"comment as {seat} refused, commenting as Time: {e}")
+    comment(issue, text, meta)
+    return "time"
+
+
+def repo_context(issue: dict) -> str:
+    """What Time already hands a reviewer, for a seat that was only asked: the README, and on a PR its diff and checks."""
+    parts = []
+    try:
+        parts.append("# README.md\n" + base64.b64decode(gh("GET", f"/repos/{REPO}/contents/README.md")["content"]).decode(errors="replace")[:6000])
+    except Exception:  # noqa: BLE001 - context is a help, not a gate
+        pass
+    if issue.get("pull_request"):
+        try:
+            pr = gh("GET", f"/repos/{REPO}/pulls/{issue['number']}")
+            parts.append(f"# Checks\n{check_lines((pr.get('head') or {}).get('sha'))}\n\n# Diff\n{pr_diff(issue['number'], 40_000)}")
+        except Exception:  # noqa: BLE001
+            pass
+    return "\n\n".join(parts)
+
+
+def codex_clone(token: str) -> str:
+    """A throwaway checkout of the repo's default branch, cloned as the codex user, with no token left in .git/config."""
+    d = tempfile.mkdtemp(prefix="time-codex-")
+    try:
+        subprocess.run(["git", "clone", "-q", "--depth", "1", _seat_url(token), d], check=True, capture_output=True)
+        subprocess.run(["git", "remote", "set-url", "origin", _git_url(False)], cwd=d, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        shutil.rmtree(d, ignore_errors=True)
+        raise RuntimeError(f"clone failed: {(e.stderr or b'').decode(errors='replace').replace(token, '***')[-300:]}") from None
+    return d
+
+
+def _seat_url(token: str) -> str:
+    if SERVER.startswith("file:"):
+        return _git_url(False)
+    return SERVER.replace("://", f"://x-access-token:{token}@", 1) + f"/{REPO}.git"
+
+
+def codex_push(d: str, token: str, branch: str) -> None:
+    p = subprocess.run(["git", "push", "-q", _seat_url(token), f"HEAD:refs/heads/{branch}"], cwd=d, capture_output=True, text=True)
+    if p.returncode:
+        raise RuntimeError(f"push failed: {(p.stderr or p.stdout).replace(token, '***')[-300:]}")
+
+
+def run_capped(cmd: list[str], cwd: str, stdin: str, env: dict, seconds: float) -> tuple[int | None, str]:
+    """Run to the end or to the wall-clock cap, then kill the whole process group. (None, output) means the cap tripped."""
+    p = subprocess.Popen(cmd, cwd=cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                         text=True, start_new_session=True)
+    try:
+        out, _ = p.communicate(stdin, timeout=seconds)
+        return p.returncode, out or ""
+    except subprocess.TimeoutExpired:
+        with contextlib.suppress(ProcessLookupError, PermissionError):
+            os.killpg(p.pid, signal.SIGKILL)
+        out, _ = p.communicate()
+        return None, out or ""
+
+
+def codex_usage(out: str) -> dict:
+    """Token counts from `codex exec --json` (its turn.completed events), best effort: a line that isn't JSON is noise."""
+    use = {"prompt_tokens": 0, "completion_tokens": 0, "cache_read": 0}
+    for line in out.splitlines():
+        try:
+            ev = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(ev, dict) and ev.get("type") == "turn.completed" and isinstance(ev.get("usage"), dict):
+            u = ev["usage"]
+            use["prompt_tokens"] += int(u.get("input_tokens") or 0)
+            use["completion_tokens"] += int(u.get("output_tokens") or 0)
+            use["cache_read"] += int(u.get("cached_input_tokens") or 0)
+    return use
+
+
+def codex_seat(issue: dict, prompt: str, effort: str | None) -> tuple[str, str]:
+    """`@codex <ask>`: a headless `codex exec` in a throwaway checkout, under a wall-clock cap (TIME_SEAT_RUN_MINUTES,
+    default 15), booked as one launch. Its last message is the reply. If it left commits (or a dirty tree, which is
+    committed for it), Time pushes a branch with the codex token and opens the PR as codex; the token never enters
+    codex's environment. Returns (the reply, the model's name)."""
+    token = seat_token("codex")
+    if not token:
+        raise LookupError("no TIME_SEAT_CODEX secret on this repo yet")
+    exe = shutil.which("codex")
+    if not exe:
+        raise LookupError("`codex` is not installed where this workflow runs")
+    budget_check()
+    try:
+        minutes = float(os.environ.get("TIME_SEAT_RUN_MINUTES") or 15)
+    except ValueError:
+        minutes = 15.0
+    used = os.environ.get("TIME_CODEX_MODEL") or "codex"
+    d = codex_clone(token)
+    last = d + ".last"
+    try:
+        git = lambda *a: subprocess.run(["git", *a], cwd=d, capture_output=True, text=True).stdout.strip()  # noqa: E731
+        start = git("rev-parse", "HEAD")
+        cmd = [exe, "exec", "--sandbox", "workspace-write", "--json", "-C", d, "-o", last]
+        cmd += (["-m", os.environ["TIME_CODEX_MODEL"]] if os.environ.get("TIME_CODEX_MODEL") else [])
+        cmd += (["-c", f'model_reasoning_effort="{effort}"'] if effort else []) + ["-"]
+        env = {k: v for k, v in os.environ.items()
+               if not re.match(r"TIME_|ACTIONS_|GITHUB_TOKEN$|ANTHROPIC_API_KEY$|VENICE_API_KEY$|CURSOR_API_KEY$", k)}
+        code, out = run_capped(cmd, d, prompt, env, minutes * 60)
+        book(used, codex_usage(out), launch=1)
+        if code is None:
+            return f"I hit the {minutes:g}-minute wall-clock cap (`TIME_SEAT_RUN_MINUTES`) and was stopped; nothing was pushed.", used
+        if code != 0:
+            return f"`codex exec` exited {code}; nothing was pushed.\n\n```\n{out[-600:]}\n```", used
+        text = (Path(last).read_text(errors="replace").strip() if os.path.exists(last) else "") or "(codex returned no message)"
+        host = re.sub(r"^\w+://", "", SERVER).split("/")[0] or "localhost"
+        ident = ["-c", "user.name=codex", "-c", f"user.email=codex@users.noreply.{host}"]
+        if git("status", "--porcelain"):
+            git("add", "-A")
+            git(*ident, "commit", "-q", "-m", f"codex: {issue['title'][:60]} (#{issue['number']})")
+        if git("rev-parse", "HEAD") != start:
+            branch = f"codex/issue-{issue['number']}-{dt.datetime.now(dt.timezone.utc):%m%d%H%M%S}"
+            try:
+                codex_push(d, token, branch)
+                pr = http("POST", f"{GH}/repos/{REPO}/pulls", token,
+                          {"title": f"codex: {issue['title']}"[:200], "head": branch, "base": default_branch(),
+                           "body": f"{text}\n\nRefs #{issue['number']}\n\n<sub>codex via Time · {used}</sub>"})
+                text += f"\n\nOpened PR #{pr['number']} from `{branch}`."
+            except RuntimeError as e:
+                text += f"\n\nI made changes but couldn't publish them: {str(e)[:300]}"
+        return text, used
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+        with contextlib.suppress(OSError):
+            os.remove(last)
+
+
+def seat_reply(seat: str, model: str | None, effort: str | None, issue: dict, thread: list[str], author: str,
+               body: str, ask: str) -> tuple[str, str]:
+    """One seat's answer: (text, the model's name)."""
+    mine = f"\n\nYour part of it: {ask}" if ask and ask != body.strip() else ""
+    user = "\n\n".join(thread) + f"\n\n## You are `{seat}`. Reply to @{author}:\n{body[:4000]}{mine}"
+    if seat == "codex":
+        prompt = (f"You are `codex`, a seat in a small agent factory, working in a fresh checkout of {REPO} (cwd). "
+                  "Do what you were asked in the thread below. If it needs code, change the files and leave the work in the "
+                  "tree (don't touch .github/workflows); Time publishes it as a pull request under your name. Your last message "
+                  "is posted in the thread, so make it a short account of what you did or found. To hand on to another seat, "
+                  "end it with a line that starts with its @mention.\n\n" + user)
+        return codex_seat(issue, prompt, effort)
+    if seat == "claude":
+        used = model or SEATS["opus"]["default"]
+        system = (f"You are `claude`, a seat in this factory, running {used}.\n\n" + RULES.replace(
+            "If you are only mentioned in passing, reply with exactly NO_REPLY.", "You were asked directly, so answer."))
+        ctx = repo_context(issue)
+        return think("opus", used, effort, system, (ctx + "\n\n" if ctx else "") + user), used
+    system = (HERE / "seats" / f"{seat}.md").read_text() if (HERE / "seats" / f"{seat}.md").exists() else \
+        f"You are `{seat}`, a seat in this factory. Your brain is {SEATS[seat]['label']}."
+    return think(seat, model, effort, system + "\n\n" + RULES, user), model or SEATS[seat]["default"]
+
+
+def run_chain(issue: dict, thread: list[str], author: str, body: str, stages: list[tuple[dict, str]], left: list[int]) -> None:
+    """Run a chain's stages in order; the seats of one stage side by side (one after another here). Each reply joins the
+    thread, so the next stage reads it. After the last stage a reply's own closing mention is a handoff. `left` counts the
+    seat runs still allowed for this comment."""
+    for i, (found, ask) in enumerate(stages):
+        replies, failed = [], False
+        for seat, (model, effort) in found.items():
+            if left[0] <= 0:
+                print(f"handoff limit reached (TIME_HANDOFF_MAX), not running {seat}")
+                return
+            left[0] -= 1
+            try:
+                text, used = seat_reply(seat, model, effort, issue, thread, author, body, ask)
+            except (LookupError, RuntimeError) as e:  # no key or token, over budget, a refused clone or call
+                text, used = f"I'm `{seat}`, but I can't answer yet: {e}.", "none"
+            if text.strip().strip(".").upper() == "NO_REPLY":
+                continue
+            if seat in AGENT_SEATS:
+                sig = f"<sub>{seat} via Time · {used}</sub>"
+                post_as(issue["number"], seat, f"@{author} {text}\n\n{sig}", {"seat": seat, "model": used, "effort": effort})
+            else:
+                sig = f"<sub>{seat} · {used}" + (f" · effort {effort}" if effort else "") + " · via Time</sub>"
+                comment(issue["number"], f"@{author} {text}\n\n{sig}", {"seat": seat, "model": used, "effort": effort})
+            print("replied as", seat, used, effort)
+            thread.append(f"**{seat}**: {text[:3000]}")
+            replies.append((seat, text))
+            failed = failed or used == "none"
+        if failed:
+            return  # the chain stops where a seat could not answer
+        if i + 1 == len(stages):
+            for seat, text in replies:  # the chain's end: a closing mention in a reply is the next hop
+                for nxt in handoff(text, seat):
+                    run_chain(issue, thread, author, body, nxt, left)
 
 
 def cmd_mention() -> int:
@@ -480,27 +726,16 @@ def cmd_mention() -> int:
     if not trusted(author.get("login")):  # public repo: strangers can comment, but must not spend the seats' credits
         print("skip: not a collaborator")
         return 0
-    found = mentions(src.get("body") or "")
-    if not found:
+    chains = plan(src.get("body") or "")
+    if not chains:
         print("no seat mentioned")
         return 0
     comments = gh("GET", f"/repos/{REPO}/issues/{issue['number']}/comments?limit=30")
     thread = [f"# {issue['title']}\n{(issue.get('body') or '')[:6000]}"]
     thread += [f"**{c['user']['login']}**: {(c.get('body') or '')[:3000]}" for c in comments[-20:]]
-    for seat, (model, effort) in found.items():
-        system = (HERE / "seats" / f"{seat}.md").read_text() if (HERE / "seats" / f"{seat}.md").exists() else \
-            f"You are `{seat}`, a seat in this factory. Your brain is {SEATS[seat]['label']}."
-        user = "\n\n".join(thread) + f"\n\n## You are `{seat}`. Reply to @{author['login']}:\n{src.get('body', '')[:4000]}"
-        used = model or SEATS[seat]["default"]
-        try:
-            text = think(seat, model, effort, system + "\n\n" + RULES, user)
-        except LookupError as e:
-            text, used = f"I'm `{seat}`, but I can't answer yet: {e}.", "none"
-        if text.strip().strip(".").upper() == "NO_REPLY":
-            continue
-        sig = f"<sub>{seat} · {used}" + (f" · effort {effort}" if effort else "") + " · via Time</sub>"
-        comment(issue["number"], f"@{author['login']} {text}\n\n{sig}", {"seat": seat, "model": used, "effort": effort})
-        print("replied as", seat, used, effort)
+    left = [int(os.environ.get("TIME_HANDOFF_MAX") or HANDOFF_MAX)]  # the trust check above covers every hop: a handoff is the author's ask
+    for stages in chains:
+        run_chain(issue, thread, author["login"], src.get("body") or "", stages, left)
     return 0
 
 
