@@ -25,7 +25,7 @@ h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--mu);
 .swinfo span{color:var(--mu);font-size:13px}
 
 .swinfo .pbar{height:6px;background:#2a2632;border-radius:3px;overflow:hidden;padding:0;border:0;margin-top:4px}
-.swinfo .pbar i{height:100%;background:var(--amb);transition:width .2s}
+.swinfo .pbar i{display:block;height:100%;background:var(--amb);transition:width .2s}
 .btns{display:flex;gap:10px;margin-top:12px}
 .btns.tight{margin:0;flex:1}
 .btns button{flex:1;padding:12px;font-size:16px}
