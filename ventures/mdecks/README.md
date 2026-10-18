@@ -58,6 +58,21 @@ python3 -c 'import base64,sys,zlib; c=zlib.compressobj(9,zlib.DEFLATED,-15); d=c
 
 Without compression: `"https://mdecks.yolopreneur.lol/#md=" + encodeURIComponent(text)`.
 
+## On Whop (static build)
+
+`sh tools/whop-build.sh` writes `dist/mdeck-whop.zip` and `dist/mdeck-whop.zip.sha256` (sha256sum format, next to the zip): a static site of the editor and presenter, without the public page's pricing and sign-up sections. `sh tools/whop-check.sh` builds it, checks the checksum, unzips it, serves it like a static host and requests the view paths. Nothing is uploaded; creating the app on Whop and uploading the zip is a separate step.
+
+Views to register on Whop, with the path Whop fills the ID into:
+
+| View type | Path | What it shows |
+|---|---|---|
+| Experience (member view) | `/experiences/[experienceId]` | the editor and presenter |
+| Dashboard (creator's view) | `/dashboard/[companyId]` | the same editor, with **Copy prompt for your agent** |
+
+No other view is declared (there is no `openapi` view yet).
+
+A static host serves a dynamic segment only from a real directory or a rewrite rule. The zip ships `experiences/index.html`, `dashboard/index.html` and a `404.html`, all the same app with absolute asset paths, so `/experiences/<anything>` and `/dashboard/<anything>`, at any depth, load it; the app reads its path to tell the two views apart. This is the safe approach for any static host, chosen without a Whop build reference (docs.whop.com wasn't consulted).
+
 ## Honest limits
 
 - Nothing is stored — close the tab without copying a link or the HTML and your text is gone.
