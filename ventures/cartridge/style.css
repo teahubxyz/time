@@ -1,0 +1,66 @@
+*{box-sizing:border-box}
+html{background:#0e0f15}
+body{margin:0;color:#e7e9f2;font:14px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#0e0f15;overflow-x:hidden}
+a{color:#7fc4ff}
+.first{min-height:100vh;min-height:100dvh;display:flex;flex-direction:column}
+.top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 16px;padding:8px 14px;background:#171923;border-bottom:1px solid #2a2d3b}
+.brand{display:flex;align-items:center;gap:8px;min-width:0}
+.brand b{font-size:17px;letter-spacing:.04em;text-transform:uppercase}
+.brand span{color:#9aa0b5}
+.cta{display:flex;align-items:center;gap:10px}
+.cta small{color:#9aa0b5;font-size:11px;line-height:1.25;max-width:230px}
+.btn{display:inline-block;border:1px solid #3a3e52;background:#222536;color:#e7e9f2;border-radius:6px;padding:7px 12px;font:600 13px system-ui,sans-serif;text-decoration:none;cursor:pointer}
+.btn:hover{background:#2c3047}
+.btn.primary{background:#ffb020;border-color:#ffb020;color:#1b1200;white-space:nowrap}
+.btn.primary:hover{background:#ffc24d}
+.btn.dl{background:#3ddc97;border-color:#3ddc97;color:#04210f}
+.btn.dl:hover{background:#6ae8b3}
+:focus-visible{outline:2px solid #ffb020;outline-offset:2px}
+
+#try{flex:1;display:flex;flex-direction:column;gap:12px;padding:12px 14px}
+#try.over{outline:2px dashed #ffb020;outline-offset:-6px}
+.stage{min-width:0}
+canvas{display:block;width:100%;height:auto;background:#14141c;border:1px solid #2a2d3b;border-radius:6px;object-fit:contain}
+.bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:8px}
+#status{color:#9aa0b5;font-size:12px;flex:1 1 200px}
+.nojs{color:#ffb020}
+.panel{background:#171923;border:1px solid #2a2d3b;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.drop{display:block;border:2px dashed #3a3e52;border-radius:8px;padding:10px;text-align:center;cursor:pointer;position:relative}
+.drop:hover,.drop:focus-within{border-color:#ffb020}
+.drop input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+.drop small{display:block;color:#9aa0b5;font-size:11px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.grid label,.panel>label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:#9aa0b5;text-transform:uppercase;letter-spacing:.04em;min-width:0}
+.wide{grid-column:1/-1}
+input:not([type=range]):not([type=file]):not([type=radio]),textarea,select{width:100%;background:#0e0f15;color:#e7e9f2;border:1px solid #3a3e52;border-radius:6px;padding:6px 8px;font:14px system-ui,sans-serif;text-transform:none;letter-spacing:0}
+textarea{resize:vertical}
+input[type=range]{width:100%;accent-color:#ffb020}
+fieldset{border:0;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap}
+legend{font-size:11px;color:#9aa0b5;text-transform:uppercase;letter-spacing:.04em;padding:0 0 3px}
+.styles label{flex:1}
+.styles input{position:absolute;opacity:0}
+.styles span{display:block;text-align:center;padding:7px 4px;border:1px solid #3a3e52;border-radius:6px;background:#222536;font-weight:600;cursor:pointer}
+.styles input:checked+span{background:#ffb020;border-color:#ffb020;color:#1b1200}
+.styles input:focus-visible+span{outline:2px solid #fff}
+
+@media (min-width:860px){
+  #try{flex-direction:row;align-items:flex-start}
+  .stage{flex:1}
+  canvas{max-height:calc(100vh - 130px);max-height:calc(100dvh - 130px)}
+  .panel{width:340px;flex:none}
+}
+@media (max-width:600px){
+  .brand span{font-size:12px}
+  .cta{width:100%}
+}
+
+.below{max-width:1040px;padding:20px 14px 0}
+.below h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#9aa0b5;margin:28px 0 8px;border-top:1px solid #2a2d3b;padding-top:14px}
+.below h3{margin:0;font-size:15px}
+.below p,.below li{max-width:70ch}
+.tiers{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.tiers article{background:#171923;border:1px solid #2a2d3b;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.tiers article p{margin:0}
+.tiers .btn{margin-top:auto}
+.price{color:#ffb020;font-weight:700}
+footer{display:flex;flex-wrap:wrap;gap:8px 24px;padding:24px 14px 32px;color:#9aa0b5;font-size:12px}
