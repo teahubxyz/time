@@ -18,9 +18,9 @@ const L = {
   flavor: ['It has seen things. Mostly spreadsheets.', 'Some say it was here before the Wi-Fi.', 'Held together by habit and one good screw.', 'Legends tell of a time it was new.', 'It does not work. It does not need to.', 'Everyone has borrowed it. No one has returned it.']
 };
 const SAMPLE = {
-  n: 'Loot Drop', r: 'unique', p: '',
+  n: 'Loot Drop', r: 'unique',
   c: "Crown your buddy's office chair in under a minute\nFree: no account, nothing uploaded\nSame name, same roll, every time",
-  f: 'Type a name. Pick a rarity. Post it before the joke goes cold.'
+  f: 'Type a name. Pick a rarity. Post it before the joke goes cold.', p: ''
 };
 
 // FNV-1a string hash + mulberry32 PRNG: same name, same sequence.
