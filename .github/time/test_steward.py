@@ -62,7 +62,7 @@ class Forge:
             return [dict(i, labels=[{"name": l} for l in i["labels"]]) for i in out]
         if seg[0] == "issues" and len(seg) == 1 and method == "POST":
             n = max(self.issues) + 1
-            self.add_issue(n, body["title"], body["body"], [f"label{l}" if isinstance(l, int) else l for l in body["labels"]])
+            self.add_issue(n, body["title"], body["body"], [self.lname(l) for l in body["labels"]])
             return {"number": n}
         if seg[0] == "issues" and seg[-1] == "comments":
             n = int(seg[1])
