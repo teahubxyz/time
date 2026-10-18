@@ -142,7 +142,9 @@
       new Uint8Array([0x21, 0xFF, 11, 78, 69, 84, 83, 67, 65, 80, 69, 50, 46, 48, 3, 1, 0, 0, 0]));
     return {
       add: function (rgba) {
-        var idx = new Uint8Array(w * h), j, d = lzw(idx.length ? (function () { for (j = 0; j < idx.length; j++) idx[j] = (rgba[j * 4] & 0xE0) | ((rgba[j * 4 + 1] & 0xE0) >> 3) | (rgba[j * 4 + 2] >> 6); return idx; })() : idx), b = [];
+        var idx = new Uint8Array(w * h), j, d, b = [];
+        for (j = 0; j < idx.length; j++) idx[j] = (rgba[j * 4] & 0xE0) | ((rgba[j * 4 + 1] & 0xE0) >> 3) | (rgba[j * 4 + 2] >> 6);
+        d = lzw(idx);
         b.push(0x21, 0xF9, 4, 0, delayCs & 255, delayCs >> 8, 0, 0, 0x2C, 0, 0, 0, 0, w & 255, w >> 8, h & 255, h >> 8, 0, 8);
         for (j = 0; j < d.length; j += 255) { var n = Math.min(255, d.length - j); b.push(n); for (var q = 0; q < n; q++) b.push(d[j + q]); }
         b.push(0);
