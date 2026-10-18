@@ -2,19 +2,28 @@
 
     python3 .github/time/venture.py tick      # advance the venture cards (cron, or on demand)
 
+One venture a day, built for quality: the day's card starts only once every other venture card is launched or held
+(one at a time), the seats pitch a field of TIME_VENTURE_FIELD (6) for the board to pick one from, opus builds, and the
+judge scores the product against a bar (TIME_VENTURE_BAR, 8 of 10) that earns polish rounds.
+
 One card per venture (label `venture`); each stage is a Time beat on it:
   scouted -> pitched -> picked -> planned -> built -> launched -> done      (held = andon, waits for /time retry)
 
 Scout: GitHub's public search (unauthenticated: a scouting source, not the forge) for the repos that gathered the most
   stars this week (third-party text, treated as data).
-Pitch: each pitching seat proposes one venture. Board: Borda 3/2/1 with a quorum of two; it may pick nothing.
+Pitch: the pitching seats propose a field in rounds, each round told what is already pitched, until there are
+  TIME_VENTURE_FIELD pitches (or three rounds ran). Board: Borda 3/2/1 with a quorum of two; it may pick nothing.
 Plan: every board seat writes a launch plan (positioning, first users, pricing, channels, 7-day lines); one seat
   synthesizes them, and LAUNCH.md records which seat each idea came from.
 Seats (Claude by default): the chair (TIME_VENTURE_CHAIR, fable) synthesizes the launch plan, writes the launch drafts and
   judges the build; the board (TIME_VENTURE_PITCH / TIME_VENTURE_BOARD, haiku, sonnet and opus) pitches, votes and
-  writes plans; the builder (TIME_WORKER, claude:sonnet) builds, and a second fix round goes to TIME_VENTURE_ESCALATE.
+  writes plans; the builder (TIME_WORKER, claude:opus) builds, and a second fix round goes to TIME_VENTURE_ESCALATE.
 Build: the worker builds the product as the page on the Pages branch: the tool fills the first screen under a
-  slim header with the one signup button; pricing, limits and the why frame it below. Check: deterministic gates, then headless Chrome at phone and desktop size; two fix rounds, then andon.
+  slim header with the one signup button; pricing, limits and the why frame it below. Check: deterministic gates, then headless Chrome at phone and desktop size, then the judge: is the product real, and how
+  good is it (1-10)? TIME_VENTURE_FIXES (3) rounds: a failed gate gets a fix round and, still failing after the last,
+  the andon; a page under the bar gets a polish round with the judge's notes (never the last round, kept for fixing
+  what a polish broke) and then launches with its score in the launch post. Quality never holds a launch for a human;
+  only a broken page does.
 Backend (optional, CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID): each venture also gets a Cloudflare Worker with its
   own D1 database and Workers AI, serving the Pages folder under <slug>.<TIME_VENTURE_DOMAIN> (cloudflare.py). The page
   reaches it through time.js; every call degrades to null, so the product works on Pages alone and in the checks.
@@ -22,7 +31,7 @@ Signup: an issue form on Teahub (.github/ISSUE_TEMPLATE/early-access.yml) prefil
 Pages: Teahub serves ventures/<slug>/ on the Pages branch at https://<slug>.<TIME_VENTURE_PAGES_DOMAIN>/ (yolopreneur.lol).
 Measure: after 7 days, distinct people who signed up or 👍'd the signal issue, against the plan's success and kill
   lines: iterate (a v2 card), kill, or watch one more week and then park.
-Batch (TIME_VENTURE_BATCH=k): one card scouts and pitches a field, the board's top k become cards in one milestone,
+Batch (TIME_VENTURE_BATCH=k, off by default): one card scouts and pitches a field, the board's top k become cards in one milestone,
   launched together after a hold, with one batch retry for a held child and a cohort retro (see "batches" below).
 Nothing is posted outside the repo: launch posts are drafts for the chair.
 """
@@ -74,7 +83,7 @@ def today() -> str:
 # The Claude seats (seats.json): fable leads, the other three pitch, vote and build. Every one can be overridden.
 PITCHERS = BOARD = "haiku,sonnet,opus"
 CHAIR = JUDGE_SEAT = "fable"   # JUDGE is the judge's prompt
-BUILDER, ESCALATE = "claude:sonnet", "claude:opus"
+BUILDER, ESCALATE = "claude:opus", "claude:opus"   # one venture a day: the strongest builder (it was sonnet)
 
 
 def site_of(slug: str) -> str:
@@ -98,6 +107,21 @@ def age_days(at: str) -> float:
 
 def measure_days() -> int:
     return int(float(env("TIME_VENTURE_MEASURE_DAYS", "7")))
+
+
+def fix_limit() -> int:
+    """Rounds after the first build: fix rounds for a failed gate and polish rounds for a page under the bar share them."""
+    return int(float(env("TIME_VENTURE_FIXES", "3")))
+
+
+def bar() -> int:
+    """The judge's score (1-10) a page needs to launch without a polish round. 8: people would come back to it."""
+    return int(float(env("TIME_VENTURE_BAR", "8")))
+
+
+def field_size() -> int:
+    """How many pitches the board picks the day's one venture from."""
+    return max(1, int(float(env("TIME_VENTURE_FIELD", "6"))))
 
 
 def worker_spec() -> str:
@@ -514,6 +538,21 @@ The signal issue is {signal}
 When the fixes are written, call open_pr to finish (nothing is opened)."""
 
 
+POLISH_BODY = """The launch page for **{name}** (ventures/{slug}/ on this branch) passes every check, and the studio's judge
+scored it {score}/10 as a product; the bar is {bar}. It is the studio's one venture today, so it ships when it is good, not
+when it works. The changes that would most raise the score, in the judge's words:
+
+{problems}
+
+The product: {page}
+Make these changes in the free product and keep everything that already works: the preloaded sample still runs on load
+through the same code as a user's own input, the product still fills the first screen under the slim header, and the
+header's one primary button still links to {join}. The page and README claim only what the code does. Read the files
+first, then write each changed file whole, one file per call.
+The signal issue is {signal}
+When the changes are written, call open_pr to finish (nothing is opened)."""
+
+
 BACKEND = """
 This venture has a backend at {url} (its own domain; the same page is also on Teahub Pages). ventures/{slug}/time.js is
 already in your folder: load it with <script src="time.js"></script> before app.js, and never write it. It gives:
@@ -926,12 +965,25 @@ shows? Or does it show canned, hardcoded, simulated or "representative" results 
 the comments claim? Then list features the page or README says the FREE product does today that neither the code nor the
 page's own text delivers (static content in the page counts as delivered). Don't count paid or early-access tiers, the next
 version, anything under limits or "not yet", or the Teahub links.
+Last, judge it as a product, the way a stranger who lands on it would: is the one thing it does worth doing, and does it
+do it well (the output is good enough to keep or show someone; the first minute is clear and quick; nothing is broken,
+empty or half-made), made with care (copy, layout, details)? Score it 1 to 10, where 8 means people would come back to it
+or send it to a friend, and name at most three changes that would most raise the score: specific enough to make in one
+sitting, in the free product (no paid features, no accounts, no new pages).
 Reply with ONLY JSON:
-{{"real": true, "evidence": "one or two sentences, quoting the code", "missing": ["a claimed feature that isn't implemented"]}}"""
+{{"real": true, "evidence": "one or two sentences, quoting the code", "missing": ["a claimed feature that isn't implemented"],
+ "score": 7, "better": ["the change that would most raise the score"]}}"""
 
 
 def judge_product(w: dict) -> tuple[list[str], str]:
-    """Inference after the deterministic gates: does the output depend on the input, and does the code do what's claimed?"""
+    """(problems, verdict) of judge(w)."""
+    j = judge(w)
+    return j["problems"], j["verdict"]
+
+
+def judge(w: dict) -> dict:
+    """Inference after the deterministic gates: does the output depend on the input, does the code do what's claimed (both
+    are problems, and fix rounds), and how good is it as a product: {problems, verdict, score (1-10 or None), better}."""
     slug = w["slug"]
     page = pages_file(f"ventures/{slug}/index.html") or ""
     code = "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I))
@@ -950,9 +1002,9 @@ def judge_product(w: dict) -> tuple[list[str], str]:
                      JUDGE.format(page=w.get("page", ""), readme=(pages_file(f"ventures/{slug}/README.md") or "")[:3000],
                                   text=text, code=code))
     except Exception as e:  # noqa: BLE001  the judge being away never blocks a launch; the gates above still hold
-        return [], f"honesty review skipped ({str(e)[:80]})"
+        return {"problems": [], "verdict": f"honesty review skipped ({str(e)[:80]})", "score": None, "better": []}
     if not v or "real" not in v:
-        return [], "honesty review skipped (no verdict)"
+        return {"problems": [], "verdict": "honesty review skipped (no verdict)", "score": None, "better": []}
     problems = []
     if v.get("real") is False:
         problems.append(f"the product doesn't really process the user's input ({_s(v.get('evidence'), 300)}): make every result "
@@ -961,7 +1013,21 @@ def judge_product(w: dict) -> tuple[list[str], str]:
     if missing:
         problems.append("the page or README claims features the code doesn't have: " + "; ".join(missing) +
                         ". Build them or take the claims off the page and README")
-    return problems, f"`{seat}` reviewed the code: {_s(v.get('evidence'), 200)}"
+    m = re.match(r"\s*(\d+(?:\.\d+)?)", "" if isinstance(v.get("score"), bool) else str(v.get("score") or ""))
+    score = min(10, round(float(m.group(1)))) if m and float(m.group(1)) >= 1 else None   # junk: no polish on a misread
+    better = [_s(b, 240) for b in (v.get("better") or []) if _s(b)][:3] if isinstance(v.get("better"), list) else []
+    scored = f" and scored it {score}/10 (bar {bar()})" if score else ""
+    return {"problems": problems, "verdict": f"`{seat}` reviewed the code{scored}: {_s(v.get('evidence'), 200)}",
+            "score": score, "better": better}
+
+
+def polish_for(j: dict, fixes: int) -> list[str]:
+    """The judge's notes as the next round's work: only on a page that passed everything else and scored under the bar,
+    and never in the last round, which stays free to fix whatever a polish broke. Out of polish rounds, the page launches
+    with its score: the bar never holds a launch for a human."""
+    if j.get("problems") or not j.get("score") or j["score"] >= bar() or fixes >= fix_limit() - 1:
+        return []
+    return list(j.get("better") or [])
 
 
 def layout_problems(result: dict) -> list[str]:
@@ -1199,6 +1265,12 @@ def next_title(titles: set[str]) -> str:
     return t
 
 
+def waiting_on(cards: list[dict]) -> list[int]:
+    """The open venture cards still on their way to a launch (held cards wait for a human and don't count). One venture
+    at a time: the day's card starts only once these are out."""
+    return [c["number"] for c in cards if stage_of(tm.beats_of(comments_of(c["number"]))) in STAGES[:STAGES.index("launched")]]
+
+
 def new_card(title: str) -> dict:
     return tm.new_issue(title, CARD_BODY, ["venture"])   # Gitea takes label ids, not names
 
@@ -1346,7 +1418,8 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             say("🔭 Scout: the repos that gained the most stars this week.\n\n" + radar(repos), {"beat": "scouted", "repos": repos})
         elif stage == "scouted":
             reg = registry()
-            pitches = pitch(st["repos"], seat_list("TIME_VENTURE_PITCH", PITCHERS), have(reg))
+            # the day's one venture is picked from a field, not from one pitch per seat
+            pitches = pitch_field(st["repos"], seat_list("TIME_VENTURE_PITCH", PITCHERS), have(reg), 1, want=field_size())
             if not pitches:
                 raise RuntimeError("no seat produced a pitch")
             names = taken(reg)
@@ -1412,15 +1485,16 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
         elif stage == "built":
             w, plan = st["winner"], st["plan"]
             problems, sheet, note = check_page(w, plan), None, "browser pass not run"
+            fixes, polish, j = int(st.get("fixes", 0)), [], {}
             if not problems:
                 problems, sheet, note = browser_check(w["slug"])
             if not problems:  # the inference tier, only once the cheap gates pass
-                problems, verdict = judge_product(w)
-                note = f"{note}; {verdict}"
-            fixes = int(st.get("fixes", 0))
+                j = judge(w)
+                problems, note = j["problems"], f"{note}; {j['verdict']}"
+                polish = polish_for(j, fixes)
             if problems:
                 bullets = "\n".join(f"- {p}" for p in problems)
-                if fixes >= int(env("TIME_VENTURE_FIXES", "2")):
+                if fixes >= fix_limit():
                     tm.label(n, "needs-human")
                     say(f"🛑 Andon: the launch page still fails after {fixes} fix rounds.\n\n{bullets}\n\n"
                         f"Fix it by hand on `{PAGES_BRANCH}` and comment `/time retry`, or just comment `/time retry` "
@@ -1437,6 +1511,22 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                                                              join=w["join"], signal=signal_url(w))},
                                     "every check above passes", spec, root=f"ventures/{w['slug']}/")
                 say(f"🔧 `{r['seat']}` ({r['model']}) worked on the fixes in {r['steps']} steps. Re-checking.",
+                    {"beat": "built", **keep, "fixes": fixes + 1})
+                return "heavy"
+            if polish:   # it works; it is not good enough yet
+                if not heavy_ok:
+                    return "wait"
+                bullets = "\n".join(f"- {p}" for p in polish)
+                say(f"🎨 The checks pass; the judge scores it {j['score']}/10, the bar is {bar()}. Polish round {fixes + 1} "
+                    f"(the last of {fix_limit()} rounds stays for fixes):\n\n{bullets}",
+                    {"beat": "built", **keep, "fixes": fixes, "problems": polish, "polish": True, "score": j["score"]})
+                spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", ESCALATE)
+                r = _build_on_pages({"number": n, "title": f"Polish the {w['name']} launch page",
+                                     "body": POLISH_BODY.format(name=w["name"], slug=w["slug"], score=j["score"], bar=bar(),
+                                                                problems=bullets, page=w.get("page", ""), join=w["join"],
+                                                                signal=signal_url(w))},
+                                    "every change above is made and every check still passes", spec, root=f"ventures/{w['slug']}/")
+                say(f"🎨 `{r['seat']}` ({r['model']}) polished it in {r['steps']} steps. Re-checking.",
                     {"beat": "built", **keep, "fixes": fixes + 1})
                 return "heavy"
             plan = {**plan, "launch_channels": true_drafts(w, plan, chair)}
@@ -1619,9 +1709,9 @@ def milestone_for(title: str) -> int:
                  {"title": title, "due_on": due, "description": "A venture batch: its cards are built, launched and measured together."})["id"]
 
 
-def pitch_field(repos: list[dict], seats: list[str], studio: str, k: int) -> list[dict]:
+def pitch_field(repos: list[dict], seats: list[str], studio: str, k: int, want: int = 0) -> list[dict]:
     """Enough pitches for the board to choose k from: rounds of one pitch per seat, each round told what is already
-    pitched so it pitches something else, until there are 2k or three rounds have run."""
+    pitched so it pitches something else, until there are `want` (2k) or three rounds have run."""
     field: list[dict] = []
     for _ in range(3):
         pitched = "".join(f"\n- {p.get('name') or p['title']}: {p.get('one_liner', '')} (pitched today)" for p in field)
@@ -1632,7 +1722,7 @@ def pitch_field(repos: list[dict], seats: list[str], studio: str, k: int) -> lis
             while p["slug"] in {q["slug"] for q in field}:
                 p["slug"] += "-2"
             field.append(p)
-        if len(field) >= 2 * k:
+        if len(field) >= (want or 2 * k):
             break
     return field
 
@@ -1820,16 +1910,22 @@ def tick() -> int:
                     t, j = f"Batch {today()} ({j})", j + 1
                 fresh.append(new_batch(t, batch_size() or 3))
         else:
-            titles = {c["title"] for c in venture_cards("all")}
-            if f"Venture {today()}" not in titles or env("TIME_VENTURE_START", "").lower() in yes:
-                fresh.append(new_card(next_title(titles)))  # once a day on the schedule; any time someone asks for one
+            titles, asked = {c["title"] for c in venture_cards("all")}, env("TIME_VENTURE_START", "").lower() in yes
+            if f"Venture {today()}" not in titles or asked:
+                busy = [] if asked else waiting_on(venture_cards())
+                if busy:   # one venture at a time, so each gets the day's worker runs and budget to itself
+                    print("today's venture waits for " + ", ".join(f"#{b}" for b in busy) + " to launch")
+                else:
+                    fresh.append(new_card(next_title(titles)))  # once a day on the schedule; any time someone asks
         if env("TIME_VENTURE_START", "").lower() in yes and (batch_size() or asked_batch):
             fresh.append(new_card(next_title({c["title"] for c in venture_cards("all")})))
     # batches first: they are cheap between their own stages, and a release lets ready children launch in this tick
     bfresh = [c for c in fresh if "venture-batch" in label_names(c)]
     fresh = [c for c in fresh if "venture-batch" not in label_names(c)]
     SPAWNED.clear()
-    blisted = batch_cards()
+    # an open batch card runs only while batches are on or once it has started: a card with no beats of Time's (one
+    # migrated from GitHub) started a three-venture batch on a single-venture day
+    blisted = [b for b in batch_cards() if batch_size() or tm.beats_of(comments_of(b["number"]))]
     for b in blisted + [c for c in bfresh if c["number"] not in {x["number"] for x in blisted}]:
         for _ in range(len(BATCH_STAGES)):
             cm = comments_of(b["number"])

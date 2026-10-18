@@ -934,8 +934,8 @@ import urllib.parse
 assert gv.seat_list("TIME_VENTURE_PITCH", gv.PITCHERS) == gv.seat_list("TIME_VENTURE_BOARD", gv.BOARD) == ["haiku", "sonnet", "opus"]
 assert gv.env("TIME_VENTURE_CHAIR", gv.CHAIR) == gv.env("TIME_VENTURE_JUDGE", gv.JUDGE_SEAT) == "fable"
 assert all(gv.tm.SEATS[s]["provider"] == "anthropic" for s in ("haiku", "sonnet", "opus", "fable")), "every default seat is a Claude seat"
-assert gv.worker_spec() == "claude:sonnet" and gv.ESCALATE == "claude:opus"
-for spec79, want79 in (("venice:kimi code", "venice:kimi code"), ("claude:opus", "claude:opus"), ("composer-2", "claude:sonnet")):
+assert gv.worker_spec() == "claude:opus" and gv.ESCALATE == "claude:opus", "one venture a day: opus builds"
+for spec79, want79 in (("venice:kimi code", "venice:kimi code"), ("claude:sonnet", "claude:sonnet"), ("composer-2", "claude:opus")):
     os.environ["TIME_WORKER"] = spec79
     assert gv.worker_spec() == want79, (spec79, gv.worker_spec())   # a Claude worker is no longer coerced to Venice
 os.environ.pop("TIME_WORKER")
@@ -1042,6 +1042,51 @@ assert not gv.trusted_retry(retry79("gitea-actions"), "2026-10-18T00:00:00Z") an
 assert not gv.trusted_retry(retry79("princess"), "2026-10-19T00:00:00Z"), "only after the beat it answers"
 os.environ.pop("TIME_TRUSTED"); gv.tm._trust.clear()
 print("ALL OK 79")
+
+# 79b one venture a day, built for quality: the day's card waits for the others to launch, a migrated batch card never
+# starts a batch, the board picks from a field, and the judge's score earns polish rounds but never holds a launch
+beat79 = lambda b: {"user": {"login": gv.tm.TIME_BOT}, "created_at": "2026-10-18T00:00:00Z", "body": f"x\n<!-- time {json.dumps({'venture': True, 'beat': b})} -->"}
+cm79 = {1: [beat79("launched")], 2: [beat79("planned")], 3: [beat79("held")], 4: [], 5: [beat79("built")]}
+real_co79 = gv.comments_of
+gv.comments_of = lambda n: cm79[n]
+assert gv.waiting_on([{"number": k} for k in (1, 2, 3, 4, 5)]) == [2, 4, 5], "launched and held cards don't hold the day's"
+assert gv.waiting_on([{"number": 1}, {"number": 3}]) == []
+# a pitch field: rounds of one pitch per seat, each told what is pitched already, until there are `want`
+rounds79 = []
+real_pitch79 = gv.pitch
+gv.pitch = lambda repos, seats, studio: rounds79.append(studio) or [{"slug": f"p{len(rounds79)}{s}", "title": f"P{len(rounds79)}{s}", "by": s} for s in seats]
+assert gv.field_size() == 6 and len(gv.pitch_field([], ["haiku", "sonnet", "opus"], "- none", 1, want=gv.field_size())) == 6
+assert len(rounds79) == 2 and "P1haiku" in rounds79[1], "the second round is told what the first pitched"
+rounds79.clear(); assert len(gv.pitch_field([], ["haiku", "sonnet", "opus"], "- none", 3)) == 6, "a batch still wants 2k"
+gv.pitch = real_pitch79
+# the judge scores the product; under the bar, its notes are the next round's work while rounds are left
+real_ask79, real_pf79b = gv.ask_json, gv.pages_file
+gv.pages_file = lambda path: "<html><script>go()</script></html>"
+verdict79 = {"real": True, "evidence": "go() reads the input", "missing": [], "score": "6/10", "better": ["bigger output", "", "share it"]}
+gv.ask_json = lambda *a, **k: dict(verdict79)
+j79 = gv.judge({"slug": "s", "page": "p"})
+assert j79["problems"] == [] and j79["score"] == 6 and j79["better"] == ["bigger output", "share it"], j79
+assert "scored it 6/10 (bar 8)" in j79["verdict"] and gv.judge_product({"slug": "s"})[0] == []
+assert gv.polish_for(j79, 0) == ["bigger output", "share it"] and gv.polish_for(j79, 1) == j79["better"]
+assert gv.polish_for(j79, 2) == [] and gv.polish_for(j79, 3) == [], "the last round stays for fixes; then it launches"
+assert gv.polish_for({**j79, "score": 8}, 0) == [] and gv.polish_for({**j79, "score": None}, 0) == []
+assert gv.polish_for({**j79, "problems": ["fake output"]}, 0) == [], "a real problem is a fix round, not a polish round"
+for raw79, want79 in ((None, None), ("", None), ("junk", None), (0, None), (True, None), (14, 10), ("9", 9), (7.6, 8), ("6/10", 6)):
+    verdict79["score"] = raw79
+    assert gv.judge({"slug": "s"})["score"] == want79, (raw79, gv.judge({"slug": "s"}))
+verdict79.update(score=5, real=False)
+j79 = gv.judge({"slug": "s"})
+assert j79["problems"] and "doesn't really process" in j79["problems"][0] and gv.polish_for(j79, 0) == []
+gv.ask_json = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("POST x -> 529: overloaded"))
+assert gv.judge({"slug": "s"}) == {"problems": [], "verdict": "honesty review skipped (POST x -> 529: overloaded)", "score": None, "better": []}
+os.environ.update(TIME_VENTURE_BAR="5", TIME_VENTURE_FIXES="2", TIME_VENTURE_FIELD="3")
+assert gv.polish_for({"problems": [], "score": 4, "better": ["x"]}, 0) == ["x"] and gv.polish_for({"problems": [], "score": 4, "better": ["x"]}, 1) == []
+assert gv.polish_for({"problems": [], "score": 5, "better": ["x"]}, 0) == [] and gv.field_size() == 3
+for k79 in ("TIME_VENTURE_BAR", "TIME_VENTURE_FIXES", "TIME_VENTURE_FIELD"): os.environ.pop(k79)
+assert "scored it 6/10 as a product; the bar is 8" in gv.POLISH_BODY.format(
+    name="N", slug="s", score=6, bar=8, problems="- x", page="p", join="j", signal="g").replace("\n", " ")
+gv.ask_json, gv.pages_file, gv.comments_of = real_ask79, real_pf79b, real_co79
+print("ALL OK 79b")
 
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
