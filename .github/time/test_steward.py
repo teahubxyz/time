@@ -214,7 +214,7 @@ def steward_model(body, timeout):
     return {"choices": [{"message": {"role": "assistant", "content": "PR #80 was objected to; I handed card #20 back with the reviewer's point."}}], "usage": {}}
 tm.chat = steward_model
 run()
-assert len(calls) == 2 and calls[0]["model"] == "claude-opus-5-5" and "escalate to the operator ONLY" in calls[0]["messages"][0]["content"].replace("\n", " ").replace("  ", " ") or True
+assert len(calls) == 2 and calls[0]["model"] == "claude-opus-5-5"
 assert "ONLY for money" in calls[0]["messages"][0]["content"] and "a reviewer objected" in calls[0]["messages"][1]["content"]
 tool_results = [m["content"] for m in calls[1]["messages"] if m["role"] == "tool"]
 assert tool_results[0] == "done" and tool_results[1].startswith("refused") and tool_results[2] == "done" and tool_results[3].startswith("refused") and tool_results[4].startswith("refused"), tool_results
