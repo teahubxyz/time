@@ -1,12 +1,12 @@
 name: venture
 # The venture loop: trending repos -> pitches -> board -> launch plan -> launch page on Pages -> 7 days of signups.
-# Every 20 minutes it advances whatever is due (cheap when nothing is); a new venture card starts once a day,
+# Every 6 hours it advances whatever is due (cheap when nothing is); a new venture card starts once a day,
 # or right away: Actions -> venture -> Run workflow -> tick "Start a new venture now" (gh workflow run venture.yml -f start=true).
 # Batches: TIME_VENTURE_BATCH=3 (or Run workflow -> batch) runs k ventures at once in one milestone.
 # Off until TIME_VENTURE=on. Signups come in through .github/ISSUE_TEMPLATE/early-access.yml.
 on:
   schedule:
-    - cron: "*/20 * * * *"
+    - cron: "27 */6 * * *"   # every 6 hours (was every 20 minutes, paused for Venice spend); Claude seats now
   workflow_dispatch:
     inputs:
       start:
@@ -53,10 +53,16 @@ jobs:
           TIME_VENTURE_BATCH: ${{ vars.TIME_VENTURE_BATCH }}                    # k; set, a batch replaces the daily single card
           TIME_VENTURE_BATCH_HOLD_HOURS: ${{ vars.TIME_VENTURE_BATCH_HOLD_HOURS }}  # launch-together hold (default 6)
           TIME_VENTURE_HEAVY: ${{ vars.TIME_VENTURE_HEAVY }}                    # worker runs at once per tick (default 3)
-          TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}
-          TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}
-          TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}
+          TIME_VENTURE_PITCH: ${{ vars.TIME_VENTURE_PITCH }}       # default haiku,sonnet,opus
+          TIME_VENTURE_BOARD: ${{ vars.TIME_VENTURE_BOARD }}       # default haiku,sonnet,opus
+          TIME_VENTURE_CHAIR: ${{ vars.TIME_VENTURE_CHAIR }}       # default fable
+          TIME_VENTURE_JUDGE: ${{ vars.TIME_VENTURE_JUDGE }}       # default fable
+          TIME_VENTURE_ESCALATE: ${{ vars.TIME_VENTURE_ESCALATE }} # second fix round, default claude:opus
+          TIME_VENTURE_PAGES_DOMAIN: ${{ vars.TIME_VENTURE_PAGES_DOMAIN }}  # default yolopreneur.lol
+          TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}                   # whose /time retry counts
+          TIME_CAP_SLACK: ${{ vars.TIME_CAP_SLACK }}
+          TIME_ANTHROPIC_API: ${{ vars.TIME_ANTHROPIC_API }}
           TIME_VENTURE_MEASURE_DAYS: ${{ vars.TIME_VENTURE_MEASURE_DAYS }}
-          TIME_WORKER: ${{ vars.TIME_WORKER }}
+          TIME_WORKER: ${{ vars.TIME_VENTURE_WORKER || 'claude:sonnet' }}   # the builder; the heartbeat's TIME_WORKER is its own
           TIME_WORKER_STEPS: ${{ vars.TIME_WORKER_STEPS }}
           TIME_WORKER_MAX_TOKENS: ${{ vars.TIME_WORKER_MAX_TOKENS }}
