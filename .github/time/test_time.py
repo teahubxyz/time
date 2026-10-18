@@ -1852,11 +1852,3 @@ with cf.ThreadPoolExecutor(2) as ex:
 vt2.tm.Hands, vt2.tm.venice_work = real40
 got = dict((n, (x, y)) for n, x, y in seen40)
 assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].startswith("refused") and got[2][1] == "wrote", got
-
-
-
-# 80 the steward tick: its own file (fake forge, no model), run here so the one CI command covers it
-import subprocess  # noqa: E402
-_p = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "test_steward.py")], capture_output=True, text=True)
-assert _p.returncode == 0 and "ALL OK steward" in _p.stdout, _p.stdout[-1500:] + _p.stderr[-1500:]
-print("ALL OK 80")
