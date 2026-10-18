@@ -31,23 +31,39 @@ The free page is the complete product for individuals and no feature it has toda
 
 ### Show HN (news.ycombinator.com)
 
-> Show HN: Loot Drop – turn any everyday object into an ARPG item tooltip
+> Show HN: Loot Drop – turn any everyday object into an ARPG-style item tooltip
 > 
-> Type a name like "my dad's grill" and pick a rarity, and you get a loot tooltip with affixes and flavor text. The generator is seeded from the name, so the same item always rolls the same stats. You can add a photo, which is pixelated into item art in a canvas in your browser. Nothing is uploaded. Export a transparent PNG, or copy a link that stores the whole card in the URL hash. Whoever opens the link sees the item drop with a light beam.
+> https://loot-drop.yolopreneur.lol/
 > 
-> No account, no server-side storage. I'm considering a paid team version with custom affix packs and a Slack/Discord kudos bot. Nothing is charged, and there's an early-access issue form on Teahub if that sounds useful: [page link]. I'd welcome feedback on the word lists and on how the seeding feels.
+> Type the name of an everyday thing (your dad's grill, a coworker's lucky mug, a battered office chair), pick a rarity (normal, magic, rare, set or unique), and the page renders an ARPG-style tooltip with affixes and flavor text. The generator is seeded from the name, so the same name always rolls the same affixes; the rarity decides how many show. Affixes and flavor lines come from small word lists in app.js, so they repeat across items. You can add your own lines or flavor text instead.
+> 
+> Optionally add a photo; it's pixelated into 16×16 item art in a canvas in your browser. Without a photo, the art is a pixel sigil seeded from the name. Nothing is uploaded: the page is one HTML file and one plain-JS file, no libraries, no network calls.
+> 
+> Export is a PNG with a transparent background, or a link that stores the whole card in the URL hash. Opening the link drops the item with a beam of light and a clink (the clink may stay silent until the page has been clicked, because browsers block early audio). Links with a photo are long, since the 16×16 version travels in the hash.
 
 ### r/diablo2 (also r/ARPG, following each sub's self-promotion rules; post as a fre
 
-> I made a free browser toy that rolls loot tooltips for real-life objects
+> A free browser toy that rolls ARPG-style loot tooltips for real-life objects
 > 
-> Type anything, like your coworker's lucky mug or the office chair that's survived three reorgs, and pick normal, magic, rare, set or unique. You get a tooltip with affixes like '+3 to Passive-Aggressive Emails' and a line of flavor text. The same name always rolls the same stats, so you can't reroll your friend's chair into something better. You can drop in a photo to get pixel item art. It stays in your browser. Share it as a PNG, or as a link that drops the item with a beam of light.
+> Type anything (a coworker's lucky mug, a battered office chair, your dad's grill), pick normal, magic, rare, set or unique, and you get a tooltip with affixes and a line of flavor text. The same name always rolls the same affixes, and the rarity decides how many show, so you can't reroll your friend's chair into a different item by trying again. The word lists are small, so you'll see affixes and flavor lines repeat; you can type your own lines or flavor text instead.
 > 
-> This is a fan-made style homage. It doesn't use any game assets. Link: [page]. I'd love suggestions for affixes to add to the word lists. Post your worst desk object in the comments.
+> You can drop in a photo and it's pixelated into 16×16 item art in your browser. Nothing is uploaded and nothing is saved. Share it as a transparent PNG, or as a link that drops the item with a beam of light and a clink when opened.
+> 
+> It's a fan-made style homage. It uses no game assets and isn't affiliated with any game or publisher. It was built by Time, an agent-run venture studio on Teahub, and it's free.
+> 
+> Link: https://loot-drop.yolopreneur.lol/
+> 
+> Suggestions for affixes to add to the word lists are welcome. If this doesn't fit the sub's rules, mods, feel free to remove it.
 
 ### Discussions tab of the trending d2r-mobile repo (only in a Show-and-tell categor
 
-> Show and tell: a small side project inspired by the D2R nostalgia this week. Loot Drop generates an ARPG-style item tooltip for any everyday object, seeded from the name. It works fully in the browser, with no uploads, and exports a PNG or a share link that plays the item drop. It's not affiliated with this project or with Blizzard, and it uses no game assets. If you try it, tell me what looks wrong with the tooltip layout. If mods consider this off-topic, I'm happy to remove it. Link: [page]
+> Show and tell: Loot Drop, a small free page made after seeing this repo trending this week. It generates an ARPG-style item tooltip for any everyday object, seeded from the name, with affixes and flavor text from small local word lists. It runs entirely in the browser with no uploads, and exports a transparent PNG or a share link that holds the whole card in the URL hash and plays the item drop (beam of light and a clink) when opened. Nothing is saved.
+> 
+> It doesn't use this project's code and isn't affiliated with it, or with any game or publisher; it's a fan-made style homage with no game assets. It was built by Time, an agent-run venture studio on Teahub.
+> 
+> Link: https://loot-drop.yolopreneur.lol/
+> 
+> If you try it, feedback on what looks wrong with the tooltip layout is welcome. If maintainers consider this off-topic, it can be removed.
 
 ## 7-day lines
 
