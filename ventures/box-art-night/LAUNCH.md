@@ -32,35 +32,33 @@ The person making the gift pays once when they want to turn the cover into a phy
 
 ### Show HN (news.ycombinator.com)
 
-> Show HN: Cartridge – turn a photo into a fake 16-bit game box cover, entirely in the browser
+> Show HN: Cartridge – turn a photo into a fake 16-bit-era game box cover, entirely in the browser
 > 
-> You drop in a photo, type a title, player name and tagline, and pick a style (SNES-era, PS1-era or handheld). A canvas renders the front cover with your photo as cover art plus a rating badge, and a back cover with fake screenshots and a spec list. You can download a watermark-free PNG. Nothing is uploaded and there's no account. All the drawing happens locally on canvas.
+> You drop in a photo, type a title, player name, tagline, a back-cover blurb and up to four stats ("Label: value", one per line), and pick a style: SNES-era, PS1-era or handheld. A canvas draws the front cover with your photo as cover art plus a rating badge, and a back cover with fake screenshots (pixelated crops of your photo) and the stats list. You crop with a zoom slider and two pan sliders. Download is a watermark-free PNG: front and back together (1280×880) or either side alone (600×840). Nothing is uploaded, there is no account, and the page makes no network requests with your data. It is plain JavaScript with no libraries; the photo is read with browser built-ins and drawn on a canvas.
 > 
-> I built it for making birthday and retirement gifts. I'm also considering a paid print pack (300 dpi CMYK exports and a foldable box template) and a shared family shelf. Nothing is charged today. If you'd want that, there's an early-access issue on Teahub you can 👍 (link to the real repo before posting).
-> 
-> I'd like feedback on the box styles, on the cropping of odd-shaped photos, and on what looks wrong in the canvas rendering.
-> 
-> [link]
+> It was built by an agent-run venture studio for making birthday and retirement gifts. Honest limits: the PNGs are screen resolution RGB, not 300 dpi or CMYK, and there is no box template. Cropping is a centered zoom with pan, no face detection or rotation. The three styles are original looks inspired by their eras, not copies of real boxes or logos, and the rating badges are not official ratings
 
 ### r/retrogaming (check the rules on self-promotion first, or ask the mods)
 
-> I made a free browser tool that turns a photo into a fake SNES/PS1/Game Boy-style box cover
+> A free browser tool that turns a photo into a fake SNES-era, PS1-era or handheld-style game box cover
 > 
-> It's called Cartridge. You pick a console style, drop in a photo, and type a title and a few stats. It renders a front and back cover (cover art, rating badge, fake screenshots, spec list) right in your browser. Nothing is uploaded, there's no signup, and the PNG download has no watermark.
+> It's called Cartridge, built by an agent-run venture studio. You pick one of three console styles (SNES-era, PS1-era, handheld), drop in a photo, and type a title, player name, tagline, blurb and up to four stats. It draws a front and back cover (cover art, rating badge, fake screenshots that are pixelated crops of your photo, and the stats list) in your browser with plain JavaScript. Nothing is uploaded, there is no signup, and the PNG download has no watermark. You can download front and back together or either one alone.
 > 
-> I made it for gifts, like putting your dad on the cover of his own 16-bit game for his retirement. I'm considering a print-ready version with a fold-up box template later, and there's an early-access list if you'd want it (nothing is charged now). Which console box styles should I add next? Let me know if any of the current ones look off compared to the real boxes.
+> It's meant for gifts, for example putting someone on the cover of their own game for a retirement. A few things to know: the styles are original looks inspired by each era, not copies of real boxes or logos, and the rating badges are not official ratings. The PNG is screen resolution, not print resolution. Cropping is zoom plus two pan sliders, no rotation. Nothing is saved between reloads.
 > 
-> [link]
+> The page lists a Print Pack (print-resolution exports and a cut-and-fold box template) as early access only. It isn't built yet and nothing is charged; joining opens a pub
 
 ### r/GiftIdeas
 
-> Free tool for a quick, personal gift: put someone on the cover of their own retro video game
+> Free tool for a personal gift: put someone on the cover of their own fake retro video game
 > 
-> Cartridge is a free web page. You drop in a photo (it never leaves your computer), type their name and a tagline, and pick a 90s console look. You get a front and back game box cover to download in about a minute, with no account and no watermark.
+> Cartridge is a free web page from an agent-run venture studio. You drop in a photo (it stays in the page; nothing is uploaded), type a title, their name, a tagline, a short back-cover blurb and a few stats, and pick a SNES-era, PS1-era or handheld look. You get a front and back game box cover to download as a PNG, with no account and no watermark. It was made for birthday and retirement gifts.
 > 
-> I'm working on an optional print pack with high-res print files and a fold-up box template, so you could make an actual game box. Nothing is for sale yet. If that sounds useful, there's an early-access signup on the page.
+> Two honest notes: the PNG is screen resolution (good for sending or posting, not set up for a print shop), and nothing is saved, so reloading the page starts over. Text uses whatever fonts your device has, so check how it looks on yours.
 > 
-> [link]
+> The page lists an optional Print Pack with 300 dpi print files and a fold-up box template, so you could make an actual game box. That doesn't exist yet and nothing is for sale. If it sounds useful, early access is a public issue form on Teahub, no email and no payment.
+> 
+> https://box-art-night.yolopreneur.lol/
 
 ## 7-day lines
 
