@@ -169,6 +169,7 @@ def _merge(pr: dict, n: int, what: str, beats: list[dict], rep: Report) -> None:
         tm.gh("POST", f"/repos/{tm.REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True}, as_time=True)
         if tm.gh("GET", f"/repos/{tm.REPO}/issues/{n}")["state"] == "open":
             tm.gh("PATCH", f"/repos/{tm.REPO}/issues/{n}", {"state": "closed"})
+        # the one steward comment that keeps its beat: it is the same "merged" beat land() writes, so the card reads as done
         tm.comment(n, f"⏱️ Time: approved and green, merged PR #{pr['number']}. Card done.", {"beat": "merged", "pr": pr["number"], "steward": True})
         rep.merged.append(what)
 

@@ -87,6 +87,7 @@ class Forge:
             if seg[2] == "ci.yml": self.ci.append(body["ref"]); return {}
             self.dispatched.append(seg[2]); return {}
         if seg[0] == "actions" and seg[1] == "variables":
+            if method == "PUT" and seg[2] not in self.vars: raise RuntimeError(f"PUT {p} -> 404: not found")  # Gitea: PUT updates, POST creates
             self.vars[seg[2]] = body["value"]; return {}
         if p == base:
             return {"default_branch": "main"}
@@ -219,6 +220,8 @@ assert "ONLY for money" in calls[0]["messages"][0]["content"] and "a reviewer ob
 tool_results = [m["content"] for m in calls[1]["messages"] if m["role"] == "tool"]
 assert tool_results[0] == "done" and tool_results[1].startswith("refused") and tool_results[2] == "done" and tool_results[3].startswith("refused") and tool_results[4].startswith("refused"), tool_results
 assert f.vars == {"TIME_MODE": "live"}, f.vars
+assert "-> 404" not in "".join(tool_results), "the first set_variable on a fresh repo creates the variable"
+st.Tools(st.Report()).t_set_variable({"name": "TIME_MODE", "value": "dry"}); assert f.vars == {"TIME_MODE": "dry"}, "an existing one is updated"
 assert any('"steward":true' in c["body"] and "The reviewer wants a test" in c["body"] for c in f.comments[20])
 assert "handed card #20 back" in f.log()[0] and "Left:\n- PR #80 (card #20): a reviewer objected" in f.log()[0]
 # the steward has spoken on card #20 since its last beat: the next run does not ask again
