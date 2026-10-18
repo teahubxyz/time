@@ -6,7 +6,7 @@
 // asked for) and one who says hello first, the model picker, a plain chat, several chats at once (and in two tabs),
 // the abilities (a photo, and one Venice turns down, voice notes, a clip priced first, your voice note through a fake
 // microphone, your photo seen or described, a first portrait), a remix end to end, the exports, the retirement of the
-// first version's cast and its conversations, the harbor's own met without a key, and the page's security policy.
+// first version's cast and its conversations, the harbor's own met without a key (and by a shared link, and their\n// pages), and the page's security policy.
 // Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
 // site serves (tools/build.sh copies them to shots/).
 //
@@ -1168,6 +1168,63 @@ async function main() {
     await count(p5, "#roster tr", 2);
     assert.ok(await p5.locator("#log .line.me .said", { hasText: "What is this place?" }).isVisible(), "the same chat, not a new copy of her");
     await own.close();
+
+    // ---------- the harbor's own, shared: a link into their chat, and a page for each ----------
+    const shared = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p6 = await shared.newPage();
+    watch(p6, "a shared link: ");
+    await venice(p6);
+    await p6.goto(base + "?meet=odile");
+    await has(p6, "#who-name", /^Odile$/);
+    await has(p6, "#log .line.them .said", /\S/);
+    assert.ok(await p6.locator("#log .line.them").count() > 0, "she says her hello");
+    assert.equal(await p6.evaluate(() => location.pathname + location.search + location.hash), "/", "the address is cleaned");
+    await has(p6, "#cast .tile[data-cast=odile] .go", /^talking now$/);
+    const odile = (await p6.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")))).filter((c) => c.id === "odile");
+    assert.equal(odile.length, 1);
+    assert.equal(odile[0].lineage.at(-1).ref, "havre:odile", "met the same way as from her tile, with the credit");
+    // said something, then the same link again: the same chat, not a second copy of her
+    await p6.fill("#say", "Hello there");
+    await p6.keyboard.press("Enter");
+    await has(p6, "#log .line.me .said", /^Hello there$/);
+    await has(p6, "#log .line.them .said", /Hello|\S/);
+    await p6.goto(base + "?meet=odile");
+    await has(p6, "#who-name", /^Odile$/);
+    assert.ok(await p6.locator("#log .line.me .said", { hasText: "Hello there" }).isVisible(), "the chat from before");
+    assert.equal(await p6.evaluate(() => location.search), "", "the address is cleaned again");
+    assert.equal((await p6.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")))).filter((c) => c.id === "odile").length, 1, "one copy of her");
+    assert.equal(await p6.evaluate(() => Object.keys(JSON.parse(localStorage.getItem("havre.threads.v1"))).length), 1, "one chat");
+    // an id that isn't one of theirs does nothing: nobody new, and the address is left as it was
+    await p6.goto(base + "?meet=nobody");
+    await count(p6, "#cast li", 3);
+    assert.equal(await p6.evaluate(() => location.search), "?meet=nobody");
+    assert.equal((await p6.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")))).length, 1, "nobody was met");
+    await shared.close();
+
+    // a page of their own, from a fresh browser: it reads, runs nothing, and its link goes to their chat
+    const visit = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p7 = await visit.newPage();
+    watch(p7, "a page of their own: ");
+    await p7.goto(base + "c/maren/");
+    assert.equal(await p7.title(), "Maren in Havre");
+    await has(p7, "h2", /^Maren$/);
+    await has(p7, ".said", /I'm Maren, I run the harbor\./);
+    assert.equal(await p7.locator("script").count(), 0, "no script on the page");
+    assert.equal(await p7.evaluate(() => document.querySelector('link[rel=canonical]').href), "https://havre.yolopreneur.lol/c/maren/");
+    assert.equal(await p7.evaluate(() => localStorage.length), 0, "a page keeps nothing");
+    await shot(p7, "page.png");
+    const v3 = await (await p7.request.get(base + "c/maren/maren.card.json")).json();
+    assert.equal(v3.spec, "chara_card_v3");
+    assert.equal((await p7.request.get(base + "cast/maren.havre.json")).status(), 200);
+    await p7.goto(base + "c/");
+    await has(p7, "h2", /^THE HARBOR'S OWN$/);
+    await count(p7, "main li", 3);
+    await p7.goto(base + "c/maren/");
+    await p7.getByRole("link", { name: "MEET MAREN IN HAVRE" }).click();
+    await has(p7, "#who-name", /^Maren$/);
+    await has(p7, "#log .line.them .said", /I'm Maren, I run the harbor\./);
+    assert.equal(await p7.evaluate(() => location.search), "", "the address is cleaned");
+    await visit.close();
 
     // ---------- phone: an iPhone SE's screen, 375 by 667 ----------
     const W = 375;

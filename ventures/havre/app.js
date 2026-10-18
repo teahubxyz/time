@@ -145,6 +145,7 @@ function boot() {
   renderAll();
   markRead(thread());
   loadModels();
+  meetFromLink();
   if (S.key) { loadVenice(0); loadBalance(); resumeJobs(); comingBack(); }
   const t0 = thread();
   if (S.key && t0 && t0.msgs.length && !T.anyShown(t0.msgs)) speakFirst();   // a hello cut off when its tab closed
@@ -468,6 +469,20 @@ function meet(c0) {
     lineage: [...c0.lineage, { relation: "ported-from", name: c0.name, creator: c0.creator, ref: castRef(c0), at: today(), note: "one of the harbor's own" }] },
   { select: false });
   selectCard(mine.id, { talk: true });
+}
+
+/**
+ * A shared link (/?meet=odile, from the harbor's own pages) meets that one of the harbor's own, the way pressing their
+ * tile does, and the parameter leaves the address, so a reload or a copied address doesn't meet them again. Someone
+ * who has met them already lands in the same chat. An id that isn't one of theirs does nothing.
+ */
+function meetFromLink() {
+  const u = new URL(location.href), id = u.searchParams.get("meet");
+  const c0 = id == null ? null : CAST.find((c) => c.id === id.trim().toLowerCase());
+  if (!c0) return;
+  u.searchParams.delete("meet");
+  try { history.replaceState(history.state, "", u.pathname + u.search + u.hash); } catch { /* a sandboxed preview can't change its address */ }
+  meet(c0);
 }
 
 // Venice's characters, a page at a time; without a key, empty frames where they will be
