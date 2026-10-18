@@ -1108,6 +1108,21 @@ def worker_seat_model(spec: str) -> tuple[str, str, str | None]:
     return seat, model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"], effort
 
 
+PONYTAIL = HERE / "rules" / "ponytail.md"   # vendored from DietrichGebert/ponytail (MIT, rules/PONYTAIL-LICENSE)
+
+
+def ponytail() -> str:
+    """Ponytail's rules (the smallest complete change; say what you skipped) for a seat that writes code: the worker,
+    and the venture builder through it. Reviewers, the planner and the board never get them: it is a coding ruleset,
+    and its closing "what I skipped" line distorts an answer that isn't a diff. TIME_PONYTAIL=off turns it off."""
+    if (os.environ.get("TIME_PONYTAIL") or "on").strip().lower() == "off":
+        return ""
+    try:
+        return "\n\n" + PONYTAIL.read_text()
+    except OSError:   # a checkout without the rules still builds
+        return ""
+
+
 def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | None = None, steps: int | None = None) -> dict:
     """Run one card with a seat (Venice or Claude) as the worker. Returns {pr, steps, seat, model}. The name is
     historical; venture.py and the tests call it. TIME_WORKER_FALLBACK (default `grok build` for a Venice worker,
@@ -1122,7 +1137,7 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | 
     base_note = (f" It is cut from `{base}` and your pull request targets `{base}`, not the default branch: that is where "
                  "this card's files live.") if base else ""
     system = WORKER_RULES.format(n=card["number"], repo=REPO, title=card["title"],
-                                 body=(card.get("body") or "")[:20000], branch=hands.branch, done=done, base_note=base_note)
+                                 body=(card.get("body") or "")[:20000], branch=hands.branch, done=done, base_note=base_note) + ponytail()
     if review is not None:  # answering a review: same branch, and the reviewer's words go in marked as theirs
         system += REVISE_RULES.format(branch=hands.branch, review=review or "(no review comments were found; check the PR)")
     msgs = [{"role": "system", "content": system},

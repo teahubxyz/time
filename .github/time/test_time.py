@@ -249,6 +249,7 @@ run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh], None, c
 assert "# Checks\n- ci: pending\n- lint: success\n\n# Diff" in seen["user"], seen["user"]
 assert "means that context reported success" in seen["system"] and "tests or builds passed" not in seen["system"]
 assert "evidence you can rely on" in seen["system"] and "pending check is not yet evidence" in seen["system"]
+assert "lazy senior developer" not in seen["system"], "a reviewer never gets Ponytail: it reviews, it does not write the diff"
 run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert "# Checks\n(checks unavailable)\n\n# Diff" in seen["user"], seen["user"]
 
@@ -383,6 +384,11 @@ w = run(World([card(1, "Base: gh-pages\n\n" + D)], {1: [beat("would-dispatch")]}
 assert w.branches == ["time/card-1-gh-pages"] and w.bases == {"time/card-1-gh-pages": "gh-pages"}, (w.branches, getattr(w, "bases", None))
 assert w.opened[0]["head"] == "time/card-1-gh-pages" and w.opened[0]["base"] == "gh-pages", w.opened
 assert "cut from `gh-pages`" in w.venice_system and "targets `gh-pages`" in w.venice_system
+# 14c the worker carries Ponytail's rules (it writes code); TIME_PONYTAIL=off leaves them out
+assert "You are a lazy senior developer" in w.venice_system and "Never cut: validation at trust boundaries" in w.venice_system
+w_off = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk", "TIME_PONYTAIL": "off"})
+assert "lazy senior developer" not in w_off.venice_system and w_off.opened, "off: the same build, without the rules"
+os.environ.pop("TIME_PONYTAIL", None)
 assert "on branch `time/card-1-gh-pages`" in w.posted[0][1], w.posted[0]
 assert tm.card_base({"body": "Base: `release/1.x`\nDONE: x"}) == "release/1.x" and tm.card_base({"body": "rebase: no\nDONE: x"}) is None
 assert tm.card_branch({"number": 5, "body": D}) == "time/card-5" and w.bases.get("time/card-1") is None
