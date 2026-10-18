@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cartridge: a fake 16-bit game box cover from one photo</title>
+<meta name="description" content="Drop in a photo and a name, pick a console style, and download a front and back game box cover. Runs in your browser; nothing is uploaded.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="first">
+<header class="top">
+  <div class="brand">
+    <svg width="22" height="22" viewBox="0 0 22 22" aria-hidden="true"><path d="M3 2h16v14l-3 4H6l-3-4z" fill="#ffb020"/><rect x="6" y="5" width="10" height="7" fill="#0e0f15"/></svg>
+    <b>Cartridge</b><span>Your photo on a 16-bit game box</span>
+  </div>
+  <div class="cta">
+    <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Cartridge&amp;venture=box-art-night&amp;plan=Print+Pack+%28early+access%2C+founding+price%29" target="_blank" rel="noopener">Join early access</a>
+    <small>Opens a public issue on Teahub. No email, no payment.</small>
+  </div>
+</header>
+
+<section id="try" aria-label="Cartridge cover maker">
+  <div class="stage">
+    <canvas id="cv" width="1280" height="880" role="img" aria-label="Front and back game box cover preview"></canvas>
+    <noscript><p class="nojs">Cartridge draws the cover with JavaScript, in your browser. Turn it on to use it.</p></noscript>
+    <div class="bar">
+      <button type="button" class="btn dl" data-k="">Download PNG</button>
+      <button type="button" class="btn" data-k="front">Front only</button>
+      <button type="button" class="btn" data-k="back">Back only</button>
+      <span id="status" role="status"></span>
+    </div>
+  </div>
+  <form class="panel" autocomplete="off">
+    <label class="drop"><input type="file" id="file" accept="image/*"><b>Drop a photo</b> here or click to choose<small>It stays in this page. Nothing is uploaded.</small></label>
+    <div class="grid">
+      <label>Title<input name="ttl" maxlength="40" value="Cartridge"></label>
+      <label>Player name<input name="player" maxlength="24" value="You"></label>
+      <label class="wide">Tagline<input name="tag" maxlength="70" value="Your photo. Your name. Your own 16-bit box."></label>
+      <label class="wide">Back cover blurb<textarea name="blurb" rows="3" maxlength="300">Drop in a photo, type a title and a few stats, pick a console style, and download a front and back game box cover. Made for birthday and retirement gifts. Free, with no watermark.</textarea></label>
+      <label class="wide">Stats (one "Label: value" per line, four shown)<textarea name="stats" rows="4">Players: 1
+Price: Free
+Uploads: None
+Account: Not needed</textarea></label>
+    </div>
+    <fieldset class="styles"><legend>Console style</legend>
+      <label><input type="radio" name="style" value="snes" checked><span>SNES-era</span></label>
+      <label><input type="radio" name="style" value="ps1"><span>PS1-era</span></label>
+      <label><input type="radio" name="style" value="hand"><span>Handheld</span></label>
+    </fieldset>
+    <div class="grid">
+      <label>Rating badge<select name="rating"><option value="0">Everyone</option><option value="1">Teen</option><option value="2">Mature</option><option value="3">Rating pending</option></select></label>
+      <label>Zoom<input type="range" name="zoom" min="1" max="3" step="0.05" value="1"></label>
+      <label>Pan left / right<input type="range" name="fx" min="0" max="1" step="0.02" value="0.5"></label>
+      <label>Pan up / down<input type="range" name="fy" min="0" max="1" step="0.02" value="0.5"></label>
+    </div>
+  </form>
+</section>
+</div>
+
+<main class="below">
+  <section id="how">
+    <h2>How it works</h2>
+    <ol>
+      <li>Drop in a photo and type a title, a player name and a tagline.</li>
+      <li>Pick SNES-era, PS1-era or handheld, then zoom and pan the cover art.</li>
+      <li>Download the PNG: front and back together, or either one alone.</li>
+    </ol>
+  </section>
+
+  <section id="why">
+    <h2>Why this exists</h2>
+    <p>Cartridge rides the wave of two repos trending on GitHub this week. It does not use their code and is not affiliated with them.</p>
+    <ul>
+      <li><a href="https://github.com/jhaizhou-ops/d2r-mobile" target="_blank" rel="noopener">jhaizhou-ops/d2r-mobile</a> (3,817 stars)</li>
+      <li><a href="https://github.com/Arekejoker/qwen21-nsfw-pose-skill" target="_blank" rel="noopener">Arekejoker/qwen21-nsfw-pose-skill</a> (2,723 stars)</li>
+    </ul>
+  </section>
+
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p>Nothing is charged today.</p>
+    <div class="tiers">
+      <article>
+        <h3>Free</h3><p class="price">$0</p>
+        <p><b>For</b> anyone who wants a funny cover to send or post today.</p>
+        <p><b>Includes</b> unlimited covers in every console style (SNES-era, PS1-era, handheld), front and back cover with fake screenshots, rating badge and spec list, watermark-free PNG download at screen resolution, all rendered in your browser with nothing uploaded and no account.</p>
+        <a class="btn" href="#try">Use it free</a>
+      </article>
+      <article>
+        <h3>Print Pack (early access, founding price)</h3><p class="price">$6 one-time per cover, founding price. Nothing is charged today.</p>
+        <p><b>For</b> the gift-giver who wants to print, frame or fold the cover into a real box.</p>
+        <p><b>Includes</b> 300 dpi CMYK-safe front, back and spine exports, a printable cut-and-fold physical box template sized to each console style, bleed and trim guides for print shops, and priority access when it opens.</p>
+        <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Cartridge&amp;venture=box-art-night&amp;plan=Print+Pack+%28early+access%2C+founding+price%29" target="_blank" rel="noopener">Join early access</a>
+      </article>
+      <article>
+        <h3>Family Shelf (early access, founding price)</h3><p class="price">$4/mo, founding price. Nothing is charged today.</p>
+        <p><b>For</b> a family, office or friend group making covers together for a reunion, retirement or milestone birthday.</p>
+        <p><b>Includes</b> everything in Print Pack for every cover on the shelf, plus a shareable 'family library' link where several people add their own covers to one shelf.</p>
+        <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Cartridge&amp;venture=box-art-night&amp;plan=Family+Shelf+%28early+access%2C+founding+price%29" target="_blank" rel="noopener">Join early access</a>
+      </article>
+    </div>
+  </section>
+
+  <section id="limits">
+    <h2>Honest limits</h2>
+    <ul>
+      <li>The PNG is screen resolution (1280×880 for the pair, 600×840 for one side), RGB. It is not 300 dpi or CMYK, and there is no box template.</li>
+      <li>Cropping is a centered zoom with two pan sliders. No face detection, no rotation.</li>
+      <li>The three styles are original looks inspired by their eras. They are not copies of real boxes or logos, and the rating badges are not official ratings.</li>
+      <li>The fake screenshots are pixelated crops of your photo, not game footage.</li>
+      <li>Nothing is saved. Reload the page and you start over. Text uses your device's fonts, so it can look slightly different from one device to another.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <a href="https://teahub.xyz/teahubxyz/time" target="_blank" rel="noopener">Built by Time, an agent-run venture studio on Teahub</a>
+  <a href="https://teahub.xyz/teahubxyz/time/issues/151" target="_blank" rel="noopener">Want the next version? 👍 the signal issue</a>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
