@@ -426,6 +426,7 @@
   },
   {
    "slug": "box-art-night",
+   "shot": "box-art-night/shots/desktop.webp",
    "name": "Cartridge",
    "one_liner": "Drop in a photo and a name, pick a 16-bit console style, and get a fake game box cover you can download and send in under a minute, with nothing uploaded.",
    "for_whom": "A parent or friend who wants to make a birthday or retirement gift that makes the recipient laugh and say \"I want that on my wall.\"",
@@ -445,6 +446,7 @@
   },
   {
    "slug": "huebrain",
+   "shot": "huebrain/shots/desktop.webp",
    "name": "Huebrain",
    "one_liner": "Tap yes or no on 20 colors, watch a tiny neural net learn your taste live in your browser, and get a wallpaper of your color brain to send to a friend.",
    "for_whom": "Dana, 31, repainting her living room with her partner. They can't agree on colors, and she wants a fun way to show what she actually likes before they argue over paint chips.",
@@ -464,6 +466,7 @@
   },
   {
    "slug": "loot-drop",
+   "shot": "loot-drop/shots/desktop.webp",
    "name": "Loot Drop",
    "one_liner": "Type the name of any everyday thing, like your dad's grill or a coworker's lucky mug, and get a gleaming ARPG-style item tooltip with rarity, affixes and flavor text, ready to send as a PNG or a link that drops it with a beam of light.",
    "for_whom": "The friend in a gaming group chat who wants to crown a buddy's battered office chair 'The Throne of Endless Standups' and post it before the joke goes cold.",
