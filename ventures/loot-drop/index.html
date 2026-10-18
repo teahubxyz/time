@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Loot Drop: turn any everyday thing into an ARPG item tooltip</title>
+<meta name="description" content="Type a name, pick a rarity, get an ARPG-style item tooltip. Export a transparent PNG or copy a link that drops it in a beam of light. Free, in your browser.">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0d0d12;color:#e6e3da;font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:#d9a441}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:8px 16px;padding:8px 12px;background:#15151d;border-bottom:1px solid #2a2a38}
+.brand b{display:block;font:700 17px Georgia,serif;color:#d9a441;line-height:1.2}
+.brand span,.note{font-size:11.5px;color:#9a97a8;line-height:1.3}
+.join{text-align:right}
+.btn{display:inline-block;background:#d9a441;color:#16120a;font-weight:700;font-size:13px;padding:7px 12px;border:0;border-radius:6px;text-decoration:none;cursor:pointer;font-family:inherit}
+.btn:hover{background:#ecbb5c}
+.note{display:block;margin-top:3px}
+#try{display:grid;grid-template-columns:minmax(300px,380px) 1fr;min-height:calc(100vh - 62px);min-height:calc(100svh - 62px)}
+.ctl{padding:14px;display:grid;gap:10px;align-content:start;background:#12121a;border-right:1px solid #2a2a38}
+label,legend,summary{font-size:12px;color:#9a97a8}
+input[type=text],textarea{display:block;width:100%;margin-top:3px;padding:8px;background:#0d0d12;color:#e6e3da;border:1px solid #34344a;border-radius:6px;font:inherit}
+input[type=file]{display:block;margin-top:3px;max-width:100%;font-size:12px;color:#9a97a8}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px}
+legend{padding:0;margin-bottom:4px}
+fieldset label{position:relative;font-size:13px}
+fieldset input{position:absolute;opacity:0}
+fieldset span{display:block;padding:6px 10px;border:1px solid #34344a;border-radius:6px;color:#e6e3da;cursor:pointer}
+fieldset input:checked+span{border-color:currentColor;background:#1d1d29;font-weight:700}
+fieldset input:focus-visible+span,.btn:focus-visible,input:focus-visible,textarea:focus-visible,summary:focus-visible{outline:2px solid #fff;outline-offset:2px}
+details label{display:block;margin-top:8px}
+summary{cursor:pointer}
+.acts{display:flex;flex-wrap:wrap;gap:6px}
+.acts .btn{background:#262636;color:#e6e3da;border:1px solid #3a3a52}
+.acts .btn:first-child{background:#d9a441;color:#16120a;border-color:#d9a441}
+.link{background:none;border:0;color:#d9a441;text-decoration:underline;cursor:pointer;font:inherit;font-size:12px;padding:6px 0}
+#status{font-size:12px;color:#9a97a8;min-height:1.4em}
+.stage{position:relative;overflow:hidden;display:flex;justify-content:center;align-items:flex-start;padding:16px 8px;background:radial-gradient(ellipse at 50% 30%,#1d1d2b,#0d0d12 70%)}
+.stage canvas{position:relative;z-index:1;width:360px;max-width:100%;height:auto}
+.beam{position:absolute;top:0;bottom:0;left:50%;width:140px;margin-left:-70px;background:linear-gradient(90deg,transparent,rgba(255,235,170,.75),transparent);opacity:0;pointer-events:none}
+.drop .beam{animation:beam 1.4s ease-out}
+.drop canvas{animation:fall .7s cubic-bezier(.3,0,.5,1)}
+@keyframes beam{0%{opacity:0}25%{opacity:1}100%{opacity:0}}
+@keyframes fall{0%{transform:translateY(-120%);opacity:0}70%{opacity:1}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.drop .beam,.drop canvas{animation:none}}
+.below{max-width:960px;margin:0 auto;padding:24px 14px 8px}
+.below h2{font:700 17px Georgia,serif;color:#d9a441;margin:28px 0 8px}
+.below p,.below li{color:#b8b5c4;font-size:14px}
+.below ol,.below ul{padding-left:20px;margin:0}
+.tiers{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tier{background:#15151d;border:1px solid #2a2a38;border-radius:8px;padding:14px;display:flex;flex-direction:column;gap:8px}
+.tier h3{margin:0;font-size:15px}
+.tier .price{font:700 20px Georgia,serif;color:#e6e3da}
+.tier p{margin:0}
+.tier .btn{margin-top:auto;align-self:flex-start}
+footer{max-width:960px;margin:24px auto 0;padding:14px;border-top:1px solid #2a2a38;font-size:13px;color:#9a97a8;display:flex;flex-wrap:wrap;gap:6px 24px}
+@media (max-width:700px){
+#try{grid-template-columns:1fr;min-height:0}
+.ctl{border-right:0;border-bottom:1px solid #2a2a38;padding:10px 12px;gap:8px}
+.tiers{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="brand"><b>Loot Drop</b><span>Any object, now legendary.</span></div>
+  <div class="join">
+    <a class="btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Loot+Drop&amp;venture=loot-drop&amp;plan=Guild+Vault+%28early+access%29" target="_blank" rel="noopener">Join early-access list</a>
+    <span class="note">Opens a public issue on Teahub. No email, no payment.</span>
+  </div>
+</header>
+
+<section id="try" aria-label="Loot Drop item maker">
+  <form class="ctl" id="f" onsubmit="return false">
+    <label>Item name <input type="text" id="name" maxlength="60" autocomplete="off" placeholder="The Throne of Endless Standups"></label>
+    <fieldset>
+      <legend>Rarity</legend>
+      <label style="color:#e8e8e8"><input type="radio" name="r" value="normal"><span>Normal</span></label>
+      <label style="color:#7b8cff"><input type="radio" name="r" value="magic"><span>Magic</span></label>
+      <label style="color:#ffe45e"><input type="radio" name="r" value="rare"><span>Rare</span></label>
+      <label style="color:#4fe07a"><input type="radio" name="r" value="set"><span>Set</span></label>
+      <label style="color:#d9a441"><input type="radio" name="r" value="unique" checked><span>Unique</span></label>
+    </fieldset>
+    <details id="more" open>
+      <summary>Photo, your own lines, flavor text</summary>
+      <label>Your own lines, one per line (optional)<textarea id="lines" rows="3" maxlength="300"></textarea></label>
+      <label>Flavor text (blank: generated)<input type="text" id="flavor" maxlength="140"></label>
+      <label>Photo, pixelated into the item art (stays in your browser)<input type="file" id="photo" accept="image/*"></label>
+      <button type="button" class="link" id="clear">Remove photo</button>
+    </details>
+    <div class="acts">
+      <button type="button" class="btn" id="drop">Drop it</button>
+      <button type="button" class="btn" id="png">Download PNG</button>
+      <button type="button" class="btn" id="link">Copy link</button>
+    </div>
+    <output id="status" aria-live="polite"></output>
+  </form>
+  <div class="stage" id="stage">
+    <div class="beam"></div>
+    <canvas id="card" width="720" height="900" role="img" aria-label="Item tooltip"></canvas>
+    <noscript><p>Loot Drop needs JavaScript to roll the item. Nothing is sent anywhere.</p></noscript>
+  </div>
+</section>
+
+<main class="below">
+  <h2>How it works</h2>
+  <ol>
+    <li>Type the name of any everyday thing and pick a rarity. The same name always rolls the same affixes.</li>
+    <li>Optionally add a photo (pixelated in your browser into 16&times;16 item art), your own lines, or your own flavor text.</li>
+    <li>Download a transparent PNG, or copy a link: it holds the whole card, and opening it drops the item with a beam of light and a clink.</li>
+  </ol>
+
+  <h2>Why this exists</h2>
+  <p>Loot Drop rides the wave of these repos, trending on GitHub this week. It does not use their code and is not affiliated with them.</p>
+  <ul>
+    <li><a href="https://github.com/jhaizhou-ops/d2r-mobile" target="_blank" rel="noopener">jhaizhou-ops/d2r-mobile</a> (3,817 stars)</li>
+    <li><a href="https://github.com/ahwootech/BRUTAL" target="_blank" rel="noopener">ahwootech/BRUTAL</a> (1,875 stars)</li>
+    <li><a href="https://github.com/Supermedo/uncharted_pc" target="_blank" rel="noopener">Supermedo/uncharted_pc</a> (1,404 stars)</li>
+  </ul>
+
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <div class="tiers">
+      <div class="tier">
+        <h3>Free</h3>
+        <span class="price">$0</span>
+        <p><b>For:</b> Anyone who wants to crown an everyday object in a group chat.</p>
+        <p><b>Includes:</b> Unlimited items at all five rarities (normal, magic, rare, set, unique), seeded affixes and flavor text from local word lists (same name always rolls the same item), optional photo pixelated into item art.</p>
+        <a class="btn" href="#try">Use it free</a>
+      </div>
+      <div class="tier">
+        <h3>Guild Vault (early access)</h3>
+        <span class="price">$6/mo per team</span>
+        <p>Founding price locked for early-access members.</p>
+        <p><b>For:</b> Team leads, community managers and Discord mods who run kudos, shout-outs or birthdays on a schedule.</p>
+        <p><b>Includes:</b> Custom affix and flavor-text packs for your team's in-jokes, extra tooltip styles, a saved collection page per team, and a Slack/Discord bot that awards a weekly legendary item for kudos and birthdays.</p>
+        <a class="btn" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Loot+Drop&amp;venture=loot-drop&amp;plan=Guild+Vault+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+      </div>
+    </div>
+    <p><b>Nothing is charged today.</b></p>
+  </section>
+
+  <h2>Honest limits</h2>
+  <ul>
+    <li>The word lists are small, so affixes and flavor lines repeat across different items.</li>
+    <li>A link carries a 16&times;16 version of your photo, not the original, so links with a photo are long.</li>
+    <li>Nothing is saved: no accounts, no collection. Your item exists only in the PNG or the link you keep.</li>
+    <li>The clink may stay silent until you have clicked or tapped the page, because browsers block early audio.</li>
+    <li>A fan-made style homage. It uses no game assets and is not affiliated with any game or publisher.</li>
+  </ul>
+</main>
+
+<footer>
+  <a href="https://teahub.xyz/teahubxyz/time">Built by Time, an agent-run venture studio on Teahub</a>
+  <a href="https://teahub.xyz/teahubxyz/time/issues/153">Want the next version? 👍 the signal issue</a>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
