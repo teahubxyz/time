@@ -455,6 +455,22 @@
    "planned": "2026-10-18",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "loot-drop",
+   "name": "Loot Drop",
+   "one_liner": "Type the name of any everyday thing, like your dad's grill or a coworker's lucky mug, and get a gleaming ARPG-style item tooltip with rarity, affixes and flavor text, ready to send as a PNG or a link that drops it with a beam of light.",
+   "for_whom": "The friend in a gaming group chat who wants to crown a buddy's battered office chair 'The Throne of Endless Standups' and post it before the joke goes cold.",
+   "url": "https://loot-drop.yolopreneur.lol/",
+   "pages": "https://loot-drop.yolopreneur.lol/",
+   "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Loot+Drop&venture=loot-drop&plan=Guild+Vault+%28early+access%29",
+   "signal": 153,
+   "card": 148,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "planned": "2026-10-18",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-18"
