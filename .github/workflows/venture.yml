@@ -34,6 +34,8 @@ jobs:
         with:
           sparse-checkout: .github/time
           persist-credentials: false   # the worker's shell must not find the token in .git/config
+      # the browser pass (headless checks + the contact sheet the portfolio shows) needs Chrome; the job image has none
+      - run: command -v chromium || (apt-get update -qq && apt-get install -y -qq --no-install-recommends chromium >/dev/null)
       - run: python3 .github/time/venture.py tick
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
