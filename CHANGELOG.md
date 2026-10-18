@@ -15,6 +15,7 @@
 - The Venice worker's shell no longer sees secrets: its environment drops tokens and keys, its checkout keeps no token in `.git/config`, and the workflows check out without persisted credentials.
 
 ### Changed
+- Claude calls go to Anthropic's own Messages API with prompt caching. The tools and system prompt are one cache breakpoint and the conversation so far the other, so each step of a worker run pays for the context the step before already sent at a tenth of the price (the OpenAI-compatible endpoint has no caching: a failed 43-step run cost $2.80, most of it the same context re-sent 43 times). The engine still speaks the OpenAI shape inside; an assistant turn that issued tool calls goes back exactly as the API gave it. The ledger prices cached tokens (`cached`, `written` on the line). `TIME_ANTHROPIC_API=compat` goes back to the old endpoint without a code change.
 - The second fix round escalates to Kimi's code model (`venice:kimi code`) instead of grok 4.7: still a different model from the first round, at a fraction of the cost. `TIME_VENTURE_ESCALATE` overrides it.
 
 ### Added

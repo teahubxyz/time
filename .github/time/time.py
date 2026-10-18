@@ -43,10 +43,10 @@ MARK = "<!-- time "
 EFFORTS = {"low": "low", "med": "medium", "medium": "medium", "high": "high", "xhigh": "high", "max": "high"}
 
 
-def http(method: str, url: str, token: str, body=None, timeout: float = 120.0):
+def http(method: str, url: str, token: str, body=None, timeout: float = 120.0, headers: dict | None = None):
     req = urllib.request.Request(url, method=method, data=json.dumps(body).encode() if body is not None else None,
                                  headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                                          "Accept": "application/json"})
+                                          "Accept": "application/json", **(headers or {})})
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             t = r.read()
@@ -200,11 +200,11 @@ def price_of(model: str) -> list | None:
                  if s.get("price") and (model == s["default"] or model in s.get("aliases", {}).values())), None)
 
 
-def _post(url: str, key: str, body: dict, timeout: float, who: str) -> dict:
+def _post(url: str, key: str, body: dict, timeout: float, who: str, headers: dict | None = None) -> dict:
     """One retry loop for every provider: brief overloads (429, 5xx, Anthropic's 529) and dropped connections back off."""
     for attempt in range(4):
         try:
-            return http("POST", url, key, body, timeout=timeout)
+            return http("POST", url, key, body, timeout=timeout, **({"headers": headers} if headers else {}))
         except (RuntimeError, OSError) as e:
             transient = isinstance(e, OSError) or re.search(r"-> (429|5\d\d)\b", str(e))
             if attempt == 3 or not transient:
@@ -232,10 +232,93 @@ def anthropic_chat(body: dict, timeout: float) -> dict:
     return _post(f"{ANTHROPIC}/chat/completions", key, body, timeout, "anthropic")
 
 
+ANTHROPIC_VERSION = "2023-06-01"
+_turns: dict[str, list] = {}  # tool_use id -> the assistant turn's content blocks as the API gave them (thinking included)
+
+
+def _args(raw) -> dict:
+    try:
+        out = json.loads(raw or "{}")
+    except ValueError:
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
+def to_messages(body: dict) -> dict:
+    """The engine's OpenAI-shaped request as an Anthropic Messages request, with the prompt marked for caching: the tools
+    and system prompt are one breakpoint and the conversation so far is the other, so each step of a worker run pays for
+    the context the step before it already sent at a tenth of the price. An assistant turn that issued tool calls goes
+    back exactly as the API gave it (thinking blocks included), which the API requires; tool results of one turn travel
+    in one user message."""
+    system, msgs = [], []
+    for m in body["messages"]:
+        role, content = m.get("role"), m.get("content")
+        if role == "system":
+            system.append(content or "")
+        elif role == "user":
+            msgs.append({"role": "user", "content": [{"type": "text", "text": content or ""}]})
+        elif role == "assistant":
+            calls = m.get("tool_calls") or []
+            blocks = list(_turns.get(calls[0]["id"]) or []) if calls else []
+            if not blocks:
+                blocks = ([{"type": "text", "text": content}] if content else []) + [
+                    {"type": "tool_use", "id": c["id"], "name": c["function"]["name"], "input": _args(c["function"].get("arguments"))}
+                    for c in calls]
+            if blocks:
+                msgs.append({"role": "assistant", "content": blocks})
+        elif role == "tool":
+            block = {"type": "tool_result", "tool_use_id": m.get("tool_call_id") or "", "content": str(content or "")}
+            if msgs and msgs[-1]["role"] == "user" and msgs[-1]["content"][-1].get("type") == "tool_result":
+                msgs[-1]["content"].append(block)
+            else:
+                msgs.append({"role": "user", "content": [block]})
+    out = {"model": body["model"], "max_tokens": int(body.get("max_tokens") or 4000), "messages": msgs}
+    if body.get("tools"):
+        out["tools"] = [{"name": t["function"]["name"], "description": t["function"].get("description") or "",
+                         "input_schema": t["function"].get("parameters") or {"type": "object", "properties": {}}} for t in body["tools"]]
+    if system:
+        out["system"] = [{"type": "text", "text": "\n\n".join(system), "cache_control": {"type": "ephemeral"}}]
+    if msgs and msgs[-1]["content"]:  # the last block: next step's request shares everything up to here
+        msgs[-1]["content"][-1] = {**msgs[-1]["content"][-1], "cache_control": {"type": "ephemeral"}}
+    return out
+
+
+def from_messages(out: dict) -> dict:
+    """An Anthropic Messages reply in the OpenAI shape, with the cache split kept in usage for the ledger."""
+    blocks = out.get("content") or []
+    text = "".join(b.get("text") or "" for b in blocks if b.get("type") == "text") or None
+    calls = [{"id": b["id"], "type": "function", "function": {"name": b["name"], "arguments": json.dumps(b.get("input") or {})}}
+             for b in blocks if b.get("type") == "tool_use"]
+    if calls:
+        _turns[calls[0]["id"]] = blocks
+    u = out.get("usage") or {}
+    read, written = int(u.get("cache_read_input_tokens") or 0), int(u.get("cache_creation_input_tokens") or 0)
+    usage = {"prompt_tokens": int(u.get("input_tokens") or 0) + read + written, "completion_tokens": int(u.get("output_tokens") or 0),
+             "cache_read": read, "cache_write": written}
+    msg = {"role": "assistant", "content": text, **({"tool_calls": calls} if calls else {})}
+    return {"choices": [{"message": msg, "finish_reason": out.get("stop_reason")}], "usage": usage}
+
+
+def anthropic_messages(body: dict, timeout: float) -> dict:
+    """POST to Anthropic's own Messages API, with prompt caching (the OpenAI-compatible endpoint has none, and a 40-step
+    worker run re-sent its whole context at full price every step: a failed run cost $2.80). Speaks the engine's OpenAI
+    shape on both sides. TIME_ANTHROPIC_API=compat goes back to the compatible endpoint."""
+    key = os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise LookupError("no ANTHROPIC_API_KEY secret on this repo yet")
+    out = _post(f"{ANTHROPIC}/messages", key, to_messages(body), timeout, "anthropic",
+                headers={"x-api-key": key, "anthropic-version": ANTHROPIC_VERSION})
+    return from_messages(out)
+
+
 def chat(body: dict, timeout: float) -> dict:
     """Every model call goes through here: the budget is checked first and the spend booked after."""
     budget_check()
-    out = (anthropic_chat if provider_of(body["model"]) == "anthropic" else venice_chat)(body, timeout)
+    if provider_of(body["model"]) == "anthropic":
+        native = (os.environ.get("TIME_ANTHROPIC_API") or "messages").strip().lower() != "compat"
+        out = (anthropic_messages if native else anthropic_chat)(body, timeout)
+    else:
+        out = venice_chat(body, timeout)
     book(body["model"], out.get("usage") or {})
     return out
 
@@ -273,12 +356,16 @@ def ledger_lines(month: str) -> list[dict]:
 
 
 def book(model: str, usage: dict) -> None:
+    """One ledger line per call. `in` counts every prompt token; `cached` says how many of them were read from the cache
+    (a tenth of the input price) and `written` how many were written to it (a quarter more than the input price)."""
     p = price_of(model)
     i, o = int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)
+    r, w = int(usage.get("cache_read") or 0), int(usage.get("cache_write") or 0)
     if not LEDGER:  # first line: every entry point (heartbeat, mention, venture) flushes without remembering to
         atexit.register(flush_ledger)
+    usd = round(((i - r - w) * p[0] + r * p[0] * 0.1 + w * p[0] * 1.25 + o * p[1]) / 1e6, 6) if p else None
     LEDGER.append({"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": model, "in": i, "out": o,
-                   "usd": round((i * p[0] + o * p[1]) / 1e6, 6) if p else None})
+                   "usd": usd, **({"cached": r, "written": w} if r or w else {})})
 
 
 def flush_ledger() -> None:
@@ -1259,6 +1346,7 @@ def cmd_doctor() -> int:
     row("spend", today < day_cap and month < month_cap, f"${today:.2f} today, ${month:.2f} this month ({ledger_path(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m'))})")
     row("(optional) ANTHROPIC_API_KEY (Claude seats)", bool(os.environ.get("ANTHROPIC_API_KEY")),
         "set" if os.environ.get("ANTHROPIC_API_KEY") else "not set")
+    row("TIME_ANTHROPIC_API", True, os.environ.get("TIME_ANTHROPIC_API") or "messages (default, with prompt caching; compat = the OpenAI-compatible endpoint)")
     row("TIME_AUTOMERGE", True, (os.environ.get("TIME_AUTOMERGE") or "off (default)") + "; merges on Approve + green checks")
     for name in ("queued", "spec", "needs-human"):
         row(f"(optional) label `{name}`", name in labels, "exists" if name in labels else "missing (created on first use)")

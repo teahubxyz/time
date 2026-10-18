@@ -513,9 +513,20 @@ class ClaudeWorld(World):
     def __init__(self, *a, ledger=None, **kw):
         super().__init__(*a, **kw); self.label_ids["andon"] = 99; self.vars = {}
         if ledger: self.files[f"time/ledger/{NOW:%Y-%m}.jsonl"] = "".join(json.dumps(r) + "\n" for r in ledger)
-    def http(self, method, url, token, body=None, timeout=0):
+    def http(self, method, url, token, body=None, timeout=0, headers=None):
         if url.startswith(tm.ANTHROPIC):
-            sent.append((url, token, body)); out = self.venice(body); out["usage"] = {"prompt_tokens": 1000, "completion_tokens": 2000}; return out
+            sent.append((url, token, body))
+            if url.endswith("/messages"):  # the native API: the scripted seat speaks OpenAI, so translate both ways
+                assert headers == {"x-api-key": token, "anthropic-version": tm.ANTHROPIC_VERSION}, headers
+                assert "system" in body and body["messages"][0]["role"] == "user" and "temperature" not in body, body
+                oa = {"model": body["model"], "tools": [{"type": "function", "function": {"name": t["name"], "parameters": t["input_schema"]}} for t in body.get("tools") or []],
+                      "messages": [{"role": "system", "content": body["system"][0]["text"]}] + [{"role": m["role"], "content": "".join(b.get("text") or "" for b in m["content"])} for m in body["messages"]]}
+                r = self.venice(oa)["choices"][0]["message"]
+                blocks = ([{"type": "text", "text": r["content"]}] if r.get("content") else []) + \
+                         [{"type": "tool_use", "id": c["id"], "name": c["function"]["name"], "input": json.loads(c["function"]["arguments"])} for c in r.get("tool_calls") or []]
+                return {"content": blocks, "stop_reason": "tool_use" if r.get("tool_calls") else "end_turn",
+                        "usage": {"input_tokens": 1000, "output_tokens": 2000, **getattr(self, "cache_usage", {})}}
+            out = self.venice(body); out["usage"] = {"prompt_tokens": 1000, "completion_tokens": 2000}; return out
         if "/actions/variables/" in url:
             self.vars[url.rsplit("/", 1)[1]] = (method, body["value"]); return {}
         return super().http(method, url, token, body, timeout)
@@ -528,15 +539,54 @@ w.venice = lambda body: {"choices": [{"message": {"role": "assistant", "content"
 tm.think = real_think
 assert tm.think("sonnet", None, "high", "sys", "u") == "hi"
 url, tok, body = sent[-1]
-assert url == "https://api.anthropic.com/v1/chat/completions" and tok == "ak" and body["model"] == "claude-sonnet-5-5"
+assert url == "https://api.anthropic.com/v1/messages" and tok == "ak" and body["model"] == "claude-sonnet-5-5", (url, body)
+assert body["system"] == [{"type": "text", "text": "sys", "cache_control": {"type": "ephemeral"}}] and body["max_tokens"] == 4000
+assert body["messages"] == [{"role": "user", "content": [{"type": "text", "text": "u", "cache_control": {"type": "ephemeral"}}]}], body["messages"]
+assert not {"temperature", "venice_parameters", "reasoning_effort", "top_p", "tools"} & set(body), body
+assert tm.LEDGER[-1]["in"] == 1000 and tm.LEDGER[-1]["out"] == 2000 and tm.LEDGER[-1]["usd"] == 0.022 and "cached" not in tm.LEDGER[-1]  # 1000*2 + 2000*10 per Mtok
+# cached tokens are priced: a read at a tenth, a write at a quarter more; the ledger line says how many
+w.cache_usage = {"cache_read_input_tokens": 800, "cache_creation_input_tokens": 100}
+assert tm.think("sonnet", None, None, "sys", "u") == "hi"
+assert tm.LEDGER[-1]["in"] == 1900 and tm.LEDGER[-1]["cached"] == 800 and tm.LEDGER[-1]["written"] == 100, tm.LEDGER[-1]
+assert tm.LEDGER[-1]["usd"] == round((1000 * 2 + 800 * 0.2 + 100 * 2.5 + 2000 * 10) / 1e6, 6), tm.LEDGER[-1]
+w.cache_usage = {}
+# TIME_ANTHROPIC_API=compat: the OpenAI-compatible endpoint, as before (no caching)
+os.environ["TIME_ANTHROPIC_API"] = "compat"
+assert tm.think("sonnet", None, "high", "sys", "u") == "hi"
+url, tok, body = sent[-1]
+assert url == "https://api.anthropic.com/v1/chat/completions" and body["messages"][0]["role"] == "system"
 assert not {"temperature", "venice_parameters", "reasoning_effort", "top_p"} & set(body), body
-assert tm.LEDGER[-1]["in"] == 1000 and tm.LEDGER[-1]["out"] == 2000 and tm.LEDGER[-1]["usd"] == 0.022  # 1000*2 + 2000*10 per Mtok
+os.environ.pop("TIME_ANTHROPIC_API")
+# the translation itself: tools, tool calls and results, the two cache breakpoints, and a turn's blocks kept verbatim
+tm._turns.clear()
+oa_tools = [{"type": "function", "function": {"name": "read_file", "description": "Read", "parameters": {"type": "object", "properties": {"path": {"type": "string"}}}}}]
+rep = tm.from_messages({"content": [{"type": "thinking", "thinking": "hm", "signature": "sig"}, {"type": "text", "text": "Looking."},
+                                     {"type": "tool_use", "id": "tu1", "name": "read_file", "input": {"path": "a.py"}}],
+                         "stop_reason": "tool_use", "usage": {"input_tokens": 10, "output_tokens": 5, "cache_read_input_tokens": 90}})
+m = rep["choices"][0]["message"]
+assert m["content"] == "Looking." and m["tool_calls"] == [{"id": "tu1", "type": "function", "function": {"name": "read_file", "arguments": '{"path": "a.py"}'}}]
+assert rep["usage"] == {"prompt_tokens": 100, "completion_tokens": 5, "cache_read": 90, "cache_write": 0} and rep["choices"][0]["finish_reason"] == "tool_use"
+req = tm.to_messages({"model": "claude-sonnet-5-5", "max_tokens": 16000, "tools": oa_tools, "messages": [
+    {"role": "system", "content": "rules"}, {"role": "user", "content": "Begin."},
+    {"role": "assistant", "content": m["content"], "tool_calls": m["tool_calls"]},
+    {"role": "tool", "tool_call_id": "tu1", "content": "x = 1"}, {"role": "tool", "tool_call_id": "tu2", "content": "y"}]})
+assert req["tools"] == [{"name": "read_file", "description": "Read", "input_schema": {"type": "object", "properties": {"path": {"type": "string"}}}}]
+assert req["messages"][1]["content"][0] == {"type": "thinking", "thinking": "hm", "signature": "sig"}, "the turn goes back as the API gave it"
+assert [b["type"] for b in req["messages"][1]["content"]] == ["thinking", "text", "tool_use"]
+assert req["messages"][2]["role"] == "user" and [b["tool_use_id"] for b in req["messages"][2]["content"]] == ["tu1", "tu2"], "one user turn carries both results"
+assert "cache_control" in req["messages"][2]["content"][-1] and "cache_control" not in req["messages"][2]["content"][0]
+assert "cache_control" not in req["messages"][1]["content"][-1] and tm._turns["tu1"][-1].get("cache_control") is None, "the kept turn is not marked"
+assert req["system"][0]["cache_control"] == {"type": "ephemeral"} and req["max_tokens"] == 16000 and "temperature" not in req
+tm._turns.clear()
+req = tm.to_messages({"model": "claude-sonnet-5-5", "messages": [{"role": "system", "content": "r"}, {"role": "user", "content": "go"},
+    {"role": "assistant", "content": None, "tool_calls": m["tool_calls"]}, {"role": "tool", "tool_call_id": "tu1", "content": "ok"}]})
+assert req["messages"][1]["content"] == [{"type": "tool_use", "id": "tu1", "name": "read_file", "input": {"path": "a.py"}}], "rebuilt when the turn is not kept"
 os.environ["VENICE_API_KEY"] = "vk"; w.venice = lambda body: {"choices": [{"message": {"content": "ok"}}]}
 assert tm.think("kimi", None, None, "s", "u") == "ok" and tm.LEDGER[-1]["usd"] is None and tm.LEDGER[-1]["in"] == 0  # unpriced, no usage
 # the ledger flushes as one appended commit
 tm._ledger_files.clear(); tm.flush_ledger()
 lines = w.files[f"time/ledger/{NOW:%Y-%m}.jsonl"].splitlines()
-assert len(lines) == 2 and tm.LEDGER == [] and json.loads(lines[0])["usd"] == 0.022
+assert len(lines) == 4 and tm.LEDGER == [] and json.loads(lines[0])["usd"] == 0.022 and json.loads(lines[1])["cached"] == 800
 # over the daily cap: Budget before any request
 sent.clear(); tm._ledger_files.clear()
 w.files[f"time/ledger/{NOW:%Y-%m}.jsonl"] = json.dumps({"at": iso(), "model": "claude-opus-5-5", "usd": 6}) + "\n"
