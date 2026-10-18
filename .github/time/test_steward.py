@@ -103,7 +103,7 @@ def world(**env):
     f = Forge()
     tm.gh = f.gh
     tm._trust.clear(); tm._label_ids = None
-    for k in [k for k in os.environ if k.startswith("TIME_")]: os.environ.pop(k)
+    for k in [k for k in os.environ if k.startswith("TIME_")] + ["VENICE_API_KEY", "ANTHROPIC_API_KEY"]: os.environ.pop(k, None)
     os.environ.update({"TIME_AUTOMERGE": "on", **env})
     tm.budget = lambda: (1.0, 5.0, 10.0, 100.0)
     def no_model(body, timeout): f.chats += 1; raise AssertionError("the deterministic part must not call a model")
