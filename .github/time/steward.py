@@ -37,7 +37,6 @@ STEWARD_LABELS = {"ready", "queued", "needs-human"}
 # the only variables the steward may set, and the values it may set them to; never money (the caps), merge policy or trust
 STEWARD_VARS = {"TIME_MODE": r"live|dry-run", "TIME_PARALLEL": r"[1-9]", "TIME_STUCK_HOURS": r"\d{1,3}", "TIME_DAILY_CAP": r"\d{1,3}"}
 PARKED = ("error", "stuck", "blocked")   # a card whose last beat says its worker stopped
-WAITING = ("no trusted verdict yet", "checks are pending")   # not a block: the review or CI is still on its way
 
 CHARTER = """You are the steward of a small, fully AI-run software factory (Time). The deterministic part of this run has
 already merged what could be merged and closed what had healed. What follows is what is left, as JSON.
@@ -375,10 +374,15 @@ def tick() -> int:
         except Exception as e:  # noqa: BLE001  a forge hiccup in one step must not skip the rest or the log
             rep.leave(step.__name__, f"{type(e).__name__}: {str(e)[:160]}")
     for a in tm.issues("state=open&labels=andon"):
-        if not healed(a) and not any(l["what"] == f"andon #{a['number']}" for l in rep.left):
-            monthly = "this month's spend is" in f"{a.get('title')}\n{a.get('body')}"
-            rep.leave(f"andon #{a['number']}", "the monthly cap is money: the operator raises it, and sets TIME_MODE back to live" if monthly
-                      else "its cause has not healed", ask=not monthly)
+        if healed(a) or any(l["what"] == f"andon #{a['number']}" for l in rep.left):
+            continue
+        text = f"{a.get('title')}\n{a.get('body')}"
+        if "this month's spend is" in text:
+            rep.leave(f"andon #{a['number']}", "the monthly cap is money: the operator raises it, and sets TIME_MODE back to live")
+        elif "today's spend is" in text:
+            rep.leave(f"andon #{a['number']}", "a daily cap, which heals after midnight UTC")
+        else:
+            rep.leave(f"andon #{a['number']}", "its cause has not healed", ask=True)
     try:
         already_handled(rep)
     except Exception as e:  # noqa: BLE001
