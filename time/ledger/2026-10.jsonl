@@ -656,3 +656,13 @@
 {"at":"2026-10-18T18:16:49Z","model":"claude-fable-5-1","in":2893,"out":2350,"usd":0.153652,"cached":0,"written":2889}
 {"at":"2026-10-18T18:17:08Z","model":"claude-fable-5-1","in":7342,"out":1165,"usd":0.150015,"cached":0,"written":7338}
 {"at":"2026-10-18T18:17:43Z","model":"claude-fable-5-1","in":2801,"out":3047,"usd":0.187353,"cached":0,"written":2797}
+{"at":"2026-10-18T18:27:48Z","model":"claude-sonnet-5-5","in":4720,"out":117,"usd":0.012968,"cached":0,"written":4716}
+{"at":"2026-10-18T18:29:47Z","model":"claude-sonnet-5-5","in":12576,"out":13837,"usd":0.158962,"cached":4716,"written":7858}
+{"at":"2026-10-18T18:30:23Z","model":"claude-sonnet-5-5","in":26501,"out":6400,"usd":0.101331,"cached":12574,"written":13925}
+{"at":"2026-10-18T18:30:28Z","model":"claude-sonnet-5-5","in":32922,"out":496,"usd":0.026316,"cached":26499,"written":6421}
+{"at":"2026-10-18T18:30:39Z","model":"claude-sonnet-5-5","in":33846,"out":1162,"usd":0.020518,"cached":32920,"written":924}
+{"at":"2026-10-18T18:31:10Z","model":"claude-sonnet-5-5","in":35052,"out":4961,"usd":0.059398,"cached":33844,"written":1206}
+{"at":"2026-10-18T18:31:19Z","model":"claude-sonnet-5-5","in":40142,"out":407,"usd":0.023809,"cached":35050,"written":5090}
+{"at":"2026-10-18T18:31:26Z","model":"claude-sonnet-5-5","in":40580,"out":415,"usd":0.013277,"cached":40140,"written":438}
+{"at":"2026-10-18T18:31:56Z","model":"claude-fable-5-1","in":8181,"out":2179,"usd":0.211202,"cached":0,"written":8177}
+{"at":"2026-10-18T18:32:17Z","model":"claude-fable-5-1","in":2529,"out":1863,"usd":0.124753,"cached":0,"written":2525}
