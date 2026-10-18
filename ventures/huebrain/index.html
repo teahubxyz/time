@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Huebrain: a tiny neural net that learns your color taste</title>
+<meta name="description" content="Tap Love or Nope on 20 colors and watch a tiny neural net learn your taste in your browser. Runs locally, nothing is uploaded.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="bar">
+  <b>Huebrain</b>
+  <span class="tag">Your color taste, learned live</span>
+  <div class="cta">
+    <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Huebrain&amp;venture=huebrain&amp;plan=Pro+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+    <small>Opens a public issue on Teahub. No email, no payment.</small>
+  </div>
+</header>
+
+<section id="try" aria-label="Huebrain">
+  <p class="nojs">Huebrain needs JavaScript to train its net in this page. Nothing is uploaded either way.</p>
+</section>
+
+<main class="below">
+  <section id="how">
+    <h2>How it works</h2>
+    <ol>
+      <li>Tap Love or Nope on 20 color swatches, one at a time.</li>
+      <li>A small neural net retrains in the page after every tap, and its neurons glow as they fire.</li>
+      <li>See a heat map of the color wheel, a 5-color palette and guesses on new swatches. Download a wallpaper PNG or copy a link; a partner who opens it and taps their own 20 sees both brains side by side with a match score.</li>
+    </ol>
+  </section>
+
+  <section id="why">
+    <h2>Why this exists</h2>
+    <p>Huebrain rides the wave of these repos, trending on GitHub this week. It does not use their code.</p>
+    <ul>
+      <li><a href="https://github.com/HeyPuter/everything">HeyPuter/everything</a>, 2,170 stars</li>
+      <li><a href="https://github.com/chenglou/handwired">chenglou/handwired</a>, 1,711 stars</li>
+    </ul>
+  </section>
+
+  <section id="pricing">
+    <h2>Pricing</h2>
+    <p>Nothing is charged today.</p>
+    <div class="tiers">
+      <div class="card tier">
+        <h3>Free</h3><div class="price">$0</div>
+        <p><b>For</b> anyone picking colors for personal use, like Dana and her partner, or a friend group.</p>
+        <p><b>Includes</b> 20-swatch Love/Nope training with a live neural net and visible neuron pulses, color-wheel heat map, 5-color palette, guess-and-check on new swatches, wallpaper PNG download, and a share link with side-by-side match score.</p>
+        <a class="btn" href="#try">Use it free</a>
+      </div>
+      <div class="card tier">
+        <h3>Pro (early access)</h3><div class="price">$6/mo founding price, nothing charged today</div>
+        <p><b>For</b> freelance designers, stagers and decorators who show clients palettes.</p>
+        <p><b>Includes</b> save and retrain brains over time, blend a couple's or team's brains into one shared palette, export to ASE, Figma and Procreate swatches, and match to the nearest real paint-brand colors.</p>
+        <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Huebrain&amp;venture=huebrain&amp;plan=Pro+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+      </div>
+      <div class="card tier">
+        <h3>Studio (early access)</h3><div class="price">$15/mo founding price, nothing charged today</div>
+        <p><b>For</b> small design or staging teams sharing client work.</p>
+        <p><b>Includes</b> everything in Pro, plus shared team brains, team sharing of saved palettes, and blending across several clients or teammates.</p>
+        <a class="btn primary" href="https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&amp;title=Early+access%3A+Huebrain&amp;venture=huebrain&amp;plan=Studio+%28early+access%29" target="_blank" rel="noopener">Join early access</a>
+      </div>
+    </div>
+  </section>
+
+  <section id="limits">
+    <h2>Honest limits</h2>
+    <ul>
+      <li>The net is tiny (4 inputs, 8 neurons) and learns from only 20 taps, so its taste map is a rough guess, not a measurement.</li>
+      <li>Colors are shown on your screen. Real paint looks different in real light, and the page does not match to paint brands.</li>
+      <li>Nothing is saved. Reload and your brain is gone unless you copy the link or download the wallpaper.</li>
+      <li>The share link holds the net's 49 weights (not your taps), and anyone with it can see your taste map. It compares two brains only: theirs and yours.</li>
+      <li>The match score is the average agreement of the two nets' yes-scores over a grid of colors. It is a rough number, not a verdict.</li>
+    </ul>
+  </section>
+</main>
+
+<footer>
+  <a href="https://teahub.xyz/teahubxyz/time">Built by Time, an agent-run venture studio on Teahub</a>
+  <a href="https://teahub.xyz/teahubxyz/time/issues/152">Want the next version? 👍 the signal issue</a>
+</footer>
+<script src="app.js"></script>
+</body>
+</html>
