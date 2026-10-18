@@ -932,7 +932,7 @@ gv = importlib.util.module_from_spec(gspec); gspec.loader.exec_module(gv)
 import urllib.parse
 # the seats: fable chairs and judges, haiku/sonnet/opus pitch and vote, sonnet builds, opus takes the second fix round
 assert gv.seat_list("TIME_VENTURE_PITCH", gv.PITCHERS) == gv.seat_list("TIME_VENTURE_BOARD", gv.BOARD) == ["haiku", "sonnet", "opus"]
-assert gv.env("TIME_VENTURE_CHAIR", gv.CHAIR) == gv.env("TIME_VENTURE_JUDGE", gv.JUDGE_SEAT) == "fable"
+assert gv.env("TIME_VENTURE_CHAIR", gv.CHAIR) == gv.env("TIME_VENTURE_JUDGE", gv.JUDGE_SEAT) == "opus", "fable is out"
 assert all(gv.tm.SEATS[s]["provider"] == "anthropic" for s in ("haiku", "sonnet", "opus", "fable")), "every default seat is a Claude seat"
 assert gv.worker_spec() == "claude:opus" and gv.ESCALATE == "claude:opus", "one venture a day: opus builds"
 for spec79, want79 in (("venice:kimi code", "venice:kimi code"), ("claude:sonnet", "claude:sonnet"), ("composer-2", "claude:opus")):
@@ -1087,6 +1087,42 @@ assert "scored it 6/10 as a product; the bar is 8" in gv.POLISH_BODY.format(
     name="N", slug="s", score=6, bar=8, problems="- x", page="p", join="j", signal="g").replace("\n", " ")
 gv.ask_json, gv.pages_file, gv.comments_of = real_ask79, real_pf79b, real_co79
 print("ALL OK 79b")
+
+# 79c the lead runs the day's venture alone: opus researches and picks (no pitches, no vote), plans and judges, and hands
+# the launch drafts to sonnet; a batch's child keeps the board; TIME_VENTURE_LEAD=board brings the board back
+assert gv.lead_seat() == "opus" and gv.crew({}) == (["opus"], "opus", "sonnet")
+assert gv.crew({"winner": {"batch": 26}}) == (["haiku", "sonnet", "opus"], "opus", "opus"), "a batch's child keeps the board"
+os.environ["TIME_VENTURE_HELPER"] = "nobody"; assert gv.crew({})[2] == "opus", "no such helper: the lead drafts"
+os.environ["TIME_VENTURE_LEAD"] = "board"; assert gv.lead_seat() is None and gv.crew({})[0] == ["haiku", "sonnet", "opus"]
+for k79 in ("TIME_VENTURE_HELPER", "TIME_VENTURE_LEAD"): os.environ.pop(k79)
+assert "Loot Drop (live, launched 2026-10-18, 3 signups): grab bags" in gv.track_record(
+    {"ventures": [{"slug": "loot-drop", "name": "Loot Drop", "status": "live", "launched": "2026-10-18", "signups": 3, "one_liner": "grab bags"}]})
+assert gv.track_record({"ventures": []}) == "- (none yet)"
+said79, asked79 = [], []
+real79c = (gv.tm.comment, gv.registry, gv.ask_json, gv.readme_of)
+gv.tm.comment = lambda n, text, meta: said79.append((n, text, meta))
+gv.registry = lambda: {"ventures": [{"slug": "loot-drop", "name": "Loot Drop", "status": "live", "signups": 2, "one_liner": "x"}]}
+gv.readme_of = lambda name, n=1500: f"README of {name}"
+pick79 = lambda slug, name: {"research": "found things", "candidates": [{"slug": slug, "name": name, "one_liner": "o", "verdict": "best"}, "junk"],
+                              "pick": {"slug": slug, "name": name, "one_liner": "o", "for_whom": "Dana", "page": "p", "next": "n", "extra": [1]},
+                              "why": "because"}
+replies79 = [pick79("loot-drop", "Loot Drop"), pick79("Color Duel!!", "Color Duel")]
+gv.ask_json = lambda seat, system, user: (asked79.append((seat, user)), replies79.pop(0))[1]
+repos79 = [{"name": f"o/r{i}", "stars": 900 - i, "desc": "d", "lang": "Rust", "topics": [], "url": "u"} for i in range(8)]
+assert gv.advance({"number": 7, "title": "Venture 2026-10-19"}, [], [{"beat": "scouted", "repos": repos79}], heavy_ok=False) == "ok"
+assert [s for s, _ in asked79] == ["opus", "opus"], "the lead alone: no pitches, no votes"
+assert "README of o/r0" in asked79[0][1] and "README of o/r6" not in asked79[0][1] and "o/r7" in asked79[0][1], "six READMEs, the rest as a list"
+assert "Loot Drop (live" in asked79[0][1] and "2 signups" in asked79[0][1] and "6 candidate ventures" in asked79[0][1]
+assert "repeats one of the studio's own ventures" in asked79[1][1], "a repeat gets one more go, told so"
+n79, text79, meta79 = said79[-1]
+assert n79 == 7 and meta79["beat"] == "picked" and meta79["lead"] == "opus", meta79
+w79c = meta79["winner"]
+assert w79c["slug"] == "color-duel" and w79c["by"] == "opus" and w79c["title"] == "Color Duel" and "extra" not in w79c, w79c
+assert w79c["rides"] and "research round: found things" in text79 and "**Color Duel**" in text79 and "because" in text79
+replies79[:] = [{"research": "r"}, pick79("loot-drop", "Loot Drop")]   # no pick, then only a repeat: no venture today
+assert gv.research(repos79, "opus", gv.registry()) is None
+gv.tm.comment, gv.registry, gv.ask_json, gv.readme_of = real79c
+print("ALL OK 79c")
 
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
