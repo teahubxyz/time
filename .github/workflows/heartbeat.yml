@@ -48,8 +48,12 @@ jobs:
           TIME_DAILY_CAP: ${{ vars.TIME_DAILY_CAP }}
           TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}       # spend governor: dollars per day (default 5) …
           TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}   # … and per month (default 100); ledger in time/ledger/
+          TIME_CAP_SLACK: ${{ vars.TIME_CAP_SLACK }}       # a run launched within budget may finish up to this x the daily cap (default 1.5; #117)
+          TIME_ANTHROPIC_API: ${{ vars.TIME_ANTHROPIC_API }}   # messages (default, prompt caching) | compat = the OpenAI-compatible endpoint (#119)
           TIME_CURSOR_MODEL: ${{ vars.TIME_CURSOR_MODEL }}
-          TIME_REVIEW: ${{ vars.TIME_REVIEW }}
+          TIME_REVIEW: ${{ vars.TIME_REVIEW }}             # one seat, or a comma-separated council (#77)
+          TIME_REVIEW_TIEBREAK: ${{ vars.TIME_REVIEW_TIEBREAK }}   # the seat called only on a split, e.g. venice:kimi (#77)
+          TIME_REVIEW_QUORUM: ${{ vars.TIME_REVIEW_QUORUM }}       # approves minus objects needed to land (default 1; #77)
           TIME_STUCK_HOURS: ${{ vars.TIME_STUCK_HOURS }}
           TIME_AUTOMERGE: ${{ vars.TIME_AUTOMERGE }}
           TIME_REQUIRE_CHECKS: ${{ vars.TIME_REQUIRE_CHECKS }}
