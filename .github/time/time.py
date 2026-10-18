@@ -77,9 +77,19 @@ def gh(method: str, path: str, body=None, *, as_time: bool | None = None):
             time.sleep(0.5 * (attempt + 1))
 
 
+def has_label(item: dict, name: str) -> bool:
+    return any((l.get("name") if isinstance(l, dict) else l) == name for l in item.get("labels") or [])
+
+
 def issues(query: str) -> list[dict]:
-    """Open/closed issues (never PRs) of this repo; `query` is the Gitea query string without type/limit."""
-    return [i for i in gh("GET", f"/repos/{REPO}/issues?type=issues&limit=50&{query}") if not i.get("pull_request")]
+    """Open/closed issues (never PRs) of this repo; `query` is the Gitea query string without type/limit.
+
+    Each row is checked against the labels the query names: Gitea ignores a filter on a label the repo does not have
+    and returns every issue, so a deleted `spec` label would make every open issue a spec to split. A row with no
+    `labels` field at all (older payloads, test fakes) is taken as the server filtered it."""
+    want = [l for l in (urllib.parse.parse_qs(query).get("labels") or [""])[0].split(",") if l]
+    rows = [i for i in gh("GET", f"/repos/{REPO}/issues?type=issues&limit=50&{query}") if not i.get("pull_request")]
+    return [i for i in rows if "labels" not in i or all(has_label(i, l) for l in want)]
 
 
 _label_ids: dict[str, int] | None = None

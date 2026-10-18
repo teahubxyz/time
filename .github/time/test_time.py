@@ -810,6 +810,20 @@ if _gt is None: os.environ.pop("GITHUB_TOKEN", None)
 else: os.environ["GITHUB_TOKEN"] = _gt
 print("ALL OK 54")
 
+# 54b Gitea ignores a filter on a label the repo does not have and returns every issue: issues() keeps only the rows that
+# carry every label the query names (a row with no labels field, as in the fakes here, is taken as filtered)
+_h54 = tm.http
+tm.http = lambda *a, **k: [{"number": 1, "labels": [{"name": "spec"}]}, {"number": 2, "labels": []},
+                           {"number": 3, "labels": [{"name": "queued"}]}, {"number": 4},
+                           {"number": 5, "pull_request": {"merged": False}, "labels": [{"name": "spec"}]},
+                           {"number": 6, "labels": [{"name": "spec"}, {"name": "ready"}]}]
+assert [i["number"] for i in tm.issues("state=open&labels=spec")] == [1, 4, 6], "only spec cards, never the rest"
+assert [i["number"] for i in tm.issues("state=open&labels=spec,ready")] == [4, 6], "every named label"
+assert [i["number"] for i in tm.issues("state=open")] == [1, 2, 3, 4, 6], "no label named: no filter"
+assert tm.has_label({"labels": ["ready"]}, "ready") and not tm.has_label({}, "ready")
+tm.http = _h54
+print("ALL OK 54b")
+
 # the worker itself (worker.js), against a fake D1, Workers AI and Pages
 import shutil as _sh, subprocess as _sp  # noqa: E402
 if _sh.which("node"):

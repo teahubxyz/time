@@ -23,13 +23,15 @@ LOG = 57
 
 
 class Forge:
-    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None):
+    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None, repo_labels=None):
         self.branches = [{"name": b} if isinstance(b, str) else b for b in branches]
         self.prs = list(prs)
         self.issues = {i["number"]: {"state": "open", "labels": [], "created_at": iso(0), "updated_at": iso(0), "body": "", **i} for i in issues}
         self.milestones = [dict(m) for m in milestones]
         self.reactions = reactions or {}
         self.cmts = comments or {}
+        # the repo's labels; by default the ones its issues carry. Gitea ignores a filter on any other label.
+        self.repo_labels = set(repo_labels) if repo_labels is not None else {l for i in self.issues.values() for l in i["labels"]}
         self.writes = []   # every non-GET call
         self.posted = []   # (issue, body)
 
@@ -72,7 +74,7 @@ class Forge:
         if route == "/repos/o/r/issues" and method == "GET":
             rows = [i for i in self.issues.values()
                     if (q.get("state", ["open"])[0] in ("all", i["state"]))
-                    and all(l in [x for x in i["labels"]] for l in q.get("labels", [""])[0].split(",") if l)]
+                    and all(l in i["labels"] for l in q.get("labels", [""])[0].split(",") if l and l in self.repo_labels)]
             return self.page([{**i, "labels": [{"name": l} for l in i["labels"]]} for i in rows], path)
         if route.startswith("/repos/o/r/issues/") and method == "PATCH":
             self.issues[int(route.split("/")[-1])].update(body)
@@ -161,10 +163,24 @@ def test_stale():
     t = texts[0]
     assert "#30" in t and "#40" in t and "#32" in t, t
     assert "#31" not in t and "#41" not in t and "#33" not in t, t
-    assert any("3 stale" in b for _, b in f.posted) or any("4 stale" in b for _, b in f.posted), f.posted
+    assert any("3 stale" in b for _, b in f.posted), f.posted   # #30, #32, #40: exactly three
     # an empty list posts no stale comment, only the one summary line
     f = Forge(); f.run()
     assert [b for _, b in f.posted if "stale list" in b] == [] and len(f.posted) == 1 and "0 stale" in f.posted[0][1]
+
+
+def test_unknown_label():
+    """No `parked` label in the repo: Gitea answers `labels=parked` with every open issue. None of them is stale, and
+    a `signal` filter answered with everything must not close an old issue that only looks like a signal."""
+    f = Forge(issues=[{"number": 57, "title": "Astra log", "labels": ["astra"], "updated_at": iso(9)},
+                      {"number": 72, "title": "a parent", "labels": ["planned"], "updated_at": iso(9)},
+                      {"number": 96, "title": "queued card", "labels": ["queued"], "updated_at": iso(9)},
+                      {"number": 99, "title": "old note", "labels": [], "created_at": iso(30), "body": "see ?venture=spent"}],
+              repo_labels={"astra", "planned", "queued"})
+    f.run()
+    assert [b for _, b in f.posted if "stale list" in b] == [], f.posted
+    assert any("0 stale" in b for _, b in f.posted) and f.issues[99]["state"] == "open", f.posted
+    assert [n for n, _ in f.posted] == [LOG], "the summary goes to the Astra log, found by its own label"
 
 
 def test_dry_run():
@@ -178,7 +194,7 @@ def test_dry_run():
 
 
 if __name__ == "__main__":
-    tests = [test_branches, test_signals, test_milestones, test_stale, test_dry_run]
+    tests = [test_branches, test_signals, test_milestones, test_stale, test_unknown_label, test_dry_run]
     for t in tests:
         t()
         print("ok", t.__name__)

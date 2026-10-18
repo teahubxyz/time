@@ -68,6 +68,12 @@ def age_days(ts: str | None, now: dt.datetime) -> float:
     return (now - d).total_seconds() / 86400 if d else 0.0
 
 
+def labelled(name: str, query: str = "state=open") -> list[dict]:
+    """Issues (and PRs) that carry `name`. Each row is checked too: Gitea ignores a filter on a label the repo does not
+    have and returns everything, which on the first live run listed every open issue as a parked card."""
+    return [i for i in paged(f"{repo()}/issues?{query}&labels={urllib.parse.quote(name)}") if tm.has_label(i, name)]
+
+
 def same_repo(pr: dict) -> bool:
     return ((pr.get("head") or {}).get("repo") or {}).get("full_name", tm.REPO) == tm.REPO  # a fork's branch is not ours
 
@@ -121,7 +127,7 @@ def person(user: dict | None) -> str | None:
 def signup_people() -> dict[str, set[str]]:
     """venture slug -> distinct people who opened an early-access issue for it."""
     out: dict[str, set[str]] = {}
-    for i in paged(f"{repo()}/issues?state=all&labels=signup&type=issues"):
+    for i in labelled("signup", "state=all&type=issues"):
         m = re.search(r"^###\s*Venture\s*$\n+(.*?)(?=^###\s|\Z)", i.get("body") or "", re.M | re.S)
         who = person(i.get("user"))
         if m and who and m.group(1).strip():
@@ -131,7 +137,7 @@ def signup_people() -> dict[str, set[str]]:
 
 def step_signals(live: bool, now: dt.datetime) -> int:
     days = int(float(os.environ.get("TIME_VENTURE_MEASURE_DAYS") or 7))
-    due = [i for i in paged(f"{repo()}/issues?state=open&labels=signal&type=issues")
+    due = [i for i in labelled("signal", "state=open&type=issues")
            if not i.get("pull_request") and age_days(i.get("created_at"), now) >= days]
     if not due:
         return 0
@@ -183,7 +189,7 @@ def stale(now: dt.datetime) -> dict[str, list[tuple[int, float, str]]]:
 
     def add(cat: str, number: int, age: float, title: str) -> None:
         out.setdefault(cat, []).append((number, age, title))
-    for i in paged(f"{repo()}/issues?state=open&labels=needs-human"):   # issues and PRs alike
+    for i in labelled("needs-human"):   # issues and PRs alike
         age = age_days(i.get("updated_at") or i.get("created_at"), now)
         if age > NEEDS_HUMAN_DAYS:
             add(f"`needs-human`, untouched for over {NEEDS_HUMAN_DAYS} days", i["number"], age, i.get("title", ""))
@@ -191,9 +197,9 @@ def stale(now: dt.datetime) -> dict[str, list[tuple[int, float, str]]]:
         age = age_days(p.get("updated_at") or p.get("created_at"), now)
         if age >= PR_IDLE_DAYS:
             add(f"open PRs idle {PR_IDLE_DAYS} days or more", p["number"], age, p.get("title", ""))
-    for i in paged(f"{repo()}/issues?state=open&labels=parked&type=issues"):
+    for i in labelled("parked", "state=open&type=issues"):
         add("parked cards", i["number"], age_days(i.get("updated_at") or i.get("created_at"), now), i.get("title", ""))
-    for card in paged(f"{repo()}/issues?state=open&labels=ready&type=issues"):   # last beat: error for a while, or parked
+    for card in labelled("ready", "state=open&type=issues"):   # last beat: error for a while, or parked
         beats = [b for b in tm.beats_of(paged(f"{repo()}/issues/{card['number']}/comments")) if b["beat"] not in ("blocked", "capped")]
         last = beats[-1] if beats else None
         if not last:
@@ -216,7 +222,7 @@ def stale_text(found: dict[str, list[tuple[int, float, str]]]) -> str:
 
 
 def log_issue() -> int:
-    for i in paged(f"{repo()}/issues?state=open&labels=astra&type=issues"):
+    for i in labelled("astra", "state=open&type=issues"):
         if i.get("title") == LOG_TITLE:
             return i["number"]
     return LOG_FALLBACK

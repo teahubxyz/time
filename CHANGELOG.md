@@ -3,6 +3,7 @@
 ## [Unreleased]
 
 ### Security
+- A label filter is checked on every row. Gitea ignores `labels=<name>` for a label the repo does not have and returns every issue: housekeeping's first live run listed all 59 open issues as parked cards (there is no `parked` label), and the same answer to `labels=spec` would have had Time split every open issue as a spec. `issues()` in time.py and the sweep's queries now keep only rows that carry the labels they asked for.
 - A commit status from one of Time's own workflows (`heartbeat /`, `mention /`, `venture /`, `astra /`, `doctor /`, `update /`, `steward /`) is not a check: it neither blocks nor earns a merge. A seat's review is a `pull_request_review` event that wakes `heartbeat.yml` during a heartbeat; the concurrency group cancels the run and Gitea records it as a failure on the PR head, which had stopped approved, CI-green PRs from landing.
 - The worker's own commit status (`time/worker-run`) can fail or delay a merge but never earns one: with no other check on the PR head, Time dispatches the project's CI workflow on the PR branch (`TIME_CI_WORKFLOW`, default `ci.yml`, which must accept `workflow_dispatch`; GitHub skips `pull_request` runs for pushes made with the Actions token) and merges on that. `off` keeps the old "no checks" stop.
 - `.github/` is protected from auto-merge whatever `TIME_PROTECTED` says.
