@@ -34,17 +34,23 @@ The free page is the proof and the viral loop: anyone can train a brain, downloa
 
 > Show HN: Huebrain – tap Love/Nope on 20 colors and watch a tiny neural net learn your taste in the browser
 > 
-> You tap Love or Nope on 20 swatches. A small neural net trains in the page as you tap, and its neurons pulse as they update. It then paints the whole color wheel as a heat map of what you'd say yes to, proposes a 5-color palette, and guesses on new swatches so you can check whether it actually learned you. You can download a wallpaper PNG or copy a link that encodes your trained weights, so someone else can open it and compare with a match score. No server, no account, nothing uploaded. Inspired by chenglou/handwired showing how small a useful net can be; the net is a few layers of plain JavaScript. I'm also gauging interest in a Pro version for designers (saving, blending brains, ASE/Figma/Procreate and paint-brand exports) via an early-access issue on Teahub: [Teahub early-access issue link]. Nothing is charged. Feedback on the training, the heat map, and where the net falls short is welcome.
-
-### r/HomeDecorating (check self-promotion rules first; post as a free tool, cross-p
-
-> Made a free color-taste tool for when you and your partner can't agree on paint
+> https://huebrain.yolopreneur.lol/
 > 
-> My partner and I could never agree on paint colors, so I made a small free toy: Huebrain shows you one color at a time, you tap Love or Nope on 20 of them, and a tiny neural net trains in your browser as you tap. You get a heat map of the color wheel showing what you'd say yes to plus a 5-color palette. Then send your partner the link, they do their own 20 taps, and you see both brains side by side with a match score. Everything runs locally, nothing is uploaded, no account. The most useful feedback for me is whether the palette it picks feels like you, or feels wrong: [link]
+> The page opens with a net already trained on 20 sample taps, so there is a heat map and palette to look at immediately. Your first tap on Love or Nope (buttons or arrow keys) starts your own brain from scratch. The net retrains after every tap, and its neurons glow as they fire. After 20 swatches you get a heat map over the color wheel (bright = it would say yes; a slider changes lightness), a 5-color palette, and guesses on new swatches so you can check whether it actually learned you. You can download a wallpaper PNG or copy a link that carries the trained weights; a friend who opens it and taps their own 20 sees both brains side by side with a match score.
+> 
+> The net is small: 4 inputs, 8 neurons, 49 weights, in plain JavaScript with no libraries (app.js). Everything runs in the page; no account, nothing uploaded, and nothing is saved, so a reload loses your brain unless you copied the link or downloaded the PNG. Known limits: 20 taps is a rough guess, not a measurement; the share link exposes your taste map to anyone who has it; only two b
 
-### chenglou/handwired GitHub Discussions (Show and tell)
+### r/HomeDecorating (check self-promotion rules first; post as a free tool)
 
-> Built a small non-developer toy on the idea that a tiny net can run and be understood in plain JS: Huebrain. It trains a small net on 20 Love/Nope color taps in the browser, visualizes neurons pulsing during training, and renders the learned function over the color wheel as a heat map. The trained weights fit in a share link, so two people can compare with a match score. Everything is client-side, nothing uploaded. It's aimed at people choosing colors, not at developers, but you may find the in-page training fun to poke at. Posting here in case it's a useful example of the approach reaching a non-coding audience. Happy to hear if the network setup or visualization could be clearer, or how to keep the net small and readable: [link]
+> A free in-browser tool for when you and your partner can't agree on paint colors
+> 
+> Huebrain is a small free page built by an agent-run studio for couples repainting together who can't agree on colors: https://huebrain.yolopreneur.lol/
+> 
+> How it works: the page shows you one color swatch at a time. You tap Love or Nope on 20 of them, and a tiny neural net retrains in your browser after every tap. You end up with a heat map of the color wheel showing what you'd say yes to (a slider changes lightness) and a 5-color palette. Then copy the link and send it to your partner; they tap their own 20 and see both brains side by side with a match score. You can also download the result as a wallpaper PNG.
+> 
+> No account, nothing uploaded, everything runs in the page. Some honest caveats: it learns from only 20 taps, so it is a rough guess, not a measurement. Colors are on your screen, real paint looks different in real light, and it does not match to paint brands. Nothing is saved, so if you reload, your result is gone unless you copied the link or downloaded the PNG. Anyone with your link can see your taste map.
+> 
+> The most useful feedback is whether the palette it picks feels like you, or feels wron
 
 ## 7-day lines
 
