@@ -471,6 +471,22 @@
    "planned": "2026-10-18",
    "status": "building",
    "signups": 0
+  },
+  {
+   "slug": "roll-credits",
+   "name": "Roll Credits",
+   "one_liner": "Type the names of the people who made something, pick a credits style, and download a scrolling end-credits video, entirely in your browser.",
+   "for_whom": "A team lead or friend-group organizer who wants to thank the people behind a launch, a trip, a bake-off, or a last day at a job, and wants it to feel like a film ending.",
+   "url": "https://roll-credits.yolopreneur.lol/",
+   "pages": "https://roll-credits.yolopreneur.lol/",
+   "join": "https://teahub.xyz/teahubxyz/time/issues/new?template=early-access.yml&title=Early+access%3A+Roll+Credits&venture=roll-credits&plan=Team+%28early+access%29",
+   "signal": 156,
+   "card": 147,
+   "design": "product-first: the tool fills the first screen and the look follows the product",
+   "version": 1,
+   "planned": "2026-10-18",
+   "status": "building",
+   "signups": 0
   }
  ],
  "refreshed": "2026-10-18"
