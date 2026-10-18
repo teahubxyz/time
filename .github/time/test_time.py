@@ -1,5 +1,5 @@
 """Offline tests for time.py: fake Gitea + fake Cursor, whole card lifecycle. Run: python3 .github/time/test_time.py"""
-import importlib.util, json, os, sys, datetime as dt
+import importlib.util, json, os, re, sys, datetime as dt
 import concurrent.futures as cf
 
 # The suite assumes a clean environment: a worker's shell inherits the job's TIME_* settings and seat keys, so drop them
@@ -112,6 +112,9 @@ class World:
         if method == "POST" and path.endswith("/merge"):
             assert body["Do"] == "squash"; self.gh_pr[int(path.split("/")[-2])]["pr"]["merged_at"] = iso(); return {}
         if method == "GET" and path.endswith(".diff"): return {}
+        if method == "POST" and re.search(r"/pulls/\d+/reviews$", path):
+            if getattr(self, "refuse_reviews", False): raise RuntimeError(f"POST {path} -> 422: approve your own pull is not allowed")
+            self.reviews_posted = getattr(self, "reviews_posted", []) + [(int(path.split("/")[-2]), token, body)]; return {}
         if "/pulls/" in path:
             n = int(path.split("/")[5]); d = self.gh_pr[n]
             if path.endswith("/reviews?limit=100"): return d.get("reviews", [])
@@ -214,6 +217,26 @@ tm.think = lambda seat, model, effort, system, user: f"**Approve** ({seat}) diff
 tm.pr_diff = lambda n, limit=0: "diff --git a b"
 w = run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert w.posted[0][0] == 7 and w.posted[0][1].startswith("**Approve** (kimi)") and "`kimi` reviewed" in w.posted[1][1]
+
+# 9a a seat with a TIME_SEAT_<SEAT> token reviews as its own user; refused or tokenless, Time comments
+def seat_run(text, refuse=False, token="kimi-tok"):
+    tm.think = lambda seat, model, effort, system, user: text
+    w = World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr]); w.refuse_reviews = refuse
+    if token: os.environ["TIME_SEAT_KIMI"] = token
+    try: return run(w, {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
+    finally: os.environ.pop("TIME_SEAT_KIMI", None)
+w = seat_run("**Approve** looks right")
+n, tok, b = w.reviews_posted[0]
+assert (n, tok, b["event"]) == (7, "kimi-tok", "APPROVED") and b["body"].startswith("**Approve**") and "review by kimi" in b["body"] and "via Time</sub>" in b["body"]
+assert not [p_ for p_ in w.posted if p_[0] == 7] and any("`kimi` reviewed" in t for _, t in w.posted)
+assert seat_run("Object: breaks x").reviews_posted[0][2]["event"] == "REQUEST_CHANGES"
+assert seat_run("Some thoughts, no verdict").reviews_posted[0][2]["event"] == "COMMENT"
+w = seat_run("**Approve** fine", refuse=True)
+assert not getattr(w, "reviews_posted", []) and w.posted[0][0] == 7 and w.posted[0][1].startswith("**Approve** fine") and "review by kimi" in w.posted[0][1]
+w = seat_run("**Approve** fine", token=None)
+assert not getattr(w, "reviews_posted", []) and w.posted[0][0] == 7
+os.environ.pop("TIME_SEAT_HAIKU", None); assert tm.seat_token("haiku") is None
+os.environ["TIME_SEAT_HAIKU"] = "h-tok"; assert tm.seat_token("haiku") == "h-tok"; os.environ.pop("TIME_SEAT_HAIKU")
 
 # 9b the reviewer's input carries the head commit's statuses under # Checks, before the diff; a failed lookup says so
 seen = {}

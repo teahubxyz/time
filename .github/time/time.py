@@ -1007,6 +1007,29 @@ def check_lines(sha: str | None) -> str:
         return "(checks unavailable)"
 
 
+def seat_token(seat: str) -> str | None:
+    """The Gitea token of the user this seat posts as (`TIME_SEAT_<SEAT>`), or None."""
+    return os.environ.get(f"TIME_SEAT_{seat.upper()}") or None
+
+
+def post_review(pr_number: int, seat: str, model: str | None, text: str) -> str:
+    """Post a reviewer's verdict. With the seat's token it is a real review by the seat's own user (Approve ->
+    APPROVED, Object -> REQUEST_CHANGES, else COMMENT); without one, or if Gitea refuses (a seat on its own PR),
+    it is Time's comment as before. Returns "seat" or "time"."""
+    body = f"{text}\n\n<sub>review by {seat} · {model or SEATS[seat]['default']} · via Time</sub>"
+    token = seat_token(seat)
+    if token:
+        m = VERDICT.match(text or "")
+        event = {"approve": "APPROVED", "object": "REQUEST_CHANGES"}.get(m.group(1).lower() if m else "", "COMMENT")
+        try:
+            http("POST", f"{GH}/repos/{REPO}/pulls/{pr_number}/reviews", token, {"body": body, "event": event})
+            return "seat"
+        except RuntimeError as e:
+            print(f"review as {seat} refused, commenting as Time: {e}")
+    gh("POST", f"/repos/{REPO}/issues/{pr_number}/comments", {"body": body})
+    return "time"
+
+
 def review(card: dict, pr: dict, done: str) -> dict:
     """TIME_REVIEW: off | venice:<seat> | claude:<seat> [model] [effort] | cursor[:<model id>]"""
     spec = (os.environ.get("TIME_REVIEW") or "off").strip()
@@ -1031,9 +1054,8 @@ def review(card: dict, pr: dict, done: str) -> dict:
                   + "\nThe checks listed under # Checks are the head commit's real statuses: evidence you can rely on "
                     "(a success there means that context reported success). A pending check is not yet evidence either way.")
         text = think(seat, model, effort, system, user)
-        gh("POST", f"/repos/{REPO}/issues/{pr['number']}/comments",
-           {"body": f"{text}\n\n<sub>review by {seat} · {model or SEATS[seat]['default']} · via Time</sub>"})
-        return {"review": "venice", "seat": seat}
+        who = post_review(pr["number"], seat, model, text)
+        return {"review": "venice", "seat": seat, "as": who}
     return {"review": f"unknown spec {spec!r}"}
 
 

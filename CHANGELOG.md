@@ -18,6 +18,7 @@
 - The second fix round escalates to Kimi's code model (`venice:kimi code`) instead of grok 4.7: still a different model from the first round, at a fraction of the cost. `TIME_VENTURE_ESCALATE` overrides it.
 
 ### Added
+- Seats review as themselves: with a `TIME_SEAT_<SEAT>` token (one Gitea user per seat, e.g. `TIME_SEAT_KIMI`) the reviewer's verdict is a real Gitea review by that user (Approve → approved, Object → changes requested, prose → comment), so reviews carry an identity and can count. Without a token, or if Gitea refuses (a seat on its own PR), it is Time's comment as before.
 - `TIME_PROTECTED` now governs every protected path except the workflow directories (`.github/workflows/`, `.gitea/workflows/`), which stay a human's merge whatever it says. The default still protects all of `.github/`; a repo that trusts its reviewer can set `TIME_PROTECTED=.github/workflows/,.gitea/workflows/,deploy,infra/,.env,secret` so the engine under `.github/time/` merges itself on Approve + green like any other code.
 - Objections go back to the worker. `/time retry` on a card whose PR is open hands the worker the reviewer's latest comments (marked as the reviewer's, strangers' left out) on the same branch; `open_pr` on an open PR updates its description instead of failing; the card goes back to `dispatched`, so the next beat reviews again and an objection older than the push no longer counts.
 - A batch's children start in the tick that spawned them (GitHub lists a card made a moment ago only later, so they used to wait a tick).
