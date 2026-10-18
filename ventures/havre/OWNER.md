@@ -56,16 +56,17 @@ and not affiliated with it.
 
 Cards live in teahubxyz/time with titles starting "Havre:". In order:
 
-1. Hosted pages for the harbor's own, static: a page and a link for each of Maren, Odile and Taskmaster, built by
-   `tools/build.sh` from `cast/`, with a deep link into the Studio (`?meet=<id>`). The first form of "a page and a
-   link for every character", and something to share.
-2. Faces: portraits of the harbor's own in the house hand (the design dojo's drawing library), as `cast/art/`.
+1. #86 Hosted pages for the harbor's own, static: a page and a link for each of Maren, Odile and Taskmaster, built
+   by `tools/build.sh` from `cast/`, with a deep link into the Studio (`?meet=<id>`). The first form of "a page and
+   a link for every character", and something to share. Ready for a seat.
+2. #87 The skill where agents look: `.well-known/skills/index.json`, the alternate link, robots. Ready for a seat.
+3. #88 Faces: portraits of the harbor's own in the house hand (the design dojo's drawing library), as `cast/art/`.
    Owner's lane, on the Mac where the house hand lives.
-3. The launch kit: a dev.to article in the factory's voice (how Havre keeps the credit), a Bluesky thread, a Venice
-   community post, a card-ecosystem post, and the skill listed where agents look. Published once the pages exist.
-4. Havre MCP: a stateless server that creates, checks, converts and talks to cards (card.js behind MCP), on the
-   factory's existing Fly MCP app. Planned; built when the launch shows pull from agents.
-5. Harbor on Whop: the spec, after .mdeck lands in Whop's store.
+4. #89 The launch kit: a dev.to article in the factory's voice (how Havre keeps the credit), a Bluesky thread, a
+   Venice community post, a card-ecosystem post, and the skill listed where agents look. Once the pages exist.
+5. #90 Havre MCP: a stateless server that creates, checks, converts and talks to cards (card.js behind MCP), on
+   the factory's existing Fly MCP app. Planned; built when the launch shows pull from agents.
+6. #91 Harbor on Whop: the spec, after .mdeck lands in Whop's store (#60, #61).
 
 ## What the board owns
 
