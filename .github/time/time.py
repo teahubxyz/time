@@ -713,6 +713,9 @@ def touches_protected(pr_number: int) -> list[str]:
 
 
 WORKER_CONTEXT = "time/worker-run"
+# Time's own workflows report on a PR head too: a seat's review wakes heartbeat.yml, and a run the concurrency group
+# cancels lands on the head as "failure". None of that says anything about the code, so checks() never reads it.
+OWN_CONTEXTS = ("heartbeat /", "mention /", "venture /", "astra /", "doctor /", "update /", "steward /")
 
 
 def checks(sha: str) -> str:
@@ -723,7 +726,10 @@ def checks(sha: str) -> str:
     states = gh("GET", f"/repos/{REPO}/commits/{sha}/status").get("statuses") or []
     latest: dict[str, str] = {}
     for st in states:  # one line per context, newest wins
-        latest.setdefault(st.get("context") or "", (st.get("status") or st.get("state") or "").lower())
+        ctx = st.get("context") or ""
+        if ctx.startswith(OWN_CONTEXTS):
+            continue
+        latest.setdefault(ctx, (st.get("status") or st.get("state") or "").lower())
     if any(v == "pending" for v in latest.values()):
         return "pending"
     if not all(v in ("success", "skipped") for v in latest.values()):

@@ -395,6 +395,15 @@ w3 = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {"TIME_MODE": "live
 assert "VENICE_API_KEY" in w3.posted[-1][1]
 print("ALL OK 4")
 
+# 15a a status from one of Time's own workflows is not a check: a heartbeat run cancelled by the concurrency group (a seat's
+# review wakes heartbeat.yml during a heartbeat) lands on the head as "failure" and must neither block nor earn a merge
+w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "failure", "context": "heartbeat / tick (pull_request_review)"}, {"state": "success", "context": "ci / test (pull_request)"}]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert merged(w), "a cancelled heartbeat run is not a failing check"
+w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "success", "context": "heartbeat / tick (pull_request_review)"}]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert not merged(w) and "running CI" in w.posted[0][1], "nor does a green one count as CI"
+w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "pending", "context": "mention / reply (issue_comment)"}, {"state": "success", "context": "ci / test (pull_request)"}]
+w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert merged(w), "a pending mention run does not hold the merge"
+
 # 15 the worker's own status can block a merge but never earns one: Time dispatches CI instead, then merges on it
 w = pr_world(checks=[]); w.gh_pr[7]["statuses"] = [{"state": "success", "context": "time/worker-run"}]
 w = run(w, {**K, "TIME_AUTOMERGE": "on"}); assert not merged(w), "worker status alone is not green"
