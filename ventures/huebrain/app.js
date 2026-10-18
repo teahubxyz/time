@@ -78,7 +78,7 @@ function init() {
   const $ = id => document.getElementById(id);
   $('try').innerHTML = `<div class="app">
 <div class="col">
- <div class="card"><div class="swrow"><div class="sw" id="sw"></div><div class="swinfo"><b id="swHex"></b><span id="count"></span><div class="bar"><i id="prog"></i></div></div></div>
+ <div class="card"><div class="swrow"><div class="sw" id="sw"></div><div class="swinfo"><b id="swHex"></b><span id="count"></span><div class="pbar"><i id="prog"></i></div></div></div>
   <div class="btns"><button id="nope" class="nope">Nope <kbd>←</kbd></button><button id="love" class="love">Love <kbd>→</kbd></button></div>
   <p id="status" class="note" aria-live="polite"></p></div>
  <div class="card"><h2>The net, live</h2><canvas id="net" width="320" height="170" aria-label="Neural net: 4 inputs, 8 neurons, 1 output"></canvas>
