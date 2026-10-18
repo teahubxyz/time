@@ -889,6 +889,12 @@ tm.venice_work = real_vw78
 for k in ("TIME_WORKER", "TIME_WORKER_STEPS", "TIME_AUTO_RETRY"): os.environ.pop(k, None)
 print("ALL OK 78")
 
+# ---------- 80 the steward tick: its own file (fake forge, no model), run here so the one CI command covers it
+import subprocess  # noqa: E402
+_p = subprocess.run([sys.executable, str(Path(__file__).resolve().parent / "test_steward.py")], capture_output=True, text=True)
+assert _p.returncode == 0 and "ALL OK steward" in _p.stdout, _p.stdout[-1500:] + _p.stderr[-1500:]
+print("ALL OK 80")
+
 # ---------- venture loop: still GitHub-shaped (Pages, author_association, per_page). Ported in its own card;
 # until then these run only with TIME_TEST_VENTURE=1 against the old fake.
 if not os.environ.get("TIME_TEST_VENTURE"):
