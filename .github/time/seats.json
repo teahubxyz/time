@@ -14,5 +14,9 @@
   "haiku":    {"family": "claude-haiku",  "default": "claude-haiku-5-5",  "label": "Claude Haiku (Anthropic)",  "provider": "anthropic", "price": [0.10, 0.50]},
   "sonnet":   {"family": "claude-sonnet", "default": "claude-sonnet-5-5", "label": "Claude Sonnet (Anthropic)", "provider": "anthropic", "price": [2, 10]},
   "opus":     {"family": "claude-opus",   "default": "claude-opus-5-5",   "label": "Claude Opus (Anthropic)",   "provider": "anthropic", "price": [4, 20]},
-  "fable":    {"family": "claude-fable",  "default": "claude-fable-5-1",  "label": "Claude Fable (Anthropic)",  "provider": "anthropic", "price": [10, 50]}
+  "fable":    {"family": "claude-fable",  "default": "claude-fable-5-1",  "label": "Claude Fable (Anthropic)",  "provider": "anthropic", "price": [10, 50]},
+  "luna":     {"family": "codex-luna",  "default": "luna",  "label": "Codex Luna (OpenAI)",  "provider": "codex", "route": "cli"},
+  "terra":    {"family": "codex-terra", "default": "terra", "label": "Codex Terra (OpenAI)", "provider": "codex", "route": "cli"},
+  "sol":      {"family": "codex-sol",   "default": "sol",   "label": "Codex Sol (OpenAI)",   "provider": "codex", "route": "cli"},
+  "astra":    {"family": "codex-astra", "default": "astra", "label": "Codex Astra (OpenAI)", "provider": "codex", "route": "cli"}
 }

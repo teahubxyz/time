@@ -495,6 +495,97 @@ else: os.environ["TIME_WORKER"] = _wk
 os.environ.pop("TIME_AUTOMERGE", None)
 print("ALL OK 55")
 
+# 77 the council: TIME_REVIEW lists seats, each votes once (latest wins), TIME_REVIEW_TIEBREAK is called only on a split
+class CouncilWorld(World):
+    """Seats post real reviews as their own users: the review a seat's token posts lands in the PR's review list."""
+    LOGINS = {"h-tok": "haiku", "o-tok": "opus", "k-tok": "kimi"}
+    def http(self, method, url, token, body=None, timeout=0):
+        out = super().http(method, url, token, body, timeout)
+        if method == "POST" and re.search(r"/pulls/\d+/reviews$", url):
+            self.vote(self.LOGINS[token], {"APPROVED": "APPROVED", "REQUEST_CHANGES": "REQUEST_CHANGES"}.get(body["event"], "COMMENTED"))
+        return out
+    def vote(self, login, state, h=0):
+        self.gh_pr[7].setdefault("reviews", []).append({"state": state, "user": {"login": login}, "submitted_at": iso(h)})
+def council(votes_by=None, **env):
+    """A PR with the standing seats' votes already cast ({login: APPROVED | REQUEST_CHANGES}); returns (world, who the tie-break seat was asked as)."""
+    prd = {"number": 7, "state": "open", "merged_at": None, "head": {"sha": "abc", "ref": "time/card-1"}, "html_url": "u", "created_at": iso(2),
+           "title": "x", "body": "Closes #1"}
+    w = CouncilWorld([card(1, D)], {1: [beat("pr", 1, pr=7)], 7: []}, [], None,
+                     {7: {"pr": prd, "statuses": [{"status": "success", "context": "ci"}], "files": ["src/a.py"]}})
+    w.trusted |= {"haiku", "opus", "kimi"}
+    for login, st in (votes_by or {}).items(): w.vote(login, st, 1)
+    return w
+asked = []
+def council_think(seat, model, effort, system, user):
+    asked.append(seat); return council_verdicts[seat]
+council_verdicts = {"kimi": "**Approve** breaks the tie"}
+def land77(w, last=None, **env):
+    for k in [k for k in os.environ if k.startswith(("TIME_REVIEW", "TIME_SEAT_"))]: os.environ.pop(k)
+    os.environ.update({"TIME_AUTOMERGE": "on", "TIME_REVIEW": "claude:haiku, claude:opus", "TIME_SEAT_HAIKU": "h-tok",
+                       "TIME_SEAT_OPUS": "o-tok", "TIME_SEAT_KIMI": "k-tok", **env})
+    tm.http = w.http; tm._trust.clear(); tm._label_ids = None
+    tm.think, tm.pr_diff = council_think, (lambda n, limit=0: "diff --git a b")
+    asked.clear()
+    tm.land(card(1, D), last or {"beat": "pr", "pr": 7})
+    return w
+TB = {"TIME_REVIEW_TIEBREAK": "venice:kimi"}
+AP, OB = "APPROVED", "REQUEST_CHANGES"
+# two seats Approve/Approve -> merge, and the tie-break seat is never called (with or without one configured)
+for extra in ({}, TB):
+    w = land77(council({"haiku": AP, "opus": AP}), **extra)
+    assert merged(w) and asked == [] and not getattr(w, "reviews_posted", []), "the standing seats agree"
+# quorum 2 and only one of two standing seats has voted: wait, the tie-break is not called early
+w = land77(council({"haiku": AP}), TIME_REVIEW_QUORUM="2", **TB)
+assert not merged(w) and asked == [] and w.posted == []
+# Approve/Object -> the tie-break seat is called exactly once, and its Approve merges
+w = land77(council({"haiku": AP, "opus": OB}), **TB)
+assert asked == ["kimi"] and len(w.reviews_posted) == 1 and w.reviews_posted[0][1] == "k-tok" and merged(w) and not any("split" in t for _, t in w.posted)
+# ... its Object yields the split message once, with a needs-human beat; the next beat neither calls it again nor repeats
+council_verdicts["kimi"] = "**Object** still wrong"
+w = land77(council({"haiku": AP, "opus": OB}), **TB)
+assert asked == ["kimi"] and not merged(w) and len(w.posted) == 1, w.posted
+assert "split 1–2" in w.posted[0][1] and "over to a human" in w.posted[0][1] and "needs-human" in w.issues.get(7, {}).get("labels", ["needs-human"])
+b = tm.beats_of(w.comments[1])[-1]
+assert b["beat"] == "needs-human" and b["split"] is True
+land77(w, last=b, **TB)
+assert asked == [] and len(w.posted) == 1, "the split was said once, the tie-break not called again"
+council_verdicts["kimi"] = "**Approve** breaks the tie"
+# Approve/Object with no tie-break configured -> the split goes to a human at once, nobody is called
+w = land77(council({"haiku": AP, "opus": OB}))
+assert asked == [] and not merged(w) and "split 1–1" in w.posted[0][1]
+# a seat that objected and later re-approves: its latest vote counts, so the standing seats agree
+w = council({"haiku": AP, "opus": OB}); w.vote("opus", AP, 0)
+w = land77(w, **TB); assert merged(w) and asked == []
+assert tm.votes(w.gh_pr[7]["pr"], iso(3)) == {"haiku": "approve", "opus": "approve"}
+w = council({"haiku": AP, "opus": AP}); w.vote("opus", OB, 0)
+tm.http = w.http; tm._trust.clear()
+assert tm.verdict(w.gh_pr[7]["pr"], iso(3)) is None and tm.votes(w.gh_pr[7]["pr"], iso(3))["opus"] == "object"
+# quorum 2 with one Approve and no tie-break configured -> waits (one standing seat so it has voted)
+w = land77(council({"haiku": AP}), TIME_REVIEW="claude:haiku", TIME_REVIEW_QUORUM="2")
+assert not merged(w) and w.posted == [] and asked == []
+w = land77(council({"haiku": AP, "opus": AP}), TIME_REVIEW_QUORUM="2"); assert merged(w)
+# an objection with no approvals is still an objection (single seat)
+w = land77(council({"haiku": OB}), TIME_REVIEW="claude:haiku"); assert not merged(w) and "objected" in w.posted[0][1] and asked == []
+# the single-seat path is today's: one Approve merges, no tie-break asked even when one is configured
+w = land77(council({"haiku": AP}), TIME_REVIEW="claude:haiku", **TB); assert merged(w) and asked == []
+# votes are per identity: Time's own comments are one identity (gitea-actions), two of them are one vote
+w = council(); w.comments[7] = [{"created_at": iso(), "user": {"login": "gitea-actions"}, "body": "**Approve** a"},
+                                {"created_at": iso(), "user": {"login": "gitea-actions"}, "body": "**Approve** b"}]
+tm._trust.clear(); tm.http = w.http
+assert tm.votes(w.gh_pr[7]["pr"], iso(3)) == {"gitea-actions": "approve"}
+# review() runs every listed seat, each posts as itself, and returns the seats it ran
+w = council(); os.environ.update({"TIME_REVIEW": "claude:haiku, claude:opus", "TIME_SEAT_HAIKU": "h-tok", "TIME_SEAT_OPUS": "o-tok"}); tm.http = w.http
+council_verdicts.update(haiku="**Approve** ok", opus="**Object** no")
+tm.think = council_think; asked.clear()
+rv = tm.review(card(1, D), {"number": 7, "title": "x", "body": "", "head": {"sha": "abc"}, "html_url": "u"}, "d")
+assert asked == ["haiku", "opus"] and rv["seats"] == ["haiku", "opus"] and [r[1] for r in w.reviews_posted] == ["h-tok", "o-tok"]
+assert tm.review_note(rv) == "`haiku`, `opus` reviewed it on the PR."
+# seats.json: Codex's ladder is there, on the CLI route
+assert all(tm.SEATS[x]["route"] == "cli" for x in ("luna", "terra", "sol", "astra")) and "astra" not in tm.mentions("@astra hi")
+for k in [k for k in os.environ if k.startswith(("TIME_REVIEW", "TIME_SEAT_", "TIME_AUTOMERGE"))]: os.environ.pop(k)
+tm.think = real_think
+print("ALL OK 77")
+
 # 409 on a contents PUT is retried; other errors are not
 tries = []
 def flaky(method, url, token, body=None, timeout=0):

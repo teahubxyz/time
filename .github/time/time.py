@@ -173,7 +173,8 @@ def mentions(text: str) -> dict[str, tuple[str | None, str | None]]:
         return {}
     text = re.sub(r"```.*?```|`[^`]*`", "", text, flags=re.S)
     text = "\n".join(l for l in text.splitlines() if not l.lstrip().startswith(">"))
-    pat = re.compile(r"(?<![\w@/.-])@(" + "|".join(SEATS) + r")\b((?:[ \t]+[^\s@`]+){0,2})", re.I)
+    chat_seats = [k for k, v in SEATS.items() if v.get("route") != "cli"]  # a CLI seat (Codex) has no chat route
+    pat = re.compile(r"(?<![\w@/.-])@(" + "|".join(chat_seats) + r")\b((?:[ \t]+[^\s@`]+){0,2})", re.I)
     out = {}
     for m in pat.finditer(text):
         seat, model, effort = m.group(1).lower(), None, None
@@ -635,19 +636,62 @@ VERDICT = re.compile(r"^[\s*_>#]*(approve|object)\b", re.I)
 DEFAULT_PROTECTED = ".github/,.gitea/,deploy,infra/,.env,secret"
 
 
-def verdict(pr: dict, since: str) -> str | None:
-    """Latest reviewer verdict after `since`: a comment starting Approve/Object, or a PR review."""
+def votes(pr: dict, since: str) -> dict[str, str]:
+    """Each trusted identity's latest verdict after `since`: {login: "approve" | "object"}. A comment starting
+    Approve/Object or a PR review; Time's own comments are one identity (`gitea-actions`), so a seat without its own
+    Gitea user shares one vote with every other such seat."""
     found = []
     for c in gh("GET", f"/repos/{REPO}/issues/{pr['number']}/comments?limit=100"):
         m = VERDICT.match(c.get("body") or "")
-        ok = is_time(c) or trusted((c.get("user") or {}).get("login"))  # public repos: strangers can comment
+        login = (c.get("user") or {}).get("login")
+        ok = is_time(c) or trusted(login)  # public repos: strangers can comment
         if m and ok and c["created_at"] >= since:
-            found.append((c["created_at"], len(found), m.group(1).lower()))  # list order breaks a same-second tie: the newer comment wins
+            found.append((c["created_at"], len(found), TIME_BOT if is_time(c) else login, m.group(1).lower()))  # list order breaks a same-second tie: the newer comment wins
     for r in gh("GET", f"/repos/{REPO}/pulls/{pr['number']}/reviews?limit=100"):
         state = {"APPROVED": "approve", "REQUEST_CHANGES": "object", "CHANGES_REQUESTED": "object"}.get(r.get("state"))
-        if state and trusted((r.get("user") or {}).get("login")) and (r.get("submitted_at") or "") >= since:
-            found.append((r["submitted_at"], len(found), state))
-    return max(found)[2] if found else None
+        login = (r.get("user") or {}).get("login")
+        if state and trusted(login) and (r.get("submitted_at") or "") >= since:
+            found.append((r["submitted_at"], len(found), login, state))
+    latest: dict[str, str] = {}
+    for _, _, who, v in sorted(found):
+        latest[who] = v
+    return latest
+
+
+def standing_voters() -> int:
+    """How many identities the standing seats vote as: a seat with its own Gitea user (TIME_SEAT_<SEAT>) is one, and every
+    seat that posts as Time shares one. The tie-break waits until that many have voted."""
+    ids = set()
+    for spec in review_specs("TIME_REVIEW"):
+        kind, _, rest = spec.partition(":")
+        if kind == "cursor":
+            continue  # a Cursor agent comments on its own schedule; it doesn't hold up the count
+        seat = (rest.split() or [kind])[0] if kind in SEAT_KINDS else kind
+        ids.add(seat if seat_token(seat) else TIME_BOT)
+    return max(1, len(ids))
+
+
+def quorum() -> int:
+    """TIME_REVIEW_QUORUM: approvals needed, net of objections (default 1)."""
+    try:
+        return max(1, int(os.environ.get("TIME_REVIEW_QUORUM") or 1))
+    except ValueError:
+        return 1
+
+
+def tally(cast: dict[str, str]) -> tuple[int, int]:
+    return sum(v == "approve" for v in cast.values()), sum(v == "object" for v in cast.values())
+
+
+def decide(cast: dict[str, str]) -> str | None:
+    a, o = tally(cast)
+    return "approve" if a - o >= quorum() else "object" if o > a else None
+
+
+def verdict(pr: dict, since: str) -> str | None:
+    """The council's verdict after `since`: each trusted identity's latest vote counts once. `approve` when approves
+    minus objects reaches the quorum, `object` when objects exceed approves, else None (no vote yet, a tie, or short of quorum)."""
+    return decide(votes(pr, since))
 
 
 def touches_protected(pr_number: int) -> list[str]:
@@ -715,9 +759,27 @@ def land(card: dict, last: dict, revised_at: str | None = None) -> None:
         return
     if pr["state"] == "closed" or (os.environ.get("TIME_AUTOMERGE") or "off").strip() != "on":
         return
-    v = verdict(pr, since)
+    cast = votes(pr, since)
+    v = decide(cast)
     if v is None:
-        return
+        # Not settled. Wait while nobody has voted, a standing seat has yet to vote, or the split is already reported.
+        if not cast or last.get("split") or len(cast) < standing_voters():
+            return
+        tie = (os.environ.get("TIME_REVIEW_TIEBREAK") or "").strip()
+        a, o = tally(cast)
+        if not tie:
+            if a != o:
+                return  # short of the quorum with no objection: wait for more votes
+        else:  # the standing seats split, or fell short: the tie-break seat votes, once
+            review_one(card, pr, done_of(card), tie)
+            cast = votes(pr, since)
+            v = decide(cast)
+            a, o = tally(cast)
+        if v != "approve":  # the tie-break seat's Object ends in the split message too: one verdict a human reads once
+            label(pr["number"], "needs-human")
+            comment(n, f"⏱️ Time: the council is split {a}–{o} on PR #{pr['number']}; over to a human.",
+                    {"beat": "needs-human", "pr": pr["number"], "split": True})
+            return
     if v == "object":
         if last["beat"] != "needs-human":
             label(pr["number"], "needs-human")
@@ -1182,12 +1244,53 @@ def post_review(pr_number: int, seat: str, model: str | None, text: str) -> str:
     return "time"
 
 
+SEAT_KINDS = ("venice", "claude", "codex")
+CODEX_DEFAULT_SEAT = "terra"
+
+
+def done_of(card: dict) -> str:
+    m = re.search(r"^\s*DONE:\s*(.+)$", card.get("body") or "", re.M | re.I)
+    return m.group(1).strip() if m else ""
+
+
+def review_specs(var: str = "TIME_REVIEW") -> list[str]:
+    """A comma-separated list of seat specs; empty when unset or `off`."""
+    spec = (os.environ.get(var) or "").strip()
+    return [] if spec.lower() in ("", "off") else [x.strip() for x in spec.split(",") if x.strip()]
+
+
+def review_note(rv: dict) -> str:
+    if rv["review"] == "off":
+        return "No reviewer is set (`TIME_REVIEW`)."
+    seats = rv.get("seats") or ([rv["seat"]] if rv.get("seat") else [])
+    parts = (["A Cursor agent is reviewing it."] if rv["review"] == "cursor" else []) + \
+            ([", ".join(f"`{x}`" for x in seats) + " reviewed it on the PR."] if seats else [])
+    return " ".join(parts) or rv["review"]
+
+
 def review(card: dict, pr: dict, done: str) -> dict:
-    """TIME_REVIEW: off | venice:<seat> | claude:<seat> [model] [effort] | cursor[:<model id>]"""
-    spec = (os.environ.get("TIME_REVIEW") or "off").strip()
-    if spec in ("", "off"):
+    """TIME_REVIEW: a comma-separated list of seat specs, each `venice:<seat> | claude:<seat> [model] [effort] | cursor[:<model id>]`
+    (or a Codex seat, once its CLI route lands); every listed seat reviews the PR and posts as itself.
+    Returns what ran: the seats in `seats`."""
+    specs = review_specs("TIME_REVIEW")
+    if not specs:
         return {"review": "off"}
+    ran = [review_one(card, pr, done, spec) for spec in specs]
+    seats = [r["seat"] for r in ran if r.get("seat")]
+    out = {k: v for r in ran for k, v in r.items() if k != "review"}
+    kinds = [r["review"] for r in ran]
+    out["review"] = "cursor" if "cursor" in kinds else "venice" if seats else kinds[0]
+    if seats:
+        out["seats"] = seats
+    return out
+
+
+def review_one(card: dict, pr: dict, done: str, spec: str) -> dict:
+    """One seat reviews the PR and posts its verdict as itself."""
     kind, _, rest = spec.partition(":")
+    if kind == "codex" or SEATS.get(kind, {}).get("route") == "cli":
+        seat = (rest.split() or [CODEX_DEFAULT_SEAT])[0] if kind == "codex" else kind
+        return {"review": f"`{seat}` reviews through a headless Codex CLI run, which isn't wired in yet (#79); it did not vote"}
     if kind == "cursor":
         r = cursor_launch(REVIEW_PROMPT.format(pr=pr["number"], repo=REPO, n=card["number"], title=card["title"], done=done),
                           model=rest.strip() or None, pr_url=pr["html_url"], create_pr=False)
@@ -1277,8 +1380,7 @@ def tick() -> None:
                     continue
                 rv = review(card, adopt, done or "")
                 launches_today += 1 if rv.get("review") == "cursor" else 0
-                note = {"off": "No reviewer is set (`TIME_REVIEW`).", "cursor": "A Cursor agent is reviewing it.",
-                        "venice": f"`{rv.get('seat')}` reviewed it on the PR."}.get(rv["review"], rv["review"])
+                note = review_note(rv)
                 comment(n, f"⏱️ Time: adopted PR #{adopt['number']}, built outside the worker. {note}",
                         {"beat": "pr", "pr": adopt["number"], "adopted": True, "launched": rv.get("review") == "cursor", **rv})
                 continue
@@ -1344,8 +1446,7 @@ def tick() -> None:
                     pr = found[0]
                     rv = review(card, pr, done or "")
                     launches_today += 1 if rv.get("review") == "cursor" else 0
-                    note = {"off": "No reviewer is set (`TIME_REVIEW`).", "cursor": "A Cursor agent is reviewing it.",
-                            "venice": f"`{rv.get('seat')}` reviewed it on the PR."}.get(rv["review"], rv["review"])
+                    note = review_note(rv)
                     comment(n, f"⏱️ Time: PR #{pr['number']} is up for this card. {note}",
                             {"beat": "pr", "pr": pr["number"], "launched": rv.get("review") == "cursor", **rv})
                 elif state == "dispatched":
@@ -1385,7 +1486,9 @@ def cmd_doctor() -> int:
     row("TIME_MODE", True, os.environ.get("TIME_MODE") or "dry-run (default)")
     row("TIME_DAILY_CAP", True, os.environ.get("TIME_DAILY_CAP") or "5 (default)")
     row("TIME_WORKER", True, os.environ.get("TIME_WORKER") or "cursor (default); or claude:<seat> / venice:<seat> for a seat with hands")
-    row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default)")
+    row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default); a comma-separated list of seats, each votes")
+    row("TIME_REVIEW_TIEBREAK", True, os.environ.get("TIME_REVIEW_TIEBREAK") or "none (default); a seat called only when the standing seats split")
+    row("TIME_REVIEW_QUORUM", True, os.environ.get("TIME_REVIEW_QUORUM") or "1 (default); approvals needed, net of objections")
     today, day_cap, month, month_cap = budget()
     row("TIME_DAILY_USD", True, os.environ.get("TIME_DAILY_USD") or "5 (default)")
     row("TIME_CAP_SLACK", True, os.environ.get("TIME_CAP_SLACK") or "1.5 (default)")
