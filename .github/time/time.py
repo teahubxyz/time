@@ -1098,10 +1098,11 @@ def worker_seat_model(spec: str) -> tuple[str, str, str | None]:
     return seat, model or SEATS[seat].get("aliases", {}).get("code") or SEATS[seat]["default"], effort
 
 
-def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | None = None) -> dict:
+def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | None = None, steps: int | None = None) -> dict:
     """Run one card with a seat (Venice or Claude) as the worker. Returns {pr, steps, seat, model}. The name is
     historical; venture.py and the tests call it. TIME_WORKER_FALLBACK (default `grok build` for a Venice worker,
-    `off` for Claude, since a fallback should not silently cross providers) takes over if the model stays overloaded."""
+    `off` for Claude, since a fallback should not silently cross providers) takes over if the model stays overloaded.
+    `steps` replaces the TIME_WORKER_STEPS default (an automatic retry gets half as many again)."""
     seat, model, effort = worker_seat_model(spec)
     fallback = (os.environ.get("TIME_WORKER_FALLBACK") or ("grok build" if provider_of(model) == "venice" else "off")).strip()
     fb_model = worker_seat_model(fallback)[1] if fallback.lower() != "off" else None
@@ -1116,7 +1117,7 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | 
         system += REVISE_RULES.format(branch=hands.branch, review=review or "(no review comments were found; check the PR)")
     msgs = [{"role": "system", "content": system},
             {"role": "user", "content": "Begin. Look at the repository first."}]
-    for _ in range(int(os.environ.get("TIME_WORKER_STEPS") or 40)):
+    for _ in range(steps or int(os.environ.get("TIME_WORKER_STEPS") or 40)):
         body = {"model": model, "temperature": 0.2, "max_tokens": int(os.environ.get("TIME_WORKER_MAX_TOKENS") or 16000),
                 "messages": msgs, "tools": WORKER_TOOLS,
                 "venice_parameters": {"include_venice_system_prompt": False}}
@@ -1347,6 +1348,8 @@ def tick() -> None:
     cards = sorted(issues("state=open&labels=ready"), key=lambda c: c["number"])  # oldest first, like promote_next
     prs = gh("GET", f"/repos/{REPO}/pulls?state=all&sort=recentupdate&limit=50")
     launches_today = 0
+    auto_max = int(os.environ.get("TIME_AUTO_RETRY") or 1)  # a parked card's automatic retries, all told (0 = a human's call)
+    auto_used: dict[int, int] = {}
     plan = []
     for card in cards:
         cs = gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?limit=100")
@@ -1356,7 +1359,9 @@ def tick() -> None:
         real = [b for b in beats if b["beat"] not in ("blocked", "capped")]
         last = real[-1] if real else None
         blocked = any(b["beat"] == "blocked" and (not last or b["at"] >= last["at"]) for b in beats)
-        revision = None
+        revision, auto = None, False
+        # an automatic retry is one run of consecutive `auto_retry` beats (the dispatch beats and, if it failed, the error)
+        auto_used[card["number"]] = sum(1 for i, b in enumerate(real) if b.get("auto_retry") and not (i and real[i - 1].get("auto_retry")))
         if last and retry_requested(cs, last["at"]):
             last = None
             # the card's PR is still open: this retry answers the review rather than starting over
@@ -1364,14 +1369,18 @@ def tick() -> None:
             if open_now:
                 since = max((b["at"] for b in beats if b.get("revised")), default="")
                 revision = {"pr": open_now[0], "feedback": reviewer_feedback(open_now[0]["number"], since)}
+        elif last and last["beat"] in ("error", "stuck") and mode == "live":
+            # a parked card is Time's to retry, within TIME_AUTO_RETRY; a card with an open PR is left to the review path
+            if auto_used[card["number"]] < auto_max and not any(p.get("state", "open") == "open" for p in linked_prs(prs, card["number"])):
+                last, auto = None, True
         revised_at = max((b["at"] for b in beats if b.get("revised")), default=None)
         m = re.search(r"^\s*DONE:\s*(.+)$", card.get("body") or "", re.M | re.I)
         capped = any(b["beat"] == "capped" and (not last or b["at"] >= last["at"]) for b in beats)
-        plan.append((card, last, m.group(1).strip() if m else None, blocked, capped, revision, revised_at))
+        plan.append((card, last, m.group(1).strip() if m else None, blocked, capped, revision, revised_at, auto))
     print(f"tick {now:%Y-%m-%dT%H:%MZ} mode={mode} cards={len(cards)} launches_today={launches_today}/{cap}")
 
     tripped = None
-    for card, last, done, blocked, capped, revision, revised_at in plan:
+    for card, last, done, blocked, capped, revision, revised_at, auto in plan:
         n, state = card["number"], (last or {}).get("beat")
         try:
             # work built outside the worker (Codex, a seat's chat): an open PR that already closes this card is reviewed and
@@ -1411,7 +1420,8 @@ def tick() -> None:
                 if seat_worker(worker):
                     prov = provider_of(worker_seat_model(worker)[1])
                     comment(n, f"⏱️ Time: {worker_name} is " + (f"answering the review on PR #{rev['number']}" if rev else "working on this")
-                            + f" now, on branch `{card_branch(card)}`.", {"beat": "dispatched", "launched": True, "worker": prov})
+                            + f" now, on branch `{card_branch(card)}`." + (" Retrying on my own, resuming the branch." if auto else ""),
+                            {"beat": "dispatched", "launched": True, "worker": prov, **({"auto_retry": True} if auto else {})})
                     launches_today += 1
                     if rev:
                         try:
@@ -1419,12 +1429,16 @@ def tick() -> None:
                         except RuntimeError as e:
                             print(f"#{n}: needs-human label not removed: {str(e)[:100]}")
                         r = venice_work(card, done, worker.split(":", 1)[1], review=revision["feedback"])
+                    elif auto:  # the second pass continues the first one's branch, with half as many turns again
+                        r = venice_work(card, done, worker.split(":", 1)[1],
+                                        steps=int(int(os.environ.get("TIME_WORKER_STEPS") or 40) * 1.5))
                     else:
                         r = venice_work(card, done, worker.split(":", 1)[1])
                     # back to `dispatched`: the next beat reviews the PR again and the new verdict is the one that counts
                     comment(n, f"⏱️ Time: `{r['seat']}` " + ("pushed its answer to" if rev else "opened") + f" PR #{r['pr']} "
                             f"({r['steps']} steps, {r['model']}). Review and landing follow on the next beat.",
-                            {"beat": "dispatched", "worker": prov, **({"revised": True} if rev else {}), **r})
+                            {"beat": "dispatched", "worker": prov, **({"revised": True} if rev else {}),
+                             **({"auto_retry": True} if auto else {}), **r})
                     continue
                 prompt = BUILD_PROMPT.format(n=n, repo=REPO, title=card["title"], body=(card.get("body") or "")[:20000],
                                              base=default_branch(), done=done)
@@ -1436,10 +1450,11 @@ def tick() -> None:
                     r = cursor_launch(prompt, model=worker_model)
                 launches_today += 1
                 link = f" ([agent]({r['agent_url']}))" if r.get("agent_url") else ""
-                comment(n, f"⏱️ Time: dispatched to a Cursor cloud agent{link}. " + (f"It answers the review on PR #{rev['number']}; "
+                comment(n, f"⏱️ Time: dispatched to a Cursor cloud agent{link}. " + ("Retrying on my own, resuming the branch. " if auto else "") + (f"It answers the review on PR #{rev['number']}; "
                         "I'll review again once the branch moves." if rev else f"It will open a PR that closes #{n}; "
                         "I'll link it here when it appears."),
-                        {"beat": "dispatched", "launched": True, **r, "model": worker_model, **({"revised": True} if rev else {})})
+                        {"beat": "dispatched", "launched": True, **r, "model": worker_model, **({"revised": True} if rev else {}),
+                         **({"auto_retry": True} if auto else {})})
                 continue
             if state in ("pr", "needs-human", "no-checks", "checks-failed"):
                 land(card, last, revised_at)
@@ -1459,8 +1474,10 @@ def tick() -> None:
                     age_h = (now - dt.datetime.fromisoformat(last["at"].replace("Z", "+00:00"))).total_seconds() / 3600
                     if age_h > stuck_h:
                         comment(n, f"⏱️ Time: dispatched {age_h:.0f}h ago and no PR closing #{n} yet. Check the agent"
-                                f"{' (' + last['agent_url'] + ')' if last.get('agent_url') else ''}; comment `/time retry` to "
-                                "dispatch again.", {"beat": "stuck"})
+                                f"{' (' + last['agent_url'] + ')' if last.get('agent_url') else ''}. "
+                                + ("I'll dispatch again on my own next beat; comment `/time retry` to force one."
+                                   if mode == "live" and auto_used[n] < auto_max else "Comment `/time retry` to dispatch again."),
+                                {"beat": "stuck"})
         except Budget as e:  # out of money: say so once per card, pull the andon cord once per tick
             print(f"#{n}: spend cap reached: {e}")
             tripped = tripped or str(e)
@@ -1471,8 +1488,11 @@ def tick() -> None:
                 comment(n, f"⏱️ Time: can't go further on this card: {e}. I'll carry on once it's added.", {"beat": "blocked"})
         except Exception as e:  # noqa: BLE001  one card must not stop the others
             print(f"#{n}: {type(e).__name__}: {e}")
-            comment(n, f"⏱️ Time: the worker call failed: `{str(e)[:300]}`. Comment `/time retry` to try again.",
-                    {"beat": "error"})
+            again = mode == "live" and auto_used.get(n, 0) + (1 if auto else 0) < auto_max
+            comment(n, f"⏱️ Time: the worker call failed: `{str(e)[:300]}`. "
+                    + ("I'll retry on my own next beat (TIME_AUTO_RETRY times in all); comment `/time retry` for one more."
+                       if again else "Comment `/time retry` to try again."),
+                    {"beat": "error", **({"auto_retry": True} if auto else {})})
     if tripped:
         andon(tripped)
 

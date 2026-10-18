@@ -149,7 +149,7 @@ def beat(state, h=0, **kw):
 
 def run(world, env):
     for k in ("TIME_MODE", "CURSOR_API_KEY", "TIME_REVIEW", "TIME_DAILY_CAP", "TIME_CURSOR_MODEL", "TIME_AUTOMERGE",
-              "TIME_REQUIRE_CHECKS", "VENICE_API_KEY", "TIME_CI_WORKFLOW"):
+              "TIME_REQUIRE_CHECKS", "VENICE_API_KEY", "TIME_CI_WORKFLOW", "TIME_AUTO_RETRY"):
         os.environ.pop(k, None)
     os.environ.update(env)
     tm.http = world.http
@@ -190,7 +190,7 @@ assert w.posted == []
 # 5 stuck after TIME_STUCK_HOURS, once
 w = run(World([card(1, D)], {1: [beat("dispatched", 7, launched=True, agent_url="https://cursor.com/agents/x")]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"})
 assert "no PR closing #1" in w.posted[0][1] and "cursor.com/agents/x" in w.posted[0][1]
-w = run(World([card(1, D)], {1: [beat("dispatched", 8, launched=True), beat("stuck", 1)]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"}); assert w.posted == []
+w = run(World([card(1, D)], {1: [beat("dispatched", 8, launched=True), beat("stuck", 1)]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_AUTO_RETRY": "0"}); assert w.posted == []
 
 # 6 daily cap counts today's launches
 w = run(World([card(1, D), card(2, D)], {1: [beat("dispatched", 0, launched=True)], 2: [beat("would-dispatch")]}),
@@ -203,7 +203,7 @@ w = run(World([card(1, D)], {1: [beat("error", 1), human]}), {"TIME_MODE": "live
 assert len(w.launched) == 1
 # 7b a stranger's /time retry, or a pasted beat, does nothing (public repos)
 stranger = {"created_at": iso(), "user": {"login": "stranger"}, "body": "/time retry"}
-w = run(World([card(1, D)], {1: [beat("error", 1), stranger]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck"})
+w = run(World([card(1, D)], {1: [beat("error", 1), stranger]}), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_AUTO_RETRY": "0"})
 assert w.launched == []
 forged = {**beat("pr", pr=7), "user": {"login": "stranger"}}
 assert tm.beats_of([beat("dispatched", 2), forged])[-1]["beat"] == "dispatched"
@@ -833,6 +833,61 @@ if _sh.which("node"):
     else:
         assert res.returncode == 0 and "aicharts: all good" in res.stdout, res.stdout[-2000:] + res.stderr[-2000:]
         print("ALL OK 41")
+
+# 78 Time retries its own parked cards (error / stuck), within TIME_AUTO_RETRY; a human only hears once it has given up
+K78 = {**K, "TIME_WORKER": "cursor"}
+meta78 = lambda w: [json.loads(re.search(r"<!-- time (.*) -->", t).group(1)) for _, t in w.posted]
+# error with no PR -> redispatched on the next beat, and the beat says it was automatic
+w = run(World([card(1, D)], {1: [beat("dispatched", 3, launched=True), beat("error", 1)]}), K78)
+assert len(w.launched) == 1 and meta78(w)[-1].get("auto_retry") is True and meta78(w)[-1].get("launched") is True, w.posted
+assert "Retrying on my own" in w.posted[-1][1], w.posted
+# stuck with no PR is retried too
+w = run(World([card(1, D)], {1: [beat("dispatched", 8, launched=True), beat("stuck", 1)]}), K78)
+assert len(w.launched) == 1 and meta78(w)[-1].get("auto_retry") is True, w.posted
+# after one automatic retry (the default) a second error waits for a human; TIME_AUTO_RETRY=2 tries again
+spent78 = {1: [beat("dispatched", 5, launched=True), beat("error", 4), beat("dispatched", 3, launched=True, auto_retry=True), beat("error", 1, auto_retry=True)]}
+w = run(World([card(1, D)], spent78), K78); assert w.launched == [] and w.posted == [], w.posted
+w = run(World([card(1, D)], spent78), {**K78, "TIME_AUTO_RETRY": "2"}); assert len(w.launched) == 1, "a second automatic retry"
+# a seat's two dispatch beats (and its error) are one automatic retry, not three
+seat78 = {1: [beat("dispatched", 5, launched=True), beat("error", 4), beat("dispatched", 3, launched=True, auto_retry=True),
+              beat("dispatched", 2, auto_retry=True, pr=9), beat("stuck", 1)]}
+w = run(World([card(1, D)], seat78), {**K78, "TIME_AUTO_RETRY": "2"}); assert len(w.launched) == 1
+w = run(World([card(1, D)], seat78), K78); assert w.launched == [] and w.posted == []
+# a human's /time retry still works after the automatic ones are spent
+w = run(World([card(1, D)], {1: spent78[1] + [human]}), K78); assert len(w.launched) == 1
+# stuck with an open linked PR is reviewed, not redispatched
+w = run(World([card(1, D)], {1: [beat("dispatched", 8, launched=True), beat("stuck", 1)]}, [pr]), K78)
+assert w.launched == [] and meta78(w)[-1]["beat"] == "pr" and "PR #7" in w.posted[-1][1], w.posted
+# a closed PR does not hold the retry back
+w = run(World([card(1, D)], {1: [beat("dispatched", 8, launched=True), beat("stuck", 1)]}, [{**pr, "state": "closed"}]), K78)
+assert len(w.launched) == 1
+# dry-run retries nothing
+w = run(World([card(1, D)], {1: [beat("error", 1)]}), {"TIME_MODE": "dry-run", "CURSOR_API_KEY": "ck"}); assert w.launched == [] and w.posted == []
+# the messages say what Time will do
+w = run(World([card(1, D)], {1: [beat("dispatched", 7, launched=True)]}), K78)
+assert w.posted[0][1].split("\n\n")[0].endswith("I'll dispatch again on my own next beat; comment `/time retry` to force one."), w.posted
+w = run(World([card(1, D)], {1: [beat("dispatched", 7, launched=True)]}), {**K78, "TIME_AUTO_RETRY": "0"})
+assert "I'll dispatch again" not in w.posted[0][1] and "`/time retry`" in w.posted[0][1], w.posted
+w = run(World([card(1, D)], {1: [beat("would-dispatch")]}), K78)
+_hb = w.http
+def failing78(method, path, body=None, *a, **k):
+    if "api.cursor.com" in path: raise RuntimeError("boom")
+    return _hb(method, path, body, *a, **k)
+w.launched.clear(); w.posted.clear(); w.comments[1] = [beat("would-dispatch")]
+tm.http = failing78; tm.cmd_heartbeat(); tm.http = w.http
+assert meta78(w)[-1]["beat"] == "error" and "I'll retry on my own next beat (TIME_AUTO_RETRY times in all); comment `/time retry` for one more." in w.posted[-1][1], w.posted
+# a venice: worker on an automatic retry gets half as many turns again; a first dispatch gets the plain default
+seen78, real_vw78 = [], tm.venice_work
+tm.venice_work = lambda card, done, spec, hands_cls=None, review=None, **kw: (seen78.append(kw), {"pr": 42, "steps": 3, "seat": "kimi", "model": "m"})[1]
+KS = {**K78, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk", "TIME_WORKER_STEPS": "40"}
+w = run(World([card(1, D)], {1: [beat("dispatched", 3, launched=True), beat("error", 1)]}), KS)
+assert seen78 == [{"steps": 60}], seen78
+assert "Retrying on my own, resuming the branch." in w.posted[0][1] and all(m.get("auto_retry") is True for m in meta78(w)), w.posted
+assert len(meta78(w)) == 2 and meta78(w)[0]["launched"] is True
+seen78.clear(); w = run(World([card(1, D)], {1: [beat("would-dispatch")]}), KS); assert seen78 == [{}], seen78
+tm.venice_work = real_vw78
+for k in ("TIME_WORKER", "TIME_WORKER_STEPS", "TIME_AUTO_RETRY"): os.environ.pop(k, None)
+print("ALL OK 78")
 
 # ---------- venture loop: still GitHub-shaped (Pages, author_association, per_page). Ported in its own card;
 # until then these run only with TIME_TEST_VENTURE=1 against the old fake.
@@ -1791,3 +1846,4 @@ with cf.ThreadPoolExecutor(2) as ex:
 vt2.tm.Hands, vt2.tm.venice_work = real40
 got = dict((n, (x, y)) for n, x, y in seen40)
 assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].startswith("refused") and got[2][1] == "wrote", got
+
