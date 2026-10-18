@@ -20,6 +20,8 @@ import datetime as dt
 import importlib.util
 import atexit
 import base64
+import contextlib
+import threading
 import json
 import os
 import re
@@ -395,12 +397,33 @@ def budget() -> tuple[float, float, float, float]:
             spend(now.strftime("%Y-%m")), float(os.environ.get("TIME_MONTHLY_USD") or 100))
 
 
+_slack = threading.local()  # per thread (#75 overlaps workers): what budget_check allows over the daily cap, 1.0 outside finishing()
+
+
+def slack() -> float:
+    return getattr(_slack, "value", 1.0)
+
+
+@contextlib.contextmanager
+def finishing():
+    """Inside this block a model call may run past the daily cap, up to TIME_CAP_SLACK x it (default 1.5): a worker that
+    was launched within budget finishes its card, and a PR that is already open gets its review, instead of dying
+    mid-run with the spend so far lost (a card stopped at step 27 of 40 has cost its whole run and produced nothing).
+    A new launch never gets the slack, and the monthly cap is hard everywhere."""
+    old, _slack.value = slack(), max(1.0, float(os.environ.get("TIME_CAP_SLACK") or 1.5))
+    try:
+        yield
+    finally:
+        _slack.value = old
+
+
 def budget_check() -> None:
     today, day_cap, month, month_cap = budget()
     if month >= month_cap:
         raise Budget(f"this month's spend is ${month:.2f} of the ${month_cap:.2f} cap; Time is back in dry-run until a human raises it")
-    if today >= day_cap:
-        raise Budget(f"today's spend is ${today:.2f} of the ${day_cap:.2f} cap; carrying on tomorrow")
+    if today >= day_cap * slack():
+        allowance = f" (a run under way may go to ${day_cap * slack():.2f})" if slack() > 1 else ""
+        raise Budget(f"today's spend is ${today:.2f} of the ${day_cap:.2f} cap{allowance}; carrying on tomorrow")
 
 
 def andon(reason: str) -> None:
@@ -763,7 +786,7 @@ WORKER_RULES = """You are the worker for card #{n} in {repo}: "{title}".
 {body}
 
 You have hands: list_files, read_file, write_file (one file per call, full content), run (shell on a fresh checkout of
-your branch), open_pr. Work on the branch `{branch}`. Only two things reach it: write_file, and files a run lists in
+your branch), open_pr. Work on the branch `{branch}`.{base_note} Only two things reach it: write_file, and files a run lists in
 `keep` (for generated files, e.g. a sample built by a script). Anything else a run does is thrown away. Keep the change small and focused.
 Read before you write. Always `run` the project's tests or checks before opening the PR (that run is the PR's check). When it is done and checked, call open_pr once
 with a short summary; the PR must close the card, and Time adds that line for you. Do not touch .github/workflows or .gitea/workflows.
@@ -888,11 +911,28 @@ def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, bas
         shutil.rmtree(d, ignore_errors=True)
 
 
+BASE_LINE = re.compile(r"^\s*Base:\s*`?([A-Za-z0-9_./+-]+)`?\s*$", re.M | re.I)
+
+
+def card_base(card: dict) -> str | None:
+    """The branch a card's work is cut from and its PR targets, from a `Base: <branch>` line in the body (a venture that
+    lives on `gh-pages`, say). None means the default branch, as before."""
+    m = BASE_LINE.search(card.get("body") or "")
+    return m.group(1) if m else None
+
+
+def card_branch(card: dict) -> str:
+    """`time/card-N`, or `time/card-N-<base>` for a card on another branch: a branch cut from the default branch before
+    the card said otherwise is never resumed by mistake, and the name says where the work lives."""
+    base = card_base(card)
+    return f"time/card-{card['number']}" + (f"-{base}" if base else "")
+
+
 class Hands:
-    def __init__(self, n: int, branch: str):
-        self.n, self.branch, self.pr, self.steps = n, branch, None, 0
+    def __init__(self, n: int, branch: str, base: str | None = None):
+        self.n, self.branch, self.base, self.pr, self.steps = n, branch, base, None, 0
         self.label = "a seat"  # venice_work names the seat for the PR footer
-        git_commit(branch, {}, f"card #{n}: branch")  # already there: resume on it (nothing to commit, push is a no-op)
+        git_commit(branch, {}, f"card #{n}: branch", base=base)  # already there: resume on it (nothing to commit, push is a no-op)
         self.checkout = None
 
     def _checkout(self) -> str:
@@ -970,7 +1010,7 @@ class Hands:
                 gh("PATCH", f"/repos/{REPO}/pulls/{old['number']}", {"title": a["title"][:200], "body": body}, as_time=True)
                 self.pr = old["number"]
                 return f"updated PR #{self.pr}"
-            pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": default_branch(),
+            pr = gh("POST", f"/repos/{REPO}/pulls", {"title": a["title"][:200], "head": self.branch, "base": self.base or default_branch(),
                     "body": body}, as_time=True)
             self.pr = pr["number"]
             return f"opened PR #{self.pr}"
@@ -997,10 +1037,13 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | 
     seat, model, effort = worker_seat_model(spec)
     fallback = (os.environ.get("TIME_WORKER_FALLBACK") or ("grok build" if provider_of(model) == "venice" else "off")).strip()
     fb_model = worker_seat_model(fallback)[1] if fallback.lower() != "off" else None
-    hands = (hands_cls or Hands)(card["number"], f"time/card-{card['number']}")
+    base = card_base(card)
+    hands = (hands_cls or Hands)(card["number"], card_branch(card), **({"base": base} if base else {}))
     hands.label = SEATS[seat]["label"]
+    base_note = (f" It is cut from `{base}` and your pull request targets `{base}`, not the default branch: that is where "
+                 "this card's files live.") if base else ""
     system = WORKER_RULES.format(n=card["number"], repo=REPO, title=card["title"],
-                                 body=(card.get("body") or "")[:20000], branch=hands.branch, done=done)
+                                 body=(card.get("body") or "")[:20000], branch=hands.branch, done=done, base_note=base_note)
     if review is not None:  # answering a review: same branch, and the reviewer's words go in marked as theirs
         system += REVISE_RULES.format(branch=hands.branch, review=review or "(no review comments were found; check the PR)")
     msgs = [{"role": "system", "content": system},
@@ -1012,13 +1055,15 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | 
         if effort:
             body["reasoning_effort"] = effort
         try:
-            msg = chat(body, timeout=300)["choices"][0]["message"]
+            with finishing():  # launched within budget: this run may finish past the daily cap (TIME_CAP_SLACK)
+                msg = chat(body, timeout=300)["choices"][0]["message"]
         except RuntimeError as e:
             if isinstance(e, Budget) or not fb_model or model == fb_model or not re.search(r"-> (429|5\d\d)\b", str(e)):
                 raise
             print(f"{model} stays overloaded; the fallback {fb_model} takes over")
             model = body["model"] = fb_model
-            msg = chat(body, timeout=300)["choices"][0]["message"]
+            with finishing():
+                msg = chat(body, timeout=300)["choices"][0]["message"]
         msgs.append({k: v for k, v in msg.items() if k in ("role", "content", "tool_calls")})
         calls = msg.get("tool_calls") or []
         if not calls:
@@ -1160,7 +1205,8 @@ def review(card: dict, pr: dict, done: str) -> dict:
                   .replace("Leave one PR comment that", "Your reply is posted as the PR comment. It")
                   + "\nThe checks listed under # Checks are the head commit's real statuses: evidence you can rely on "
                     "(a success there means that context reported success). A pending check is not yet evidence either way.")
-        text = think(seat, model, effort, system, user)
+        with finishing():  # the PR is open and paid for: its review runs past the daily cap too, within the slack
+            text = think(seat, model, effort, system, user)
         who = post_review(pr["number"], seat, model, text)
         return {"review": "venice", "seat": seat, "as": who}
     return {"review": f"unknown spec {spec!r}"}
@@ -1189,7 +1235,7 @@ def tick() -> None:
         f"Cursor cloud agent{f' ({worker_model})' if worker_model else ''}"
     now = dt.datetime.now(dt.timezone.utc)
     today = now.date().isoformat()
-    cards = issues("state=open&labels=ready")
+    cards = sorted(issues("state=open&labels=ready"), key=lambda c: c["number"])  # oldest first, like promote_next
     prs = gh("GET", f"/repos/{REPO}/pulls?state=all&sort=recentupdate&limit=50")
     launches_today = 0
     plan = []
@@ -1257,7 +1303,7 @@ def tick() -> None:
                 if seat_worker(worker):
                     prov = provider_of(worker_seat_model(worker)[1])
                     comment(n, f"⏱️ Time: {worker_name} is " + (f"answering the review on PR #{rev['number']}" if rev else "working on this")
-                            + f" now, on branch `time/card-{n}`.", {"beat": "dispatched", "launched": True, "worker": prov})
+                            + f" now, on branch `{card_branch(card)}`.", {"beat": "dispatched", "launched": True, "worker": prov})
                     launches_today += 1
                     if rev:
                         try:
@@ -1342,6 +1388,7 @@ def cmd_doctor() -> int:
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default)")
     today, day_cap, month, month_cap = budget()
     row("TIME_DAILY_USD", True, os.environ.get("TIME_DAILY_USD") or "5 (default)")
+    row("TIME_CAP_SLACK", True, os.environ.get("TIME_CAP_SLACK") or "1.5 (default)")
     row("TIME_MONTHLY_USD", True, os.environ.get("TIME_MONTHLY_USD") or "100 (default)")
     row("spend", today < day_cap and month < month_cap, f"${today:.2f} today, ${month:.2f} this month ({ledger_path(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m'))})")
     row("(optional) ANTHROPIC_API_KEY (Claude seats)", bool(os.environ.get("ANTHROPIC_API_KEY")),

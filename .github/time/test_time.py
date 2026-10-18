@@ -20,7 +20,8 @@ def fake_git_commit(branch, files, message, *, base=None, append=None):
     """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to."""
     w = getattr(tm.http, "__self__", None)
     if w is None: return "sha"
-    if not files and not append: w.branches = getattr(w, "branches", []) + [branch]
+    if not files and not append:
+        w.branches = getattr(w, "branches", []) + [branch]; w.bases = {**getattr(w, "bases", {}), branch: base}
     for fp, data in (files or {}).items():
         if hasattr(w, "writes"): w.writes.append((fp, "s" if fp in w.files else None))
         if data is None: w.files.pop(fp, None)
@@ -62,6 +63,7 @@ class World:
                   tc("write_file", {"path": ".github/workflows/evil.yml", "content": "nope"}),
                   tc("open_pr", {"title": "Set x to 2", "summary": "Changed app.py; ran nothing."})]
         assert body["tools"] and body["messages"][0]["role"] == "system"
+        self.venice_system = body["messages"][0]["content"]
         if self.turn <= len(script):
             return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [script[self.turn - 1]]}}]}
         return {"choices": [{"message": {"role": "assistant", "content": "done"}}]}
@@ -376,6 +378,14 @@ assert w.branches == ["time/card-1"] and w.files["app.py"] == "x = 2\n" and w.wr
 assert ".github/workflows/evil.yml" not in w.files
 assert len(w.opened) == 1 and w.opened[0]["head"] == "time/card-1" and "Closes #1" in w.opened[0]["body"]
 assert "opened PR #42" in w.posted[-1][1] and "kimi-k2-7-code" in w.posted[-1][1]
+# 14b a card with a `Base: <branch>` line is built on a branch cut from that base, named for it, and its PR targets it
+w = run(World([card(1, "Base: gh-pages\n\n" + D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk"})
+assert w.branches == ["time/card-1-gh-pages"] and w.bases == {"time/card-1-gh-pages": "gh-pages"}, (w.branches, getattr(w, "bases", None))
+assert w.opened[0]["head"] == "time/card-1-gh-pages" and w.opened[0]["base"] == "gh-pages", w.opened
+assert "cut from `gh-pages`" in w.venice_system and "targets `gh-pages`" in w.venice_system
+assert "on branch `time/card-1-gh-pages`" in w.posted[0][1], w.posted[0]
+assert tm.card_base({"body": "Base: `release/1.x`\nDONE: x"}) == "release/1.x" and tm.card_base({"body": "rebase: no\nDONE: x"}) is None
+assert tm.card_branch({"number": 5, "body": D}) == "time/card-5" and w.bases.get("time/card-1") is None
 # then the normal path links the PR and reviews it
 w2 = run(World([card(1, D)], {1: [beat("dispatched", launched=True, worker="venice", pr=42)]},
          [{"number": 42, "title": "Set x to 2", "body": "Closes #1", "html_url": "u"}]), K)
@@ -610,6 +620,41 @@ old = [{"at": iso(), "model": "claude-opus-5-5", "usd": 120}]  # the daily cap i
 w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=old), {"TIME_WORKER": "claude:sonnet", "TIME_DAILY_USD": "500"})
 assert w.vars == {"TIME_MODE": ("PUT", "dry-run")} and "dry-run" in next(i for i in w.issues.values() if "andon" in i["labels"])["body"]
 print("ALL OK 51")
+
+# 57 the daily cap gates launches, not the run under way: a worker launched within budget finishes up to TIME_CAP_SLACK x
+# the cap (default 1.5), and a PR that is open still gets its review; a new launch and the monthly cap see no slack
+near = [{"at": iso(), "model": "claude-opus-5-5", "usd": 4.99}]  # each scripted step books $0.022, so step 2 crosses $5
+sent.clear()
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=near), {"TIME_WORKER": "claude:sonnet"})
+assert len(w.opened) == 1 and len(sent) == 5 and "opened PR #42" in w.posted[-1][1], "the run finished under the slack"
+sent.clear()
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=near), {"TIME_WORKER": "claude:sonnet", "TIME_CAP_SLACK": "1"})
+assert w.opened == [] and len(sent) == 1 and "$5.00 cap" in w.posted[-1][1] and '"beat":"capped"' in w.posted[-1][1].replace(" ", ""), "no slack: the old stop"
+os.environ.pop("TIME_CAP_SLACK"); sent.clear()
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": 5.5}]), {"TIME_WORKER": "claude:sonnet"})
+assert sent == [] and w.opened == [] and "a run under way may go to" not in w.posted[-1][1], "a new launch never gets the slack"
+sent.clear()
+w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": 99.99}]), {"TIME_WORKER": "claude:sonnet", "TIME_DAILY_USD": "500"})
+assert len(sent) == 1 and w.opened == [] and "this month's spend" in w.posted[-1][1], "the monthly cap is hard inside a run too"
+# the review of an open PR runs on a capped day (within the slack), and says so if even the slack is spent
+tm.think = real_think  # the real one: the budget check lives in chat(), under it
+tm.pr_diff = lambda n, limit=0: "diff --git a b"
+def review_world(usd):
+    wr = ClaudeWorld([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr], ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": usd}])
+    wr.venice = lambda body: {"choices": [{"message": {"content": "**Approve** fine"}}]}
+    return wr
+w = claude_env(review_world(6), {"TIME_REVIEW": "venice:kimi", "VENICE_API_KEY": "vk"})
+assert w.posted[0][0] == 7 and w.posted[0][1].startswith("**Approve**") and "`kimi` reviewed" in w.posted[1][1], w.posted
+w = claude_env(review_world(8), {"TIME_REVIEW": "venice:kimi", "VENICE_API_KEY": "vk"})
+assert w.posted[0][0] == 1 and "may go to $7.50" in w.posted[0][1] and '"beat":"capped"' in w.posted[0][1].replace(" ", ""), w.posted
+os.environ.pop("VENICE_API_KEY", None); os.environ.pop("TIME_CAP_SLACK", None)
+# the tick takes the oldest ready card first, whatever order the API lists them in
+wo = ClaudeWorld([card(9, D), card(4, D)], {9: [beat("would-dispatch")], 4: [beat("would-dispatch")]})
+_lab = wo.labelled
+wo.labelled = lambda name: sorted(_lab(name), key=lambda i: -i["number"])
+w = claude_env(wo, {"TIME_WORKER": "claude:sonnet", "TIME_DAILY_CAP": "1"})
+assert [p[0] for p in w.posted][:1] == [4] and len(w.opened) == 1, w.posted
+print("ALL OK 57")
 
 # TIME_WORKER=claude:sonnet: same hands, Claude's endpoint, the seat's label in the PR footer and the beats
 sent.clear()
