@@ -1,0 +1,10 @@
+{
+  "skills": [
+    {
+      "name": "mdeck",
+      "description": "Make slide decks as .mdeck links, plain-text slides that open at mdecks.yolopreneur.lol with the whole deck inside the link and nothing uploaded. Use when asked for slides, a deck or a presentation to open in a browser or share as a link.",
+      "url": "https://mdecks.yolopreneur.lol/SKILL.md",
+      "files": ["SKILL.md"]
+    }
+  ]
+}

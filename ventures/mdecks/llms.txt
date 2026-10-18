@@ -1,0 +1,8 @@
+# .mdeck
+
+> Plain text in, slides out. .mdeck turns markdown-ish text into a clean slide deck that opens in the browser, with the whole deck carried inside the link (after the #), so nothing is uploaded and no account is needed.
+
+Read SKILL.md and follow it to make slide decks for people as .mdeck links.
+
+- [SKILL.md](https://mdecks.yolopreneur.lol/SKILL.md): how to write a deck and build its link
+- [Editor](https://mdecks.yolopreneur.lol/): the page a deck link opens in
