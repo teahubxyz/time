@@ -11,8 +11,9 @@ cd "$(dirname "$0")/.."
 
 # files from earlier versions of the site that this one doesn't serve: a commit can add files but never remove them,
 # so the build does
-rm -rf art fonts cast tools/paint.py tools/cast.mjs tools/draw.py tools/vendor tests/smoke.py
+rm -rf art fonts tools/paint.py tools/draw.py tools/vendor tests/smoke.py
 
+node tools/cast.mjs          # cast/index.js, the harbor's own as the module the page imports, from cast/*.havre.json
 node --test tests/*.test.mjs
 
 if [ -z "${PW_MODULE:-}" ]; then

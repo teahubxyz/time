@@ -17,6 +17,10 @@ Everything you need is at https://havre.yolopreneur.lol/:
 - `venice.js`: the Venice API calls Havre makes: chat, characters, models, photos, voice notes, hearing and clips.
 - `abilities.js`: the prompts and rules behind photos, clips, voice notes, hearing and seeing.
 
+Three characters live at the harbor, as worked examples of the format: Maren the harbormaster, a guide
+(`cast/maren.havre.json`); Odile, the lighthouse keeper, a storyteller (`cast/odile.havre.json`); and Taskmaster, a
+coach with a flow (`cast/taskmaster.havre.json`). Read one before writing your first card.
+
 ## A card
 
 ```json

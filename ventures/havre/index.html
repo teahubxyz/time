@@ -58,6 +58,8 @@
       <p id="threads-empty" class="mono pad">no chats yet. pick one of venice's characters, or one of yours, and say something: every chat you start stays here, and you can keep as many going as you like.</p>
     </div>
     <div id="lp-chars" role="tabpanel" aria-labelledby="lt-chars">
+      <p class="filters mono chars-note">the harbor's own. they answer without a key, from their own examples; with one, for real.</p>
+      <ul id="cast" class="grid cast" aria-label="The harbor's own characters"></ul>
       <p class="filters mono chars-note">venice's public characters. pick one to start a chat.</p>
       <form class="filters" id="venform" role="search" aria-label="Venice characters">
         <label class="sr" for="vsearch">Search Venice characters</label>
@@ -240,8 +242,8 @@
   <div class="body">
     <ol>
       <li>Paste your Venice API key. It stays in this browser and goes only to api.venice.ai; the page can reach nothing but Venice.</li>
-      <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
-      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the characters you write answer from their own examples.</li>
+      <li>Pick a character: one of the harbor's own, one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
+      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the harbor's own and the characters you write answer from their own examples.</li>
       <li>They remember. Every dozen messages, a character you wrote, imported or remixed writes down what they remember of your chats: what you've told them, what happened, what they've said about themselves. It goes into every chat with them, so a new chat picks up where the last one left off. Read it, add to it, or make them forget, on their card.</li>
       <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. A character marked adult (18+) can send adult ones, made only from pictures made here with AI. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
@@ -254,7 +256,7 @@
   <div class="body">
     <p>Copy this into any agent. It reads the skill, writes the character, and hands back the files. Change the second line to who you want.</p>
     <pre id="agent-prompt" class="pre"></pre>
-    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="abilities.js">abilities.js</a> / <a href="memory.js">memory.js</a> / <a href="llms.txt">llms.txt</a></p>
+    <p class="mono"><button type="button" class="btn copy" data-copy="agent-prompt">COPY PROMPT</button> files: <a href="skill.md">skill.md</a> / <a href="card.schema.json">card.schema.json</a> / <a href="card.js">card.js</a> / <a href="venice.js">venice.js</a> / <a href="abilities.js">abilities.js</a> / <a href="memory.js">memory.js</a> / <a href="llms.txt">llms.txt</a> / the harbor's own as cards: <a href="cast/maren.havre.json">maren</a>, <a href="cast/odile.havre.json">odile</a>, <a href="cast/taskmaster.havre.json">taskmaster</a></p>
     <p>What comes back: a Havre card (.havre.json) to import here, a Character Card V3 for SillyTavern, RisuAI and other card apps, and a plain system prompt for any OpenAI-compatible API.</p>
   </div>
 </section>

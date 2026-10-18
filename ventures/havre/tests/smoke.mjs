@@ -6,7 +6,7 @@
 // asked for) and one who says hello first, the model picker, a plain chat, several chats at once (and in two tabs),
 // the abilities (a photo, and one Venice turns down, voice notes, a clip priced first, your voice note through a fake
 // microphone, your photo seen or described, a first portrait), a remix end to end, the exports, the retirement of the
-// first version's cast and its conversations, and the page's security policy.
+// first version's cast and its conversations, the harbor's own met without a key, and the page's security policy.
 // Fails on any console error. With --shots, it also takes the screenshots: desktop.png and og.png are the ones the
 // site serves (tools/build.sh copies them to shots/).
 //
@@ -317,7 +317,9 @@ async function main() {
     await venice(page);
     await page.goto(base);
 
-    // the first visit: no key and nobody in the harbor, so empty frames and a note
+    // the first visit: no key and nobody in the harbor, so the harbor's own to meet, empty frames and a note
+    await count(page, "#cast li", 3);
+    await has(page, "#cast .tile[data-cast=maren] .go", /^meet$/);
     await count(page, "#vgrid li.ghost", 8);
     assert.match(await textOf(page, "#venstatus"), /venice key/);
     assert.match(await textOf(page, "#who-name"), /^chat$/i);
@@ -1135,6 +1137,37 @@ async function main() {
     assert.ok(await p2.locator("#lp-chats").isVisible(), "someone with chats sees them first");
     await count(p2, "#threads > li", 1);
     await old.close();
+
+    // ---------- the harbor's own: meet Maren without a key, and she's yours ----------
+    const own = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+    const p5 = await own.newPage();
+    watch(p5, "the harbor's own: ");
+    await venice(p5);
+    await p5.goto(base);
+    await count(p5, "#cast li", 3);
+    assert.deepEqual(await p5.evaluate(() => [...document.querySelectorAll("#cast .nm")].map((e) => e.textContent)), ["Maren", "Odile", "Taskmaster"]);
+    assert.equal(await p5.evaluate(() => localStorage.length), 0, "looking at them keeps nothing");
+    await p5.click("#cast .tile[data-cast=maren]");
+    await has(p5, "#who-name", /^Maren$/);
+    await has(p5, "#log .line.them .said", /I'm Maren, I run the harbor\./);
+    await has(p5, "#cast .tile[data-cast=maren] .go", /^talking now$/);
+    await has(p5, "#roster td", /Ported from Maren by Havre/);
+    assert.ok(await p5.locator("#keynote").isVisible(), "demo mode says so");
+    await p5.fill("#say", "What is this place?");
+    await p5.keyboard.press("Enter");
+    await has(p5, "#log .line.them .said", /^A harbor\. Characters cross over from Venice and settle here\.$/);
+    const mine = await p5.evaluate(() => JSON.parse(localStorage.getItem("havre.cards.v1")));
+    assert.equal(mine.length, 1);
+    assert.deepEqual([mine[0].id, mine[0].lineage.at(-1).ref, mine[0].lineage.at(-1).relation], ["maren", "havre:maren", "ported-from"], "a copy with the credit");
+    assert.notEqual(mine[0].created, "2026-10-16T00:00:00.000Z", "the copy is dated when it was met, not when the card was written");
+    await p5.click("#cast .tile[data-cast=odile]");
+    await has(p5, "#who-name", /^Odile$/);
+    await has(p5, "#cast .tile[data-cast=maren] .go", /^talk again$/);
+    await p5.click("#cast .tile[data-cast=maren]");
+    await has(p5, "#who-name", /^Maren$/);
+    await count(p5, "#roster tr", 2);
+    assert.ok(await p5.locator("#log .line.me .said", { hasText: "What is this place?" }).isVisible(), "the same chat, not a new copy of her");
+    await own.close();
 
     // ---------- phone: an iPhone SE's screen, 375 by 667 ----------
     const W = 375;

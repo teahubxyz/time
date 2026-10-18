@@ -6,6 +6,7 @@ import * as M from "./media.js";
 import * as T from "./threads.js";
 import * as R from "./memory.js";
 import { Venice, VeniceError } from "./venice.js";
+import CAST from "./cast/index.js";
 
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
@@ -150,8 +151,9 @@ function boot() {
   setTimeout(sweepMedia, 4000);
 }
 
-// The first version of Havre arrived with three characters of its own. This one has none, so they leave, unless
-// someone has changed them since; and their drawings went with that version. (Their chats go when the threads load.)
+// The first version of Havre put three characters of its own in every harbor. Now they live at the harbor (cast/) and
+// come in when someone meets them, so the seeded copies leave, unless someone has changed them since; and their
+// drawings went with that version. (Their chats go when the threads load.)
 function retireFirstCast() {
   if (!local.get(K.seeded, false)) return;
   S.cards = S.cards.filter((c) => !(["maren", "taskmaster", "odile"].includes(c.id) && c.updated === c.created));
@@ -353,7 +355,7 @@ function paintFace(el, src) {
 }
 
 // ---------- render ----------
-function renderAll() { renderLeft(); renderGrid(); renderThreads(); renderRoster(); renderChat(); renderCard(); updateKeyUI(); }
+function renderAll() { renderLeft(); renderCast(); renderGrid(); renderThreads(); renderRoster(); renderChat(); renderCard(); updateKeyUI(); }
 
 // ---------- your chats ----------
 /** the left column: your chats, or the characters to start one with (on a narrow screen, in place of the chat) */
@@ -432,6 +434,42 @@ function renderChatsBar() {
   ]));
 }
 
+// ---------- the harbor's own ----------
+// Three characters who live here (cast/): they answer from their own examples without a key, and for real with one.
+// Meeting one puts a copy of their card in your harbor, with the credit, and from then on it's yours to change.
+const castRef = (c0) => "havre:" + c0.id;
+/** your copy of one of the harbor's own, if you've met them */
+const castHere = (c0) => S.cards.find((c) => c.lineage.some((l) => l.ref === castRef(c0)));
+function renderCast() {
+  const ul = $("#cast");
+  if (!ul) return;
+  ul.replaceChildren(...CAST.map((c0) => {
+    const ph = h("span", { class: "ph" });
+    paintFace(ph, pictureSrc((castHere(c0) || c0).portrait || ""));
+    return h("li", {}, h("button", { type: "button", class: "tile", "data-cast": c0.id, "aria-label": `Meet ${c0.name}`,
+      title: c0.tagline || null, onclick: () => meet(c0) },
+    ph, h("span", { class: "tx" }, h("span", { class: "nm", text: c0.name }),
+      c0.tagline ? h("span", { class: "ds", text: c0.tagline }) : null, h("span", { class: "go" }))));
+  }));
+  markCast();
+}
+/** who is talking now, and who you've met already, without redrawing the tiles */
+function markCast() {
+  const cur = card();
+  for (const b of $$("#cast .tile[data-cast]")) {
+    const c0 = CAST.find((x) => x.id === b.dataset.cast), mine = c0 && castHere(c0), on = !!(mine && cur && mine.id === cur.id);
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+    $(".go", b).textContent = on ? "talking now" : mine ? "talk again" : "meet";
+  }
+}
+/** meet one of the harbor's own: your copy of their card, or a new one with the credit, and their chat */
+function meet(c0) {
+  const mine = castHere(c0) || addCard({ ...c0, created: "", updated: "",
+    lineage: [...c0.lineage, { relation: "ported-from", name: c0.name, creator: c0.creator, ref: castRef(c0), at: today(), note: "one of the harbor's own" }] },
+  { select: false });
+  selectCard(mine.id, { talk: true });
+}
+
 // Venice's characters, a page at a time; without a key, empty frames where they will be
 function ghosts(n = 8) {
   return Array.from({ length: n }, () => h("li", { class: "ghost", "aria-hidden": "true" },
@@ -499,6 +537,7 @@ function markTiles() {
     b.setAttribute("aria-pressed", on ? "true" : "false");
     $(".go", b).textContent = on ? "talking now" : here ? "talk again" : "talk";
   }
+  markCast();
 }
 function vStatus(text, bad = false) { const s = $("#venstatus"); s.textContent = text; s.classList.toggle("bad", bad); }
 
@@ -822,8 +861,8 @@ function renderLog() {
   const log = $("#log"), c = card(), t = thread();
   log.textContent = "";
   if (!c) {
-    put(line(S.key ? "pick one of venice's characters, or write your own. they talk here."
-      : "paste your venice key above, then pick one of venice's characters. or write a character of your own, or import a card: those work without a key.", "havre", "note"));
+    put(line(S.key ? "pick one of the harbor's own or one of venice's characters, or write your own. they talk here."
+      : "meet one of the harbor's own, write a character of your own, or import a card: those work without a key. paste your venice key above, and venice's characters come too.", "havre", "note"));
     return;
   }
   const hist = t ? t.msgs : [];

@@ -13,6 +13,12 @@ Read skill.md first and follow it. card.js and venice.js are ES modules with no 
 - [abilities.js](https://havre.yolopreneur.lol/abilities.js): the prompts and rules behind photos, clips, voice notes, hearing and seeing
 - [memory.js](https://havre.yolopreneur.lol/memory.js): what a character remembers of your chats: the notes, when they're written, and the prompt that writes them
 
+## Examples: the harbor's own
+
+- [Maren](https://havre.yolopreneur.lol/cast/maren.havre.json): the harbormaster, a guide
+- [Odile](https://havre.yolopreneur.lol/cast/odile.havre.json): the lighthouse keeper, a storyteller
+- [Taskmaster](https://havre.yolopreneur.lol/cast/taskmaster.havre.json): a coach with a flow (assess, plan, execute)
+
 ## Coming next
 
 - A hosted harbor with a page per character
