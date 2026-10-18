@@ -1036,6 +1036,13 @@ class Hands:
                 return f"error: {e}"
             return base64.b64decode(f["content"]).decode(errors="replace")[:60000]
         if name == "write_file":
+            if not isinstance(a.get("path"), str) or not isinstance(a.get("content"), str):
+                # a call cut off at the output limit arrives with its path and no content (the first Claude venture
+                # builds died on it): say so, so the next step writes a smaller file instead of the run ending
+                missing = "`content`" if isinstance(a.get("path"), str) else "`path`"
+                return (f"error: write_file needs both `path` and `content`, and this call arrived without {missing}: most "
+                        "likely it was cut off at the output limit. Write a shorter file, or split it (index.html, style.css, "
+                        "app.js) and write each in its own call.")
             if a["path"].startswith((".github/workflows", ".gitea/workflows")):
                 return "refused: workflow files are a human's to change"
             git_commit(self.branch, {a["path"]: a["content"].encode()}, a.get("message") or f"card #{self.n}: update {a['path']}")
@@ -1170,7 +1177,10 @@ def venice_work(card: dict, done: str, spec: str, hands_cls=None, review: str | 
                 args = json.loads(c["function"].get("arguments") or "{}")
             except ValueError:
                 args = {}
-            out = hands.call(c["function"]["name"], args)
+            try:
+                out = hands.call(c["function"]["name"], args)
+            except (KeyError, TypeError, ValueError, AttributeError) as e:   # malformed arguments: the model fixes them
+                out = f"error: {c['function']['name']} could not run ({type(e).__name__}: {e}). Check its arguments and call it again."
             msgs.append({"role": "tool", "tool_call_id": c["id"], "content": out})
         if hands.pr:
             break

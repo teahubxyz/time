@@ -389,6 +389,22 @@ assert "You are a lazy senior developer" in w.venice_system and "Never cut: vali
 w_off = run(World([card(1, D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk", "TIME_PONYTAIL": "off"})
 assert "lazy senior developer" not in w_off.venice_system and w_off.opened, "off: the same build, without the rules"
 os.environ.pop("TIME_PONYTAIL", None)
+# 14d a call cut off at the output limit (write_file with a path and no content) or with malformed arguments is an
+# error the worker reads on its next step, not a crash that throws the run away
+class CutWorld(World):
+    cut, cut_seen = True, None
+    def venice(self, body):
+        if self.cut:
+            self.cut = False
+            return {"choices": [{"message": {"role": "assistant", "content": None, "tool_calls": [
+                {"id": "cut1", "type": "function", "function": {"name": "write_file", "arguments": json.dumps({"path": "app.py"})}},
+                {"id": "cut2", "type": "function", "function": {"name": "read_file", "arguments": "{}"}}]}}]}
+        self.cut_seen = [m["content"] for m in body["messages"] if m.get("role") == "tool"][:2]
+        return super().venice(body)
+w_cut = run(CutWorld([card(1, D)], {1: [beat("would-dispatch")]}), {**K, "TIME_WORKER": "venice:kimi code", "VENICE_API_KEY": "vk"})
+assert w_cut.opened and w_cut.files["app.py"] == "x = 2\n", "the run goes on and finishes"
+assert "arrived without `content`" in w_cut.cut_seen[0] and "cut off at the output limit" in w_cut.cut_seen[0], w_cut.cut_seen
+assert w_cut.cut_seen[1].startswith("error: read_file could not run (KeyError"), w_cut.cut_seen
 assert "on branch `time/card-1-gh-pages`" in w.posted[0][1], w.posted[0]
 assert tm.card_base({"body": "Base: `release/1.x`\nDONE: x"}) == "release/1.x" and tm.card_base({"body": "rebase: no\nDONE: x"}) is None
 assert tm.card_branch({"number": 5, "body": D}) == "time/card-5" and w.bases.get("time/card-1") is None
