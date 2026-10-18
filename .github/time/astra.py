@@ -28,7 +28,8 @@ _spec.loader.exec_module(tm)
 
 SPINE = os.environ.get("TIME_SPINE") or "teahubxyz/teahub"   # where AGENTS.md and docs/decisions.md live
 LOG_TITLE = "Astra log"
-SKIP = {"queued", "ready", "needs-human", "andon", "astra"}   # already moving, a human's, or Astra's own log
+SKIP = {"queued", "ready", "needs-human", "andon", "astra",   # already moving, a human's, or Astra's own log
+        "venture", "venture-batch", "signal", "signup"}       # the venture loop's own: it runs them itself
 
 RULES = """You are Astra, the daily planner of a small, fully AI-run software factory (Teahub). Once a day you read the
 state below and decide what the factory should work on next. You do not do the work: you queue cards, and a worker seat

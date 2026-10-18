@@ -909,8 +909,126 @@ tm.venice_work = real_vw78
 for k in ("TIME_WORKER", "TIME_WORKER_STEPS", "TIME_AUTO_RETRY"): os.environ.pop(k, None)
 print("ALL OK 78")
 
-# ---------- venture loop: still GitHub-shaped (Pages, author_association, per_page). Ported in its own card;
-# until then these run only with TIME_TEST_VENTURE=1 against the old fake.
+# ---------- 79 the venture loop on Teahub (Gitea shapes) with Claude seats. The full lifecycle checks below are still the
+# old GitHub fake's (TIME_TEST_VENTURE=1); these pin the port: Gitea's payloads, the seats, and where things are served.
+gspec = importlib.util.spec_from_file_location("gv", Path(__file__).resolve().parent / "venture.py")
+gv = importlib.util.module_from_spec(gspec); gspec.loader.exec_module(gv)
+import urllib.parse
+# the seats: fable chairs and judges, haiku/sonnet/opus pitch and vote, sonnet builds, opus takes the second fix round
+assert gv.seat_list("TIME_VENTURE_PITCH", gv.PITCHERS) == gv.seat_list("TIME_VENTURE_BOARD", gv.BOARD) == ["haiku", "sonnet", "opus"]
+assert gv.env("TIME_VENTURE_CHAIR", gv.CHAIR) == gv.env("TIME_VENTURE_JUDGE", gv.JUDGE_SEAT) == "fable"
+assert all(gv.tm.SEATS[s]["provider"] == "anthropic" for s in ("haiku", "sonnet", "opus", "fable")), "every default seat is a Claude seat"
+assert gv.worker_spec() == "claude:sonnet" and gv.ESCALATE == "claude:opus"
+for spec79, want79 in (("venice:kimi code", "venice:kimi code"), ("claude:opus", "claude:opus"), ("composer-2", "claude:sonnet")):
+    os.environ["TIME_WORKER"] = spec79
+    assert gv.worker_spec() == want79, (spec79, gv.worker_spec())   # a Claude worker is no longer coerced to Venice
+os.environ.pop("TIME_WORKER")
+# where Teahub serves a venture, and the forge's own links
+assert gv.site_of("star-checker") == "https://star-checker.yolopreneur.lol/" and gv.studio_url() == "https://yolopreneur.lol/"
+os.environ["TIME_VENTURE_PAGES_DOMAIN"] = "pages.test"
+assert gv.site_of("x") == "https://x.pages.test/"; os.environ.pop("TIME_VENTURE_PAGES_DOMAIN")
+# the domain's root is the Pages branch's ventures/ folder: its index is the portfolio, made by hand, reading ventures.json.
+# Time writes ventures.json; it writes the list page only where the page is its own (or missing)
+put79, real_pf79, real_pp79 = [], gv.pages_file, gv.put_pages
+gv.put_pages = lambda path, data, message: put79.append(path) or {}
+for page79, want79 in (("<title>yolopreneur.lol</title> fetch('ventures.json')", ["ventures/ventures.json"]),
+                       (f"<html>{gv.INDEX_MARK}</html>", ["ventures/ventures.json", "ventures/index.html"]),
+                       (None, ["ventures/ventures.json", "ventures/index.html"])):
+    put79.clear(); gv.pages_file = lambda path, _p=page79: _p
+    gv.save_registry({"ventures": []}, "m")
+    assert put79 == want79, (page79, put79)
+assert gv.INDEX_MARK in gv.index_html({"ventures": []}), "the page Time writes carries the mark it looks for"
+# a launch records what the portfolio shows: the contact sheet, relative to ventures/, and where the venture came from
+rec79 = []
+gv.record, real_rec79 = (lambda entry, message: rec79.append(entry)), gv.record
+gv.count_signups, real_cs79 = (lambda w, since=None: (0, [])), gv.count_signups
+gv.launch_post, real_lp79 = (lambda *a: "post"), gv.launch_post
+gv.launch(3, {"slug": "star-checker", "name": "Star checker"}, {}, {}, "https://forge.test/x/sheet.png", "", lambda *a: None)
+assert rec79[-1]["shot"] == rec79[-1]["sheet"] == "star-checker/shots/sheet.png" and rec79[-1]["source"] == "time", rec79
+gv.launch(3, {"slug": "star-checker", "name": "Star checker"}, {}, {}, None, "", lambda *a: None)
+assert "shot" not in rec79[-1], "no sheet, no picture"
+gv.record, gv.count_signups, gv.launch_post, gv.pages_file, gv.put_pages = real_rec79, real_cs79, real_lp79, real_pf79, real_pp79
+w79 = {"slug": "star-checker", "name": "Star checker", "signal": 7, "card": 3}
+assert gv.join_url(w79, "Free").startswith("https://forge.test/o/r/issues/new?") and gv.signal_url(w79) == "https://forge.test/o/r/issues/7"
+assert gv.blob_url(w79, "LAUNCH.md") == "https://forge.test/o/r/src/branch/gh-pages/ventures/star-checker/LAUNCH.md"
+html79 = gv.index_html({"ventures": [{**w79, "url": gv.site_of("star-checker"), "join": "j", "launched": "2026-10-18", "one_liner": "o"}]})
+assert "github.com" not in html79 and 'href="https://star-checker.yolopreneur.lol/"' in html79 and "https://forge.test/o/r/issues/7" in html79
+# the scout asks GitHub's public search with no token of ours; the forge's API is never asked for /search
+seen79 = []
+gv.github_search = lambda q, n: (seen79.append(q), {"items": [{"full_name": "a/b", "stargazers_count": 900, "description": "d",
+                                                               "language": "Rust", "topics": ["cli"], "html_url": "u"}]})[1]
+assert [r["name"] for r in gv.scout()] == ["a/b"] and "stars%3A%3E50" in seen79[0]
+
+class G79:
+    """Gitea as it answers: `pull_request: null` on issues, label objects, a label filter ignored for unknown labels,
+    reactions null when there are none, label ids on create."""
+    def __init__(self, issues, reactions=None, labels=("venture", "signal", "signup", "needs-human")):
+        self.rows, self.reactions, self.labels, self.calls = issues, reactions, list(labels), []
+    def __call__(self, method, url, token, body=None, timeout=0):
+        path = url.replace(gv.tm.GH, ""); route = path.split("?")[0]
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(path).query)
+        self.calls.append((method, path, body))
+        if route == "/repos/o/r/labels" and method == "GET":
+            return [{"id": 100 + k, "name": n} for k, n in enumerate(self.labels)]
+        if route == "/repos/o/r/issues" and method == "GET":
+            want = [l for l in q.get("labels", [""])[0].split(",") if l and l in self.labels]
+            text = q.get("q", [""])[0].lower()
+            rows = [i for i in self.rows if all(l in [x["name"] for x in i["labels"]] for l in want)
+                    and (not text or text in i["title"].lower())]
+            page = int(q.get("page", ["1"])[0])
+            return rows[(page - 1) * 50: page * 50]
+        if route == "/repos/o/r/issues" and method == "POST":
+            return {"number": 99, **body}
+        if route.endswith("/reactions"):
+            return self.reactions
+        if route.startswith("/repos/o/r/collaborators/"):
+            raise RuntimeError("GET collaborators -> 404")
+        if "/labels/" in route and method == "DELETE":
+            return None
+        raise AssertionError(f"unexpected {method} {path}")
+lab79 = lambda *names: [{"id": 1, "name": n} for n in names]
+iss79 = lambda n, title, labels=(), **kw: {"number": n, "title": title, "labels": lab79(*labels), "pull_request": None,
+                                           "user": {"login": "ann"}, "body": "", "comments": 0, "created_at": "2026-10-18T00:00:00Z", **kw}
+f79 = G79([iss79(1, "Venture 2026-10-18", ["venture"]), iss79(2, "a PR", ["venture"], pull_request={"merged": False}),
+           iss79(3, "unrelated", [])])
+gv.tm.http = f79
+assert [c["number"] for c in gv.venture_cards()] == [1], "Gitea's pull_request: null kept every card out before the port"
+assert gv.batch_cards() == [], "no venture-batch label: Gitea ignores the filter and answers everything; none of it is a batch"
+card79 = gv.new_card("Venture 2026-10-18")
+assert card79["labels"] == [100] and f79.calls[-1][1] == "/repos/o/r/issues", "Gitea creates with label ids"
+# signups: the form's label or its prefilled title; never the owner, a bot, Time's users or a seat; reactions may be null
+f79 = G79([iss79(10, "Early access: Star checker", ["signup"], body="### Venture\n\nstar-checker\n\n### Plan\n\nFree\n\n### What would you use it for?\n\nmy repos"),
+           iss79(11, "Early access: Star checker", [], user={"login": "bob"},                # could not label, left the field empty:
+                 body="### Venture\n\n_No response_\n\n### Plan\n\nFree\n\n### What would you use it for?\n\n_No response_"),   # the title says it
+           iss79(15, "Early access: Star checker", [], user={"login": "zed"}, body="hand-typed, no form"),   # not the form: no
+           iss79(12, "Early access: Star checker", ["signup"], user={"login": "o"}),         # the owner
+           iss79(13, "Early access: Star checker", ["signup"], user={"login": "sonnet"}),    # a seat
+           iss79(14, "Early access: Other", ["signup"], user={"login": "cy"}, body="### Venture\n\nother\n")])
+gv.tm.http = f79; gv.signup_issues.cache_clear()
+assert gv.count_signups(w79) == (2, ["my repos"]), gv.count_signups(w79)
+f79.reactions = [{"content": "+1", "user": {"login": "dee"}}, {"content": "heart", "user": {"login": "eve"}},
+                 {"content": "+1", "user": {"login": "gitea-actions"}}]
+gv.signup_issues.cache_clear()
+assert gv.count_signups(w79)[0] == 3, "a 👍 on the signal issue counts; a heart or Time's own does not"
+assert gv.signup_for(f79.rows[1], w79) and not gv.signup_for(f79.rows[4], w79) and not gv.signup_for(f79.rows[5], w79)
+# the field wins over the title: a form answered for another venture never counts here, whatever its title
+assert not gv.signup_for({"title": "Early access: Star checker", "body": "### Venture\n\nother\n\n### Plan\n\nFree\n\n### What would you use it for?\n\nx"}, w79)
+# the helpers the port leans on: removing a label goes by id; the browser pass clones with the token like every worker
+gv.tm.unlabel(5, "needs-human")
+assert f79.calls[-1][:2] == ("DELETE", "/repos/o/r/issues/5/labels/103"), f79.calls[-1]
+assert gv.tm._git_url(True) == "https://x-access-token:gh@forge.test/o/r.git" and gv.tm._git_url(False) == "https://forge.test/o/r.git"
+# a retry counts from someone trusted only: Gitea has no author_association, and Time never vouches for itself
+os.environ["TIME_TRUSTED"] = "princess"
+gv.tm._trust.clear()
+retry79 = lambda who: [{"created_at": "2026-10-18T12:00:00Z", "user": {"login": who}, "body": "/time retry"}]
+assert gv.trusted_retry(retry79("princess"), "2026-10-18T00:00:00Z") and gv.trusted_retry(retry79("o"), "2026-10-18T00:00:00Z")
+assert not gv.trusted_retry(retry79("gitea-actions"), "2026-10-18T00:00:00Z") and not gv.trusted_retry(retry79("mallory"), "2026-10-18T00:00:00Z")
+assert not gv.trusted_retry(retry79("princess"), "2026-10-19T00:00:00Z"), "only after the beat it answers"
+os.environ.pop("TIME_TRUSTED"); gv.tm._trust.clear()
+print("ALL OK 79")
+
+# ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
+# per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
 if not os.environ.get("TIME_TEST_VENTURE"):
     print("venture tests skipped (TIME_TEST_VENTURE=1 to run them)"); sys.exit(0)
 

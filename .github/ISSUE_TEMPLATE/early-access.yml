@@ -6,16 +6,16 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for raising your hand. This is a **public** GitHub issue: no email is collected and nothing is charged.
+        Thanks for raising your hand. This is a **public** issue on Teahub: no email is collected and nothing is charged.
         The studio replies here, and what you write below shapes the next version.
   - type: input
     id: venture
     attributes:
       label: Venture
-      description: Filled in from the page you came from.
+      description: The venture's name, as on the page you came from (the title already carries it, so you can leave this empty).
       placeholder: e.g. mdecks
     validations:
-      required: true
+      required: false
   - type: input
     id: plan
     attributes:
