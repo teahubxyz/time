@@ -228,6 +228,8 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .gal button { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
 .gal img, .gal video { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--ink); background: var(--ink); }
 .gal button:hover img, .gal button:hover video, .gal button:focus-visible img, .gal button:focus-visible video { outline: 3px solid var(--hi); }
+.gal .still { position: relative; display: block; }
+.gal .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 6px 10px; background: var(--paper); color: var(--ink); border: 1px solid var(--ink); font: 14px/1 var(--mono); }
 .gal .cap { display: block; margin-top: 4px; font: 11px/1.4 var(--mono); overflow-wrap: anywhere; }
 /* edit / delete under a message: shown on hover or focus; always, faintly, where there's no hover (phones) */
 .msgtools { grid-column: 2; font: 12px/1.4 var(--mono); opacity: 0; }

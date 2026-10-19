@@ -913,11 +913,40 @@ function renderGallery() {
   $("#gal-empty").textContent = "no photos or clips here yet.";
   $("#gal-grid").replaceChildren(...items.map(({ m, t }) => {
     const md = m.media, clip = md.kind === "clip";
-    const pic = mediaEl(clip ? "video" : "img", md.id, clip ? { muted: true, playsinline: true, preload: "metadata" } : { alt: md.shot || (md.kind === "photo-in" ? "your photo" : "a photo"), decoding: "async" }, md.kind === "clip" ? "clip" : "photo");
+    const pic = clip ? clipStill(md) : mediaEl("img", md.id, { alt: md.shot || (md.kind === "photo-in" ? "your photo" : "a photo"), decoding: "async" }, "photo");
     const when = m.at ? T.ago(m.at) : "";
     return h("li", {}, h("button", { type: "button", title: md.shot || null, onclick: () => jumpTo(t, m) }, pic,
       h("span", { class: "cap", text: [clip ? "clip" : md.kind === "photo-in" ? "yours" : "photo", when, galScope === "all" && T.titleOf(t, t.msgs, 24)].filter(Boolean).join(" · ") })));
   }));
+}
+/** a clip as a still: a frame taken from it, kept for the session, under a play mark */
+const stills = new Map();
+function clipStill(md) {
+  const img = h("img", { alt: md.shot ? "A clip: " + md.shot : "A clip", decoding: "async" });
+  const box = h("span", { class: "still" }, img, h("span", { class: "play", "aria-hidden": "true", text: "▶" }));
+  if (stills.has(md.id)) { img.src = stills.get(md.id); return box; }
+  M.url(md.id).then((u) => {
+    if (!u) return;
+    const v = document.createElement("video");
+    v.muted = true; v.playsInline = true; v.preload = "auto"; v.src = u;
+    const grab = () => {
+      try {
+        const w = v.videoWidth, hgt = v.videoHeight;
+        if (!w || !hgt) return;
+        const s = 320 / Math.max(w, hgt), cv = document.createElement("canvas");
+        cv.width = Math.round(w * s); cv.height = Math.round(hgt * s);
+        cv.getContext("2d").drawImage(v, 0, 0, cv.width, cv.height);
+        const data = cv.toDataURL("image/jpeg", 0.8);
+        stills.set(md.id, data);
+        img.src = data;
+      } catch { /* no still: the play mark on its own */ }
+      v.removeAttribute("src"); v.load();
+    };
+    v.addEventListener("seeked", grab, { once: true });
+    v.addEventListener("loadeddata", () => { v.currentTime = Math.min(0.5, (v.duration || 1) / 2); }, { once: true });
+    v.load();
+  });
+  return box;
 }
 /** go to a photo or clip in its chat */
 function jumpTo(t, m) {
