@@ -26,6 +26,10 @@ waits: on a card still open (its `Depends on #N`), or on whatever the seat says 
 human). Cards that can move come first in the promotion order, the ones that wait after them. The policy is
 `score`; a bandit policy (Beth, Jev, Fable's restless-bandit maths) can replace it without touching how candidates are
 gathered or how picks are queued.
+
+Outcomes (#172): a bandit learns from rewards, so every live pick's outcome is recorded once the card settles — one
+line in `time/ledger/router-outcomes.jsonl`, written by the daily housekeeping sweep, and one summary line per kind
+over Astra's table. Nothing here reads them back into a pick yet; `score` is still the whole policy.
 """
 from __future__ import annotations
 
@@ -200,6 +204,99 @@ def order(ranked: list[dict]) -> list[int]:
     this order (and still skips a card whose dependency is open)."""
     cards = [r for r in ranked if r["n"] is not None]
     return [r["n"] for r in cards if r["actionable"]] + [r["n"] for r in cards if not r["actionable"]]
+
+
+# ---------- outcomes: what a pick turned into (#172) ----------
+# A learning policy needs rewards. Housekeeping settles each live pick into one line here; these functions are the
+# shape of a line, the arithmetic over the lines, and nothing else. No pick reads them yet.
+
+OUTCOMES = "time/ledger/router-outcomes.jsonl"   # under time/ledger/, the one path CI ignores: the daily append is not code
+FIELDS = ("n", "kind", "picked", "settled", "merged", "pr", "days", "usd", "signups")
+
+
+def picks(beats: list[dict]) -> dict[int, dict]:
+    """Every card the router picked in live mode, from Astra's beats: card number -> {n, kind, picked (the day)}. A
+    card picked twice (it came back after a park) keeps its first pick; that is when the factory spent the choice."""
+    out: dict[int, dict] = {}
+    for b in beats:
+        if b.get("router") != "live":
+            continue
+        day = str(b.get("at") or "")[:10]
+        for p in b.get("picked") or []:
+            n = p.get("n") if isinstance(p, dict) else None
+            if isinstance(n, int) and n not in out:
+                out[n] = {"n": n, "kind": p.get("kind") if p.get("kind") in KINDS else "feature", "picked": day}
+    return out
+
+
+def span(since: str, until: str) -> int | None:
+    """Whole days from one date to another, None when either is not a date."""
+    try:
+        return (dt.date.fromisoformat(until[:10]) - dt.date.fromisoformat(since[:10])).days
+    except ValueError:
+        return None
+
+
+def outcome(p: dict, card: dict, beats: list[dict], usd: float | None, signups: int | None) -> dict | None:
+    """One line for a pick, or None while its card is still open: a pick in flight has no outcome yet. Merged or not
+    and the PR number come from the card's own beats (a `merged` beat is a landing; any beat naming a `pr` is the PR
+    the card had), `days` counts the pick's day to the card's close, `usd` and `signups` are the caller's."""
+    if (card.get("state") or "open") != "closed":
+        return None
+    settled = str(card.get("closed_at") or card.get("updated_at") or "")[:10]
+    merged = next((b for b in beats if b.get("beat") == "merged"), None)
+    pr = (merged or {}).get("pr") or next((b.get("pr") for b in reversed(beats) if b.get("pr")), None)
+    return {"n": p["n"], "kind": p["kind"], "picked": p["picked"], "settled": settled, "merged": bool(merged),
+            "pr": int(pr) if pr else None, "days": span(p["picked"], settled),
+            "usd": round(usd, 4) if usd is not None else None, "signups": signups}
+
+
+def read_outcomes(raw: str | None) -> list[dict]:
+    """The outcomes log as rows, oldest first. A line that is not an outcome is skipped: the file is append-only and
+    one bad line must not hide the rest."""
+    out = []
+    for line in (raw or "").splitlines():
+        try:
+            row = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(row, dict) and isinstance(row.get("n"), int):
+            out.append(row)
+    return out
+
+
+def median(xs: list[float]) -> float | None:
+    s = sorted(xs)
+    if not s:
+        return None
+    return float(s[len(s) // 2]) if len(s) % 2 else (s[len(s) // 2 - 1] + s[len(s) // 2]) / 2
+
+
+def summary(rows: list[dict]) -> dict[str, dict]:
+    """Per kind, what its settled picks returned: how many, the merged share, the median days from pick to close and
+    the median dollars. A kind with no settled pick is left out."""
+    out = {}
+    for k in KINDS:
+        mine = [r for r in rows if r.get("kind") == k]
+        if mine:
+            out[k] = {"picks": len(mine), "merged": sum(1 for r in mine if r.get("merged")) / len(mine),
+                      "days": median([r["days"] for r in mine if isinstance(r.get("days"), (int, float))]),
+                      "usd": median([r["usd"] for r in mine if isinstance(r.get("usd"), (int, float))])}
+    return out
+
+
+def outcome_lines(rows: list[dict]) -> list[str]:
+    """The header over Astra's table: one line per kind, so the owner sees what a kind has returned before changing
+    its weight. No settled pick yet, no header."""
+    got = summary(rows)
+    if not got:
+        return []
+    out = [f"Settled picks so far ({len(rows)} in `{OUTCOMES}`):"]
+    for k, s in got.items():
+        days = f"{s['days']:g} day(s) median" if s["days"] is not None else "days unknown"
+        usd = f"${s['usd']:.2f} median" if s["usd"] is not None else "$ unknown"
+        out.append(f"- {k}: {s['picks']} pick(s), {s['merged'] * 100:.0f}% merged, {days}, {usd}")
+    return out
 
 
 def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cloud: list[dict] = ()) -> str:

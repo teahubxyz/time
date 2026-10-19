@@ -1226,6 +1226,14 @@ astra.tm.budget = lambda: (1.0, 15.0, 10.0, 100.0)
 astra.tm.comment = lambda n, text, meta: said80.append((n, text, meta))
 astra.tm.label = lambda n, name: labelled80.append((n, name))
 astra.tm.new_issue = lambda title, body, labels: made80.append((title, body, labels)) or {"number": 90 + len(made80)}
+import base64 as _b8172  # noqa: E402
+settled80 = []   # the outcomes log (#172); empty, so nothing is summarised over the table
+def gh80(method, path, body=None, **k):
+    """The outcomes log is the only file this world serves; anything else is a fresh repo's 404."""
+    if rt.OUTCOMES not in path:
+        raise RuntimeError(f"{method} {path} -> 404: not found")
+    return {"content": _b8172.b64encode("".join(json.dumps(r) + "\n" for r in settled80).encode()).decode()}
+astra.tm.gh = gh80
 reply80 = {"note": "the note", "assess": [dict(assess80[k], key=k) for k in assess80] + ["junk"],
            "new": [{"title": "Write a thing", "body": "do it"}, {"no": "title"}]}
 astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]
@@ -1330,6 +1338,56 @@ if par135 is None: os.environ.pop("TIME_PARALLEL")
 else: os.environ["TIME_PARALLEL"] = par135
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
 print("ALL OK 80")
+
+# 172 the router's outcomes: a live pick settles into one line (housekeeping writes it; test_housekeeping.py checks the
+# sweep), and Astra's log summarises what each kind has returned over the table
+beats172 = [{"beat": "astra", "router": "live", "at": "2026-10-17T13:13:00Z", "picked": [{"n": 1, "kind": "feature"}, {"n": 2, "kind": "venture"}]},
+            {"beat": "astra", "router": "dry", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 3, "kind": "feature"}]},
+            {"beat": "astra", "router": "live", "at": "2026-10-18T13:13:00Z",
+             "picked": [{"n": 1, "kind": "refinement"}, {"n": 4, "kind": "nonsense"}, "junk"]}]
+assert rt.picks(beats172) == {1: {"n": 1, "kind": "feature", "picked": "2026-10-17"},
+                              2: {"n": 2, "kind": "venture", "picked": "2026-10-17"},
+                              4: {"n": 4, "kind": "feature", "picked": "2026-10-18"}}, rt.picks(beats172)
+assert rt.picks([{"beat": "astra", "router": "dry", "picked": [{"n": 9, "kind": "feature"}]}]) == {}, "a dry run picked nothing"
+p172 = rt.picks(beats172)[1]
+beats1 = [{"beat": "dispatched", "at": "2026-10-17T14:00:00Z"}, {"beat": "pr", "pr": 90, "at": "2026-10-17T15:00:00Z"},
+          {"beat": "merged", "pr": 90, "at": "2026-10-19T09:00:00Z"}]
+row172 = rt.outcome(p172, {"state": "closed", "closed_at": "2026-10-19T09:00:05Z"}, beats1, 1.25, None)
+assert row172 == {"n": 1, "kind": "feature", "picked": "2026-10-17", "settled": "2026-10-19", "merged": True,
+                  "pr": 90, "days": 2, "usd": 1.25, "signups": None}, row172
+assert tuple(row172) == rt.FIELDS, "the line's shape"
+assert rt.outcome(p172, {"state": "open"}, beats1, 1.0, None) is None, "a pick in flight has no outcome yet"
+drop172 = rt.outcome(p172, {"state": "closed", "closed_at": "2026-10-18T09:00:00Z"}, [{"beat": "stuck", "pr": 91, "at": "x"}], None, None)
+assert drop172["merged"] is False and drop172["pr"] == 91 and drop172["days"] == 1 and drop172["usd"] is None
+assert rt.outcome(p172, {"state": "closed", "closed_at": "x"}, [], 0.0, None)["days"] is None, "no close date, no span"
+# the summary per kind: picks, merged share, median days, median $
+rows172 = [row172, dict(drop172, n=5), {"n": 6, "kind": "feature", "merged": True, "days": 4, "usd": 3.0},
+           {"n": 7, "kind": "venture", "merged": False, "days": 9, "usd": 0.5, "signups": 2}]
+got172 = rt.summary(rows172)
+assert got172["feature"] == {"picks": 3, "merged": 2 / 3, "days": 2.0, "usd": 2.125}, got172["feature"]
+assert got172["venture"] == {"picks": 1, "merged": 0.0, "days": 9.0, "usd": 0.5} and "refinement" not in got172, got172
+assert rt.median([]) is None and rt.median([3, 1]) == 2 and rt.median([5, 1, 3]) == 3
+assert rt.summary([{"n": 8, "kind": "feature"}])["feature"] == {"picks": 1, "merged": 0.0, "days": None, "usd": None}
+lines172 = rt.outcome_lines(rows172)
+assert lines172[0] == "Settled picks so far (4 in `time/ledger/router-outcomes.jsonl`):", lines172
+assert lines172[1] == "- venture: 1 pick(s), 0% merged, 9 day(s) median, $0.50 median", lines172
+assert lines172[2] == "- feature: 3 pick(s), 67% merged, 2 day(s) median, $2.12 median", lines172   # KINDS order, as the weights
+assert rt.outcome_lines([]) == [] and rt.read_outcomes(None) == [] and rt.read_outcomes("") == []
+assert rt.read_outcomes("not json\n" + "".join(json.dumps(r) + "\n" for r in rows172) + '{"no": "number"}\n') == rows172
+# Astra puts the summary over the table, and goes without it when nothing has settled
+astra.tm.issues = lambda q: closed80 if q.startswith("state=closed") else open80 + [iss80(57, "Astra log", labels=["astra"])]
+astra.tm.think = lambda seat, a, b, system, user: "Sure:\n" + json.dumps(reply80)
+settled80[:] = rows172
+assert astra.router_tick(rt.config('{"mode": "dry"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert "Settled picks so far (4 in" in said80[-1][1] and "- feature: 3 pick(s)" in said80[-1][1], said80[-1][1]
+assert "| 1 | #2 Fix the docs |" in said80[-1][1], "the table still follows"
+settled80.clear()
+assert astra.router_tick(rt.config('{"mode": "dry"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert "Settled picks" not in said80[-1][1], "nothing settled yet: no header"
+astra.tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
+assert astra.outcomes() == [], "the outcomes log is context: unreadable, the table goes up without it"
+astra.tm.gh = gh80
+print("ALL OK 172")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib

@@ -1,6 +1,6 @@
 ---
 name: housekeeping
-description: The daily sweep of this repo: prunes merged branches, closes spent signal issues and empty milestones, and lists what is stale. Use when asked what housekeeping did, why a branch or issue was closed, how to run the sweep by hand, or what to do with the stale list.
+description: The daily sweep of this repo: prunes merged branches, closes spent signal issues and empty milestones, records what the router's picks turned into, and lists what is stale. Use when asked what housekeeping did, why a branch or issue was closed, where the router's outcomes come from, how to run the sweep by hand, or what to do with the stale list.
 ---
 
 # Housekeeping
@@ -24,11 +24,17 @@ Deterministic: `.github/time/housekeeping.py` decides, never a model. Every step
    whose venture has no signups: no 👍 from a person and no early-access issue for its slug. One closing line names the count.
    Issues with signups are left to the venture loop.
 3. **Milestones.** Closes milestones with no open issues and at least one closed one. An empty, never-used milestone stays.
-4. **Stale list.** No action, one comment on the Astra log (#57): `needs-human` untouched for over 3 days, open PRs idle
+4. **Router outcomes.** For each card the router picked in live mode (Astra's `picked` beats), one line in
+   `time/ledger/router-outcomes.jsonl` once the card closes: merged or not, its PR, days from pick to close, the spend
+   booked while its worker ran, and, for a venture pick, the venture's signups at day 7. A pick whose card is still open
+   waits for a later sweep, and one already in the file is never written twice. The file's fields are documented in
+   `time/ledger/README.md`; Astra's log summarises it per kind over the ranked table. The data is for a learning policy
+   (a restless bandit) to read later; nothing uses it to pick today.
+5. **Stale list.** No action, one comment on the Astra log (#57): `needs-human` untouched for over 3 days, open PRs idle
    7 days or more, cards parked after their automatic retries, `error` cards older than 2 days. An empty list posts no comment.
 
-Each run ends with one line on the Astra log: branches deleted, issues closed, milestones closed, stale count. A step that
-fails is logged and the others still run; the job exits 1.
+Each run ends with one line on the Astra log: branches deleted, issues closed, milestones closed, picks settled, stale
+count. A step that fails is logged and the others still run; the job exits 1.
 
 ## What the steward does with the stale list
 

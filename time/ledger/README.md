@@ -30,6 +30,29 @@ Time stops calling models. The next time the heartbeat has a card to run, it ope
 
 Humans should never edit these files. The caps rely on them being exact, and Time only ever appends. A hand edit can hide spend or break the next append.
 
+## The router's outcomes (`router-outcomes.jsonl`)
+
+Not spend, but it lives here for the same reason: Time appends to it daily and CI ignores this folder. One JSON line per
+router pick that has settled, written by housekeeping (`.github/time/housekeeping.py`, step 4), so a learning policy has
+rewards to read. Fields:
+
+- `n`, `kind`: the card and the kind it was picked as.
+- `picked`, `settled`: the day Astra picked it, and the day the card closed.
+- `merged`, `pr`: whether its PR landed, and which PR.
+- `days`: whole days from `picked` to `settled`.
+- `usd`: the dollars this ledger booked while the card's worker ran (each `dispatched` beat until the next beat on the
+  card). The ledger has no card field, so this is a proxy: review and planning calls on the card are not in it, and two
+  cards whose runs overlap are each charged what was booked in their own window.
+- `signups`: for a venture pick, the venture's signups at day 7 (`TIME_VENTURE_MEASURE_DAYS`); `null` for any other kind.
+
+```json
+{"n":168,"kind":"feature","picked":"2026-10-17","settled":"2026-10-19","merged":true,"pr":190,"days":2,"usd":1.25,"signups":null}
+```
+
+A pick is written once, when its card closes, and never rewritten. Astra's daily log shows one summary line per kind over
+the ranked table (picks, merged share, median days, median $). No pick reads the file yet: `router.score` is still the
+whole policy.
+
 ## Pools (`time/pools.json`)
 
 The operator keeps one entry per capacity pool; a route with no entry is paced by `TIME_DAILY_USD`. Time reads the file through the API once per run. Fields: `name`, `kind`, `routes`, and by kind:

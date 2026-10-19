@@ -18,7 +18,8 @@ boost for kinds not picked lately, and the card's age. The log shows the ranked 
 nothing; `live` queues from the top while the day's money left covers each card's estimated cost (the allowance left
 in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
 creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
-card), and the heartbeat promotes queued cards in the ranked order.
+card), and the heartbeat promotes queued cards in the ranked order. Over the table the log shows what each kind's past
+picks returned (picks, merged share, median days, median $), from the outcomes housekeeping records (#172).
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
@@ -153,6 +154,18 @@ def router_config() -> dict:
         return router.config(None)
 
 
+def outcomes() -> list[dict]:
+    """The settled picks housekeeping has recorded (#172), for the summary per kind over the table. Context, not a
+    dependency: unreadable, the table goes up without it."""
+    try:
+        f = tm.gh("GET", f"/repos/{tm.REPO}/contents/{router.OUTCOMES}")
+        return router.read_outcomes(base64.b64decode(f.get("content") or "").decode(errors="replace"))
+    except Exception as e:  # noqa: BLE001
+        if "-> 404" not in str(e):
+            print(f"router outcomes unreadable: {str(e)[:120]}")
+        return []
+
+
 def recent(log: int, days: int = 14) -> list[dict]:
     """The log's comments of the last `days` days, oldest first (Gitea pages from the oldest, so a plain limit=20
     read the thread's first twenty comments forever)."""
@@ -266,7 +279,9 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
             f"queue against ({source}). Weights: "
             + ", ".join(f"{k} {w[k]:g}" for k in router.KINDS) + f"; restless {cfg['restless']:g}/day."
             + (f" Cloud lane: {in_lane} in it, up to {cfg['cloud']['per_day']}." if cfg["cloud"]["per_day"] else ""))
-    lines = [head, "", str(out.get("note") or "(no note)"), "", router.table(ranked, picks, cfg["mode"], cloud=to_cloud), ""]
+    settled = router.outcome_lines(outcomes())   # what each kind has returned, over the table (#172)
+    lines = [head, "", str(out.get("note") or "(no note)"), ""] + (settled + [""] if settled else []) \
+        + [router.table(ranked, picks, cfg["mode"], cloud=to_cloud), ""]
     if unjudged:
         lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
     if live:
