@@ -384,6 +384,7 @@ function renderLeft() {
     $(tab).tabIndex = S.left === w ? 0 : -1;
     $(panel).hidden = S.left !== w;
   }
+  $("#card").hidden = S.left !== "harbor";        // the card belongs to the harbor: not under your chats or the characters
   // a narrow screen's way back from a chat: to whichever list you came from
   $("#chat-back").textContent = S.left === "chats" ? "← your chats" : S.left === "harbor" ? "← your harbor" : "← characters";
 }
@@ -639,8 +640,9 @@ function renderRoster() {
     const on = cur && c.id === cur.id;
     const from = c.engine.venice_character ? "venice, as a link with credit" : c.lineage[0] ? C.creditLine(c.lineage[0]) : "written here";
     const go = (tab) => () => { selectCard(c.id); openCard(tab); };
-    tb.append(h("tr", { "aria-current": on ? "true" : null },
-      h("th", { scope: "row" }, c.name, c.adult ? h("span", { class: "x18", title: "for grown-ups only", text: "18+" }) : null,
+    // the whole row opens their card; the links in it do what they say
+    tb.append(h("tr", { "aria-current": on ? "true" : null, class: "opens", onclick: (e) => { if (!e.target.closest("button, a")) go("edit")(); } },
+      h("th", { scope: "row" }, linkish(c.name, go("edit"), { class: "linkish rowname" }), c.adult ? h("span", { class: "x18", title: "for grown-ups only", text: "18+" }) : null,
         on ? h("span", { class: "now", text: "talking" }) : null),
       h("td", { text: from }),
       h("td", { text: C.LICENSES[c.license] }),
@@ -1411,6 +1413,7 @@ function renderCard() {
   resetRemix();
 }
 function openCard(tab = "edit") {
+  if (S.left !== "harbor") { S.left = "harbor"; local.set(K.left, "harbor"); renderLeft(); }
   setTab(tab);
   $("#card").scrollIntoView({ behavior: motion(), block: "start" });
 }

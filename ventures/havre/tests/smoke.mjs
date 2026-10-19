@@ -326,7 +326,8 @@ async function main() {
     await has(page, "#log .line.note .said", /paste your venice key/);
     assert.ok(await page.locator("#cast-box").isHidden(), "the harbor's own aren't listed");
     assert.equal(await page.locator("#harbor-empty").evaluate((e) => e.hidden), false, "the empty harbor says so");
-    assert.ok(await page.locator("#card-empty").isVisible(), "so does the empty card");
+    assert.equal(await page.locator("#card-empty").evaluate((e) => e.hidden), false, "so does the empty card");
+    assert.ok(await page.locator("#card").isHidden(), "the card lives in the harbor tab, not under the characters");
     assert.ok(await page.locator("#say").isDisabled(), "nobody to talk to yet");
     assert.equal(await page.evaluate(() => localStorage.length), 0, "a first visit keeps nothing");
     await page.waitForTimeout(150);
@@ -620,6 +621,7 @@ async function main() {
     assert.equal(looked.content[0].text, "[a photo] my boat");
     assert.match(looked.content[1].image_url.url, /^data:image\/jpeg;base64,/);
     // and to a model that can't: a model that can see describes it first
+    await page.click("#lt-chars");
     await page.click("#plain");
     await answered(page, () => page.setInputFiles("#photo-in", { name: "boat.png", mimeType: "image/png", buffer: redPng }));
     await has(page, "#log .line.me .cap", /Tiny told them: A small red square on a white table\./);
@@ -771,7 +773,6 @@ async function main() {
     await page.selectOption("#model-select", "tiny-model");
     await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Captain Ro").model === "tiny-model", null, "his model saved");
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Remix Captain Ro" }).click();
-    await page.click("#lt-chars");
     await has(page, "#rx-from", /^Captain Ro$/);
     assert.match(await textOf(page, "#rx-rights"), /reserves the rights/);
     await page.click("#rx-distill");
@@ -1034,7 +1035,6 @@ async function main() {
     // exports, made in the browser; the PNG comes back in whole
     await page.click("#lt-harbor");
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();
-    await page.click("#lt-chars");
     let png = "";
     for (const [kind, ext] of [["havre", ".havre.json"], ["v3", ".card.json"], ["prompt", ".txt"], ["png", ".png"]]) {
       const [dl] = await Promise.all([page.waitForEvent("download"), page.click(`[data-out="${kind}"]`)]);
@@ -1049,6 +1049,7 @@ async function main() {
         png = path;
       }
     }
+    await page.click("#lt-chars");
     await page.click("#import");
     await page.setInputFiles("#file", png);
     await count(page, "#roster tr", 5);
