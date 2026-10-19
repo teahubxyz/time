@@ -1498,6 +1498,28 @@ g83("checkout", "-qb", "claude/session-abc123", cwd=cw83); commit83(cw83, "i.txt
 g83("push", "-q", "origin", "claude/session-abc123", cwd=cw83)
 sync83()
 assert moves83 == [("-", 9, "cloud"), ("+", 9, "ready")], "a card the commits close leaves the lane too"
+# the cloud session answers a review on the same branch: the card gets a `dispatched` beat marked `revised` (so the
+# heartbeat reviews the new head and the old objection stops counting) and the PR loses `needs-human`
+beat83 = lambda b: {"user": {"login": sy.tm.TIME_BOT}, "created_at": "2026-10-19T18:13:21Z", "body": "x\n<!-- time " + json.dumps({"beat": b, "pr": 104}) + " -->"}
+comments83 = {7: [beat83("pr"), beat83("needs-human")], 9: []}
+pr7_open = {"number": 104, "state": "open", "head": {"ref": "claude/card-7-cloud", "sha": "?"}, "body": pr7["body"], "labels": [{"name": "needs-human"}]}
+def gh83r(m, path, body=None, **k):
+    if path.endswith("/comments?limit=100"):
+        return comments83.get(int(path.split("/issues/")[1].split("/")[0]), [])
+    if path.startswith("/repos/o/r/pulls?state=open"):
+        return [pr7_open]
+    return sy.tm.gh_inner(m, path, body, **k)
+sy.tm.gh_inner, sy.tm.gh = sy.tm.gh, gh83r
+notes83.clear(); moves83.clear()
+prs83[:] = [dict(p, state="open") if p["head"]["ref"] == "claude/card-7-cloud" else p for p in prs83]
+g83("checkout", "-q", "claude/card-7-cloud", cwd=cw83); commit83(cw83, "g.txt", "Answer the review\n\nCloses #7"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+c83 = sync83()
+assert c83["revised"] == [7] and notes83[-1][0] == 7 and notes83[-1][2] == {"beat": "dispatched", "pr": 104, "revised": True, "cloud": True}, (c83, notes83)
+assert ("-", 104, "needs-human") in moves83, moves83
+comments83[7] = []; notes83.clear()
+commit83(cw83, "g.txt", "More before any review"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+assert sync83().get("revised", []) == [] and not notes83, "a PR nobody has reviewed yet needs no revised beat"
+assert sy.revised("o/r", "claude/card-7-cloud", None) == [] and sy.revised("x/y", "claude/card-7-cloud", "abc") == []
 sy.tm.gh = real_gh83
 # a copy whose token isn't set is skipped; tokens go in the URL and never into anything printed
 c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "gh", "url": "https://github.com/o/r.git", "token": "NO_SUCH_TOKEN_83"}]},

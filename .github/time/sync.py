@@ -158,6 +158,37 @@ def hand_back(repo: str, card: int, pr: int) -> bool:
     return True
 
 
+REVIEWING = ("pr", "needs-human", "no-checks", "checks-failed")   # a card whose PR is being or has been reviewed
+
+
+def revised(repo: str, branch: str, before: str | None) -> list[int]:
+    """The copy pushed new commits to a branch whose PR is open and already reviewed (a cloud session answering the
+    review): each card the PR closes gets a `dispatched` beat marked `revised`, so the heartbeat reviews the new head
+    and a verdict from before the push no longer counts, and the PR loses `needs-human`. A card not yet reviewed (the
+    heartbeat hasn't adopted the PR) gets nothing: its first review sees the new head anyway. `before` is the home's
+    head of the branch before this import; a branch new to the home is never a revision."""
+    if repo != tm.REPO or not before:
+        return []
+    pr = next((p for p in tm.gh("GET", f"/repos/{repo}/pulls?state=open&limit=50") or []
+               if (p.get("head") or {}).get("ref") == branch), None)
+    if not pr:
+        return []
+    cards = {card_of(branch)} | {int(x) for x in re.findall(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", pr.get("body") or "", re.I)}
+    done = []
+    for c in sorted(x for x in cards if x):
+        beats = [b for b in tm.beats_of(tm.gh("GET", f"/repos/{repo}/issues/{c}/comments?limit=100") or [])
+                 if b["beat"] not in ("blocked", "capped")]
+        if not beats or beats[-1]["beat"] not in REVIEWING:
+            continue
+        tm.comment(c, f"☁️ The cloud session pushed a revision to PR #{pr['number']}. The heartbeat reviews it again; "
+                      f"a verdict from before the push no longer counts.",
+                   {"beat": "dispatched", "pr": pr["number"], "revised": True, "cloud": True})
+        done.append(c)
+    if done and tm.has_label(pr, "needs-human"):
+        tm.unlabel(pr["number"], "needs-human")
+    return done
+
+
 def ensure_pr(repo: str, work: str, branch: str, base: str, copy: str, where: str) -> int | None:
     """A PR on the home for an imported branch, unless one is open for it, it is already in the base, or a PR for it
     was closed at this same commit (a human or the council said no; a new push brings it back)."""
@@ -225,12 +256,18 @@ def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
                 if branch in out or not any(fnmatch.fnmatch(branch, p) for p in pats):
                     continue
                 git("fetch", "-q", url, f"+refs/heads/{branch}:refs/copy/{branch}", cwd=work)
-                if mine.get(branch) != sha:   # the copy writes this branch: the home takes it as it is
+                moved = mine.get(branch) != sha
+                if moved:   # the copy writes this branch: the home takes it as it is
                     git("push", "-q", "--force", home_url, f"refs/copy/{branch}:refs/heads/{branch}", cwd=work)
                     r["imported"].append(branch)
                 n = ensure_pr(repo, work, branch, base, name, where)
                 if n:
                     r["prs"].append(n)
+                elif moved:
+                    try:
+                        r.setdefault("revised", []).extend(revised(repo, branch, mine.get(branch)))
+                    except Exception as e:  # noqa: BLE001  the commits are home either way; the next review sees them
+                        print(f"revised {branch}: {scrub(str(e))[:200]}")
         ENV.clear()
     return report
 
@@ -258,7 +295,8 @@ def main() -> int:
         repo = e.get("repo") or tm.REPO
         rep = sync_repo(e, authed(f"{tm.SERVER}/{repo}.git", token), force)
         for c in rep["copies"]:
-            print(f"sync {repo} -> {c['copy']}: out {c['out']} imported {c['imported']} prs {c['prs']} {c['note']}".rstrip())
+            print(f"sync {repo} -> {c['copy']}: out {c['out']} imported {c['imported']} prs {c['prs']} "
+                  f"revised {c.get('revised', [])} {c['note']}".rstrip())
             for b, state in c["out"].items():
                 if state == "diverged" and repo == tm.REPO:
                     flag(repo, c["copy"], b)
