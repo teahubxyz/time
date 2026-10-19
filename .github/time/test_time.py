@@ -1193,7 +1193,7 @@ beats80 = [{"beat": "astra", "router": "live", "at": "2026-10-17T13:13:00Z", "pi
            {"beat": "astra", "router": "live", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 5, "kind": "feature"}, "junk"]}]
 assert rt.last_picked(beats80) == {"feature": "2026-10-18"}, "live picks only"
 t80 = rt.table(r80, rt.pick(r80, live80, 10.0, 2), "dry")
-assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "not wired" in t80
+assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "router mode" in t80
 assert "**queued today**" in rt.table(r80, rt.pick(r80, live80, 10.0, 2), "live")
 # Astra's router tick: dry shows the ranking and touches nothing; live queues the picks and writes the new cards unqueued
 aspec = importlib.util.spec_from_file_location("astra80", Path(__file__).resolve().parent / "astra.py")
@@ -1264,6 +1264,71 @@ astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent = real175[:3]
 if real175[4] is None: os.environ.pop("TIME_WORKER", None)
 else: os.environ["TIME_WORKER"] = real175[4]
 assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
+# 170 router mode: "start a new venture" is actionable only when Astra is told the loop is in router mode; v2 of a live
+# venture with signups is a candidate; a picked venture dispatches venture.yml once (new) or writes/posts a v2 card, never queued
+assert rt.new_venture("router")["actionable"] and not rt.new_venture("on")["actionable"] and "TIME_VENTURE_MODE" in rt.new_venture("")["why_not"]
+reg170 = {"ventures": [{"slug": "loot-drop", "name": "Loot Drop", "status": "live", "signups": 3, "one_liner": "x", "next": "y"},
+                       {"slug": "nobody", "name": "Nobody", "status": "live", "signups": 0}, {"slug": "dead", "status": "killed", "signups": 9},
+                       {"slug": "bad", "status": "live", "signups": "many"}]}
+v2s170 = rt.v2_candidates(reg170)
+assert [c["title"] for c in v2s170] == ["v2 of Loot Drop (3 signups)"] and v2s170[0]["kind"] == "venture" and v2s170[0]["actionable"], v2s170
+assert rt.v2_candidates({}) == []
+real170 = (astra.tm.gh, astra.tm.default_branch, astra.venture_registry, os.environ.get("TIME_VENTURE_MODE"))
+astra.tm.issues = lambda q: closed80 if q.startswith("state=closed") else open80 + [iss80(57, "Astra log", labels=["astra"])]
+calls170 = []
+astra.tm.gh = lambda method, path, body=None, **k: calls170.append((method, path, body)) or {}
+astra.tm.default_branch = lambda: "main"
+astra.venture_registry = lambda: reg170
+live170 = rt.config('{"mode": "live"}')
+def tick170(assess, mode="router"):
+    for lst in (said80, labelled80, made80, calls170): lst.clear()
+    if mode: os.environ["TIME_VENTURE_MODE"] = mode
+    else: os.environ.pop("TIME_VENTURE_MODE", None)
+    reply = {"note": "n", "assess": [dict(v, key=k) for k, v in assess.items()], "new": []}
+    astra.tm.think = lambda seat, a, b, system, user: json.dumps(reply)
+    assert astra.router_tick(live170, "opus", 57, "ctx", [], 1, 0) == 0
+new170 = {"venture:new": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(new170)
+assert calls170 == [("POST", f"/repos/{astra.tm.REPO}/actions/workflows/venture.yml/dispatches",
+                     {"ref": "main", "inputs": {"start": "true"}})], calls170
+assert not made80 and not labelled80, "a new venture is never queued as a card"
+assert "Venture: new venture: dispatched venture.yml with start=true" in said80[-1][1] and said80[-1][2]["queued"] == 0, said80[-1]
+assert said80[-1][2]["picked"] == [{"n": None, "kind": "venture"}]
+tick170(new170, mode="on")
+assert not calls170 and not made80, "not in router mode: not actionable, nothing dispatched"
+assert "router mode" in said80[-1][1]
+v2a170 = {"venture:new": {"kind": "venture", "value": 1, "size": "S"}, "venture:v2:loot-drop": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(v2a170)
+assert not calls170, "a v2 starts no new venture"
+assert [m[0] for m in made80] == ["Loot Drop v2: build the next version from what signups asked for"] and "Base: gh-pages" in made80[0][1]
+assert "DONE:" in made80[0][1] and labelled80 == [(91, "queued")] and "Loot Drop v2: no card yet, wrote and queued #91" in said80[-1][1]
+open80.append(iss80(77, "Venture 2026-10-19: Loot Drop v2", body="x", labels=["venture"]))
+tick170(v2a170)
+open80.pop()
+assert not calls170 and not made80 and "Loot Drop v2: already on #77" in said80[-1][1], said80[-1][1]
+astra.tm.gh, astra.tm.default_branch, astra.venture_registry = real170[:3]
+if real170[3] is None: os.environ.pop("TIME_VENTURE_MODE", None)
+else: os.environ["TIME_VENTURE_MODE"] = real170[3]
+# the loop: TIME_VENTURE=router makes no daily card and starts one only on TIME_VENTURE_START; off starts nothing
+vspec170 = importlib.util.spec_from_file_location("vt170", Path(__file__).resolve().parent / "venture.py")
+vt170 = importlib.util.module_from_spec(vspec170); vspec170.loader.exec_module(vt170)
+cards170 = []
+vt170.registry = lambda: {"ventures": []}
+vt170.ack_signups = vt170.refresh_daily = vt170.refresh_backends = lambda reg: None
+vt170.venture_cards = vt170.batch_cards = lambda state="open", n=30: []
+vt170.new_card = lambda title: cards170.append(title) or {"number": len(cards170), "labels": [{"name": "venture"}]}
+vt170.is_due = lambda *a: False
+def loop170(mode, start=""):
+    cards170.clear()
+    for k, v in (("TIME_VENTURE", mode), ("TIME_VENTURE_START", start)):
+        if v: os.environ[k] = v
+        else: os.environ.pop(k, None)
+    assert vt170.tick() == 0
+loop170("router"); assert cards170 == [], "router: no daily card"
+loop170("router", "1"); assert cards170 == [f"Venture {vt170.today()}"], cards170
+loop170("off", "1"); assert cards170 == [], "off: the start input does nothing"
+loop170("on"); assert cards170 == [f"Venture {vt170.today()}"], "on: the daily card, as before"
+os.environ.pop("TIME_VENTURE", None); os.environ.pop("TIME_VENTURE_START", None)
 # the heartbeat promotes queued cards in the live ranking's order, oldest first without one
 real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)
 moved80 = []
