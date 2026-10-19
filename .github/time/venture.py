@@ -1277,14 +1277,23 @@ def from_form(body: str) -> bool:
     return all(re.search(rf"^###\s*{re.escape(label)}\s*$", body or "", re.M) for label in FIELDS.values())
 
 
+def _key(s) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _s(s).lower())
+
+
+def names_of(w: dict) -> set[str]:
+    """Every way a person may name a venture in the form: its slug, its name, its home folder, its old slugs."""
+    return {k for k in map(_key, (w.get("slug"), w.get("name"), w.get("home"), *(w.get("aliases") or []))) if k}
+
+
 def signup_for(i: dict, w: dict) -> bool:
     """Is this early-access issue for venture `w`? The form's Venture field, or, when that was left empty, the title the
     join link prefilled. The title counts only on a body the form wrote: an issue someone typed by hand with the same
     title is not a signup. Either way it is one account, counted once, like a 👍 on the signal issue."""
     body = i.get("body") or ""
     f = form_fields(body)
-    if f["venture"].strip():
-        return f["venture"].strip().lower() == w["slug"]
+    if f["venture"].strip():   # typed by a person: "Cartridge", "Loot Drop" and "loot-drop" all count
+        return _key(f["venture"]) in names_of(w)
     return from_form(body) and _s(i.get("title")).lower() == f"early access: {_s(w.get('name'))}".lower()
 
 

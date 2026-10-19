@@ -1029,6 +1029,13 @@ assert gv.count_signups(w79)[0] == 3, "a 👍 on the signal issue counts; a hear
 assert gv.signup_for(f79.rows[1], w79) and not gv.signup_for(f79.rows[4], w79) and not gv.signup_for(f79.rows[5], w79)
 # the field wins over the title: a form answered for another venture never counts here, whatever its title
 assert not gv.signup_for({"title": "Early access: Star checker", "body": "### Venture\n\nother\n\n### Plan\n\nFree\n\n### What would you use it for?\n\nx"}, w79)
+# the field is typed by a person: the name, any spelling of the slug, the home folder or an old slug all count
+form79 = lambda v: {"title": "x", "body": f"### Venture\n\n{v}\n\n### Plan\n\nFree\n\n### What would you use it for?\n\nx"}
+assert all(gv.signup_for(form79(v), w79) for v in ("Star Checker", "star checker!", "STAR-CHECKER", "starchecker"))
+assert gv.signup_for(form79("Cartridge"), {"slug": "box-art-night", "name": "Cartridge"})
+assert gv.signup_for(form79("cartridge"), {"slug": "box-art-night", "name": "Box", "home": "cartridge"})
+assert gv.signup_for(form79("deck preview"), {"slug": "mdecks", "name": ".mdeck", "aliases": ["deck-preview"]})
+assert not gv.signup_for(form79("Star"), w79) and not gv.signup_for(form79("!!"), w79)
 # the helpers the port leans on: removing a label goes by id; the browser pass clones with the token like every worker
 gv.tm.unlabel(5, "needs-human")
 assert f79.calls[-1][:2] == ("DELETE", "/repos/o/r/issues/5/labels/103"), f79.calls[-1]
