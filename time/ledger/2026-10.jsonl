@@ -873,3 +873,4 @@
 {"at":"2026-10-19T16:15:05Z","model":"claude-sonnet-5-5","pool":"anthropic","in":8983,"out":1995,"usd":0.024501,"cached":7785,"written":1196}
 {"at":"2026-10-19T16:15:12Z","model":"claude-sonnet-5-5","pool":"anthropic","in":11165,"out":205,"usd":0.009305,"cached":8981,"written":2182}
 {"at":"2026-10-19T16:15:20Z","model":"claude-sonnet-5-5","pool":"anthropic","in":11715,"out":415,"usd":0.007762,"cached":11163,"written":550}
+{"at":"2026-10-19T16:47:50Z","model":"claude-opus-5-5","pool":"anthropic","in":19637,"out":3822,"usd":0.174621,"cached":0,"written":19633}
