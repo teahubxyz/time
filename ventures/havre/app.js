@@ -312,6 +312,23 @@ function addCard(raw, { select = true } = {}) {
   if (select) selectCard(c.id);
   return c;
 }
+/** a character out of the harbor, and their chats with them: asked first, since it can't be undone */
+function deleteCard(c) {
+  const theirs = Object.values(S.threads).filter((t) => t.card === c.id);
+  const chats = theirs.length ? `, and your ${theirs.length} chat${theirs.length === 1 ? "" : "s"} with them` : "";
+  if (!confirm(`Delete ${c.name}${chats}? It can't be brought back: export their card first to keep a copy.`)) return;
+  for (const t of theirs) dropThread(t.id);
+  S.cards = S.cards.filter((x) => x.id !== c.id);
+  persistCards();
+  if (S.sel === c.id) {
+    const next = S.cards[0];
+    if (next) selectCard(next.id);
+    else { S.sel = ""; local.set(K.sel, ""); S.open = null; local.set(K.open, null); }
+  }
+  S.fresh = true;
+  markTiles(); renderRoster(); renderThreads(); renderChat(); renderCard();
+  toast(`${c.name} left the harbor.`);
+}
 function replaceCard(next) {
   const i = S.cards.findIndex((c) => c.id === next.id);
   if (i >= 0) S.cards[i] = C.touch(next);
@@ -652,6 +669,7 @@ function renderRoster() {
         linkish("card", go("edit"), { "aria-label": `${c.name}'s card` }),
         linkish("remix", go("remix"), { "aria-label": `Remix ${c.name}` }),
         linkish("export", go("export"), { "aria-label": `Export ${c.name}` }),
+        linkish("delete", () => deleteCard(c), { "aria-label": `Delete ${c.name}` }),
       ]))));
   }
 }
