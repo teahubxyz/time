@@ -830,10 +830,10 @@ async function main() {
     assert.equal(first.messages.at(-1).content, "Tell me about the ferry, part 1\n\n[You are Ines Corbel. Stay in character.]");
     assert.equal(first.messages.filter((m) => m.content.includes("Stay in character.]")).length, 1, "only on the latest");
     // what she remembers: a dozen messages in, her own model writes it down, and it rides in every chat with her
-    assert.equal(seen.memories.length, 0);
+    const mem0 = seen.memories.length;                 // Venice characters met earlier may have remembered already
     for (let i = 2; i <= 6; i++) await answered(page, async () => { await page.fill("#say", `Tell me about the ferry, part ${i}`); await page.keyboard.press("Enter"); });
-    await poll(() => seen.memories.length === 1, "her memory written down");
-    const mem = seen.memories[0];
+    await poll(() => seen.memories.length === mem0 + 1, "her memory written down");
+    const mem = seen.memories[mem0];
     assert.equal(mem.model, "zai-org-glm-5-2", "written by a model that keeps to JSON (hers, Tiny, can't)");
     assert.match(mem.messages[1].content, /^The character: Ines Corbel/);
     assert.match(mem.messages[1].content, /What they remember so far: nothing yet\./);
@@ -857,8 +857,8 @@ async function main() {
     // leaving a chat with a few new messages, she writes down what she remembers of them, so a new chat picks up there
     await answered(page, async () => { await page.fill("#say", "And the gulls?"); await page.keyboard.press("Enter"); });
     await page.locator("#who-meta").getByRole("button", { name: "new chat" }).click();
-    await poll(() => seen.memories.length === 2, "what she remembers of the chat she left");
-    const left2 = seen.memories[1].messages[1].content;
+    await poll(() => seen.memories.length === mem0 + 2, "what she remembers of the chat she left");
+    const left2 = seen.memories[mem0 + 1].messages[1].content;
     assert.match(left2, /What they remember so far:\n- They're called Princess\.\n- I told them to ask again after the tide\./, "with what you gave her");
     assert.deepEqual(left2.match(/^Them: .*$/gm), ["Them: Who are you, again?", "Them: And the gulls?"], "only what's new since");
     // a new name goes all through her card

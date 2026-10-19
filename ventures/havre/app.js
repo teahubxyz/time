@@ -612,12 +612,15 @@ function talkTo(v) {
   }
   selectCard(c.id, { talk: true });
 }
-/** Venice says which of its characters are adult: their cards here say the same (one met before this was kept, too) */
+/**
+ * Venice's adult characters are adult here too. A safe-for-work one you marked adult stays adult: many are grown-ups
+ * whose chats only start out safe for work, so Venice's word is the least, not the most.
+ */
 function syncAdult(list) {
   const changed = [];
   for (const v of list) {
     const c = S.cards.find((x) => x.engine.venice_character === v.slug);
-    if (c && c.adult !== !!v.adult) { c.adult = !!v.adult; changed.push(c.id); }
+    if (c && v.adult && !c.adult) { c.adult = true; changed.push(c.id); }
   }
   if (!changed.length) return;
   persistCards();
@@ -1045,8 +1048,8 @@ function saveMemory(id, m) {
   if (m && (m.notes.length || Object.keys(m.upTo).length)) all[id] = m; else delete all[id];
   if (!local.set(K.memory, all)) full();
 }
-/** what goes into their prompt: nothing with memory switched off, or for a Venice character (Venice has their prompt) */
-const memoryFor = (c) => (S.ab.memory && c && !c.plain && !c.engine.venice_character ? memoryOf(c.id).notes : []);
+/** what goes into their prompt: nothing with memory switched off; for a Venice character, beside Venice's own prompt */
+const memoryFor = (c) => (S.ab.memory && c && !c.plain ? memoryOf(c.id).notes : []);
 const remembering = new Set(), memoryMissed = new Map();
 /**
  * After every dozen messages in a chat (or a few, when you leave it), its character writes down what they remember now:
@@ -1055,7 +1058,7 @@ const remembering = new Set(), memoryMissed = new Map();
  */
 async function remember(t, enough = R.EVERY) {
   const c = cardOf(t);
-  if (!c || c.plain || c.engine.venice_character || !S.key || !S.ab.memory || remembering.has(c.id) || !S.threads[t.id]) return;
+  if (!c || c.plain || !S.key || !S.ab.memory || remembering.has(c.id) || !S.threads[t.id]) return;
   const before = memoryOf(c.id), fresh = R.unread(t.msgs, before.upTo[t.id]);
   if (fresh.length < Math.max(enough, memoryMissed.get(t.id) || 0)) return;
   remembering.add(c.id);
@@ -2562,7 +2565,7 @@ function renderSheet() {
   }
   f.persona.disabled = f.greeting.disabled = !!c.engine.venice_character;
   f.adult.checked = c.adult;
-  f.adult.disabled = !!c.engine.venice_character;                // a Venice character is adult when Venice says so
+  f.adult.disabled = false;                                      // Venice's adult ones come in adult; any other can be marked so
   f.look_description.value = c.look.description;
   f.speech_mood.value = c.speech.mood;
   const sp = $("#speech-speed");
@@ -2586,10 +2589,8 @@ function renderSheet() {
 function renderMemory(c) {
   const ul = $("#memory-list"), how = $("#memory-how");
   if (!c || c.plain) return;
-  const linked = !!c.engine.venice_character, { notes } = memoryOf(c.id);
-  how.textContent = linked
-    ? `${c.name} speaks through venice, with venice's own prompt, so havre can't give them a memory yet. a remix of them can have one.`
-    : (S.ab.memory
+  const linked = false, { notes } = memoryOf(c.id);
+  how.textContent = (S.ab.memory
       ? `every dozen messages, one short call on your key writes down what ${c.name} remembers of your chats. it goes into every chat with them, here in this browser, and never into their card.`
       : "memory is switched off under abilities: nothing goes into their chats, and nothing new is written down.");
   $("#memory-add").hidden = linked;
@@ -2930,6 +2931,7 @@ function resetRemix() {
   $("#rx-draft").hidden = true;
   $("#rx-draft").textContent = "";
   $("#rx-distill").disabled = !c;
+  $("#rx-port").hidden = $("#rx-port-box").hidden = !(c && c.engine.venice_character);
   rxStatus(S.key ? "" : "Remix needs your Venice key: it makes two short model calls (a few more for a Venice character).");
   const r = $("#rx-rights");
   const msgs = [];
@@ -2940,7 +2942,7 @@ function resetRemix() {
 }
 function rxBusy(on) {
   S.rx.busy = on;
-  for (const b of ["#rx-distill", "#rx-write"]) $(b).disabled = on;
+  for (const b of ["#rx-distill", "#rx-write", "#rx-port"]) $(b).disabled = on;
   for (const b of $$("#rx-draft button")) b.disabled = on;
 }
 async function rxSource(c) {
@@ -2986,6 +2988,39 @@ async function askJson(model, { messages, schema, maxTokens, temperature, what }
   try { return C.parseJsonLoose(again.text); } catch {
     throw new Error(`${modelName(model)} sent back ${what} Havre couldn't read, twice. Try again, or pick another model on the card.`);
   }
+}
+// ---------- port: a Venice character, written down as a card of your own ----------
+/**
+ * Asks them the port questions through Venice, then one model call writes them down: the same name and face, in its own
+ * words, credited to their creator. The new card keeps what they remember of your chats; their Venice link stays too.
+ */
+async function port() {
+  const c = card();
+  if (!c || !c.engine.venice_character || S.rx.busy) return;
+  if (!S.key) return needKey("porting needs your venice key.");
+  rxBusy(true);
+  try {
+    const v = new Venice(S.key), hist = [];
+    let transcript = "";
+    for (let i = 0; i < C.PORT_INTERVIEW.length; i++) {
+      rxStatus(`Asking ${c.name} question ${i + 1} of ${C.PORT_INTERVIEW.length}…`);
+      hist.push({ role: "user", content: C.PORT_INTERVIEW[i] });
+      const r = await v.chat({ model: c.model || S.model, messages: hist, characterSlug: c.engine.venice_character, maxTokens: 400 });
+      const a = C.stripThinking(r.text);
+      hist.push({ role: "assistant", content: a });
+      transcript += `Q: ${C.PORT_INTERVIEW[i]}\nA: ${a}\n\n`;
+    }
+    const writer = await jsonModel(c);
+    rxStatus(`Writing ${c.name} down with ${modelName(writer)}…`);
+    const o = await askJson(writer, { messages: C.portMessages(c.name, transcript), schema: C.PORT_SCHEMA, maxTokens: 2200, temperature: 0.6, what: "a card" });
+    const ported = addCard(C.cardFromPort(o, { from: c, model: c.model || S.model, interviewed: today() }), { select: false });
+    const mem = memoryOf(c.id);
+    if (mem.notes.length) saveMemory(ported.id, { notes: mem.notes, upTo: {}, at: Date.now() });
+    rxStatus("");
+    toast(`${ported.name} is ported: a card of your own now, credited to ${c.creator || "their creator"}.`);
+    selectCard(ported.id, { talk: false });
+    openCard("edit");
+  } catch (e) { rxStatus(e.message, true); } finally { rxBusy(false); }
 }
 async function distill() {
   const c = card();
@@ -3359,7 +3394,7 @@ function bind() {
     if (e.key !== "Enter" || e.isComposing) return;
     e.preventDefault();
     const c = card(), note = madd.value.trim();
-    if (!c || c.plain || c.engine.venice_character || !note) return;
+    if (!c || c.plain || !note) return;
     const m = memoryOf(c.id);
     saveMemory(c.id, { ...m, notes: R.withNote(m.notes, note) });
     madd.value = "";
@@ -3397,6 +3432,7 @@ function bind() {
   }
 
   $("#rx-distill").addEventListener("click", distill);
+  $("#rx-port").addEventListener("click", port);
   $("#rx-write").addEventListener("click", () => writeFresh());
   for (const b of $$("[data-out]")) b.addEventListener("click", () => exportAs(b.dataset.out));
 

@@ -187,14 +187,18 @@ export function systemPrompt(card, { memory = [] } = {}) {
     parts.push("Your flow with someone new. Take one stage at a time, in order:\n" + card.flow.map((s, i) =>
       `${i + 1}. ${s.stage.toUpperCase()}: ${fill(s.goal, card)}${s.next ? ` Move on when ${fill(s.next, card)}` : ""}`).join("\n"));
   }
-  const notes = arr(memory).map((n) => str(n, 300).trim()).filter(Boolean).slice(0, 24);
-  if (notes.length) {
-    parts.push("What you remember from your chats with them so far (keep to it, and bring it up only when it fits):\n" +
-      notes.map((n) => "- " + n).join("\n"));
-  }
+  const mem = memoryBlock(memory);
+  if (mem) parts.push(mem);
   if (card.adult) parts.push(ADULT_RULE);
   parts.push(identityRule(card), HOUSE_RULES);
   return parts.join("\n\n");
+}
+
+/** what they remember of your chats, as it goes into a prompt ("" when nothing) */
+export function memoryBlock(memory = []) {
+  const notes = arr(memory).map((n) => str(n, 300).trim()).filter(Boolean).slice(0, 24);
+  return notes.length ? "What you remember from your chats with them so far (keep to it, and bring it up only when it fits):\n" +
+    notes.map((n) => "- " + n).join("\n") : "";
 }
 
 /**
@@ -204,7 +208,9 @@ export function systemPrompt(card, { memory = [] } = {}) {
  */
 export function chatMessages(card, history, { memory = [] } = {}) {
   const own = !card.engine.venice_character;
-  const msgs = own ? [{ role: "system", content: systemPrompt(card, { memory }) }] : [];
+  // a Venice character brings its own prompt: beside it go only what they remember and, if they're adult, the 18+ rule
+  const extra = own ? "" : [memoryBlock(memory), card.adult ? ADULT_RULE : ""].filter(Boolean).join("\n\n");
+  const msgs = own ? [{ role: "system", content: systemPrompt(card, { memory }) }] : extra ? [{ role: "system", content: extra }] : [];
   // the greeting starts the conversation, so it goes once the conversation's start is out of the window
   if (card.greeting && own && history.length <= 40) msgs.push({ role: "assistant", content: fill(card.greeting, card) });
   for (const m of history.slice(-40)) if (m.role === "user" || m.role === "assistant") msgs.push({ role: m.role, content: str(m.content, 8000) });
@@ -555,6 +561,50 @@ export const INTERVIEW = [
   "What's something you would never do?",
   "How do you talk when you're excited, and how when you're annoyed?",
 ];
+
+// ---------- port: the same character, kept as a card of your own ----------
+
+/** what a Venice character is asked when you port them: enough to write them down as they are */
+export const PORT_INTERVIEW = [
+  "Hi! Introduce yourself to me like we just met, in two or three short texts.",
+  "Tell me about yourself: where you're from, what you do, what matters to you.",
+  "Describe how you look, in detail: your age, face, hair, build, and what you usually wear.",
+  "How do you talk? Say a few things you'd typically say to someone.",
+  "Who are the important people in your life, and what's your story so far?",
+  "What would you never do, and what lights you up?",
+];
+export const PORT_SYSTEM = "You write down a character as they are, from an interview with them, so their person can keep " +
+  "them as a card. Keep their name and who they are: the same character, not a new one. Write in your own words, in the " +
+  "second person for the persona; don't copy long passages from the interview. The character is an adult, 18 or older. " +
+  "Return one JSON object: tagline (at most 10 words), greeting (one to three short texts separated by a blank line, the " +
+  "way they'd say hello), persona (a system prompt in the second person, 150 to 300 words: who they are, their story, how " +
+  "they talk, what they want, what they won't do), voice (how they talk, as a few traits), look (one paragraph, at most 60 " +
+  "words: apparent age as an adult, face, hair, build, clothes), examples (three or four objects with user and character, " +
+  "the character's replies short, like texts, in their voice), tags (at most five lowercase words).";
+export const PORT_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["tagline", "greeting", "persona", "voice", "look", "examples", "tags"],
+  properties: { tagline: { type: "string" }, greeting: { type: "string" }, persona: { type: "string" }, voice: { type: "string" },
+    look: { type: "string" }, examples: { type: "array", items: { type: "object", additionalProperties: false, required: ["user", "character"],
+      properties: { user: { type: "string" }, character: { type: "string" } } } }, tags: { type: "array", items: { type: "string" } } },
+};
+export function portMessages(name, transcript) {
+  return [{ role: "system", content: PORT_SYSTEM },
+    { role: "user", content: `The character: ${str(name, 120)}\n\nThe interview:\n\n${str(transcript, 30000)}\n\nWrite ${str(name, 120)} down as a card.` }];
+}
+/** a ported character's card: the same name and face, their own card now, with the credit */
+export function cardFromPort(o, { from, model, interviewed = "" } = {}) {
+  let card = normalizeCard({
+    name: from.name, tagline: o.tagline, greeting: o.greeting, persona: o.persona, examples: o.examples, tags: o.tags,
+    voice: { short_form: true, notes: o.voice }, look: { description: o.look, references: from.look ? from.look.references : [] },
+    portrait: from.portrait, speech: from.speech, model, adult: from.adult === true, creator: from.creator,
+    license: "all-rights-reserved", lineage: from.lineage,
+  });
+  const other = nameClash(card);
+  if (other) card = renamed(card, other, card.name);
+  return addLineage(card, { relation: "ported-from", name: from.name, creator: from.creator || "",
+    ref: from.engine && from.engine.venice_character ? "venice:" + from.engine.venice_character : "",
+    note: "ported in Havre: written down from an interview with them" + (interviewed ? ", " + interviewed : "") });
+}
 
 export const DISTILL_SYSTEM = "You read a character and write down only the ideas behind it, never its words. " +
   "Return one JSON object with these keys: archetype (string, at most 8 words), premise (string, at most 20 words), " +
