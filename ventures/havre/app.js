@@ -833,6 +833,7 @@ function renderChatMeta() {
     c.plain ? "just the model, no character" : c.engine.venice_character ? "via venice, with their own prompt" : c.tagline,
     h("span", {}, "model: ", linkish(modelName(c.model), () => openModels("chat"), { id: "model-btn", "aria-label": `Model: ${modelName(c.model)}. Change it` })),
     c.plain ? null : linkish("card", () => openCard("edit")),
+    linkish("gallery", () => openGallery(t ? "chat" : "all"), { title: "Every photo and clip" }),
     t ? linkish("new chat", newChat, { id: "new-chat", title: `A new chat${c.plain ? "" : " with " + c.name}; this one stays in your chats` }) : null,
     t ? linkish("rename", renameThread, { title: "Name this chat" }) : null,
     t ? linkish("delete", deleteThread, { title: "Delete this chat" }) : null,
@@ -881,6 +882,48 @@ function followMedia(log) {
     const go = () => { if (near()) log.scrollTop = log.scrollHeight; };
     el.addEventListener(el.tagName === "VIDEO" ? "loadedmetadata" : "load", go, { once: true });
   }
+}
+
+// ---------- the gallery: every photo and clip, in this chat or in all of yours with them ----------
+let galScope = "chat";
+function galleryItems(scope) {
+  const c = card(), t = thread();
+  if (!c) return [];
+  const ts = scope === "chat" ? (t ? [t] : []) : threadsOf(c.id);
+  const out = [];
+  for (const th of ts) for (const m of th.msgs || []) {
+    const md = m && m.media;
+    if (md && md.id && (md.kind === "photo" || md.kind === "photo-in" || md.kind === "clip")) out.push({ m, t: th });
+  }
+  return out.sort((a, b) => (b.m.at || 0) - (a.m.at || 0));
+}
+function openGallery(scope = "chat") {
+  galScope = scope;
+  renderGallery();
+  $("#gallerydlg").showModal();
+}
+function renderGallery() {
+  const c = card();
+  if (!c) return;
+  const here = galleryItems("chat"), all = galleryItems("all"), items = galScope === "chat" ? here : all;
+  const tab = (scope, text) => (galScope === scope ? h("b", { text }) : linkish(text, () => { galScope = scope; renderGallery(); }));
+  $("#gal-tabs").replaceChildren(...slashed([thread() ? tab("chat", `this chat (${here.length})`) : null,
+    tab("all", `${c.plain ? "all plain chats" : "all chats with " + c.name} (${all.length})`)]));
+  $("#gal-empty").hidden = items.length > 0;
+  $("#gal-empty").textContent = "no photos or clips here yet.";
+  $("#gal-grid").replaceChildren(...items.map(({ m, t }) => {
+    const md = m.media, clip = md.kind === "clip";
+    const pic = mediaEl(clip ? "video" : "img", md.id, clip ? { muted: true, playsinline: true, preload: "metadata" } : { alt: md.shot || (md.kind === "photo-in" ? "your photo" : "a photo"), decoding: "async" }, md.kind === "clip" ? "clip" : "photo");
+    const when = m.at ? T.ago(m.at) : "";
+    return h("li", {}, h("button", { type: "button", title: md.shot || null, onclick: () => jumpTo(t, m) }, pic,
+      h("span", { class: "cap", text: [clip ? "clip" : md.kind === "photo-in" ? "yours" : "photo", when, galScope === "all" && T.titleOf(t, t.msgs, 24)].filter(Boolean).join(" · ") })));
+  }));
+}
+/** go to a photo or clip in its chat */
+function jumpTo(t, m) {
+  $("#gallerydlg").close();
+  if (t.id !== S.open) openThread(t.id);
+  setTimeout(() => { const el = $(`#log [data-msg="${m.id}"]`); if (el) el.scrollIntoView({ block: "center", behavior: motion() }); }, 450);
 }
 
 // ---------- editing and deleting messages ----------
@@ -935,7 +978,7 @@ function renderLog() {
     if (!hist.length) put(line(`${c.name} speaks through venice, with their own prompt.${S.key ? " say hello." : ""}`, "havre", "note"));
   } else if (c.greeting) for (const b of C.splitBubbles(C.fill(c.greeting, c, "you"))) put(line(b, "them"));
   for (const m of hist) {
-    if (m.media) put(mediaLine(c, m));
+    if (m.media) { const el = put(mediaLine(c, m)); if (m.id) el.dataset.msg = m.id; }
     else if (m.role === "user" && !m.hidden) msgTools(put(line(m.content, "me")), t, m);
     else if (m.role === "assistant") {
       if (m.voice) put(voiceLine(c, m));
@@ -3156,6 +3199,7 @@ function toast(text) {
 
 // ---------- wiring ----------
 function bind() {
+  $("#galclose").addEventListener("click", () => $("#gallerydlg").close());
   // the open studio (/open) gets this key: it may open in another window, so the key waits there a minute, then goes
   for (const a of $$('a[href="open/"]')) a.addEventListener("click", () => {
     if (S.key) local.set("havre.handoff", { key: S.key, at: Date.now() });

@@ -223,6 +223,12 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .line { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 4px 14px; margin-top: 14px; }
 .line:first-child { margin-top: 0; }
 .line.cont { margin-top: 6px; }
+/* the gallery: square tiles, newest first; a tile takes you to it in its chat */
+.gal { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; margin: 12px 0; padding: 0; list-style: none; max-height: 65vh; overflow: auto; }
+.gal button { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.gal img, .gal video { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border: 1px solid var(--ink); background: var(--ink); }
+.gal button:hover img, .gal button:hover video, .gal button:focus-visible img, .gal button:focus-visible video { outline: 3px solid var(--hi); }
+.gal .cap { display: block; margin-top: 4px; font: 11px/1.4 var(--mono); overflow-wrap: anywhere; }
 /* edit / delete under a message: shown on hover or focus; always, faintly, where there's no hover (phones) */
 .msgtools { grid-column: 2; font: 12px/1.4 var(--mono); opacity: 0; }
 .line:hover .msgtools, .line:focus-within .msgtools { opacity: 1; }
