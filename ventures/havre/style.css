@@ -314,6 +314,9 @@ pre.saw {
 .lightbox { padding: 0; border: 1px solid var(--ink); background: var(--paper); max-width: 96vw; max-height: 96vh; }
 .lightbox::backdrop { background: rgba(0, 0, 0, 0.88); }
 .lightbox img { max-width: 96vw; max-height: 94vh; object-fit: contain; cursor: zoom-out; }
+.newcard label { display: block; margin: 12px 0; font: 14px var(--mono); }
+.newcard input, .newcard textarea { display: block; width: 100%; margin-top: 4px; padding: 6px 8px; font: 16px var(--serif);
+  border: 1px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink); }
 tr.opens { cursor: pointer; }
 tr.opens:hover { background: var(--hi); }
 .rowname { font: inherit; color: inherit; text-decoration: none; }

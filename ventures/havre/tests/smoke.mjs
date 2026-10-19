@@ -331,6 +331,10 @@ async function main() {
     assert.ok(await page.locator("#say").isDisabled(), "nobody to talk to yet");
     assert.equal(await page.evaluate(() => localStorage.length), 0, "a first visit keeps nothing");
     await page.waitForTimeout(150);
+    await page.click("#lt-harbor");
+    assert.ok(await page.locator("#card-new").isVisible(), "an empty harbor opens on a new character to write");
+    assert.match(await textOf(page, "#card-h"), /^NEW CHARACTER$/);
+    await page.click("#lt-chars");
     await shot(page, "desktop.png");
 
     // a card comes in through the import dialog, and talks from its own examples without a key

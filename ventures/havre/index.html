@@ -126,6 +126,13 @@
     <span class="meta">the character as a file: edit it, remix it, export it.</span>
   </div>
   <p id="card-empty" class="mono pad">no character yet. the card shows up here once someone is in your harbor.</p>
+  <form id="card-new" class="pad newcard" autocomplete="off" hidden>
+    <p class="mono">write someone new. a few lines is enough: the rest can be filled in on their card after.</p>
+    <label>NAME <input id="nc-name" maxlength="80" placeholder="what they're called"></label>
+    <label>WHO THEY ARE <textarea id="nc-persona" rows="4" placeholder="who they are, what they care about, how they talk"></textarea></label>
+    <label>FIRST LINE <input id="nc-greeting" maxlength="400" placeholder="what they say first"></label>
+    <p class="actions"><button type="button" class="btn" id="nc-import">IMPORT A CARD INSTEAD</button> <button type="submit" class="btn solid" id="nc-go">CREATE</button></p>
+  </form>
   <div id="card-body">
   <div class="tabs" role="tablist" aria-label="Card">
     <button type="button" role="tab" id="t-edit" aria-controls="p-edit" aria-selected="true">SHEET</button>

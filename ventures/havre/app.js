@@ -385,6 +385,7 @@ function renderLeft() {
     $(panel).hidden = S.left !== w;
   }
   $("#card").hidden = S.left !== "harbor";        // the card belongs to the harbor: not under your chats or the characters
+  syncNew();
   // a narrow screen's way back from a chat: to whichever list you came from
   $("#chat-back").textContent = S.left === "chats" ? "← your chats" : S.left === "harbor" ? "← your harbor" : "← characters";
 }
@@ -1408,12 +1409,22 @@ function renderCard() {
     : "no character yet. the card shows up here once someone is in your harbor.";
   $("#card-body").hidden = !real;
   $("#card-h").textContent = real ? "CARD: " + c.name.toUpperCase() : "CARD";
+  syncNew();
   if (!real) return;
   renderSheet();
   resetRemix();
 }
+/** the harbor opens on a new character to write (S.fresh), until a row, or a card link, opens someone's card */
+function syncNew() {
+  const c = card(), real = !!c && !c.plain, fresh = S.left === "harbor" && (S.fresh || !real);
+  $("#card-new").hidden = !fresh;
+  $("#card-body").hidden = fresh || !real;
+  $("#card-empty").hidden = fresh || real;
+  $("#card-h").textContent = fresh ? "NEW CHARACTER" : real ? "CARD: " + c.name.toUpperCase() : "CARD";
+}
 function openCard(tab = "edit") {
-  if (S.left !== "harbor") { S.left = "harbor"; local.set(K.left, "harbor"); renderLeft(); }
+  S.fresh = false;
+  if (S.left !== "harbor") { S.left = "harbor"; local.set(K.left, "harbor"); renderLeft(); } else syncNew();
   setTab(tab);
   $("#card").scrollIntoView({ behavior: motion(), block: "start" });
 }
@@ -3405,6 +3416,16 @@ function bind() {
     openCard("edit");
     const n = $("#sheet").name; n.focus({ preventScroll: true }); n.select();
   });
+  $("#card-new").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#nc-name").value.trim();
+    if (!name) { $("#nc-name").focus(); return; }
+    addCard({ name, persona: $("#nc-persona").value.trim(), greeting: $("#nc-greeting").value.trim(), voice: { short_form: true },
+      model: S.model, license: "remix-with-credit" });
+    $("#card-new").reset();
+    openCard("edit");
+  });
+  $("#nc-import").addEventListener("click", () => $("#import").click());
   $("#import").addEventListener("click", () => { $("#impstatus").textContent = ""; $("#impstatus").classList.remove("bad"); $("#importdlg").showModal(); });
   $("#impcancel").addEventListener("click", () => $("#importdlg").close());
   $("#imp-paste").addEventListener("click", importText);
@@ -3516,7 +3537,7 @@ function bind() {
   const leftTabs = ["chats", "chars", "harbor"];
   for (const w of leftTabs) {
     const t = $("#lt-" + w);
-    t.addEventListener("click", () => setLeft(w));
+    t.addEventListener("click", () => { if (w === "harbor") S.fresh = true; setLeft(w); });
     t.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
