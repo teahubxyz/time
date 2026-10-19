@@ -4,7 +4,8 @@
     python3 .github/time/time.py heartbeat   # on schedule: plan specs, dispatch `ready` cards, merge approved PRs, pull the next card
 
 Ledger = this Gitea repo. Brains = Venice (VENICE_API_KEY) or Claude (ANTHROPIC_API_KEY), per seat in .github/time/seats.json.
-Spend = time/ledger/<YYYY-MM>.jsonl in the repo; TIME_MONTHLY_USD caps it before every call, and each call is paced to the
+Spend = time/ledger/<YYYY-MM>.jsonl in the repo; TIME_MONTHLY_USD caps the owner's own money before every call (what
+prepaid credit in an expiring pool pays for doesn't count: the pool's balance limits that), and each call is paced to the
 capacity pool it books to (time/pools.json), or to TIME_DAILY_USD when no pool takes its route.
 Loop guards: Time's own comments (author gitea-actions) never trigger replies or count as verdicts; the heartbeat
 has a daily cap and a concurrency group. Unlike GitHub, Gitea does fire events for the Actions token's own writes,
@@ -404,9 +405,13 @@ def spend(prefix: str) -> float:
 
 
 def budget(now: dt.datetime | None = None) -> tuple[float, float, float, float]:
+    """(today's spend, daily cap, this month's out-of-pocket spend, monthly cap). The monthly cap guards the owner's own
+    money, so spend that prepaid credit paid for (credit_covered) is left out of the month; the credit's own balance
+    limits it instead. Without pools the month is every dollar booked, as before."""
     now = now or dt.datetime.now(dt.timezone.utc)
+    month = now.strftime("%Y-%m")
     return (spend(now.strftime("%Y-%m-%d")), float(os.environ.get("TIME_DAILY_USD") or 5),
-            spend(now.strftime("%Y-%m")), float(os.environ.get("TIME_MONTHLY_USD") or 100))
+            max(0.0, spend(month) - credit_covered(month)), float(os.environ.get("TIME_MONTHLY_USD") or 100))
 
 
 _slack = threading.local()  # per thread (#75 overlaps workers): what budget_check allows over the daily cap, 1.0 outside finishing()
@@ -509,10 +514,30 @@ def allowance(p: dict, now: dt.datetime | None = None) -> float:
     return float(os.environ.get("TIME_DAILY_USD") or 5)
 
 
+def credit_covered(month: str) -> float:
+    """Dollars booked in `month` ("2026-10") that an `expiring` pool's prepaid credit paid for: per pool, what its routes
+    booked from its `as_of` until it lapses (`resets_at`), within the month, up to the balance it still had at the month's
+    start. Spend from before `as_of` isn't covered (the balance was read after it), nor spend past the balance or the
+    lapse, nor any route without a pool: all of that is the owner's money, which TIME_MONTHLY_USD caps."""
+    m0 = f"{month}-01"
+    m1 = f"{int(month[:4]) + (month[5:] == '12')}-{int(month[5:]) % 12 + 1:02d}-01"
+    covered = 0.0
+    for p in pools():
+        if p.get("kind") != "expiring" or not p.get("as_of") or not p.get("resets_at"):
+            continue
+        start, end = max(m0, p["as_of"]), min(m1, p["resets_at"])
+        if start >= end:
+            continue
+        left = p["balance_usd"] - (pool_spend(p, p["as_of"], m0) if p["as_of"] < m0 else 0.0)
+        covered += min(max(0.0, left), pool_spend(p, start, end))
+    return covered
+
+
 def budget_check(route: str | None = None, now: dt.datetime | None = None) -> None:
     today, day_cap, month, month_cap = budget(now)
     if month >= month_cap:
-        raise Budget(f"this month's spend is ${month:.2f} of the ${month_cap:.2f} cap; Time is back in dry-run until a human raises it")
+        raise Budget(f"this month's out-of-pocket spend is ${month:.2f} of the ${month_cap:.2f} cap (credit-paid spend "
+                     "excluded); Time is back in dry-run until a human raises it")
     if (p := pool_for(route)):
         spent, limit = pool_spent(p, now), allowance(p, now)
         if spent >= limit * slack():
@@ -543,7 +568,7 @@ def andon(reason: str) -> None:
                 flipped = "\n\nThe monthly cap tripped, so I created the Actions variable `TIME_MODE=dry-run`. Raise the cap, then set it back to `live`."
             except RuntimeError as e2:
                 flipped = f"\n\nThe monthly cap tripped, but I couldn't set `TIME_MODE=dry-run`: `{str(e2)[:200]}`. Please do it by hand."
-    new_issue(f"Spend cap reached: ${today:.2f} today / ${month:.2f} this month",
+    new_issue(f"Spend cap reached: ${today:.2f} today / ${month:.2f} out of pocket this month",
               f"⏱️ Time stopped calling models: {reason}.\n\n- Daily cap (`TIME_DAILY_USD`): ${day_cap:.2f}\n"
               f"- Monthly cap (`TIME_MONTHLY_USD`): ${month_cap:.2f}\n- Ledger: `time/ledger/<YYYY-MM>.jsonl`"
               f"{flipped}\n\nClose this once it's handled.", ["andon"])
@@ -1742,7 +1767,8 @@ def cmd_doctor() -> int:
     row("TIME_DAILY_USD", True, os.environ.get("TIME_DAILY_USD") or "5 (default)")
     row("TIME_CAP_SLACK", True, os.environ.get("TIME_CAP_SLACK") or "1.5 (default)")
     row("TIME_MONTHLY_USD", True, os.environ.get("TIME_MONTHLY_USD") or "100 (default)")
-    row("spend", today < day_cap and month < month_cap, f"${today:.2f} today, ${month:.2f} this month ({ledger_path(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m'))})")
+    row("spend", today < day_cap and month < month_cap, f"${today:.2f} today, ${month:.2f} this month out of pocket, credit-paid "
+        f"spend excluded ({ledger_path(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m'))})")
     now = dt.datetime.now(dt.timezone.utc)
     for p in pools():
         win = p["kind"] == "window"

@@ -229,7 +229,8 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     closed = closed_lately()
     done = "\n".join(f"- #{i['number']} {i['title']}" for i in closed[:50]) or "- (none)"
     user = (f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nSpend: ${today:.2f} of "
-            f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month; ${left:.2f} left to queue against ({source})."
+            f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month out of pocket (credit-paid spend excluded); "
+            f"${left:.2f} left to queue against ({source})."
             f"\n\nCards closed in the last 14 days (done or dropped; don't write these again):\n{done}"
             f"\n\nCandidates ({len(cands)}):\n\n{listing}")
     try:

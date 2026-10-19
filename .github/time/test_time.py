@@ -757,7 +757,7 @@ w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=[
 assert sent == [] and w.opened == [] and "a run under way may go to" not in w.posted[-1][1], "a new launch never gets the slack"
 sent.clear()
 w = claude_env(ClaudeWorld([card(1, D)], {1: [beat("would-dispatch")]}, ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": 99.99}]), {"TIME_WORKER": "claude:sonnet", "TIME_DAILY_USD": "500"})
-assert len(sent) == 1 and w.opened == [] and "this month's spend" in w.posted[-1][1], "the monthly cap is hard inside a run too"
+assert len(sent) == 1 and w.opened == [] and "this month's out-of-pocket spend" in w.posted[-1][1], "the monthly cap is hard inside a run too"
 # the review of an open PR runs on a capped day (within the slack), and says so if even the slack is spent
 tm.think = real_think  # the real one: the budget check lives in chat(), under it
 tm.pr_diff = lambda n, limit=0: "diff --git a b"
@@ -1344,6 +1344,24 @@ with contextlib.redirect_stdout(out): tm.cmd_doctor()
 assert "pool `credits` | expiring, $30.00; spent $1.00 since reset; next reset " in out.getvalue() and "allowance today $3.00" in out.getvalue(), out.getvalue()
 assert "pool `sub` | window, $2.00; spent $0.00" in out.getvalue()
 assert tm.pool_spent(credit) == 1 and tm.pool_spent(sub_) == 0
+# the monthly cap guards the owner's own money: spend the credit pays for is left out of the month, within its balance
+month82 = NOW.strftime("%Y-%m")
+fresh82(spent_row(5), spent_row(2, "codex"))
+assert tm.credit_covered(month82) == 5 and tm.budget(NOW)[2] == 2, (tm.credit_covered(month82), tm.budget(NOW))
+os.environ["TIME_MONTHLY_USD"], os.environ["TIME_DAILY_USD"] = "4", "100"   # the monthly cap alone
+assert not refused("codex"), "$7 booked, $5 of it credit: $2 of the owner's money against a $4 cap"
+fresh82(spent_row(29), spent_row(4), spent_row(1, "codex"))
+assert tm.credit_covered(month82) == 30 and tm.budget(NOW)[2] == 4 and refused("codex"), "past the $30 balance it is the owner's money again"
+os.environ.pop("TIME_MONTHLY_USD")
+tomorrow82 = (day0 + dt.timedelta(days=1)).strftime("%Y-%m-%d")
+tm.pools = lambda: [dict(credit, as_of=tomorrow82)]
+fresh82(spent_row(5)); assert tm.credit_covered(month82) == 0, "spend from before the balance was read isn't covered"
+tm.pools = lambda: [dict(credit, resets_at=day0.strftime("%Y-%m-%d"))]
+fresh82(spent_row(5)); assert tm.credit_covered(month82) == 0 and tm.budget(NOW)[2] == 5, "lapsed credit covers nothing"
+tm.pools = lambda: [sub_, {"name": "card", "kind": "balance", "routes": ["anthropic"]}]
+fresh82(spent_row(5), spent_row(1, "venice")); assert tm.credit_covered(month82) == 0 and tm.budget(NOW)[2] == 6, "only expiring credit is prepaid"
+tm.pools = lambda: []
+fresh82(spent_row(5)); assert tm.budget(NOW)[2] == 5, "no pools: every dollar, as before"
 tm.pools = real_pools; os.environ.pop("TIME_DAILY_USD"); tm.LEDGER.clear(); tm._ledger_files.clear()
 # pools.json is read through the API (the workflows check out only .github/time), once per run
 import base64 as _b82
