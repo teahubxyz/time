@@ -19,7 +19,6 @@
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="alternate" type="text/plain" href="llms.txt" title="For agents">
-<link rel="alternate" type="text/markdown" href="skill.md" title="Skill">
 <link rel="stylesheet" href="style.css">
 <script type="module" src="app.js"></script>
 </head>
@@ -66,8 +65,8 @@
         <label class="sr" for="vsearch">Search Venice characters</label>
         <input id="vsearch" type="search" placeholder="search by name, or #tag" autocomplete="off" maxlength="200">
         <label class="pick">sort <select id="vsort">
+          <option value="imports" selected>most imported</option>
           <option value="featured">featured</option>
-          <option value="imports">most imported</option>
           <option value="highestRating">top rated</option>
           <option value="mostRecent">newest</option>
         </select></label>

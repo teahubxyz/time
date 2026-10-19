@@ -20,8 +20,6 @@ Everything you need is at https://havre.yolopreneur.lol/:
 Three characters live at the harbor, as worked examples of the format: Maren the harbormaster, a guide
 (`cast/maren.havre.json`); Odile, the lighthouse keeper, a storyteller (`cast/odile.havre.json`); and Taskmaster, a
 coach with a flow (`cast/taskmaster.havre.json`). Read one before writing your first card.
-Each has a page too, at `/c/<id>/` (the list is `/c/`), with a link into the Studio, `/?meet=<id>`, and the same
-character as a Character Card V3 at `/c/<id>/<id>.card.json`.
 
 ## A card
 

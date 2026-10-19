@@ -18,7 +18,6 @@ Read skill.md first and follow it. card.js and venice.js are ES modules with no 
 - [Maren](https://havre.yolopreneur.lol/cast/maren.havre.json): the harbormaster, a guide
 - [Odile](https://havre.yolopreneur.lol/cast/odile.havre.json): the lighthouse keeper, a storyteller
 - [Taskmaster](https://havre.yolopreneur.lol/cast/taskmaster.havre.json): a coach with a flow (assess, plan, execute)
-- [The harbor's own, as pages](https://havre.yolopreneur.lol/c/): a page and a link for each, with a way into the Studio (`/?meet=<id>`) and the same character as a Character Card V3 (`/c/<id>/<id>.card.json`)
 
 ## Coming next
 

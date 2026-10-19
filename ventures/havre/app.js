@@ -77,7 +77,7 @@ const S = {
   // on a narrow screen the studio shows one thing at a time: "list" (your chats, the characters) or "chat"
   pane: "list",
   demo: {}, rx: null, plain: null, own: {},
-  v: { list: [], offset: 0, more: false, query: "", sort: "featured", tag: "", adult: false, loading: false, asked: 0 },
+  v: { list: [], offset: 0, more: false, query: "", sort: "imports", tag: "", adult: false, loading: false, asked: 0 },
   // abilities: Venice's other models by type, what was picked, who sends voice notes, clips on their way, the photo
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
@@ -130,8 +130,8 @@ function boot() {
   S.open = open && c0 && open.card === c0.id ? open.id : c0 ? (latestOf(c0.id) || {}).id || null : null;
   const left = local.get(K.left, "");
   S.left = left === "chats" || left === "chars" ? left : Object.keys(S.threads).length ? "chats" : "chars";
-  const sort = local.get(K.sort, "featured");
-  S.v.sort = SORTS.includes(sort) ? sort : "featured";
+  const sort = local.get(K.sort, "imports");
+  S.v.sort = SORTS.includes(sort) ? sort : "imports";
   S.v.adult = local.get(K.adult, false) === true && local.get(K.adult18, false) === true;
   S.own = local.get(K.own, {}) || {};
   S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
@@ -145,7 +145,6 @@ function boot() {
   renderAll();
   markRead(thread());
   loadModels();
-  meetFromLink();
   if (S.key) { loadVenice(0); loadBalance(); resumeJobs(); comingBack(); }
   const t0 = thread();
   if (S.key && t0 && t0.msgs.length && !T.anyShown(t0.msgs)) speakFirst();   // a hello cut off when its tab closed
@@ -469,20 +468,6 @@ function meet(c0) {
     lineage: [...c0.lineage, { relation: "ported-from", name: c0.name, creator: c0.creator, ref: castRef(c0), at: today(), note: "one of the harbor's own" }] },
   { select: false });
   selectCard(mine.id, { talk: true });
-}
-
-/**
- * A shared link (/?meet=odile, from the harbor's own pages) meets that one of the harbor's own, the way pressing their
- * tile does, and the parameter leaves the address, so a reload or a copied address doesn't meet them again. Someone
- * who has met them already lands in the same chat. An id that isn't one of theirs does nothing.
- */
-function meetFromLink() {
-  const u = new URL(location.href), id = u.searchParams.get("meet");
-  const c0 = id == null ? null : CAST.find((c) => c.id === id.trim().toLowerCase());
-  if (!c0) return;
-  u.searchParams.delete("meet");
-  try { history.replaceState(history.state, "", u.pathname + u.search + u.hash); } catch { /* a sandboxed preview can't change its address */ }
-  meet(c0);
 }
 
 // Venice's characters, a page at a time; without a key, empty frames where they will be
@@ -1347,11 +1332,12 @@ const portraitModel = () => A.chosen(S.lists.image, "", "portrait");
 const clipModels = () => (S.lists.video ? S.lists.video.filter(A.isClipModel) : null);
 const clipModel = () => A.chosen(clipModels(), S.ab.clip.model, "clip");
 // an adult character's photos and clips: Venice's uncensored models (the others refuse, or blur)
-const adultPhotoModels = () => (S.lists.inpaint ? S.lists.inpaint.filter(A.isAdultPhotoModel) : null);
+// testing: every model Venice has, uncensored or not (clips: every reference-to-video one)
+const adultPhotoModels = () => S.lists.inpaint;
 const adultPhotoModel = () => A.chosen(adultPhotoModels(), S.ab.adultPhoto, "adultPhoto");
-const adultClipModels = () => (S.lists.video ? S.lists.video.filter(A.isAdultClipModel) : null);
+const adultClipModels = () => (S.lists.video ? S.lists.video.filter((m) => m.ref) : null);
 const adultClipModel = () => A.chosen(adultClipModels(), S.ab.adultClip, "adultClip");
-const adultPortraitModels = () => (S.lists.image ? S.lists.image.filter(A.isAdultPhotoModel) : null);
+const adultPortraitModels = () => S.lists.image;
 // an adult character's portrait: an uncensored model if Venice has one, else the usual one (without safe mode either way)
 const adultPortraitModel = () => A.chosen(adultPortraitModels(), "", "adultPortrait") || portraitModel();
 const voiceModel = (c) => A.chosen(S.lists.tts, c && c.speech ? c.speech.model : "", "voice");
@@ -1913,7 +1899,7 @@ function noteMade(pic, from = []) {
 function adultFor(c, t = null, shot = "", { drawn = false } = {}) {
   const made = madeKeys();
   const said = t ? t.msgs.filter((m) => m && !m.demo).slice(-12).flatMap((m) => [typeof m.content === "string" ? m.content : "", m.media && m.media.shot]) : [];
-  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)), shot, said, drawn });
+  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)) || OUTERFACE.test(p || ""), shot, said, drawn });
 }
 /** under the adult box on their card: whether their photos and clips can be adult, and if not, why */
 function renderAdultNote(c) {
