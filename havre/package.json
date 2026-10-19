@@ -1,0 +1,15 @@
+{
+  "name": "havre-mcp",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Havre MCP server. Stateless: no disk, no db, no stored secrets.",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.1",
+    "zod": "4.6.7"
+  }
+}

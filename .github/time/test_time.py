@@ -870,6 +870,16 @@ if _sh.which("node"):
         assert res.returncode == 0 and "aicharts: all good" in res.stdout, res.stdout[-2000:] + res.stderr[-2000:]
         print("ALL OK 41")
 
+# the Havre MCP server (havre/): handshake and tool over stdio. CI's only Python step runs this, so it installs the locked deps here
+if _sh.which("npm"):
+    hv = str(Path(__file__).resolve().parents[2] / "havre")
+    for cmd in (["npm", "ci", "--no-audit", "--no-fund"], ["npm", "test"]):
+        res = _sp.run(cmd, cwd=hv, capture_output=True, text=True, timeout=180)
+        assert res.returncode == 0, " ".join(cmd) + "\n" + res.stdout[-2000:] + res.stderr[-2000:]
+    print("ALL OK havre")
+else:
+    print("skipped the havre test: no npm")
+
 # 78 Time retries its own parked cards (error / stuck), within TIME_AUTO_RETRY; a human only hears once it has given up
 K78 = {**K, "TIME_WORKER": "cursor"}
 meta78 = lambda w: [json.loads(re.search(r"<!-- time (.*) -->", t).group(1)) for _, t in w.posted]
