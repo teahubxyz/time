@@ -64,8 +64,9 @@ class Forge:
                 if m["id"] == int(route.split("/")[-1]):
                     m.update(body)
             return {}
-        if route.endswith("/reactions"):
-            return self.page(self.reactions.get(int(route.split("/")[-2]), []), path)
+        if route.endswith("/reactions"):   # Gitea: null, not [], for an issue nobody reacted to
+            n = int(route.split("/")[-2])
+            return self.page(self.reactions[n], path) if n in self.reactions else None
         if route.endswith("/comments") and method == "GET":
             return self.page(self.cmts.get(int(route.split("/")[-2]), []), path)
         if route.endswith("/comments") and method == "POST":

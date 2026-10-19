@@ -46,7 +46,7 @@ def paged(path: str, pages: int = 40) -> list[dict]:
     sep = "&" if "?" in path else "?"
     out: list[dict] = []
     for page in range(1, pages + 1):
-        batch = tm.gh("GET", f"{path}{sep}limit=50&page={page}")
+        batch = tm.gh("GET", f"{path}{sep}limit=50&page={page}") or []   # Gitea answers an issue with no reactions with null
         out += batch
         if len(batch) < 50:
             break
