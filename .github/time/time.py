@@ -722,11 +722,26 @@ def rank_order() -> list[int]:
         return []
 
 
+WAITING = ("needs-human", "error", "stuck")   # a card whose last real beat is one of these waits on a person (#135)
+
+
+def moving(card: dict) -> bool:
+    """A `ready` card that holds a slot: its last real beat isn't one that waits on a person. promote_next runs after
+    tick(), so a card Time has just retried, or one a human sent back with `/time retry`, is moving again by then."""
+    real = [b for b in beats_of(gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?limit=100") or [])
+            if b["beat"] not in ("blocked", "capped")]
+    return not real or real[-1]["beat"] not in WAITING
+
+
 def promote_next() -> int | None:
     """Label the best `queued` card whose dependencies are closed `ready`: the router's live ranking first (Astra's
-    latest), then the oldest; at most TIME_PARALLEL cards in flight."""
+    latest), then the oldest; at most TIME_PARALLEL cards in flight. A `ready` card waiting on a person (an objection,
+    an error or a stall Time won't retry again) keeps its label, so `/time retry` still finds it, but holds no slot:
+    three of them once stalled the queue for eight hours while a dozen cards sat `queued`."""
     ready = issues("state=open&labels=ready")
-    if len(ready) >= int(os.environ.get("TIME_PARALLEL") or 1):
+    busy = [c for c in ready if moving(c)]
+    print(f"promote: ready={len(ready)} moving={len(busy)}")
+    if len(busy) >= int(os.environ.get("TIME_PARALLEL") or 1):
         return None
     queued = issues("state=open&labels=queued")
     pos = {n: k for k, n in enumerate(rank_order())}

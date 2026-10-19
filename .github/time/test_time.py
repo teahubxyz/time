@@ -1269,6 +1269,24 @@ beat80["body"] = beat80["body"].replace('"live"', '"dry"')
 assert tm.rank_order() == [] and tm.promote_next() == 10, "a dry ranking moves nothing: oldest first"
 tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
 assert tm.rank_order() == [], "the ranking is a preference: an unreadable log never stops promotion"
+# a ready card waiting on a person holds no slot (#135): only moving cards count toward TIME_PARALLEL
+beat135 = lambda b: {"user": {"login": tm.TIME_BOT}, "created_at": "2026-10-19T03:08:05Z", "body": "x\n<!-- time " + json.dumps({"beat": b}) + " -->"}
+ready135 = {20: [beat135("dispatched"), beat135("needs-human")], 21: [beat135("error")], 22: [beat135("pr"), beat135("stuck"), beat135("capped")]}
+tm.issues = lambda q: {"state=open&labels=ready": [iss80(n, f"r{n}", labels=["ready"]) for n in ready135],
+                       "state=open&labels=queued": q80, "state=open&labels=astra": []}[q]
+tm.gh = lambda method, path, body=None, **k: ready135.get(int(path.split("/issues/")[1].split("/")[0]), []) if "/comments" in path else {"state": "closed"}
+par135 = os.environ.get("TIME_PARALLEL"); os.environ["TIME_PARALLEL"] = "3"
+moved80.clear()
+assert tm.promote_next() == 10 and moved80 == [(10, "ready")], "three ready cards, all waiting on a person: the oldest queued moves"
+ready135 = {20: [beat135("dispatched")], 21: [], 22: [beat135("needs-human")]}
+assert tm.promote_next() == 10, "two moving (one with no beat yet) and one parked: a slot is free"
+ready135[22].append(beat135("dispatched"))
+assert tm.promote_next() is None, "a card sent back to the worker is moving again: three moving, no slot"
+assert tm.moving(iss80(22, "retried")) and tm.moving(iss80(99, "no comments yet"))
+ready135[22].append(beat135("needs-human"))
+assert not tm.moving(iss80(22, "parked again"))
+if par135 is None: os.environ.pop("TIME_PARALLEL")
+else: os.environ["TIME_PARALLEL"] = par135
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
 print("ALL OK 80")
 
