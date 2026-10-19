@@ -1,0 +1,35 @@
+name: sync
+# Keeps this repo's copies on other forges in step with it (time/sync.json, .github/time/sync.py). One home, one writer
+# per branch: main goes out to every copy, fast-forward only (a copy with commits of its own is reported, never
+# overwritten); the branches a copy is told to send back (claude/* from cloud sessions on GitHub) come in as PRs here,
+# and Time's council reviews and lands them like any other. Each copy's token is a secret named in sync.json and passed
+# below; a copy without one is skipped. On a GitHub copy, turn GitHub Actions off: these workflows must run here only.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force-push main to the copies once (replaces a copy's own history, e.g. an archived copy's)"
+        type: boolean
+        default: false
+concurrency:
+  group: sync
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/time
+          persist-credentials: false
+      - run: python3 .github/time/sync.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # branches and PRs on the home go in as the `time` user
+          SYNC_FORCE: ${{ inputs.force && '1' || '' }}
+          GITHUB_MIRROR_TOKEN: ${{ secrets.GITHUB_MIRROR_TOKEN }}   # github.com/teahubxyz/time: Contents read/write

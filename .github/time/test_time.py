@@ -1287,6 +1287,85 @@ assert tm.pools() == [] and tm.pool_for("anthropic") is None, "no pools.json: no
 tm.gh = real_gh82; tm._pools = None
 print("ALL OK 82")
 
+# 83 sync.py: a repo's copies on other forges follow its home. main goes out fast-forward only (a copy with commits of
+# its own is reported, never overwritten, unless forced once); a copy's claude/* branches come back as PRs on the home
+import subprocess as _sp83, tempfile as _tf83
+sspec = importlib.util.spec_from_file_location("sync83", Path(__file__).resolve().parent / "sync.py")
+sy = importlib.util.module_from_spec(sspec); sspec.loader.exec_module(sy)
+root83 = _tf83.mkdtemp()
+def g83(*a, cwd=None):
+    return _sp83.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "init.defaultBranch=main", *a], cwd=cwd,
+                     capture_output=True, text=True, check=True).stdout.strip()
+def commit83(cwd, name, msg):
+    Path(cwd, name).write_text(msg); g83("add", "-A", cwd=cwd); g83("commit", "-qm", msg, cwd=cwd)
+home83, copy83, wk83, cw83 = (os.path.join(root83, x) for x in ("home.git", "copy.git", "w", "cw"))
+g83("init", "--bare", "-q", home83); g83("init", "--bare", "-q", copy83); g83("clone", "-q", home83, wk83)
+commit83(wk83, "a.txt", "A"); g83("push", "-q", "origin", "HEAD:main", cwd=wk83)
+prs83, made83 = [], []
+def gh83(method, path, body=None, **k):
+    if path.startswith("/repos/o/r/pulls?"):
+        return [dict(p) for p in prs83]
+    if path == "/repos/o/r/pulls" and method == "POST":
+        made83.append(body); prs83.append({"number": 100 + len(made83), "state": "open", "head": {"ref": body["head"], "sha": "?"}})
+        return {"number": 100 + len(made83)}
+    raise AssertionError((method, path))
+sy.tm.gh = gh83
+entry83 = {"repo": "o/r", "copies": [{"name": "github", "url": "file://" + copy83, "import": ["claude/*"]}]}
+sync83 = lambda **k: sy.sync_repo(entry83, "file://" + home83, **k)["copies"][0]
+c83 = sync83()
+assert c83["out"] == {"main": "pushed"} and c83["imported"] == [] and not made83, c83
+assert g83("rev-parse", "main", cwd=copy83) == g83("rev-parse", "main", cwd=home83)
+assert sync83()["out"] == {"main": "up to date"}
+# a cloud session's branch on the copy comes home as a PR, its commit messages in the body (so `Closes #N` adopts a card)
+g83("clone", "-q", copy83, cw83)
+g83("checkout", "-qb", "claude/fix", cwd=cw83); commit83(cw83, "b.txt", "Fix the thing\n\nCloses #5"); g83("push", "-q", "origin", "claude/fix", cwd=cw83)
+g83("checkout", "-qb", "other/y", cwd=cw83); commit83(cw83, "c.txt", "Not for the home"); g83("push", "-q", "origin", "other/y", cwd=cw83)
+c83 = sync83()
+assert c83["imported"] == ["claude/fix"] and c83["prs"] == [101], c83
+assert made83[0]["head"] == "claude/fix" and made83[0]["base"] == "main" and made83[0]["title"] == "Fix the thing" and "Closes #5" in made83[0]["body"]
+assert g83("rev-parse", "claude/fix", cwd=home83) == g83("rev-parse", "claude/fix", cwd=copy83)
+assert "other/y" not in g83("branch", cwd=home83), "only the copy's import patterns come home"
+c83 = sync83()
+assert c83["imported"] == [] and c83["prs"] == [] and len(made83) == 1, "nothing new: no second PR"
+# the copy rewrites its branch (a rebase): the home takes it as it is, since the copy is that branch's one writer
+g83("checkout", "-q", "claude/fix", cwd=cw83); g83("commit", "-q", "--amend", "-m", "Fix the thing, better\n\nCloses #5", cwd=cw83)
+g83("push", "-q", "--force", "origin", "claude/fix", cwd=cw83)
+assert sync83()["imported"] == ["claude/fix"] and g83("rev-parse", "claude/fix", cwd=home83) == g83("rev-parse", "claude/fix", cwd=copy83)
+# landed on the home: main goes out to the copy, and a branch already in main gets no PR
+g83("fetch", "-q", "origin", "claude/fix", cwd=wk83); g83("merge", "-q", "--ff-only", "FETCH_HEAD", cwd=wk83); g83("push", "-q", "origin", "HEAD:main", cwd=wk83)
+prs83[0]["state"] = "closed"
+c83 = sync83()
+assert c83["out"] == {"main": "pushed"} and c83["prs"] == [] and g83("rev-parse", "main", cwd=copy83) == g83("rev-parse", "main", cwd=home83)
+# a PR closed at the branch's current commit stays closed; a new push to the branch brings it back
+g83("checkout", "-qb", "claude/nope", cwd=cw83); g83("fetch", "-q", "origin", cwd=cw83); g83("reset", "-q", "--hard", "origin/main", cwd=cw83)
+commit83(cw83, "d.txt", "A bad idea"); g83("push", "-q", "origin", "claude/nope", cwd=cw83)
+assert sync83()["prs"] == [102]
+prs83[-1].update(state="closed", head={"ref": "claude/nope", "sha": g83("rev-parse", "claude/nope", cwd=copy83)})
+assert sync83()["prs"] == [], "closed at this commit: left alone"
+commit83(cw83, "d.txt", "A better idea"); g83("push", "-q", "origin", "claude/nope", cwd=cw83)
+assert sync83()["prs"] == [103], "a new commit reopens the question"
+# the copy's main has commits of its own: reported, never overwritten, unless forced once
+g83("checkout", "-q", "main", cwd=cw83); g83("reset", "-q", "--hard", "origin/main", cwd=cw83)
+commit83(cw83, "e.txt", "Written on the copy's main"); g83("push", "-q", "origin", "main", cwd=cw83)
+commit83(wk83, "f.txt", "The home moves on"); g83("push", "-q", "origin", "HEAD:main", cwd=wk83)
+copy_main83 = g83("rev-parse", "main", cwd=copy83)
+assert sync83()["out"] == {"main": "diverged"} and g83("rev-parse", "main", cwd=copy83) == copy_main83
+flagged83 = []
+sy.tm.issues = lambda q: [{"title": t} for t, _, _ in flagged83]
+sy.tm.new_issue = lambda title, body, labels: flagged83.append((title, body, labels)) or {"number": 1}
+sy.flag("o/r", "github", "main"); sy.flag("o/r", "github", "main")
+assert len(flagged83) == 1 and "force" in flagged83[0][1] and flagged83[0][2] == ["needs-human"], "one issue per diverged branch, a human's"
+assert sync83(force=True)["out"] == {"main": "forced"} and g83("rev-parse", "main", cwd=copy83) == g83("rev-parse", "main", cwd=home83)
+# a copy whose token isn't set is skipped; tokens go in the URL and never into anything printed
+c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "gh", "url": "https://github.com/o/r.git", "token": "NO_SUCH_TOKEN_83"}]},
+                   "file://" + home83)["copies"][0]
+assert c83["note"] == "skipped: the secret NO_SUCH_TOKEN_83 isn't set" and c83["out"] == {}
+assert sy.authed("https://github.com/o/r.git", "t0k/en") == "https://x-access-token:t0k%2Fen@github.com/o/r.git"
+assert sy.authed("file:///x", "t0k") == "file:///x" and sy.scrub("https://x-access-token:t0k%2Fen@github.com said t0k/en") == "https://x-access-token:***@github.com said ***"
+sy.tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 404: not found"))
+assert sy.config() == [] and sy.main() == 0, "no sync.json: nothing to sync"
+print("ALL OK 83")
+
 
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.

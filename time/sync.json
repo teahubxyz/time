@@ -1,0 +1,7 @@
+{
+ "_about": "Copies of repos on other forges, kept in step by .github/time/sync.py (the sync workflow). Each repo has one home (this forge) and every branch one writer: the `out` branches go from the home to each copy, fast-forward only; a copy's branches matching its `import` patterns come back to the home as PRs. `token` names the secret holding the copy's token, never the token itself; a copy whose secret isn't set is skipped. A GitHub copy needs GitHub Actions turned off, since these workflows must only run here.",
+ "repos": [
+  {"repo": "teahubxyz/time", "out": ["main"],
+   "copies": [{"name": "github", "url": "https://github.com/teahubxyz/time.git", "token": "GITHUB_MIRROR_TOKEN", "import": ["claude/*"]}]}
+ ]
+}

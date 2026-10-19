@@ -1,0 +1,197 @@
+"""Sync: keep a repo's copies on other forges in step with its home (time/sync.json).
+
+    python3 .github/time/sync.py       # every repo in time/sync.json; this forge is the home
+
+One rule keeps it safe: each repo has one home, and every branch has one writer. Two writers on one branch is how work
+gets lost, which is why neither of Gitea's own mirrors fits: a push mirror force-pushes every branch (it would delete a
+cloud session's branch on the copy), and a pull mirror makes the receiving repo read-only.
+
+- Out: the home's branches in `out` (default: main) are pushed to every copy, fast-forward only. A copy whose branch
+  has commits of its own is reported (one issue on this repo), never overwritten. SYNC_FORCE=1 (the workflow's `force`
+  input) force-pushes once, e.g. to replace an archived copy's old history.
+- In: branches on a copy that match its `import` patterns (claude/* for cloud sessions on GitHub) are the copy's to
+  write. They are pushed to the home under the same name and get a PR there, which Time's council reviews and lands
+  like any other; the landed work then flows back out with main. A branch already in main, or one whose PR was closed
+  at the same commit, is left alone.
+
+time/sync.json:
+    {"repos": [{"repo": "teahubxyz/time", "out": ["main"],
+                "copies": [{"name": "github", "url": "https://github.com/teahubxyz/time.git",
+                            "token": "GITHUB_MIRROR_TOKEN", "import": ["claude/*"]}]}]}
+
+`token` names a secret (an environment variable the workflow passes), never the token itself; a copy whose token isn't
+set is skipped with a note. The same script syncs Gitea with Gitea: it runs on the home, so a pair the home can't
+reach (hb-5's local Gitea from prod) runs from the side that can reach both, with that side's own sync.json.
+"""
+from __future__ import annotations
+
+import base64
+import fnmatch
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+import urllib.parse
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+_spec = importlib.util.spec_from_file_location("tm", HERE / "time.py")
+tm = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(tm)
+CONFIG = "time/sync.json"
+SECRETS: list[str] = []   # every token used this run, scrubbed from anything printed or posted
+
+
+def scrub(text: str) -> str:
+    for s in SECRETS:
+        if s:
+            text = text.replace(s, "***").replace(urllib.parse.quote(s, safe=""), "***")
+    return text
+
+
+def config() -> list[dict]:
+    """time/sync.json on the default branch, through the API (the workflow checks out only .github/time)."""
+    try:
+        f = tm.gh("GET", f"/repos/{tm.REPO}/contents/{CONFIG}")
+    except RuntimeError as e:
+        if "-> 404" in str(e):
+            return []
+        raise
+    data = json.loads(base64.b64decode(f.get("content") or "").decode() or "{}")
+    return [r for r in data.get("repos") or [] if isinstance(r, dict)]
+
+
+def authed(url: str, token: str, user: str = "x-access-token") -> str:
+    """The URL with credentials, for https; file:// and the like as given."""
+    p = urllib.parse.urlsplit(url)
+    if p.scheme not in ("https", "http") or not token:
+        return url
+    SECRETS.append(token)
+    cred = f"{urllib.parse.quote(user, safe='')}:{urllib.parse.quote(token, safe='')}"
+    return urllib.parse.urlunsplit((p.scheme, f"{cred}@{p.netloc}", p.path, p.query, p.fragment))
+
+
+def git(*args: str, cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
+    p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=300,
+                       env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+    if check and p.returncode:
+        raise RuntimeError(f"git {args[0]} failed: {scrub(p.stderr.strip())[-400:]}")
+    return p
+
+
+def heads(url: str, cwd: str) -> dict[str, str]:
+    """{branch: sha} of a remote."""
+    out = git("ls-remote", "--heads", url, cwd=cwd).stdout
+    return {ref.split("refs/heads/", 1)[1]: sha for sha, ref in (line.split("\t") for line in out.splitlines() if "\t" in line)}
+
+
+def push_out(work: str, home: dict[str, str], url: str, branch: str, force: bool) -> str:
+    """One home branch to one copy: 'up to date', 'pushed', 'forced' or 'diverged' (the copy has commits of its own)."""
+    if branch not in home:
+        return "missing on the home"
+    p = git("push", "--porcelain", url, f"{'+' if force else ''}refs/home/{branch}:refs/heads/{branch}", cwd=work, check=False)
+    text = p.stdout + p.stderr
+    if p.returncode == 0:
+        return "up to date" if "[up to date]" in text else ("forced" if force else "pushed")
+    if "[rejected]" in text or "non-fast-forward" in text or "fetch first" in text:
+        return "diverged"
+    raise RuntimeError(f"push {branch} failed: {scrub(text.strip())[-400:]}")
+
+
+def landed(work: str, ref: str, base: str) -> bool:
+    return git("merge-base", "--is-ancestor", ref, base, cwd=work, check=False).returncode == 0
+
+
+def ensure_pr(repo: str, work: str, branch: str, base: str, copy: str, where: str) -> int | None:
+    """A PR on the home for an imported branch, unless one is open for it, it is already in the base, or a PR for it
+    was closed at this same commit (a human or the council said no; a new push brings it back)."""
+    ref = f"refs/copy/{branch}"
+    if landed(work, ref, f"refs/home/{base}"):
+        return None
+    tip = git("rev-parse", ref, cwd=work).stdout.strip()
+    for p in tm.gh("GET", f"/repos/{repo}/pulls?state=all&limit=50") or []:
+        head = p.get("head") or {}
+        if head.get("ref") == branch and (p.get("state") == "open" or head.get("sha") == tip):
+            return None
+    log = git("log", "--reverse", "--format=%s%n%n%b%n---", f"refs/home/{base}..{ref}", cwd=work).stdout.strip()
+    title = (log.splitlines() or [branch])[0][:200]
+    body = (f"From {copy}: `{branch}` ({where}), brought in by sync.py. Time's council reviews it like any PR.\n\n"
+            f"Commits:\n\n{log[:6000]}\n\n<sub>sync.py: edit this branch on {copy}; it is the copy's to write, and the "
+            f"next sync brings the change here.</sub>")
+    return tm.gh("POST", f"/repos/{repo}/pulls", {"head": branch, "base": base, "title": title, "body": body})["number"]
+
+
+def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
+    repo = entry.get("repo") or tm.REPO
+    out = [b for b in entry.get("out") or ["main"] if isinstance(b, str)]
+    base = out[0]
+    report: dict = {"repo": repo, "copies": []}
+    with tempfile.TemporaryDirectory() as work:
+        git("init", "--bare", "-q", work)
+        home = heads(home_url, work)
+        wanted = [b for b in out if b in home]
+        if wanted:
+            git("fetch", "-q", home_url, *[f"+refs/heads/{b}:refs/home/{b}" for b in wanted], cwd=work)
+        for c in entry.get("copies") or []:
+            name, where = str(c.get("name") or c.get("url")), str(c.get("url") or "")
+            token = os.environ.get(str(c.get("token") or ""), "") if c.get("token") else ""
+            r: dict = {"copy": name, "out": {}, "imported": [], "prs": [], "note": ""}
+            report["copies"].append(r)
+            if c.get("token") and not token:
+                r["note"] = f"skipped: the secret {c['token']} isn't set"
+                continue
+            url = authed(where, token, str(c.get("user") or "x-access-token"))
+            for b in out:
+                r["out"][b] = push_out(work, home, url, b, force)
+            pats = [p for p in c.get("import") or [] if isinstance(p, str)]
+            if not pats:
+                continue
+            theirs = heads(url, work)
+            mine = heads(home_url, work)
+            for branch, sha in sorted(theirs.items()):
+                if branch in out or not any(fnmatch.fnmatch(branch, p) for p in pats):
+                    continue
+                git("fetch", "-q", url, f"+refs/heads/{branch}:refs/copy/{branch}", cwd=work)
+                if mine.get(branch) != sha:   # the copy writes this branch: the home takes it as it is
+                    git("push", "-q", "--force", home_url, f"refs/copy/{branch}:refs/heads/{branch}", cwd=work)
+                    r["imported"].append(branch)
+                n = ensure_pr(repo, work, branch, base, name, where)
+                if n:
+                    r["prs"].append(n)
+    return report
+
+
+def flag(repo: str, copy: str, branch: str) -> None:
+    """One open issue per diverged copy branch, labelled needs-human: whether to force is a human's (or the CEO's)
+    call, so neither the worker nor the router takes it."""
+    title = f"Sync: {copy}'s {branch} has commits of its own ({repo})"
+    if any(i.get("title") == title for i in tm.issues("state=open")):
+        return
+    tm.new_issue(title, f"sync.py pushes `{branch}` from the home to {copy} fast-forward only, and {copy}'s `{branch}` has "
+                 f"commits the home doesn't. Nothing was overwritten. Either bring those commits to the home (a branch "
+                 f"and a PR), or replace {copy}'s history: Actions → sync → Run workflow with `force`.\n\n"
+                 f"DONE: {copy}'s `{branch}` follows the home again and this sync run is green.", ["needs-human"])
+
+
+def main() -> int:
+    entries = config()
+    if not entries:
+        print(f"sync: no {CONFIG}, nothing to sync")
+        return 0
+    force = (os.environ.get("SYNC_FORCE") or "").lower() in ("1", "true", "yes")
+    token = os.environ.get("TIME_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    for e in entries:
+        repo = e.get("repo") or tm.REPO
+        rep = sync_repo(e, authed(f"{tm.SERVER}/{repo}.git", token), force)
+        for c in rep["copies"]:
+            print(f"sync {repo} -> {c['copy']}: out {c['out']} imported {c['imported']} prs {c['prs']} {c['note']}".rstrip())
+            for b, state in c["out"].items():
+                if state == "diverged" and repo == tm.REPO:
+                    flag(repo, c["copy"], b)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
