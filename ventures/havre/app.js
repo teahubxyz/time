@@ -885,7 +885,7 @@ function followMedia(log) {
 
 // ---------- editing and deleting messages ----------
 function msgTools(el, t, m) {
-  if (!t || !m || !m.id || m.demo) return;
+  if (!t || !m || !m.id) return;
   el.dataset.msg = m.id;
   el.append(h("span", { class: "msgtools" }, ...slashed([
     m.role === "user" && !m.media ? linkish("edit", () => editMsg(t, m), { "aria-label": "Edit this message" }) : null,
