@@ -1190,7 +1190,8 @@ assert "**queued today**" in rt.table(r80, rt.pick(r80, live80, 10.0, 2), "live"
 aspec = importlib.util.spec_from_file_location("astra80", Path(__file__).resolve().parent / "astra.py")
 astra = importlib.util.module_from_spec(aspec); aspec.loader.exec_module(astra)
 said80, labelled80, made80, asked80 = [], [], [], []
-astra.tm.issues = lambda q: open80 + [iss80(57, "Astra log", labels=["astra"])]
+closed80 = []
+astra.tm.issues = lambda q: closed80 if q.startswith("state=closed") else open80 + [iss80(57, "Astra log", labels=["astra"])]
 astra.tm.budget = lambda: (1.0, 15.0, 10.0, 100.0)
 astra.tm.comment = lambda n, text, meta: said80.append((n, text, meta))
 astra.tm.label = lambda n, name: labelled80.append((n, name))
@@ -1212,6 +1213,46 @@ meta80 = said80[-1][2]
 assert meta80["picked"] == [{"n": 1, "kind": "feature"}, {"n": 5, "kind": "optimization"}] and meta80["new"] == [91] and meta80["queued"] == 2
 astra.tm.think = lambda *a: (_ for _ in ()).throw(astra.tm.Budget("today's spend is over the cap"))
 assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0 and said80[-1][2]["capped"]
+# money left (#175): the allowance left in the pool that takes the worker's route, else the daily cap's remainder;
+# never more than the month has left
+real175 = (astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent, astra.tm.budget, os.environ.get("TIME_WORKER"))
+astra.tm.pools = lambda: [{"name": "anthropic-credits", "kind": "expiring", "routes": ["anthropic"]}]
+astra.tm.allowance = lambda p, now=None: 3.0
+astra.tm.pool_spent = lambda p, now=None: 1.0
+os.environ["TIME_WORKER"] = "claude:sonnet"
+assert astra.money_left() == (2.0, "pool anthropic-credits"), astra.money_left()
+astra.tm.budget = lambda: (1.0, 15.0, 99.5, 100.0)
+assert astra.money_left() == (0.5, "pool anthropic-credits"), "the month's remainder caps it"
+astra.tm.budget = real175[3]
+os.environ["TIME_WORKER"] = "venice:kimi"
+assert astra.money_left() == (14.0, "daily cap"), "a route with no pool: the daily cap's remainder"
+os.environ.pop("TIME_WORKER")
+assert astra.money_left() == (14.0, "daily cap"), "the Cursor worker has no seat route"
+# live with $0.50 left in the pool: the M doesn't fit, the S behind it does; the header and the seat both see the figure
+os.environ["TIME_WORKER"] = "claude:sonnet"
+astra.tm.pool_spent = lambda p, now=None: 2.5
+astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]
+labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert labelled80 == [(5, "queued")], labelled80
+assert "$0.50 left to queue against (pool anthropic-credits)" in said80[-1][1] and "$0.50 left to queue against" in asked80[-1][2]
+# the seat sees the cards closed lately, and a new card repeating an open or lately closed one is not written
+closed80[:] = [iss80(137, "A label filter is checked on every row (housekeeping listed all 59 open issues as parked)")]
+reply80["new"] = [{"title": "A label filter is checked on every row", "body": "again"}, {"title": "Fix the docs!", "body": "x"},
+                  {"title": "Write a thing", "body": "do it"}]
+labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert [m[0] for m in made80] == ["Write a thing"], made80
+assert "#137 A label filter is checked on every row" in asked80[-1][2] and "closed lately" in asked80[-1][1]
+assert "Not written, repeats of existing cards: A label filter is checked on every row (#137); Fix the docs! (#2)." in said80[-1][1], said80[-1][1]
+assert astra.repeat_of("Write a thing", open80 + closed80) is None and astra.repeat_of("", open80) is None
+assert astra.repeat_of("Tool: havre_new", [iss80(100, "Tool: havre_check")]) is None, "siblings are not repeats"
+assert astra.repeat_of("Anthem: SKILL.md, /llms.txt and a skills index", [iss80(112, "Glitztype: SKILL.md, /llms.txt and a skills index")]) is None
+astra.tm.issues = lambda q: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
+assert astra.closed_lately() == [], "the closed list is context: unreadable, it is empty"
+astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent = real175[:3]
+if real175[4] is None: os.environ.pop("TIME_WORKER", None)
+else: os.environ["TIME_WORKER"] = real175[4]
 assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
 # the heartbeat promotes queued cards in the live ranking's order, oldest first without one
 real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)

@@ -15,8 +15,10 @@ one issue, "Astra log", so a human can read the day's reasoning in one place and
 The router (time/router.json, `mode`: off | dry | live; router.py): instead of picking cards in prose, the seat judges
 every candidate (its kind, its value 1-5, its size) and code ranks them with the owner's weights per kind, a restless
 boost for kinds not picked lately, and the card's age. The log shows the ranked table. `dry` writes it and queues
-nothing; `live` queues from the top while the day's money left covers each card's estimated cost, creates the seat's
-new cards unqueued (they are candidates the next day), and the heartbeat promotes queued cards in the ranked order.
+nothing; `live` queues from the top while the day's money left covers each card's estimated cost (the allowance left
+in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
+creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
+card), and the heartbeat promotes queued cards in the ranked order.
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
@@ -75,7 +77,8 @@ For every candidate give:
 - size: S (well under one worker session), M (one session), L (more than one: it must be split first)
 - why: one short sentence
 You may also write up to {max_new} new cards for work the board is missing; they are candidates from tomorrow on.
-Never write one that posts outside the repo or touches workflows, secrets or variables.
+Never write one that posts outside the repo or touches workflows, secrets or variables, and never one for work that is
+already a candidate or is in the list of cards closed lately: that work is done or under way.
 
 Answer with JSON only, no prose around it:
 {{"note": "<3-6 sentences: what happened yesterday and what matters today>",
@@ -173,6 +176,45 @@ def parse(raw: str) -> dict:
     return {}
 
 
+def money_left() -> tuple[float, str]:
+    """What the router may queue against today, and where it comes from (#175): the allowance left in the pool that takes
+    the worker's route (as budget_check sees it), or the daily cap's remainder without one; either way no more than
+    what's left of the monthly cap."""
+    today, day_cap, month, month_cap = tm.budget()
+    spec = (os.environ.get("TIME_WORKER") or "cursor").strip()
+    p = tm.pool_for(tm.provider_of(tm.worker_seat_model(spec)[1])) if tm.seat_worker(spec) else None
+    left, source = (tm.allowance(p) - tm.pool_spent(p), f"pool {p['name']}") if p else (day_cap - today, "daily cap")
+    return max(0.0, min(left, month_cap - month)), source
+
+
+def closed_lately(days: int = 14) -> list[dict]:
+    """Cards closed (done, or dropped) in the last `days` days, newest first: the seat sees them so it doesn't write a
+    card for work already finished (it proposed the housekeeping label fix two days running after #137 had landed)."""
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    try:
+        return [i for i in tm.issues(f"state=closed&since={since}") if i.get("title") != LOG_TITLE]
+    except Exception as e:  # noqa: BLE001  context, not a dependency
+        print(f"closed cards unreadable: {str(e)[:120]}")
+        return []
+
+
+def _norm(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+
+
+def repeat_of(title: str, known: list[dict]) -> int | None:
+    """The open or lately closed card a proposed title repeats, if any: the same words, or the whole of one title (four
+    words or more) inside the other. Not a similarity score: sibling cards share most of their words ("Tool: havre_check",
+    "Tool: havre_new") and are not repeats. Paraphrases are the seat's to avoid, with the closed list in front of it."""
+    t = _norm(title)
+    for i in known:
+        k = _norm(i.get("title", ""))
+        short, long_ = sorted((t, k), key=len)
+        if t and k and (t == k or (len(short.split()) >= 4 and short in long_)):
+            return i.get("number")
+    return None
+
+
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
@@ -180,8 +222,13 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
+    left, source = money_left()
+    closed = closed_lately()
+    done = "\n".join(f"- #{i['number']} {i['title']}" for i in closed[:50]) or "- (none)"
     user = (f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nSpend: ${today:.2f} of "
-            f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month.\n\nCandidates ({len(cands)}):\n\n{listing}")
+            f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month; ${left:.2f} left to queue against ({source})."
+            f"\n\nCards closed in the last 14 days (done or dropped; don't write these again):\n{done}"
+            f"\n\nCandidates ({len(cands)}):\n\n{listing}")
     try:
         out = parse(tm.think(seat, None, None, ROUTER.format(max_new=max_new), user))
     except tm.Budget as e:
@@ -189,8 +236,12 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         return 0
     assess = {str(a.get("key") or "").strip(): a for a in out.get("assess") or [] if isinstance(a, dict)}
     ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), dt.datetime.now(dt.timezone.utc).date())
-    picks = router.pick(ranked, cfg, max(0.0, day_cap - today), max_ready)
-    new = [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")][:max_new]
+    picks = router.pick(ranked, cfg, left, max_ready)
+    new, repeats = [], []
+    for c in [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]:
+        n = repeat_of(str(c["title"]), open_issues + closed)
+        (repeats.append((c, n)) if n else new.append(c))
+    new = new[:max_new]
     live, created = cfg["mode"] == "live", []
     if live:
         for r in picks:
@@ -202,7 +253,8 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
             created.append(tm.new_issue(str(c["title"])[:200], body + "\n\n<sub>card written by Astra</sub>", [])["number"])
     unjudged = sum(1 for r in ranked if not r["judged"])
     w = cfg["weights"]
-    head = (f"🔭 Astra ({seat}), router `{cfg['mode']}`, spend ${today:.2f} of ${day_cap:.2f} today. Weights: "
+    head = (f"🔭 Astra ({seat}), router `{cfg['mode']}`, spend ${today:.2f} of ${day_cap:.2f} today, ${left:.2f} left to "
+            f"queue against ({source}). Weights: "
             + ", ".join(f"{k} {w[k]:g}" for k in router.KINDS) + f"; restless {cfg['restless']:g}/day.")
     lines = [head, "", str(out.get("note") or "(no note)"), "", router.table(ranked, picks, cfg["mode"]), ""]
     if unjudged:
@@ -216,6 +268,9 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
                      + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + ".")
         if new:
             lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
+    if repeats:
+        lines.append("Not written, repeats of existing cards: "
+                     + "; ".join(f"{router._txt(c['title'], 80)} (#{n})" for c, n in repeats) + ".")
     meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
             "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
             "would": [r["n"] for r in picks] if not live else [], "new": created}
