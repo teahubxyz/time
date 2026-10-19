@@ -1318,6 +1318,7 @@ vt170.ack_signups = vt170.refresh_daily = vt170.refresh_backends = lambda reg: N
 vt170.venture_cards = vt170.batch_cards = lambda state="open", n=30: []
 vt170.new_card = lambda title: cards170.append(title) or {"number": len(cards170), "labels": [{"name": "venture"}]}
 vt170.is_due = lambda *a: False
+vt170.comments_of = lambda n: []
 def loop170(mode, start=""):
     cards170.clear()
     for k, v in (("TIME_VENTURE", mode), ("TIME_VENTURE_START", start)):
