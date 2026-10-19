@@ -16,11 +16,11 @@ cloud session's branch on the copy), and a pull mirror makes the receiving repo 
 
 time/sync.json:
     {"repos": [{"repo": "teahubxyz/time", "out": ["main"],
-                "copies": [{"name": "github", "url": "https://github.com/teahubxyz/time.git",
-                            "token": "GITHUB_MIRROR_TOKEN", "import": ["claude/*"]}]}]}
+                "copies": [{"name": "github", "url": "git@github.com:teahubxyz/time.git",
+                            "ssh_key": "SYNC_GITHUB_KEY", "import": ["claude/*"]}]}]}
 
-`token` names a secret (an environment variable the workflow passes), never the token itself; a copy whose token isn't
-set is skipped with a note. Or `ssh_key` names a secret holding an SSH private key (a GitHub deploy key: write access
+`token` names a secret (an environment variable the workflow passes; Gitea refuses secret names starting GITHUB_ or
+GITEA_), never the token itself; a copy whose token isn't set is skipped with a note. Or `ssh_key` names a secret holding an SSH private key (a GitHub deploy key: write access
 to that one repo and nothing else) for an `ssh://` or `git@host:` URL; the host's keys are pinned (github.com's are
 built in, others go in `known_hosts`), never learned on first use. The same script syncs Gitea with Gitea: it runs on the home, so a pair the home can't
 reach (hb-5's local Gitea from prod) runs from the side that can reach both, with that side's own sync.json.

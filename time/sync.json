@@ -1,5 +1,5 @@
 {
- "_about": "Copies of repos on other forges, kept in step by .github/time/sync.py (the sync workflow). Each repo has one home (this forge) and every branch one writer: the `out` branches go from the home to each copy, fast-forward only; a copy's branches matching its `import` patterns come back to the home as PRs. `token` (https) or `ssh_key` (a deploy key, for ssh/git@ URLs; host keys pinned) names the secret that holds the credential, never the credential itself; a copy whose secret isn't set is skipped. A GitHub copy needs GitHub Actions turned off, since these workflows must only run here.",
+ "_about": "Copies of repos on other forges, kept in step by .github/time/sync.py (the sync workflow). Each repo has one home (this forge) and every branch one writer: the `out` branches go from the home to each copy, fast-forward only; a copy's branches matching its `import` patterns come back to the home as PRs. `token` (https) or `ssh_key` (a deploy key, for ssh/git@ URLs; host keys pinned) names the secret that holds the credential, never the credential itself (Gitea refuses secret names starting GITHUB_ or GITEA_); a copy whose secret isn't set is skipped. A GitHub copy needs GitHub Actions turned off, since these workflows must only run here.",
  "repos": [
   {
    "repo": "teahubxyz/time",
@@ -10,7 +10,7 @@
     {
      "name": "github",
      "url": "git@github.com:teahubxyz/time.git",
-     "ssh_key": "GITHUB_MIRROR_KEY",
+     "ssh_key": "SYNC_GITHUB_KEY",
      "import": [
       "claude/*"
      ]

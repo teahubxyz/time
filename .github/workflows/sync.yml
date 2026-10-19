@@ -34,5 +34,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # branches and PRs on the home go in as the `time` user
           SYNC_FORCE: ${{ inputs.force && '1' || '' }}
-          GITHUB_MIRROR_KEY: ${{ secrets.GITHUB_MIRROR_KEY }}       # github.com/teahubxyz/time: a deploy key with write access
-          GITHUB_MIRROR_TOKEN: ${{ secrets.GITHUB_MIRROR_TOKEN }}   # or a token, for a copy over https
+          # Gitea refuses secret names starting GITHUB_ or GITEA_, hence SYNC_
+          SYNC_GITHUB_KEY: ${{ secrets.SYNC_GITHUB_KEY }}       # github.com/teahubxyz/time: a deploy key with write access
+          SYNC_GITHUB_TOKEN: ${{ secrets.SYNC_GITHUB_TOKEN }}   # or a token, for a copy over https
