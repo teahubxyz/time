@@ -38,7 +38,30 @@ DONE = re.compile(r"^\s*DONE:", re.M | re.I)
 NEW_VENTURE = {"key": "venture:new", "n": None, "title": "Start a new venture: research, pick, build and launch one page",
                "body": "The venture loop (venture.py): one venture, researched and picked by the lead, built and judged.",
                "labels": [], "lined_up": False, "actionable": False, "kind": "venture", "unblocks": 0, "created": "",
-               "why_not": "not wired to the router yet; the venture loop is paused (TIME_VENTURE=off)"}
+               "why_not": "the venture loop isn't in router mode (TIME_VENTURE=router, and Astra needs TIME_VENTURE_MODE=router)"}
+
+
+def new_venture(mode: str) -> dict:
+    """"Start a new venture": actionable only when Astra is told the loop is in router mode (the loop then starts a card
+    only when asked). Its size and cost come from the seat like any card's."""
+    return {**NEW_VENTURE, "actionable": True, "why_not": ""} if mode == "router" else dict(NEW_VENTURE)
+
+
+def v2_candidates(reg: dict) -> list[dict]:
+    """A "v2 of <venture>" for every live venture with signups: the studio's next version of what people asked for."""
+    out = []
+    for v in reg.get("ventures") or []:
+        try:
+            signups = int(v.get("signups") or 0)
+        except (TypeError, ValueError):
+            continue
+        if v.get("status") != "live" or signups <= 0 or not v.get("slug"):
+            continue
+        name = _txt(v.get("name") or v["slug"], 60)
+        out.append({**NEW_VENTURE, "key": f"venture:v2:{v['slug']}", "title": f"v2 of {name} ({signups} signups)",
+                    "body": _txt(f"{v.get('one_liner', '')} Next: {v.get('next', '')}", 400), "actionable": True, "why_not": "",
+                    "slug": v["slug"], "name": name, "next_v": int(v.get("version") or 1) + 1})
+    return out
 
 
 def _num(v, default: float, lo: float = 0.0, hi: float = 100.0) -> float:
