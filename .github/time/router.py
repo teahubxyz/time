@@ -5,8 +5,8 @@ judgments into one ranked list, in arithmetic anyone can check, and picks from t
 promotes queued cards in the same order instead of oldest first.
 
 A candidate is an open card a worker can take (a `DONE:` line; not a parent, not a human's, not the venture loop's
-own), or work with no card yet that the factory could start (a new venture). Each has a kind: venture, feature,
-refinement or optimization.
+own), or work with no card yet that the factory could start (a new venture, or an optimization the factory's own
+records show: see below). Each has a kind: venture, feature, refinement or optimization.
 
     score = weight[kind] x restless(kind) x age x (value + 0.5 x unblocks) / size
 
@@ -20,6 +20,12 @@ default: the bigger ones) are labelled `cloud`, up to `per_day` cards in the lan
 worker. A launcher signed in to the owner's claude.ai account starts a Claude Code cloud session for each (the cloud-
 session credit pays); the session's `claude/card-N-*` branch comes home through sync.py as a PR, sync relabels the card
 `ready`, and the heartbeat adopts and reviews it like any card PR. `per_day: 0` (the default) is no cloud lane.
+
+Optimization candidates (#171): the router reads three of the factory's own records over the last week and proposes the
+work no one wrote a card for — the ledger (a route or model that takes over half the week's spend, a model whose spend
+per call is double its own median), the Actions runs (a workflow that keeps failing or being cancelled) and the parked
+cards (an `error` or `stuck` beat Time will not retry again). Each finding is a synthetic candidate the seat judges like
+any other; live, a picked one is written as a card, never worked on in place. See the section below.
 
 An L is ranked but never queued: a card is what one worker session finishes, so it is split first. Nor is a card that
 waits: on a card still open (its `Depends on #N`), or on whatever the seat says blocks it (a PR that can't merge, a
@@ -121,6 +127,156 @@ def candidates(issues: list[dict]) -> list[dict]:
     return out
 
 
+# ---------- optimization candidates from the factory's own records (#171) ----------
+# Three sources, each read by arithmetic over the last week, so optimization work no longer waits for a human to notice
+# it. Every finding is a synthetic candidate: key `opt:<source>:<id>`, kind optimization, a drafted title and body, and
+# no card (`n` is None). The seat judges it like any other candidate; live, a picked one is written as a card (unqueued,
+# a candidate from tomorrow) and never worked on in place. A source an open card already names is not proposed again.
+
+OPT = "opt:"
+OPT_DAYS = 7              # the window the ledger and the runs are read over
+OPT_MIN_USD = 0.25        # a week's spend under this is pennies: nothing to optimize
+OPT_SHARE = 0.5           # a group over this share of the week's spend is a candidate
+OPT_SKEW = 2.0            # a model whose spend per call is this many times its own median is a candidate
+OPT_CALLS = 4             # fewer calls than this say nothing about a model's median
+OPT_FAILS = 2             # failed or cancelled runs of one workflow that make a candidate
+OPT_PARKED_DAYS = 1       # a parked card is a candidate once its beat is older than this
+BAD_RUN = ("failure", "cancelled", "canceled")
+NAMES = re.compile(rf"^\s*Router:\s*({OPT}\S+)", re.M)
+
+
+def _recent(at, today: dt.date, days: int) -> bool:
+    """Is this timestamp inside the last `days` days? By the day, like the rest of the router's arithmetic."""
+    return str(at or "")[:10] >= (today - dt.timedelta(days=days)).isoformat()
+
+
+def _median(xs: list[float]) -> float:
+    s, n = sorted(xs), len(xs)
+    return 0.0 if not n else s[n // 2] if n % 2 else (s[n // 2 - 1] + s[n // 2]) / 2
+
+
+def _opt(source: str, ident: str, title: str, body: list[str], created: str,
+         done: str = "PR open that does the above, tests green.") -> dict:
+    """One synthetic candidate. The body names its own key, which is how a source is proposed once and not every day,
+    and carries the `DONE:` line the card is written with. A key holds no spaces: `named` reads it back as one word."""
+    word = re.sub(r"\s+", "-", str(ident).strip()) or "unknown"
+    key = f"{OPT}{source}:{word}"
+    return {"key": key, "n": None, "title": _txt(title, 120),
+            "body": "\n".join(body) + f"\n\nRouter: {key}\n\nDONE: {done}",
+            "labels": [], "lined_up": False, "actionable": True, "kind": "optimization", "unblocks": 0,
+            "created": created or ""}
+
+
+def ledger_candidates(rows: list[dict], today: dt.date, days: int = OPT_DAYS) -> list[dict]:
+    """The week's spend, grouped by model and by entry point (a line's `entry` where it has one, else `pool`, the route
+    it booked to). Two questions are worth a card: a group that took over half of what the factory spent, and a model
+    whose spend per call is double its own median (a few heavy calls hiding behind a cheap average). A dimension with
+    one group says nothing — everything went through it by definition — pennies are left alone (OPT_MIN_USD), and one
+    group yields at most one candidate."""
+    week = [r for r in rows or [] if isinstance(r, dict) and _recent(r.get("at"), today, days)]
+    total = sum(_num(r.get("usd"), 0.0, 0.0, 1e6) for r in week)
+    calls: dict[tuple[str, str], list[float]] = {}
+    for r in week:
+        for dim, name in (("model", r.get("model")), ("entry", r.get("entry") or r.get("pool"))):
+            if name:
+                calls.setdefault((dim, _txt(name, 60)), []).append(_num(r.get("usd"), 0.0, 0.0, 1e6))
+    alone = {dim for dim in ("model", "entry") if len([k for k in calls if k[0] == dim]) < 2}
+    out = []
+    for (dim, name), usd in sorted(calls.items()):
+        spent, n = sum(usd), len(usd)
+        what = "the model" if dim == "model" else "the entry point"
+        if spent < OPT_MIN_USD:
+            continue
+        if total and spent > OPT_SHARE * total and dim not in alone:
+            out.append(_opt("ledger", f"{dim}:{name}", f"Why did {name} cost ${spent:.2f} of the week's ${total:.2f}?", [
+                f"- Over the last {days} days {name} ({what}) booked ${spent:.2f} of the ${total:.2f} the factory spent "
+                f"on models, over {n} call(s): more than half of the bill.",
+                "- Read what those calls are and make them cheaper: a shorter system prompt, the prompt cache, a smaller "
+                "seat for the easy half of the work, or simply fewer calls.",
+                "- Change no behaviour the factory depends on, and say in the PR what the same week would have cost."],
+                today.isoformat()))
+            continue
+        per, mid = spent / n, _median(usd)
+        if dim == "model" and n >= OPT_CALLS and mid > 0 and per >= OPT_SKEW * mid:
+            out.append(_opt("ledger", f"{dim}:{name}", f"Why does {name} cost ${per:.4f} a call against a ${mid:.4f} median?", [
+                f"- {name} made {n} call(s) in the last {days} days for ${spent:.2f}: ${per:.4f} a call against a median "
+                f"of ${mid:.4f} a call, so a few heavy calls carry the bill.",
+                "- Find the heavy ones (the longest prompts, the longest answers) and cut what they send or ask for; the "
+                "cheap calls are already cheap.",
+                "- Say in the PR which calls they were and what they cost before and after."],
+                today.isoformat()))
+    return out
+
+
+def _workflow(run: dict) -> str:
+    """Which workflow a run belongs to: its file's name, else the workflow's name, else its id."""
+    path = str(run.get("path") or "").strip().rsplit("/", 1)[-1]
+    return _txt(path or run.get("name") or run.get("workflow_id") or "unknown", 60)
+
+
+def run_candidates(runs, today: dt.date, days: int = OPT_DAYS) -> list[dict]:
+    """Actions runs as `/actions/runs` gives them (the shape `tea_actions` reads: the list, or `{"workflow_runs": [...]}`).
+    A workflow with OPT_FAILS or more failed or cancelled runs in the window is one candidate, with the failure count
+    and the last run's id, which is where to start reading."""
+    rows = runs.get("workflow_runs") if isinstance(runs, dict) else runs
+    bad: dict[str, list[dict]] = {}
+    for r in rows or []:
+        if not isinstance(r, dict) or str(r.get("conclusion") or "").strip().lower() not in BAD_RUN:
+            continue
+        if _recent(r.get("created_at") or r.get("run_started_at") or r.get("started_at") or r.get("updated_at"), today, days):
+            bad.setdefault(_workflow(r), []).append(r)
+    out = []
+    for wf, rs in sorted(bad.items()):
+        if len(rs) < OPT_FAILS:
+            continue
+        last = max(rs, key=lambda r: (str(r.get("created_at") or ""), str(r.get("id") or "")))
+        out.append(_opt("ci", wf, f"Why does {wf} keep failing? {len(rs)} runs in {days} days", [
+            f"- `{wf}` has {len(rs)} failed or cancelled run(s) in the last {days} days; the last one is run "
+            f"`{last.get('id')}`. A workflow that fails this often is either broken or flaky, and either way the factory "
+            "reads its red as noise.",
+            "- Read that run, find the one cause, and fix it in the code the workflow runs (a test, a script, a missing "
+            "guard), not by making the check weaker.",
+            "- Workflow files are a human's: if the change belongs in `.github/workflows/`, write the exact change in the "
+            "PR and the commit message and stop at the code."],
+            today.isoformat()))
+    return out
+
+
+def parked_candidates(parked: list[dict], today: dt.date, days: int = OPT_PARKED_DAYS) -> list[dict]:
+    """Cards parked by an `error` or `stuck` beat (as astra.parked_cards reads them): one candidate each, to retry it by
+    hand or split it. A card with an open PR belongs to the review path, and one whose automatic retries (#78) are not
+    spent is Time's own to retry; neither is proposed, nor is one parked only today."""
+    out = []
+    for p in parked or []:
+        if not isinstance(p, dict):
+            continue
+        n, at, beat = p.get("n"), str(p.get("at") or ""), str(p.get("beat") or "")
+        if n is None or beat not in ("error", "stuck") or p.get("open_pr"):
+            continue
+        if _num(p.get("retries_left"), 0.0) > 0 or _recent(at, today, days):
+            continue
+        out.append(_opt("parked", str(n), f"Retry or split #{n}: {_txt(p.get('title'), 70)}", [
+            f"- #{n} has been parked since {at[:10] or 'a while ago'}: its last beat was `{beat}` and Time's automatic "
+            "retries are spent, so it sits still with no PR of its own and no one waiting on it.",
+            f"- Read the beats on #{n}, find what stopped the worker, and either fix that so a retry goes through, or "
+            "split the card into ones a worker finishes in one session.",
+            f"- Leave #{n} open: the work here is getting it moving again."],
+            at or today.isoformat(),
+            done=f"#{n} is moving again (a retry that goes through, or the cards that replace it), tests green."))
+    return out
+
+
+def named(issues: list[dict]) -> set[str]:
+    """The sources open cards already name (`Router: opt:<source>:<id>` in the body): proposed once, not every day."""
+    return {m for i in issues for m in NAMES.findall(i.get("body") or "")}
+
+
+def opt_candidates(ledger: list[dict], runs, parked: list[dict], today: dt.date, known=frozenset()) -> list[dict]:
+    """Every optimization the three sources show today, minus the ones an open card already names."""
+    found = ledger_candidates(ledger, today) + run_candidates(runs, today) + parked_candidates(parked, today)
+    return [c for c in found if c["key"] not in known]
+
+
 def last_picked(beats: list[dict]) -> dict[str, str]:
     """The day each kind was last picked, from Astra's live beats."""
     out: dict[str, str] = {}
@@ -208,9 +364,14 @@ def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cl
     rows = []
     for k, r in enumerate(ranked[:limit], 1):
         lane = "cloud lane" if CLOUD in r.get("labels", ()) else "lined up" if r["lined_up"] else ""
-        note = (f"**{mark}**" if r["key"] in chosen else ("**to the cloud today**" if mode == "live" else "**would go to the cloud**")
-                if r["key"] in sent else "; ".join(x for x in (lane, r.get("why_not", "") if not r["actionable"] else "") if x))
-        name = f"{r['key']} {r['title']}" if r["n"] is not None else r["title"]
+        if r["key"] in chosen:   # a candidate with no card is written as one instead of being queued
+            note = f"**written as #{r['written']}**" if r.get("written") else \
+                f"**{mark}**" if r["n"] is not None else "**would be written as a card**"
+        elif r["key"] in sent:
+            note = "**to the cloud today**" if mode == "live" else "**would go to the cloud**"
+        else:
+            note = "; ".join(x for x in (lane, r.get("why_not", "") if not r["actionable"] else "") if x)
+        name = f"{r['key']} {r['title']}" if r["n"] is not None or r["key"].startswith(OPT) else r["title"]
         rows.append(f"| {k} | {_txt(name, 80).replace('|', '/')} | {r['kind']} | {r['value']:g} | {r['size']} | "
                     f"{r['unblocks']} | {r['restless']:g} | {r['score']:g} | {_txt(r['why'], 140).replace('|', '/')} | "
                     f"{_txt(note, 90).replace('|', '/')} |")

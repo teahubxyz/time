@@ -1226,6 +1226,8 @@ astra.tm.budget = lambda: (1.0, 15.0, 10.0, 100.0)
 astra.tm.comment = lambda n, text, meta: said80.append((n, text, meta))
 astra.tm.label = lambda n, name: labelled80.append((n, name))
 astra.tm.new_issue = lambda title, body, labels: made80.append((title, body, labels)) or {"number": 90 + len(made80)}
+astra.tm.ledger_lines = lambda month: []   # the optimization sources (#171) are the next section's; none of them here
+astra.tm.gh = lambda method, path, body=None, **k: [] if "/comments" in path or "/pulls" in path else {"workflow_runs": []}
 reply80 = {"note": "the note", "assess": [dict(assess80[k], key=k) for k in assess80] + ["junk"],
            "new": [{"title": "Write a thing", "body": "do it"}, {"no": "title"}]}
 astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]
@@ -1330,6 +1332,119 @@ if par135 is None: os.environ.pop("TIME_PARALLEL")
 else: os.environ["TIME_PARALLEL"] = par135
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
 print("ALL OK 80")
+
+# 171 optimization candidates the factory finds itself: the ledger, the Actions runs and the parked cards. Each source
+# is a synthetic candidate the seat judges like any other; live, a picked one is written as a card, never worked on in place.
+today171 = dt.date(2026, 10, 19)
+led171 = [{"at": "2026-10-16T09:00:00Z", "model": "sonnet", "usd": 2.0}] + \
+         [{"at": "2026-10-17T09:00:00Z", "model": "haiku", "usd": 0.1}] * 3
+one171 = rt.ledger_candidates(led171, today171)
+assert [c["key"] for c in one171] == ["opt:ledger:model:sonnet"], one171
+assert one171[0]["title"] == "Why did sonnet cost $2.00 of the week's $2.30?" and one171[0]["kind"] == "optimization"
+assert one171[0]["n"] is None and one171[0]["actionable"] and not one171[0]["lined_up"] and one171[0]["created"] == "2026-10-19"
+assert "Router: opt:ledger:model:sonnet" in one171[0]["body"] and rt.DONE.search(one171[0]["body"]), one171[0]["body"]
+assert "$2.00 of the $2.30" in one171[0]["body"] and "3 call(s)" not in one171[0]["body"]
+# by entry point too (`entry`, else the `pool` the call booked to); a dimension with one group says nothing
+pooled171 = [dict(r, pool="anthropic" if r["model"] == "sonnet" else "venice") for r in led171]
+assert [c["key"] for c in rt.ledger_candidates(pooled171, today171)] == ["opt:ledger:entry:anthropic", "opt:ledger:model:sonnet"]
+assert [c["key"] for c in rt.ledger_candidates([dict(r, entry="heartbeat") for r in led171], today171)] == ["opt:ledger:model:sonnet"]
+assert rt.ledger_candidates(led171[:1], today171) == [], "one model, every dollar: nothing to compare it with"
+assert rt.ledger_candidates([{"at": "2026-10-16T09:00:00Z", "model": m, "usd": 0.01} for m in ("a", "b", "b")], today171) == [], "pennies"
+assert rt.ledger_candidates([dict(r, at="2026-10-01T09:00:00Z") for r in led171], today171) == [], "older than the window"
+assert rt.ledger_candidates([], today171) == [] and rt.ledger_candidates([{"at": "2026-10-16T09:00:00Z"}], today171) == []
+# a model whose spend per call is double its own median: a few heavy calls behind a cheap average
+skew171 = [{"at": "2026-10-16T09:00:00Z", "model": "sonnet", "usd": u} for u in (0.01, 0.01, 0.01, 0.01, 1.0)]
+assert [c["key"] for c in rt.ledger_candidates(skew171, today171)] == ["opt:ledger:model:sonnet"]
+assert "a $0.0100 median" in rt.ledger_candidates(skew171, today171)[0]["title"]
+assert rt.ledger_candidates(skew171[:4], today171) == [], "four cheap calls: no median worth a card"
+assert rt._median([3.0, 1.0]) == 2.0 and rt._median([3.0, 1.0, 2.0]) == 2.0 and rt._median([]) == 0.0
+# the Actions runs: two or more failed or cancelled runs of one workflow, with the count and the last run's id
+run171 = lambda i, wf, c, at: {"id": i, "path": f".gitea/workflows/{wf}", "conclusion": c, "created_at": at}
+runs171 = {"workflow_runs": [run171(51, "ci.yml", "failure", "2026-10-18T10:00:00Z"), run171(52, "ci.yml", "cancelled", "2026-10-19T10:00:00Z"),
+                             run171(53, "heartbeat.yml", "failure", "2026-10-19T10:00:00Z"), run171(54, "ci.yml", "success", "2026-10-19T11:00:00Z"),
+                             run171(55, "old.yml", "failure", "2026-10-01T10:00:00Z"), run171(56, "old.yml", "failure", "2026-10-02T10:00:00Z")]}
+ci171 = rt.run_candidates(runs171, today171)
+assert [c["key"] for c in ci171] == ["opt:ci:ci.yml"], [c["key"] for c in ci171]
+assert ci171[0]["title"] == "Why does ci.yml keep failing? 2 runs in 7 days" and "run `52`" in ci171[0]["body"], ci171[0]
+assert "2 failed or cancelled run(s)" in ci171[0]["body"] and "Router: opt:ci:ci.yml" in ci171[0]["body"]
+assert rt.run_candidates(runs171["workflow_runs"], today171) == ci171, "the list and the wrapped shape read the same"
+assert [c["key"] for c in rt.run_candidates([{"id": 60, "name": "sync", "conclusion": "failure", "created_at": "2026-10-18T10:00:00Z"}] * 2,
+                                            today171)] == ["opt:ci:sync"], "no path: the workflow's name"
+spaced171 = rt.run_candidates([{"id": 61, "name": "CI build", "conclusion": "failure", "updated_at": "2026-10-18T10:00:00Z"}] * 2, today171)
+assert [c["key"] for c in spaced171] == ["opt:ci:CI-build"] and rt.named([iss80(82, "x", body=spaced171[0]["body"])]) == {"opt:ci:CI-build"}
+assert rt.run_candidates(None, today171) == [] and rt.run_candidates([{"junk": 1}, "junk"], today171) == []
+# parked cards: an `error` or `stuck` beat older than a day, no open PR, and #78's automatic retries spent
+park171 = lambda n, title, beat="error", at="2026-10-16T08:00:00Z", left=0, pr=False: {
+    "n": n, "title": title, "beat": beat, "at": at, "retries_left": left, "open_pr": pr}
+parked171 = [park171(11, "A stuck card", beat="stuck"), park171(12, "Retries left", left=1), park171(13, "Has a PR", pr=True),
+             park171(14, "Parked today", at="2026-10-19T08:00:00Z"), park171(15, "Moving", beat="dispatched")]
+p171 = rt.parked_candidates(parked171, today171)
+assert [c["key"] for c in p171] == ["opt:parked:11"], [c["key"] for c in p171]
+assert p171[0]["title"] == "Retry or split #11: A stuck card" and p171[0]["created"] == "2026-10-16T08:00:00Z"
+assert "last beat was `stuck`" in p171[0]["body"] and "DONE: #11 is moving again" in p171[0]["body"]
+assert rt.parked_candidates([], today171) == [] and rt.parked_candidates(["junk", {"n": None}], today171) == []
+# no duplicates: a source an open card already names is not proposed again
+seen171 = [iss80(80, "Why did sonnet cost so much?", body="- look at it\n\nRouter: opt:ledger:model:sonnet\n\nDONE: cheaper")]
+assert rt.named(seen171) == {"opt:ledger:model:sonnet"} and rt.named([iss80(81, "x")]) == set()
+assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171)] == \
+       ["opt:ledger:model:sonnet", "opt:ci:ci.yml", "opt:parked:11"]
+assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171, rt.named(seen171))] == ["opt:ci:ci.yml", "opt:parked:11"]
+assert rt.opt_candidates(led171, runs171, parked171, today171,
+                         {"opt:ledger:model:sonnet", "opt:ci:ci.yml", "opt:parked:11"}) == [], "all three already have cards"
+# the table shows a synthetic candidate by its key, and what would become of it
+r171 = rt.rank(rt.opt_candidates(led171, runs171, parked171, today171), {}, live80, {}, today171)
+assert "| opt:ci:ci.yml Why does ci.yml keep failing" in rt.table(r171, [], "dry")
+assert "**would be written as a card**" in rt.table(r171, r171[:1], "dry")
+r171[0]["written"] = 99
+assert "**written as #99**" in rt.table(r171, r171[:1], "live")
+
+# Astra gathers the three sources and, live, writes the picked one as an unqueued card; dry writes nothing
+said171, labelled171, made171, asked171 = [], [], [], []
+beat171 = lambda b, h, **extra: {"user": {"login": astra.tm.TIME_BOT}, "created_at": iso(h),
+                                 "body": "x\n<!-- time " + json.dumps({"beat": b, **extra}) + " -->"}
+beats171 = [beat171("dispatched", 96, launched=True), beat171("error", 90),
+            beat171("dispatched", 84, launched=True, auto_retry=True), beat171("error", 72, auto_retry=True)]
+led171live = [{"at": iso(48), "model": "sonnet", "usd": 2.0}] + [{"at": iso(48), "model": "haiku", "usd": 0.1}] * 3
+runs171live = [run171(51, "ci.yml", "failure", iso(48)), run171(52, "ci.yml", "cancelled", iso(24))]
+card171 = [iss80(30, "A parked card", labels=["ready"])]
+astra.tm.issues = lambda q: [] if q.startswith("state=closed") else card171
+astra.tm.gh = lambda method, path, body=None, **k: beats171 if "/comments" in path else [] if "/pulls" in path \
+    else {"workflow_runs": runs171live}
+astra.tm.ledger_lines = lambda month: led171live if month == NOW.strftime("%Y-%m") else []
+astra.tm.pools = lambda: []
+astra.tm.budget = lambda: (1.0, 15.0, 10.0, 100.0)
+astra.tm.comment = lambda n, text, meta: said171.append((n, text, meta))
+astra.tm.label = lambda n, name: labelled171.append((n, name))
+astra.tm.new_issue = lambda title, body, labels: made171.append((title, body, labels)) or {"number": 200 + len(made171)}
+assert [p["n"] for p in astra.parked_cards()] == [30] and astra.parked_cards()[0]["retries_left"] == 0, astra.parked_cards()
+assert astra.parked_cards()[0]["beat"] == "error" and not astra.parked_cards()[0]["open_pr"]
+assert len(astra.ledger_week()) == 4 and [r["id"] for r in astra.action_runs()] == [51, 52]
+keys171 = ["opt:ledger:model:sonnet", "opt:ci:ci.yml", "opt:parked:30"]
+reply171 = {"note": "the records", "assess": [{"key": k, "kind": "optimization", "value": 5, "size": "S"} for k in keys171]}
+astra.tm.think = lambda seat, a, b, system, user: (asked171.append(user), json.dumps(reply171))[1]
+assert astra.router_tick(rt.config('{"mode": "dry"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert not made171 and not labelled171, "dry: no card written, nothing queued"
+text171, meta171 = said171[-1][1], said171[-1][2]
+assert "And write a card for: opt:parked:30, opt:ledger:model:sonnet." in text171, text171
+assert "**would be written as a card**" in text171 and meta171["queued"] == 0 and meta171["would"] == []
+assert meta171["opt"] == [{"key": "opt:parked:30", "card": None}, {"key": "opt:ledger:model:sonnet", "card": None}]
+assert all(k in asked171[-1] for k in keys171) and "Retry or split #30" in asked171[-1], "the seat judges them like any candidate"
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert [m[0] for m in made171] == ["Retry or split #30: A parked card", "Why did sonnet cost $2.00 of the week's $2.30?"], made171
+assert made171[0][2] == [] and labelled171 == [], "written unqueued; #30 itself is never worked on in place"
+assert "Router: opt:parked:30" in made171[0][1] and "card written by Astra" in made171[0][1] and rt.DONE.search(made171[0][1])
+text171, meta171 = said171[-1][1], said171[-1][2]
+assert "Written from the factory's own records (candidates from tomorrow): #201 (opt:parked:30), #202 (opt:ledger:model:sonnet)" in text171
+assert "**written as #201**" in text171 and "Queued nothing today." in text171
+assert meta171["opt"] == [{"key": "opt:parked:30", "card": 201}, {"key": "opt:ledger:model:sonnet", "card": 202}]
+assert meta171["picked"] == [{"n": 201, "kind": "optimization"}, {"n": 202, "kind": "optimization"}] and meta171["queued"] == 0
+# the card Astra wrote names its source, so the same source is not proposed again
+card171.append(iss80(31, "Retry or split #30: A parked card", body=made171[0][1], labels=["queued"]))
+made171.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert [m[0] for m in made171] == ["Why did sonnet cost $2.00 of the week's $2.30?", "Why does ci.yml keep failing? 2 runs in 7 days"]
+assert said171[-1][2]["opt"] == [{"key": "opt:ledger:model:sonnet", "card": 201}, {"key": "opt:ci:ci.yml", "card": 202}]
+print("ALL OK 171")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib
