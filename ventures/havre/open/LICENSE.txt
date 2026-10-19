@@ -1,0 +1,2 @@
+openvenice by nikshepsvn, MIT License: https://github.com/nikshepsvn/openvenice
+Built into Havre at /open/ from commit d983874a79810edaffb85721911630af29d09d95, unchanged.

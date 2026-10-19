@@ -23,6 +23,7 @@ done
 node tools/cast.mjs          # cast/index.js, the harbor's own as the module the page imports, from cast/*.havre.json
 node tools/pages.mjs         # c/ (a page and a V3 card for each of them, and the list) and sitemap.txt, from the same cards
 node --test tests/*.test.mjs
+sh tools/open.sh            # open/, openvenice at /open/ for testing
 
 if [ -z "${PW_MODULE:-}" ]; then
   PW_MODULE=$(find "${HOME:-/root}/.npm/_npx" -path '*/node_modules/playwright-core/index.mjs' 2>/dev/null | head -1 || true)
