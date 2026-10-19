@@ -19,6 +19,9 @@ nothing; `live` queues from the top while the day's money left covers each card'
 in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
 creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
 card), and the heartbeat promotes queued cards in the ranked order.
+Ventures (TIME_VENTURE_MODE=router, the loop's TIME_VENTURE): "start a new venture" is actionable, and every live venture
+with signups is a "v2 of <venture>" candidate. A picked new venture dispatches venture.yml with start=true (never queued
+as a card); a picked v2 posts the venture's open v2 card, else writes one (Base: gh-pages) and queues it.
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
