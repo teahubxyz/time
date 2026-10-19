@@ -3108,6 +3108,10 @@ function toast(text) {
 
 // ---------- wiring ----------
 function bind() {
+  // the open studio (/open) gets this key: it may open in another window, so the key waits there a minute, then goes
+  for (const a of $$('a[href="open/"]')) a.addEventListener("click", () => {
+    if (S.key) local.set("havre.handoff", { key: S.key, at: Date.now() });
+  });
   $("#agent-prompt").textContent = C.agentPrompt("a retired lighthouse engineer who explains how things work with tiny drawings, and says so when they don't know.");
   for (const b of $$("button.copy")) b.addEventListener("click", () => copyFrom(b.dataset.copy, b));
 
