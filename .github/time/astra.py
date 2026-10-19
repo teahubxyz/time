@@ -17,9 +17,9 @@ every candidate (its kind, its value 1-5, its size) and code ranks them with the
 boost for kinds not picked lately, and the card's age. The candidates include the optimizations the factory's own
 records show (#171): the ledger's spend by model and entry point, workflows whose runs keep failing, and cards parked
 with their retries spent. Those have no card yet, so a picked one is written as one (unqueued) instead of being queued,
-and a source an open card already names is not proposed again. The log shows the ranked table. `dry` writes it and queues
-nothing; `live` queues from the top while the day's money left covers each card's estimated cost (the allowance left
-in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
+and a source a card already names is not proposed again, open or closed lately. The log shows the ranked table. `dry`
+writes it and queues nothing; `live` queues from the top while the day's money left covers each card's estimated cost
+(the allowance left in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
 creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
 card), and the heartbeat promotes queued cards in the ranked order.
 `off`, or no router.json, is the planner as before.
@@ -233,16 +233,20 @@ def action_runs(limit: int = 50) -> list[dict]:
 
 def parked_cards() -> list[dict]:
     """The `ready` cards whose last real beat parked them, with what the router needs of each: the beat and when it was
-    written, whether a PR of theirs is open, and how many of #78's automatic retries are left."""
+    written, whether a PR of theirs is open, and how many of #78's automatic retries are left. A card someone trusted
+    has typed `/time retry` on since that beat is left out: the next heartbeat dispatches it (it clears `last` exactly
+    as a spare automatic retry does), so proposing "retry or split" for it would be a card for work already under way."""
     auto_max = env_int("TIME_AUTO_RETRY", 1)
     out: list[dict] = []
     try:
         prs = tm.gh("GET", f"/repos/{tm.REPO}/pulls?state=open&limit=50") or []
         for card in tm.issues("state=open&labels=ready"):
-            beats = [b for b in tm.beats_of(tm.gh("GET", f"/repos/{tm.REPO}/issues/{card['number']}/comments?limit=100") or [])
-                     if b.get("beat") not in ("blocked", "capped")]
+            cs = tm.gh("GET", f"/repos/{tm.REPO}/issues/{card['number']}/comments?limit=100") or []
+            beats = [b for b in tm.beats_of(cs) if b.get("beat") not in ("blocked", "capped")]
             if not beats or beats[-1].get("beat") not in ("error", "stuck"):
                 continue
+            if tm.retry_requested(cs, beats[-1]["at"]):
+                continue   # a person already asked for the retry: the next heartbeat runs it, so it needs no card
             # an automatic retry is one run of consecutive `auto_retry` beats, counted as the heartbeat counts it
             used = sum(1 for k, b in enumerate(beats) if b.get("auto_retry") and not (k and beats[k - 1].get("auto_retry")))
             out.append({"n": card["number"], "title": card.get("title") or "", "beat": beats[-1]["beat"],
@@ -273,15 +277,17 @@ def repeat_of(title: str, known: list[dict]) -> int | None:
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
+    closed = closed_lately()
     today_d = dt.datetime.now(dt.timezone.utc).date()
     cands = router.candidates(open_issues) + [dict(router.NEW_VENTURE)]
-    # what no one wrote a card for (#171): the ledger, the Actions runs and the parked cards, each proposed once
-    cands += router.opt_candidates(ledger_week(), action_runs(), parked_cards(), today_d, router.named(open_issues))
+    # what no one wrote a card for (#171): the ledger, the Actions runs and the parked cards, each proposed once. The
+    # cards closed lately name their sources too: a week's spend outlives the card written about it, so keying the open
+    # ones alone would propose the same finding again the day its card closed.
+    cands += router.opt_candidates(ledger_week(), action_runs(), parked_cards(), today_d, router.named(open_issues + closed))
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
     left, source = money_left()
-    closed = closed_lately()
     done = "\n".join(f"- #{i['number']} {i['title']}" for i in closed[:50]) or "- (none)"
     user = (f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nSpend: ${today:.2f} of "
             f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month out of pocket (credit-paid spend excluded); "

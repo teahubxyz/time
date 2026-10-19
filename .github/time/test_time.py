@@ -1383,7 +1383,11 @@ assert [c["key"] for c in p171] == ["opt:parked:11"], [c["key"] for c in p171]
 assert p171[0]["title"] == "Retry or split #11: A stuck card" and p171[0]["created"] == "2026-10-16T08:00:00Z"
 assert "last beat was `stuck`" in p171[0]["body"] and "DONE: #11 is moving again" in p171[0]["body"]
 assert rt.parked_candidates([], today171) == [] and rt.parked_candidates(["junk", {"n": None}], today171) == []
-# no duplicates: a source an open card already names is not proposed again
+# "older than a day" by the day, like the rest of the router's arithmetic: parked today or yesterday still waits
+day171 = lambda d: [park171(16, "Parked then", at=(today171 - dt.timedelta(days=d)).isoformat() + "T08:00:00Z")]
+assert rt.parked_candidates(day171(0), today171) == [] and rt.parked_candidates(day171(1), today171) == [], "today, yesterday"
+assert [c["key"] for c in rt.parked_candidates(day171(2), today171)] == ["opt:parked:16"], "the day before yesterday is older than a day"
+# no duplicates: a source a card already names is not proposed again
 seen171 = [iss80(80, "Why did sonnet cost so much?", body="- look at it\n\nRouter: opt:ledger:model:sonnet\n\nDONE: cheaper")]
 assert rt.named(seen171) == {"opt:ledger:model:sonnet"} and rt.named([iss80(81, "x")]) == set()
 assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171)] == \
@@ -1391,12 +1395,27 @@ assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171
 assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171, rt.named(seen171))] == ["opt:ci:ci.yml", "opt:parked:11"]
 assert rt.opt_candidates(led171, runs171, parked171, today171,
                          {"opt:ledger:model:sonnet", "opt:ci:ci.yml", "opt:parked:11"}) == [], "all three already have cards"
+# a card closed lately names its source too: the week the finding came from outlives the card written about it, so the
+# same spend is not proposed again the day its card closes. The title carries the dollar amount, so repeat_of can't see it
+shut171 = [iss80(79, "Why did sonnet cost $1.80 of the week's $2.10?", body="- older numbers\n\nRouter: opt:ledger:model:sonnet\n\nDONE: x")]
+assert rt.named(shut171) == {"opt:ledger:model:sonnet"} and rt.named(seen171 + shut171) == {"opt:ledger:model:sonnet"}
+assert [c["key"] for c in rt.opt_candidates(led171, runs171, parked171, today171, rt.named(shut171))] == ["opt:ci:ci.yml", "opt:parked:11"]
+assert astra.repeat_of(one171[0]["title"], shut171) is None, "a different amount is a different title: the key is what catches it"
 # the table shows a synthetic candidate by its key, and what would become of it
 r171 = rt.rank(rt.opt_candidates(led171, runs171, parked171, today171), {}, live80, {}, today171)
 assert "| opt:ci:ci.yml Why does ci.yml keep failing" in rt.table(r171, [], "dry")
 assert "**would be written as a card**" in rt.table(r171, r171[:1], "dry")
 r171[0]["written"] = 99
 assert "**written as #99**" in rt.table(r171, r171[:1], "live")
+# the cloud lane never takes a synthetic candidate, however it ranks: there is no card to label `cloud` and no card for a
+# cloud session to build. Nor is it in the promotion order, for the same reason
+cl171 = rt.config('{"mode": "live", "cloud": {"per_day": 2, "sizes": ["S", "M"]}}')
+top171 = rt.rank(rt.opt_candidates(led171, runs171, parked171, today171) + rt.candidates([iss80(40, "A real card")]),
+                 {"opt:ledger:model:sonnet": {"kind": "optimization", "value": 5, "size": "M"},
+                  "#40": {"kind": "feature", "value": 1, "size": "M"}}, cl171, {}, today171)
+assert top171[0]["key"] == "opt:ledger:model:sonnet" and top171[0]["n"] is None, [(r["key"], r["score"]) for r in top171]
+assert [r["key"] for r in rt.pick_cloud(top171, cl171, 0)] == ["#40"], "the opt: candidate at the top is skipped, not labelled None"
+assert rt.order(top171) == [40] and "to the cloud" not in rt.table(top171, [], "live", cloud=rt.pick_cloud(top171, cl171, 0)).split("| #40")[0]
 
 # Astra gathers the three sources and, live, writes the picked one as an unqueued card; dry writes nothing
 said171, labelled171, made171, asked171 = [], [], [], []
@@ -1418,6 +1437,19 @@ astra.tm.label = lambda n, name: labelled171.append((n, name))
 astra.tm.new_issue = lambda title, body, labels: made171.append((title, body, labels)) or {"number": 200 + len(made171)}
 assert [p["n"] for p in astra.parked_cards()] == [30] and astra.parked_cards()[0]["retries_left"] == 0, astra.parked_cards()
 assert astra.parked_cards()[0]["beat"] == "error" and not astra.parked_cards()[0]["open_pr"]
+# a `/time retry` someone trusted typed after that beat clears `last` for the next heartbeat, exactly as a spare
+# automatic retry does, so the card is not proposed: Time is about to run it
+astra.tm.trusted = lambda login: login == "owner"
+retried171 = lambda who, h: beats171 + [{"user": {"login": who}, "created_at": iso(h), "body": "/time retry"}]
+gh171 = lambda comments: (lambda method, path, body=None, **k: comments if "/comments" in path else [] if "/pulls" in path
+                          else {"workflow_runs": runs171live})
+astra.tm.gh = gh171(retried171("owner", 60))
+assert astra.parked_cards() == [], "the retry is Time's own to run"
+astra.tm.gh = gh171(retried171("mallory", 60))
+assert [p["n"] for p in astra.parked_cards()] == [30], "a stranger on a public repo can't re-spend the worker"
+astra.tm.gh = gh171(retried171("owner", 96))
+assert [p["n"] for p in astra.parked_cards()] == [30], "a retry older than the beat it would answer is spent"
+astra.tm.gh = gh171(beats171)
 assert len(astra.ledger_week()) == 4 and [r["id"] for r in astra.action_runs()] == [51, 52]
 keys171 = ["opt:ledger:model:sonnet", "opt:ci:ci.yml", "opt:parked:30"]
 reply171 = {"note": "the records", "assess": [{"key": k, "kind": "optimization", "value": 5, "size": "S"} for k in keys171]}
@@ -1444,6 +1476,14 @@ made171.clear()
 assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
 assert [m[0] for m in made171] == ["Why did sonnet cost $2.00 of the week's $2.30?", "Why does ci.yml keep failing? 2 runs in 7 days"]
 assert said171[-1][2]["opt"] == [{"key": "opt:ledger:model:sonnet", "card": 201}, {"key": "opt:ci:ci.yml", "card": 202}]
+# and still not proposed once that card closes: #30 is parked on the same beat, so the finding hasn't changed
+shut171e = card171.pop()   # the card Astra wrote for opt:parked:30 is closed now, not open
+astra.tm.issues = lambda q: [shut171e] if q.startswith("state=closed") else card171
+made171.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert [m[0] for m in made171] == ["Why did sonnet cost $2.00 of the week's $2.30?", "Why does ci.yml keep failing? 2 runs in 7 days"]
+assert "opt:parked:30" not in said171[-1][1] and said171[-1][2]["opt"] == [{"key": "opt:ledger:model:sonnet", "card": 201},
+                                                                          {"key": "opt:ci:ci.yml", "card": 202}]
 print("ALL OK 171")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change

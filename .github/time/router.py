@@ -131,7 +131,9 @@ def candidates(issues: list[dict]) -> list[dict]:
 # Three sources, each read by arithmetic over the last week, so optimization work no longer waits for a human to notice
 # it. Every finding is a synthetic candidate: key `opt:<source>:<id>`, kind optimization, a drafted title and body, and
 # no card (`n` is None). The seat judges it like any other candidate; live, a picked one is written as a card (unqueued,
-# a candidate from tomorrow) and never worked on in place. A source an open card already names is not proposed again.
+# a candidate from tomorrow) and never worked on in place. A source a card already names is not proposed again, open or
+# closed lately: the week the ledger reads outlives the card written about it, so keying open cards alone would propose
+# the same spend again the day its card closed.
 
 OPT = "opt:"
 OPT_DAYS = 7              # the window the ledger and the runs are read over
@@ -140,7 +142,7 @@ OPT_SHARE = 0.5           # a group over this share of the week's spend is a can
 OPT_SKEW = 2.0            # a model whose spend per call is this many times its own median is a candidate
 OPT_CALLS = 4             # fewer calls than this say nothing about a model's median
 OPT_FAILS = 2             # failed or cancelled runs of one workflow that make a candidate
-OPT_PARKED_DAYS = 1       # a parked card is a candidate once its beat is older than this
+OPT_PARKED_DAYS = 1       # a parked card is a candidate once its beat is older than this, in whole days
 BAD_RUN = ("failure", "cancelled", "canceled")
 NAMES = re.compile(rf"^\s*Router:\s*({OPT}\S+)", re.M)
 
@@ -245,7 +247,8 @@ def run_candidates(runs, today: dt.date, days: int = OPT_DAYS) -> list[dict]:
 def parked_candidates(parked: list[dict], today: dt.date, days: int = OPT_PARKED_DAYS) -> list[dict]:
     """Cards parked by an `error` or `stuck` beat (as astra.parked_cards reads them): one candidate each, to retry it by
     hand or split it. A card with an open PR belongs to the review path, and one whose automatic retries (#78) are not
-    spent is Time's own to retry; neither is proposed, nor is one parked only today."""
+    spent is Time's own to retry; neither is proposed, nor is one whose beat is not yet older than `days` whole days —
+    at the default that means a card parked today or yesterday waits, and one parked the day before is a candidate."""
     out = []
     for p in parked or []:
         if not isinstance(p, dict):
@@ -267,12 +270,14 @@ def parked_candidates(parked: list[dict], today: dt.date, days: int = OPT_PARKED
 
 
 def named(issues: list[dict]) -> set[str]:
-    """The sources open cards already name (`Router: opt:<source>:<id>` in the body): proposed once, not every day."""
+    """The sources these cards already name (`Router: opt:<source>:<id>` in the body): proposed once, not every day.
+    Astra passes the open cards and the ones closed lately, so a source isn't proposed again the day its card closes
+    while the window the finding came from is still the same week."""
     return {m for i in issues for m in NAMES.findall(i.get("body") or "")}
 
 
 def opt_candidates(ledger: list[dict], runs, parked: list[dict], today: dt.date, known=frozenset()) -> list[dict]:
-    """Every optimization the three sources show today, minus the ones an open card already names."""
+    """Every optimization the three sources show today, minus the ones a card already names (`known`)."""
     found = ledger_candidates(ledger, today) + run_candidates(runs, today) + parked_candidates(parked, today)
     return [c for c in found if c["key"] not in known]
 
