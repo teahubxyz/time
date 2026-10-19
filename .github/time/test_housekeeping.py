@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Offline tests for housekeeping.py: a fake forge (like test_time.py's World) that records every write."""
+import base64
 import datetime as dt
 import importlib.util
 import json
@@ -23,13 +24,15 @@ LOG = 57
 
 
 class Forge:
-    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None, repo_labels=None):
+    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None, repo_labels=None, files=None):
         self.branches = [{"name": b} if isinstance(b, str) else b for b in branches]
         self.prs = list(prs)
         self.issues = {i["number"]: {"state": "open", "labels": [], "created_at": iso(0), "updated_at": iso(0), "body": "", **i} for i in issues}
         self.milestones = [dict(m) for m in milestones]
         self.reactions = reactions or {}
         self.cmts = comments or {}
+        self.files = dict(files or {})   # "<path>" (or "<path>@<ref>") -> text, as the contents API serves it
+        self.commits = []                # (branch, message, {path: what was appended}): Time's writes are pushes
         # the repo's labels; by default the ones its issues carry. Gitea ignores a filter on any other label.
         self.repo_labels = set(repo_labels) if repo_labels is not None else {l for i in self.issues.values() for l in i["labels"]}
         self.writes = []   # every non-GET call
@@ -72,6 +75,17 @@ class Forge:
         if route.endswith("/comments") and method == "POST":
             self.posted.append((int(route.split("/")[-2]), body["body"]))
             return {}
+        if route.startswith("/repos/o/r/contents/") and method == "GET":
+            path, ref = urllib.parse.unquote(route.split("/contents/", 1)[1]), q.get("ref", [""])[0]
+            text = self.files.get(f"{path}@{ref}" if ref else path)
+            if text is None:
+                raise RuntimeError(f"GET {route} -> 404: not found")
+            return {"content": base64.b64encode(text.encode()).decode(), "sha": "sha"}
+        if route.startswith("/repos/o/r/issues/") and route.rsplit("/", 1)[1].isdigit() and method == "GET":
+            i = self.issues.get(int(route.rsplit("/", 1)[1]))
+            if i is None:
+                raise RuntimeError(f"GET {route} -> 404: not found")
+            return {**i, "labels": [{"name": l} for l in i["labels"]]}
         if route == "/repos/o/r/issues" and method == "GET":
             rows = [i for i in self.issues.values()
                     if (q.get("state", ["open"])[0] in ("all", i["state"]))
@@ -82,6 +96,10 @@ class Forge:
             return {}
         raise AssertionError(f"unexpected {method} {path}")
 
+    def push(self, branch, files, message, *, base=None, append=None):
+        self.commits.append((branch, message, {p: d.decode() for p, d in (append or {}).items()}))
+        return "sha"
+
     def run(self, mode="live", env=None):
         os.environ.pop("TIME_MODE", None)
         os.environ.pop("TIME_VENTURE_MEASURE_DAYS", None)
@@ -89,6 +107,8 @@ class Forge:
             os.environ["TIME_MODE"] = mode
         os.environ.update(env or {})
         tm.http = self.http
+        tm.git_commit = self.push
+        tm._ledger_files.clear()   # the ledger is read through the API and cached per process, not per world
         return hk.main()
 
 
@@ -184,18 +204,95 @@ def test_unknown_label():
     assert [n for n, _ in f.posted] == [LOG], "the summary goes to the Astra log, found by its own label"
 
 
+def beat(meta, days=0):
+    return {"created_at": iso(days), "user": {"login": "gitea-actions"}, "body": f"x\n\n{tm.MARK}{json.dumps(meta)} -->"}
+
+
+def ledger(*rows):
+    """The month files the ledger lines below fall in (a window can straddle a month end)."""
+    out = {}
+    for at, usd in rows:
+        out.setdefault(f"time/ledger/{at[:7]}.jsonl", "")
+        out[f"time/ledger/{at[:7]}.jsonl"] += json.dumps({"at": at, "model": "m", "usd": usd}) + "\n"
+    return out
+
+
+ASTRA_LOG = {"number": LOG, "title": "Astra log", "labels": ["astra"]}
+
+
+def test_outcomes():
+    """A merged pick and an unmerged one each settle into one line; a pick still open produces none."""
+    picked = beat({"beat": "astra", "router": "live", "picked": [{"n": 1, "kind": "feature"}, {"n": 2, "kind": "refinement"},
+                                                                 {"n": 3, "kind": "feature"}]}, 4)
+    f = Forge(issues=[ASTRA_LOG,
+                      {"number": 1, "title": "merged card", "state": "closed", "closed_at": iso(1)},
+                      {"number": 2, "title": "dropped card", "state": "closed", "closed_at": iso(2)},
+                      {"number": 3, "title": "still going"}],
+              comments={LOG: [picked],
+                        1: [beat({"beat": "dispatched"}, 4), beat({"beat": "pr", "pr": 90}, 3), beat({"beat": "merged", "pr": 90}, 1)],
+                        2: [beat({"beat": "dispatched"}, 2.5), beat({"beat": "stuck", "pr": 91}, 2.2)]},
+              files=ledger((iso(3.5), 0.2), (iso(3.2), 0.05), (iso(2.4), 0.4), (iso(0.5), 9.0)))   # the last: no run window holds it
+    assert f.run() == 0
+    assert len(f.commits) == 1 and f.commits[0][0] == "main" and "2 settled pick(s)" in f.commits[0][1], f.commits
+    rows = [json.loads(l) for l in f.commits[0][2][hk.router.OUTCOMES].splitlines()]
+    assert [r["n"] for r in rows] == [1, 2], rows
+    assert rows[0] == {"n": 1, "kind": "feature", "picked": iso(4)[:10], "settled": iso(1)[:10], "merged": True,
+                       "pr": 90, "days": 3, "usd": 0.25, "signups": None}, rows[0]
+    assert rows[1]["merged"] is False and rows[1]["pr"] == 91 and rows[1]["days"] == 2, rows[1]
+    assert rows[1]["usd"] == 0.4, "only what was booked while its own worker ran"
+    assert any("2 router pick(s) settled" in b for _, b in f.posted), f.posted
+    # idempotent: a pick already in the file is never written twice, and #3 settles once it closes
+    f.files[hk.router.OUTCOMES] = f.commits[0][2][hk.router.OUTCOMES]
+    f.commits.clear()
+    assert f.run() == 0 and f.commits == [], "nothing new to settle"
+    f.issues[3].update(state="closed", closed_at=iso(0))
+    assert f.run() == 0 and [json.loads(l)["n"] for l in f.commits[0][2][hk.router.OUTCOMES].splitlines()] == [3]
+
+
+def test_outcomes_venture():
+    """A venture pick carries the venture's signups at day 7; before day 7 the pick keeps waiting."""
+    picked = beat({"beat": "astra", "router": "live", "picked": [{"n": 5, "kind": "venture"}, {"n": 6, "kind": "venture"}]}, 10)
+    reg = {"ventures": [{"slug": "huebrain", "name": "Huebrain", "card": 5, "signal": 8, "launched": iso(9)[:10]},
+                        {"slug": "later", "name": "Later", "card": 6, "signal": 9, "launched": iso(2)[:10]}]}
+    f = Forge(issues=[ASTRA_LOG,
+                      {"number": 5, "title": "launch huebrain", "state": "closed", "closed_at": iso(8)},
+                      {"number": 6, "title": "launch later", "state": "closed", "closed_at": iso(1)},
+                      {"number": 20, "labels": ["signup"], "user": {"login": "ann"}, "created_at": iso(8),
+                       "body": "### Venture\n\nhuebrain\n\n### Plan\n\nFree"},
+                      {"number": 21, "labels": ["signup"], "user": {"login": "bob"}, "created_at": iso(1),
+                       "body": "### Venture\n\nhuebrain\n\n### Plan\n\nFree"}],
+              comments={LOG: [picked], 5: [beat({"beat": "pr", "pr": 70}, 9), beat({"beat": "merged", "pr": 70}, 8)]},
+              reactions={8: [{"content": "+1", "user": {"login": "cid"}, "created_at": iso(8)},
+                             {"content": "+1", "user": {"login": "dee"}, "created_at": iso(0)}]},
+              files={f"ventures/ventures.json@{hk.PAGES_BRANCH}": json.dumps(reg)})
+    assert f.run() == 0
+    rows = [json.loads(l) for l in f.commits[0][2][hk.router.OUTCOMES].splitlines()]
+    assert [r["n"] for r in rows] == [5], "#6's venture is 2 days old: its day 7 is still ahead"
+    assert rows[0]["signups"] == 2, "ann and cid came in by day 7; bob and dee came later"
+    assert rows[0]["merged"] is True and rows[0]["usd"] == 0.0, "no worker run on the card: no spend of its own"
+    # no registry entry for the card: the line goes in with no count rather than waiting forever
+    f = Forge(issues=[ASTRA_LOG, {"number": 5, "title": "launch huebrain", "state": "closed", "closed_at": iso(8)}],
+              comments={LOG: [beat({"beat": "astra", "router": "live", "picked": [{"n": 5, "kind": "venture"}]}, 10)]})
+    assert f.run() == 0
+    assert json.loads(f.commits[0][2][hk.router.OUTCOMES])["signups"] is None
+
+
 def test_dry_run():
     f = Forge(branches=["main", "time/card-53"], prs=[pr(1, "time/card-53", "closed", True)],
-              issues=[sig(10, "spent", 8), {"number": 30, "labels": ["needs-human"], "updated_at": iso(9)}],
+              issues=[ASTRA_LOG, sig(10, "spent", 8), {"number": 30, "labels": ["needs-human"], "updated_at": iso(9)},
+                      {"number": 1, "title": "merged card", "state": "closed", "closed_at": iso(1)}],
+              comments={LOG: [beat({"beat": "astra", "router": "live", "picked": [{"n": 1, "kind": "feature"}]}, 4)],
+                        1: [beat({"beat": "merged", "pr": 90}, 1)]},
               milestones=[{"id": 1, "title": "done batch", "open_issues": 0, "closed_issues": 3}])
     for mode in ("dry-run", None):   # explicit and unset
         assert f.run(mode) == 0
-        assert f.writes == [] and f.posted == [], (f.writes, f.posted)
+        assert f.writes == [] and f.posted == [] and f.commits == [], (f.writes, f.posted, f.commits)
     assert {b["name"] for b in f.branches} == {"main", "time/card-53"} and f.issues[10]["state"] == "open"
 
 
 if __name__ == "__main__":
-    tests = [test_branches, test_signals, test_milestones, test_stale, test_unknown_label, test_dry_run]
+    tests = [test_branches, test_signals, test_milestones, test_outcomes, test_outcomes_venture, test_stale,
+             test_unknown_label, test_dry_run]
     for t in tests:
         t()
         print("ok", t.__name__)
