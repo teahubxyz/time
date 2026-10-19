@@ -10,7 +10,21 @@
   --serif: "Times New Roman", Times, "Liberation Serif", "Nimbus Roman", "DejaVu Serif", serif;
   --mono: "Courier New", Courier, "Liberation Mono", "Nimbus Mono PS", "DejaVu Sans Mono", monospace;
   --gut: 24px;
+  --dim: #767676;
+  --well: #f2f2f2;
+  --veil: rgba(255, 255, 255, 0.85);
   color-scheme: light;
+}
+/* dark: the same brutalism, inverted. Chosen in the nav (theme.js), or the system's when nothing's chosen */
+:root[data-theme="dark"] {
+  --ink: #f2f2f2; --paper: #0d0d0d; --link: #8cb4ff; --visited: #c9a2ff; --hi: #4d4a00; --bad: #ff7a7a;
+  --dim: #8a8a8a; --well: #1c1c1c; --veil: rgba(0, 0, 0, 0.8); color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ink: #f2f2f2; --paper: #0d0d0d; --link: #8cb4ff; --visited: #c9a2ff; --hi: #4d4a00; --bad: #ff7a7a;
+    --dim: #8a8a8a; --well: #1c1c1c; --veil: rgba(0, 0, 0, 0.8); color-scheme: dark;
+  }
 }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
@@ -52,14 +66,14 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .btn.small { min-height: 34px; font-size: 13px; }
 .btn.danger { border-color: var(--bad); color: var(--bad); }
 .btn.danger:hover { background: var(--bad); color: var(--paper); }
-.btn:disabled, .btn:disabled:hover { cursor: default; background: var(--paper); color: #767676; border-color: #767676; }
-.btn.solid:disabled { background: #767676; color: var(--paper); }
+.btn:disabled, .btn:disabled:hover { cursor: default; background: var(--paper); color: var(--dim); border-color: var(--dim); }
+.btn.solid:disabled { background: var(--dim); color: var(--paper); }
 .linkish {
   padding: 0; border: 0; background: none; color: var(--link); text-decoration: underline;
   font: inherit; text-align: left; cursor: pointer;
 }
 .linkish:hover, .linkish:focus-visible { color: var(--ink); background: var(--hi); }
-.linkish:disabled { color: #767676; text-decoration: none; cursor: default; background: none; }
+.linkish:disabled { color: var(--dim); text-decoration: none; cursor: default; background: none; }
 input:not([type=checkbox]), select, textarea {
   min-height: 40px; padding: 6px 8px; border: 1px solid var(--ink); border-radius: 0;
   background: var(--paper); color: var(--ink); width: 100%; min-width: 0;
@@ -67,7 +81,7 @@ input:not([type=checkbox]), select, textarea {
 textarea { resize: vertical; line-height: 1.35; }
 select { padding: 0 6px; }
 input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--ink); }
-input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color: #555; }
+input:disabled, textarea:disabled, select:disabled { background: var(--well); color: var(--dim); }
 .check { display: flex; align-items: center; gap: 8px; }
 .status { font-size: 14px; }
 .status.bad, .keystatus.bad { color: var(--bad); }
@@ -157,7 +171,7 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 }
 .lefthead [role=tab][aria-selected="true"] { color: var(--ink); }
 .lefthead [role=tab]:hover, .lefthead [role=tab]:focus-visible { color: var(--ink); background: var(--hi); }
-.lefthead .sep { font: 700 34px/1 var(--serif); color: #767676; }
+.lefthead .sep { font: 700 34px/1 var(--serif); color: var(--dim); }
 .lefthead .new {
   display: inline-block; margin-left: 8px; padding: 2px 6px; vertical-align: 6px;
   background: var(--ink); color: var(--paper); font: 700 14px/1.2 var(--mono); letter-spacing: 0;
@@ -296,11 +310,16 @@ pre.saw {
 .line.media .said { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; white-space: normal; }
 .line.media .words { white-space: pre-wrap; }
 .pic { margin: 0; border: 1px solid var(--ink); width: min(100%, 340px); }
-.pic img { width: 100%; height: auto; max-height: 440px; object-fit: contain; background: #f2f2f2; }
+.pic img { width: 100%; height: auto; max-height: 440px; object-fit: contain; background: var(--well); cursor: zoom-in; }
+.lightbox { padding: 0; border: 1px solid var(--ink); background: var(--paper); max-width: 96vw; max-height: 96vh; }
+.lightbox::backdrop { background: rgba(0, 0, 0, 0.88); }
+.lightbox img { max-width: 96vw; max-height: 94vh; object-fit: contain; cursor: zoom-out; }
+.rewrite { display: flex; gap: 8px; margin: 6px 0; }
+.rewrite input { flex: 1 1 auto; min-width: 0; font: 14px var(--mono); padding: 6px 8px; border: 1px solid var(--ink); background: var(--paper); color: var(--ink); }
 .line video { display: block; max-width: min(100%, 360px); max-height: 460px; border: 1px solid var(--ink); background: var(--ink); }
 .line audio, .status audio { display: block; width: min(100%, 320px); height: 36px; }
 .cap { font: 12px/1.5 var(--mono); }
-.gone { font: 13px var(--mono); color: #555; }
+.gone { font: 13px var(--mono); color: var(--dim); }
 .hear { margin-left: 4px; font: 12px var(--mono); white-space: nowrap; }
 /* a clip they'd like to send, with Venice's price */
 .line.offer .said { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding: 8px 10px; border: 1px dashed var(--ink); }
@@ -430,7 +449,7 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); padding: 0;
   border: 2px solid var(--ink); border-radius: 0; background: var(--paper); color: var(--ink);
 }
-.dlg::backdrop { background: rgba(255, 255, 255, 0.85); }
+.dlg::backdrop { background: var(--veil); }
 .dlg.wide { width: min(1040px, calc(100vw - 32px)); }
 .mtable { max-height: min(58vh, 560px); overflow: auto; border-top: 1px solid var(--ink); border-bottom: 1px solid var(--ink); }
 .models { font-size: 16px; }
@@ -504,7 +523,7 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 /* phones and other touch screens: a field under 16px makes iOS Safari zoom in when it's tapped, and the page stays
    zoomed in, cut off at the sides */
 @media (max-width: 640px), (pointer: coarse) {
-  .keybar input:not([type=checkbox]), .filters input[type=search], .pick select, .ask .opts select, .abilities select,
+  .keybar input:not([type=checkbox]), .filters input[type=search], .pick select, .ask .opts select, .abilities select, .rewrite input,
   .chip.add input { font-size: 16px; }
 }
 /* a small phone (an iPhone SE is 375px wide): the left column's tabs a little smaller, so a count of what's new fits */

@@ -837,10 +837,17 @@ function renderChatMeta() {
     h("span", {}, "model: ", linkish(modelName(c.model), () => openModels("chat"), { id: "model-btn", "aria-label": `Model: ${modelName(c.model)}. Change it` })),
     c.plain ? null : linkish("card", () => openCard("edit")),
     linkish("gallery", () => openGallery(t ? "chat" : "all"), { title: "Every photo and clip" }),
+    t && chatCost(t) > 0 ? h("span", { id: "chat-cost", title: "What this chat has cost on your Venice key: replies (since costs were kept), photos, clips and voice notes", text: `spent: ${A.usd(chatCost(t))}` }) : null,
     t ? linkish("new chat", newChat, { id: "new-chat", title: `A new chat${c.plain ? "" : " with " + c.name}; this one stays in your chats` }) : null,
     t ? linkish("rename", renameThread, { title: "Name this chat" }) : null,
     t ? linkish("delete", deleteThread, { title: "Delete this chat" }) : null,
   ]));
+}
+/** what a chat has cost on your key: its replies, photos, clips and voice notes */
+function chatCost(t) {
+  let usd = 0;
+  for (const m of (t && t.msgs) || []) usd += (m.cost || 0) + ((m.media && m.media.price) || 0) + ((m.voice && m.voice.price) || 0);
+  return usd;
 }
 /** a narrow screen goes back from the chat to the list it came from */
 function backToList() {
@@ -1166,17 +1173,18 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
       // a model that thinks before it answers can spend all its room thinking, and send back nothing: once more, with room
       if (!reply && !ctrl.signal.aborted) { r = await ask(room * 3); cost += A.callCost(r.usage, model); reply = C.unloop(C.stripThinking(r.text)); }
       if (own) { settle(held, cost); held = 0; }
+      ctrl.cost = cost;
       if (!reply) throw new Error(`${modelName(c.model || S.model)} sent back nothing, twice. Try again, or pick another model (model:, at the top of the chat).`);
     }
     if (ctrl.signal.aborted || !S.threads[t.id]) return;
-    const msg = { id: mid(), role: "assistant", content: reply, at: Date.now(), ...(demo ? { demo: true } : {}) };
+    const msg = { id: mid(), role: "assistant", content: reply, at: Date.now(), ...(demo ? { demo: true } : {}), ...(ctrl.cost ? { cost: ctrl.cost } : {}) };
     hist.push(msg);
     const drawn = S.gen;                                      // drawn again from here on, the chat has it all already
     t.at = msg.at;
     if (here(t)) markRead(t);
     saveThread(t);
     done(t);
-    if (!demo) { balanceSoon(); remember(t); }
+    if (!demo) { balanceSoon(); remember(t); if (here(t)) renderChatMeta(); }
     // a voice note with the reply: every reply when they're set to, and, on their own, one back to yours (priced
     // first, and set aside from today's allowance)
     let mirror = 0;
@@ -1639,13 +1647,20 @@ function renderTools() {
   }
   const items = [];
   if (!c.plain) {
-    items.push(linkish("ask for a photo", () => askFor("photo")), linkish("ask for a clip", () => askFor("clip")));
+    const pm = adultFor(c, thread()).ok ? adultPhotoModel() : photoModel();
+    const pp = pm ? A.photoPrice(pm, Math.min(Math.max(1, refsOf(c).length), Math.max(1, pm.maxIn || 1))) : null;
+    items.push(linkish(`ask for a photo${pp != null ? " · " + A.usd(pp) : ""}`, () => askFor("photo")), linkish("ask for a clip", () => askFor("clip")));
     const on = !!S.voiceOn[c.id];
     items.push(linkish(`voice notes: ${on ? "on" : "off"}`, () => setVoiceNotes(c, !on),
       { "aria-pressed": on ? "true" : "false", title: on ? `${c.name} replies with voice notes` : `${c.name} replies in text; "hear it" reads one out` }));
     const left = Math.max(0, S.ab.allowance - spentToday());
     items.push(linkish(`on their own: ${S.ab.own ? "on" : "off"}`, () => setOwn(!S.ab.own), { "aria-pressed": S.ab.own ? "true" : "false",
       title: S.ab.own ? `Characters text first and send photos and voice notes when they like: ${A.usd(left)} of today's ${A.usd(S.ab.allowance)} left` : "Characters only do what you ask" }));
+    if (S.ab.own) {
+      const i = Math.max(0, TEMPOS.findIndex(([v]) => v === (S.ab.tempo || "sometimes")));
+      items.push(linkish(`how often: ${TEMPOS[i][1]}`, () => setTempo(TEMPOS[(i + 1) % TEMPOS.length][0]),
+        { title: "How often they send photos and voice notes without being asked. Click to change." }));
+    }
   }
   if (S.ab.hear) items.push(linkish("record a voice note", startRecording));
   if (S.ab.see) items.push(linkish("send a photo", () => $("#photo-in").click()));
@@ -1678,7 +1693,7 @@ function renderAbilities() {
   allowance.addEventListener("change", () => { S.ab.allowance = Number(allowance.value); saveAb(); renderAbilities(); renderTools(); });
   tb.append(
     row("ON THEIR OWN", tick("characters text first when you come back, and send photos and voice notes when they like", S.ab.own, (on) => setOwn(on)),
-      ["up to ", allowance, ` a day · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
+      ["up to ", allowance, " a day · how often: ", tempoSelect(), ` · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
     row("MEMORY", tick("characters remember your chats with them", S.ab.memory, (on) => {
       S.ab.memory = on;
       saveAb();
@@ -1769,7 +1784,16 @@ function renderAsk() {
       else if (a.kind === "clip") { a.opts = null; requote(); } else renderAsk();
     });
     box.append(h("label", {}, h("span", {}, "THE SHOT ", h("span", { class: "hint", text: "written from your conversation; change anything" })), ta));
-    box.append(h("p", { class: "mono" }, linkish("write it again", writeShot, { disabled: a.busy || null }), a.hint ? ` (you asked for: ${a.hint})` : ""));
+    // written again: to what they say ("make it funnier"), or, with nothing said, a different one
+    const chg = h("input", { type: "text", id: "ask-change", maxlength: 300, placeholder: "change it: make it funnier, at night…",
+      "aria-label": "How to change the shot", disabled: a.busy || null });
+    chg.value = a.change || "";
+    const relabel = () => { const b = $("#ask-rewrite"); if (b) b.textContent = chg.value.trim() ? "REWRITE" : "WRITE ANOTHER"; };
+    chg.addEventListener("input", () => { a.change = chg.value; relabel(); });
+    chg.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); writeShot(); } });
+    box.append(h("div", { class: "rewrite" }, chg, h("button", { type: "button", class: "btn small", id: "ask-rewrite", onclick: writeShot,
+      disabled: a.busy || null, text: (a.change || "").trim() ? "REWRITE" : "WRITE ANOTHER" })));
+    if (a.hint) box.append(h("p", { class: "mono", text: `you asked for: ${a.hint}` }));
     if (!clipping) {
       const pm = askPhotoModel(a), n = pm ? Math.min(refs.length, pm.maxIn) : refs.length, price = A.photoPrice(pm, n), alt = askAlt(a, c);
       box.append(h("p", { class: "mono" }, `from ${n} picture${n === 1 ? "" : "s"} of ${c.name} · model: `,
@@ -1879,7 +1903,7 @@ async function writeShot() {
   renderAsk();
   try {
     const t = askChat(a), adult = adultFor(c, t, a.hint).ok;
-    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t ? t.msgs : []), a.hint, a.kind, { adult }),
+    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t ? t.msgs : []), a.hint, a.kind, { adult, current: a.shot, change: a.change }),
       maxTokens: 260, temperature: 0.8 });
     a.shot = A.cleanText(r.text);
     Object.assign(a, a.shot ? { status: "", bad: false } : { status: "The model sent back no shot. Write one yourself, or try again.", bad: true });
@@ -2056,6 +2080,22 @@ function adultChanged() {
 }
 
 // ---------- pictures for a character's card, made with AI ----------
+/** a picture in the chat, opened big over the page; a click or Escape closes it */
+function lightbox(src, alt) {
+  let d = $("#lightbox");
+  if (!d) {
+    d = h("dialog", { id: "lightbox", class: "lightbox", "aria-label": "The picture, big" });
+    d.addEventListener("click", () => d.close());
+    document.body.append(d);
+  }
+  d.textContent = "";
+  d.append(h("img", { src, alt: alt || "" }));
+  d.showModal();
+}
+document.addEventListener("click", (e) => {
+  const img = e.target && e.target.closest && e.target.closest(".log .pic img");
+  if (img && img.src) { e.preventDefault(); lightbox(img.src, img.alt); }
+});
 const BLURRED = "Venice's safe mode blurred that picture, so it wasn't kept. Change how they look on their card (look), then try again.";
 /** a picture for their card that safe mode blurred: for a character marked adult, why safe mode was on */
 const blurredWhy = (ad) => (ad && ad.why ? `Venice's safe mode blurred that picture, so it wasn't kept. It was on because ${ad.why}` : BLURRED);
@@ -2221,7 +2261,7 @@ async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}
  */
 async function onTheirOwn(t) {
   const c = cardOf(t);
-  if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs)) return;
+  if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs, { every: tempoEvery() })) return;
   // the call that decides is paid for too: set aside its most, from what's left today, and settle after
   const model = (S.models || []).find((m) => m.id === (c.model || S.model)) || null;
   const messages = A.moveMessages(c, A.apiHistory(t.msgs), { adult: adultFor(c, t).ok }), most = A.callEstimate(messages, 300, model);
@@ -2234,7 +2274,7 @@ async function onTheirOwn(t) {
     held = 0;
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
     const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
-    const lately = A.sentLately(t.msgs);                          // never two photos in a row
+    const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
     if (move === "photo" && !lately) await ownPhoto(t, shot);
     else if (move === "voice") await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
@@ -2682,6 +2722,23 @@ function renderSpeech() {
   for (const v of voices.length ? voices : [cur || A.DEFAULT_VOICE]) sel.append(h("option", { value: v, text: v }));
   sel.value = cur || sel.options[0].value;
   $("#speech-on").checked = !!S.voiceOn[c.id];
+}
+// how often a character sends a photo, voice note or clip without being asked: one chance in every so many replies
+const TEMPOS = [["never", "never"], ["rarely", "rarely"], ["sometimes", "sometimes"], ["often", "often"], ["every", "every round"]];
+const TEMPO = { never: 0, rarely: 12, sometimes: 6, often: 3, every: 1 };
+const tempoEvery = () => TEMPO[S.ab.tempo] ?? 6;
+function setTempo(v) {
+  S.ab.tempo = v;
+  saveAb();
+  renderTools();
+  if ($("#abilitydlg").open) renderAbilities();
+  toast(`Photos and voice notes on their own: ${TEMPOS.find(([k]) => k === v)[1]}.`);
+}
+function tempoSelect() {
+  const s = h("select", { "aria-label": "How often they send things on their own" }, TEMPOS.map(([v, t]) => h("option", { value: v, text: t })));
+  s.value = S.ab.tempo || "sometimes";
+  s.addEventListener("change", () => setTempo(s.value));
+  return s;
 }
 function setOwn(on) {
   S.ab.own = !!on;

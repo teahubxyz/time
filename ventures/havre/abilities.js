@@ -133,14 +133,20 @@ function transcript(card, history, n = 10) {
  * The messages for a text model to write the shot: the character, the conversation, what was asked for. adult: for an
  * adult character whose pictures can be adult (adultCheck).
  */
-export function shotMessages(card, history, ask = "", kind = "photo", { adult = false } = {}) {
+export function shotMessages(card, history, ask = "", kind = "photo", { adult = false, current = "", change = "" } = {}) {
   const lines = transcript(card, history);
   const look = card.look && card.look.description;
+  const now = str(current, 900).trim(), how = str(change, 300).trim();
+  // a shot that's there already: changed the way they say, or, written again with nothing said, a different one
+  const again = !now ? "" : how
+    ? `The shot as it stands:\n${now}\n\nChange it: ${how}. Write the whole shot again with that change, keeping what the change doesn't touch.`
+    : `The last shot was:\n${now}\n\nWrite a clearly different one: another moment, angle, setting or mood.`;
   const user = [
     `The character: ${card.name}${card.tagline ? ". " + card.tagline : ""}`,
     look ? `How they look: ${look}` : "",
     lines.length ? "The conversation so far, latest last:\n" + lines.join("\n") : "The conversation hasn't started yet.",
     "What was asked for: " + (str(ask, 500).trim() || "nothing in particular. Pick a moment that fits the conversation."),
+    again,
     `Write the shot for the ${kind === "clip" ? "clip" : "photo"} ${card.name} sends now.`,
   ].filter(Boolean).join("\n\n");
   const system = kind === "clip" ? (adult ? CLIP_SYSTEM_ADULT : CLIP_SYSTEM) : adult ? PHOTO_SYSTEM_ADULT : PHOTO_SYSTEM;
@@ -357,7 +363,9 @@ export function moveLikely(history, { every = 6 } = {}) {
   const real = (history || []).filter((m) => m && !m.demo && !m.hidden);
   const last = real.at(-1), said = [...real].reverse().find((m) => m.role === "user");
   if (!last || last.role !== "assistant" || last.media) return false;
-  if ((said && ASKS.test(str(said.content))) || SHOWS.test(str(last.content))) return true;
+  if (said && ASKS.test(str(said.content))) return true;
+  if (!every) return false;                                   // never on their own: only when asked
+  if (SHOWS.test(str(last.content))) return true;
   return real.filter((m) => m.role === "assistant" && !m.media).length % every === 0;
 }
 /** did they send a photo or clip of their own in the last few messages (so not another one yet) */
