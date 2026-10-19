@@ -223,6 +223,11 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
 .line { display: grid; grid-template-columns: 130px minmax(0, 1fr); gap: 4px 14px; margin-top: 14px; }
 .line:first-child { margin-top: 0; }
 .line.cont { margin-top: 6px; }
+/* edit / delete under a message: shown on hover or focus; always, faintly, where there's no hover (phones) */
+.msgtools { grid-column: 2; font: 12px/1.4 var(--mono); opacity: 0; }
+.line:hover .msgtools, .line:focus-within .msgtools { opacity: 1; }
+@media (hover: none) { .msgtools { opacity: 0.6; } }
+@media (max-width: 640px) { .msgtools { grid-column: 1; } }
 .line.cont .who { visibility: hidden; }
 .who { font: 700 13px/1.6 var(--mono); text-transform: uppercase; overflow-wrap: anywhere; }
 .said { white-space: pre-wrap; overflow-wrap: anywhere; }

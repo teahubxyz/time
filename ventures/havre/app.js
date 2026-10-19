@@ -376,6 +376,7 @@ function setPane(which) {
   const st = $("#studio");
   st.classList.toggle("pane-chat", S.pane === "chat");
   st.classList.toggle("pane-list", S.pane === "list");
+  if (S.pane === "chat") scrollLog();          // drawn while hidden, it couldn't scroll: now it can
 }
 function renderLeft() {
   for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"]]) {
@@ -868,7 +869,53 @@ function put(el) {
   log.append(el);
   return el;
 }
-function scrollLog() { const l = $("#log"); l.scrollTop = l.scrollHeight; }
+/** to the latest message: now, after the next paint, and once more when late layout (a pane shown, a font) has settled */
+function scrollLog() {
+  const l = $("#log"), go = () => { l.scrollTop = l.scrollHeight; };
+  go(); requestAnimationFrame(go); setTimeout(go, 250);
+}
+/** a photo or clip that loads after the chat is drawn pushes the bottom down: follow it, if you were at the bottom */
+function followMedia(log) {
+  for (const el of log.querySelectorAll("img, video")) {
+    const near = () => log.scrollHeight - log.scrollTop - log.clientHeight < 400;
+    const go = () => { if (near()) log.scrollTop = log.scrollHeight; };
+    el.addEventListener(el.tagName === "VIDEO" ? "loadedmetadata" : "load", go, { once: true });
+  }
+}
+
+// ---------- editing and deleting messages ----------
+function msgTools(el, t, m) {
+  if (!t || !m || !m.id || m.demo) return;
+  el.dataset.msg = m.id;
+  el.append(h("span", { class: "msgtools" }, ...slashed([
+    m.role === "user" && !m.media ? linkish("edit", () => editMsg(t, m), { "aria-label": "Edit this message" }) : null,
+    linkish("delete", () => deleteMsg(t, m), { "aria-label": "Delete this message" }),
+  ])));
+}
+/** take one message out of a chat; another tab's copy doesn't bring it back */
+function deleteMsg(t, m) {
+  if (S.busy.has(t.id)) return toast("Wait for the reply first.");
+  if (!confirm("Delete this message?")) return;
+  const i = t.msgs.indexOf(m);
+  if (i < 0) return;
+  t.msgs.splice(i, 1);
+  takenBack.add(m.id);
+  saveThread(t);
+  renderLog();
+}
+/** change something you said and send it again: what came after it goes, and they answer the new words */
+function editMsg(t, m) {
+  if (S.busy.has(t.id)) return toast("Wait for the reply first.");
+  const i = t.msgs.indexOf(m);
+  if (i < 0) return;
+  const later = t.msgs.slice(i + 1).some((x) => x && !x.hidden);
+  const v = prompt(later ? "Edit your message. It's sent again, and the replies after it are replaced." : "Edit your message.", m.content);
+  if (v == null || !v.trim() || v.trim() === m.content.trim()) return;
+  for (const x of t.msgs.splice(i)) if (x && x.id) takenBack.add(x.id);
+  saveThread(t);
+  renderLog();
+  send(v);
+}
 
 function renderLog() {
   S.gen++;                                                    // a reply being played out stops: it's all drawn here now
@@ -889,12 +936,12 @@ function renderLog() {
   } else if (c.greeting) for (const b of C.splitBubbles(C.fill(c.greeting, c, "you"))) put(line(b, "them"));
   for (const m of hist) {
     if (m.media) put(mediaLine(c, m));
-    else if (m.role === "user" && !m.hidden) put(line(m.content, "me"));
+    else if (m.role === "user" && !m.hidden) msgTools(put(line(m.content, "me")), t, m);
     else if (m.role === "assistant") {
       if (m.voice) put(voiceLine(c, m));
       let last = null;
       for (const b of bubblesOf(c, m.content)) { last = put(line(b, "them")); if (m.id) last.dataset.msg = m.id; }
-      if (last) offerVoice(last, c, m, t);
+      if (last) { offerVoice(last, c, m, t); msgTools(last, t, m); }
     }
   }
   const ideas = hist.some((m) => m.role === "user" && !m.hidden) ? [] : C.suggestions(c);
@@ -906,6 +953,7 @@ function renderLog() {
   }
   if (t && S.doing.has(t.id)) put(typingLine(t, S.doing.get(t.id)));
   renderJobs();
+  followMedia(log);
   scrollLog();
 }
 
