@@ -1455,6 +1455,80 @@ assert sy.config() == [] and sy.main() == 0, "no sync.json: nothing to sync"
 print("ALL OK 83")
 
 
+# 123 an approved PR that no longer merges is brought up to date by Time; a conflict goes to the worker as the reviewer's text
+real_ub = tm.update_branch
+ub_calls, ub_result = [], ["s123"]
+def fake_ub(branch, base, message):
+    ub_calls.append((branch, base, message)); r = ub_result[0]; return r if isinstance(r, tuple) else (r, "")
+tm.update_branch = fake_ub
+E123 = {**K, "TIME_AUTOMERGE": "on"}
+def stale123(**pr):
+    w = pr_world(); w.gh_pr[7]["pr"].update({"mergeable": False, "base": {"ref": "release"}, **pr}); w.issues[7] = {"number": 7, "state": "open", "labels": []}
+    return w
+# unmergeable: one merge of the PR's own base (not main), no merge call this tick, one `updated` beat
+w = run(stale123(), E123)
+assert ub_calls == [("time/card-1", "release", "card #1: merge release")] and not merged(w), ub_calls
+assert tm.beats_of(w.comments[1])[-1]["beat"] == "updated" and len(w.posted) == 1 and "release" in w.posted[0][1], w.posted
+# the next tick (branch mergeable now, checks green) lands it
+w.gh_pr[7]["pr"]["mergeable"] = True; ub_calls.clear()
+run(w, E123)
+assert merged(w) and ub_calls == [] and w.issues[1]["state"] == "closed"
+# a PR that is already mergeable (or does not say) is left alone
+for extra in ({"mergeable": True}, {}):
+    w = pr_world(); w.gh_pr[7]["pr"].update(extra); ub_calls.clear(); run(w, E123)
+    assert merged(w) and ub_calls == [], extra
+# a 409 from the merge call takes the same road
+class W409(World):
+    def http(self, method, url, token, body=None, timeout=0):
+        if method == "POST" and url.endswith("/pulls/7/merge"): raise RuntimeError("POST /pulls/7/merge -> 409: out of date")
+        return super().http(method, url, token, body, timeout)
+w = pr_world(); w.__class__ = W409; ub_calls.clear(); run(w, E123)
+assert len(ub_calls) == 1 and ub_calls[0][1] == "main" and tm.beats_of(w.comments[1])[-1]["beat"] == "updated"
+# nothing to merge (head unchanged): silent
+ub_result[0] = ""; w = run(stale123(), E123); assert w.posted == []
+# a conflict: hunks on the card and the PR, `needs-human`, said once
+HUNK = "`app.py`\n```\n<<<<<<< HEAD\nx = 2\n=======\nx = 3\n>>>>>>> FETCH_HEAD\n```"
+ub_result[0] = (None, HUNK); ub_calls.clear()
+w = run(stale123(), E123)
+b = tm.beats_of(w.comments[1])[-1]
+assert b["beat"] == "needs-human" and b["conflict"] is True and "x = 3" in w.posted[0][1] and "needs-human" in w.issues[7]["labels"], w.posted
+assert "<<<<<<< HEAD" in w.comments[7][-1]["body"] and not merged(w)
+run(w, E123); assert len(ub_calls) == 1 and len(w.posted) == 2, "the next beat does not merge or post again (one on the PR, one on the card)"
+# /time retry sends the worker back to the branch with the hunks as the reviewer's text
+w.comments[1].append({"created_at": iso(-1), "user": {"login": "owner"}, "body": "/time retry"})
+w.issues[7]["labels"] = ["needs-human"]
+seen123 = []; _v123 = w.venice
+w.venice = lambda body: (seen123.append(body["messages"][0]["content"]), _v123(body))[1]
+w.prs = [{**w.gh_pr[7]["pr"], "body": "Closes #1"}]
+w = run(w, KV)
+assert seen123 and "x = 3" in seen123[0] and "<<<<<<< HEAD" in seen123[0] and "REVIEWER's, not the operator's" in seen123[0], seen123[:1]
+tm.update_branch = real_ub
+
+# update_branch against real git: a clean merge is one commit by Time with the PR's base merged in; a conflict aborts and leaves the branch
+import tempfile as _tf123
+root123 = _tf123.mkdtemp(); bare123, wk123 = os.path.join(root123, "o", "r.git"), os.path.join(root123, "wk")
+os.makedirs(os.path.dirname(bare123)); g83("init", "--bare", "-q", bare123); g83("clone", "-q", bare123, wk123)
+commit83(wk123, "a.txt", "A"); commit83(wk123, "app.py", "x = 1\n"); g83("push", "-q", "origin", "HEAD:main", cwd=wk123)
+g83("checkout", "-qb", "time/card-1", cwd=wk123); commit83(wk123, "b.txt", "B"); g83("push", "-q", "origin", "time/card-1", cwd=wk123)
+g83("checkout", "-q", "main", cwd=wk123); commit83(wk123, "c.txt", "C"); g83("push", "-q", "origin", "main", cwd=wk123)
+old_server = tm.SERVER; tm.SERVER = "file://" + root123
+try:
+    sha, hunks = tm.update_branch("time/card-1", "main", "card #1: merge main")
+    assert sha and not hunks and g83("rev-parse", "time/card-1", cwd=bare123) == sha
+    assert g83("log", "-1", "--format=%s|%an", "time/card-1", cwd=bare123) == "card #1: merge main|Time"
+    assert len(g83("log", "-1", "--format=%P", "time/card-1", cwd=bare123).split()) == 2, "one merge commit"
+    assert tm.update_branch("time/card-1", "main", "m") == ("", ""), "already up to date: nothing pushed"
+    g83("checkout", "-q", "time/card-1", cwd=wk123); g83("pull", "-q", "origin", "time/card-1", cwd=wk123); commit83(wk123, "app.py", "x = 2\n")
+    g83("push", "-q", "origin", "time/card-1", cwd=wk123)
+    g83("checkout", "-q", "main", cwd=wk123); commit83(wk123, "app.py", "x = 3\n"); g83("push", "-q", "origin", "main", cwd=wk123)
+    before = g83("rev-parse", "time/card-1", cwd=bare123)
+    sha, hunks = tm.update_branch("time/card-1", "main", "m")
+    assert sha is None and "`app.py`" in hunks and "<<<<<<<" in hunks and "x = 2" in hunks and "x = 3" in hunks, hunks
+    assert g83("rev-parse", "time/card-1", cwd=bare123) == before, "the branch is as it was"
+finally:
+    tm.SERVER = old_server
+print("ALL OK 123")
+
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
 if not os.environ.get("TIME_TEST_VENTURE"):

@@ -881,6 +881,26 @@ def dispatch_ci(pr: dict) -> bool:
     return True
 
 
+def update_branch_of(card: dict, pr: dict, last: dict) -> None:
+    """An approved PR that no longer merges: merge its base into it (one commit by Time; CI runs on the new head and landing
+    follows on a later beat). A conflict is posted with its hunks on the card and the PR, labelled `needs-human`, and the
+    branch is left as it was; `/time retry` hands those hunks to the worker as the reviewer's text."""
+    if last.get("conflict"):
+        return  # said once; the worker's revision or a human moves the branch
+    n, base, branch = card["number"], (pr.get("base") or {}).get("ref") or default_branch(), pr["head"]["ref"]
+    sha, hunks = update_branch(branch, base, f"card #{n}: merge {base}")
+    if sha is None:
+        text = (f"⏱️ Time: PR #{pr['number']} is approved but conflicts with `{base}`, and I don't guess at conflicts: "
+                f"I left `{branch}` as it was. Merge `origin/{base}` into it and resolve:\n\n{hunks}\n\n"
+                "Comment `/time retry` to send the worker back to the branch with these hunks.")
+        gh("POST", f"/repos/{REPO}/issues/{pr['number']}/comments", {"body": text})  # reviewer_feedback reads the PR's comments
+        label(pr["number"], "needs-human")
+        comment(n, text, {"beat": "needs-human", "pr": pr["number"], "conflict": True})
+    elif sha:
+        comment(n, f"⏱️ Time: PR #{pr['number']} was behind `{base}`; merged it into `{branch}` ({sha[:8]}). "
+                "CI runs on the new head and landing follows.", {"beat": "updated", "pr": pr["number"], "head": sha})
+
+
 def land(card: dict, last: dict, revised_at: str | None = None) -> None:
     """Move a card whose PR is up toward merged. Silent while nothing has changed. `revised_at` is when the worker last
     pushed an answer to a review: a verdict from before that has been answered and no longer counts."""
@@ -927,6 +947,9 @@ def land(card: dict, last: dict, revised_at: str | None = None) -> None:
             comment(n, f"⏱️ Time: approved, but PR #{pr['number']} touches protected paths ({', '.join(hit[:5])}), so a "
                     "human merges this one.", {"beat": "needs-human", "pr": pr["number"]})
         return
+    if pr.get("mergeable") is False:  # Gitea says the branch no longer merges cleanly: bring it up to date first
+        update_branch_of(card, pr, last)
+        return
     c = checks(pr["head"]["sha"])
     need = (os.environ.get("TIME_REQUIRE_CHECKS") or "on").strip() != "off"
     if c == "pending" or (c == "none" and need):
@@ -943,7 +966,13 @@ def land(card: dict, last: dict, revised_at: str | None = None) -> None:
             comment(n, f"⏱️ Time: approved, but checks are failing on PR #{pr['number']}. Waiting for a fix.",
                     {"beat": "checks-failed", "pr": pr["number"]})
         return
-    gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True}, as_time=True)
+    try:
+        gh("POST", f"/repos/{REPO}/pulls/{pr['number']}/merge", {"Do": "squash", "delete_branch_after_merge": True}, as_time=True)
+    except RuntimeError as e:
+        if "409" not in str(e):
+            raise
+        update_branch_of(card, pr, last)  # the merge call found the branch behind or conflicting
+        return
     if gh("GET", f"/repos/{REPO}/issues/{n}")["state"] == "open":
         gh("PATCH", f"/repos/{REPO}/issues/{n}", {"state": "closed"})
     comment(n, f"⏱️ Time: approved and green, merged PR #{pr['number']}. Card done.", {"beat": "merged", "pr": pr["number"]})
@@ -1104,6 +1133,46 @@ def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, bas
             # someone pushed first: replay ours on theirs once (appends to the ledger rebase cleanly)
             git("-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", "pull", "-q", "--rebase", url, branch)
         return git("rev-parse", "HEAD").stdout.strip()
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def update_branch(branch: str, base: str, message: str) -> tuple[str | None, str]:
+    """Merge origin/<base> into <branch> as Time and push: (new sha, "") or, on conflicts, (None, the `<<<<<<<` blocks,
+    trimmed) with the merge aborted and the branch untouched. ("", "") when there was nothing to merge.
+    shortcut: a worker's write_file of a resolved file is a plain commit, not this merge, so Time's next try may conflict again; upgrade by letting the worker's hands commit a merge."""
+    token = os.environ.get("GITHUB_TOKEN") or ""
+    url, d = _git_url(True), tempfile.mkdtemp(prefix="time-merge-")
+    host = re.sub(r"^\w+://", "", SERVER).split("/")[0] or "localhost"
+
+    def git(*args, check=True):
+        p = subprocess.run(["git", "-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", *args],
+                           cwd=d, capture_output=True, text=True)
+        if check and p.returncode:
+            err = (p.stderr or p.stdout)[-400:]
+            raise RuntimeError(f"git {args[0]} failed: {err.replace(token, '***') if token else err}")
+        return p
+    try:
+        git("clone", "-q", "--branch", branch, url, ".")
+        git("remote", "set-url", "origin", _git_url(False))  # the token must not stay in .git/config
+        before = git("rev-parse", "HEAD").stdout.strip()
+        git("fetch", "-q", url, base)
+        if git("merge", "--no-ff", "-q", "-m", message, "FETCH_HEAD", check=False).returncode:
+            files = git("diff", "--name-only", "--diff-filter=U").stdout.split()
+            if not files:
+                git("merge", "FETCH_HEAD", "--no-ff", "-m", message)  # not a conflict: raise with git's own words
+            out = []
+            for f in files:
+                text = open(os.path.join(d, f), errors="replace").read()
+                blocks = re.findall(r"^<<<<<<< .*?^>>>>>>> [^\n]*", text, re.M | re.S)
+                out.append(f"`{f}`\n" + "\n".join(f"```\n{b[:1200]}\n```" for b in blocks[:3]))
+            git("merge", "--abort", check=False)
+            return None, "\n\n".join(out)[:3500]
+        after = git("rev-parse", "HEAD").stdout.strip()
+        if after == before:
+            return "", ""
+        git("push", "-q", url, f"HEAD:refs/heads/{branch}")
+        return after, ""
     finally:
         shutil.rmtree(d, ignore_errors=True)
 
@@ -1610,7 +1679,7 @@ def tick() -> None:
                         {"beat": "dispatched", "launched": True, **r, "model": worker_model, **({"revised": True} if rev else {}),
                          **({"auto_retry": True} if auto else {})})
                 continue
-            if state in ("pr", "needs-human", "no-checks", "checks-failed"):
+            if state in ("pr", "needs-human", "no-checks", "checks-failed", "updated", "ci-dispatched"):
                 land(card, last, revised_at)
                 continue
             if state in ("dispatched", "stuck"):
