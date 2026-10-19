@@ -1,0 +1,7 @@
+{
+ "_about": "The router's dials (.github/time/router.py). mode: off (Astra plans as before), dry (Astra posts the ranking on the Astra log and queues nothing), live (Astra queues from the top and the heartbeat promotes queued cards in ranked order). weights: the owner's dial per kind; all 1 is balanced, 2 doubles a kind, 0 shuts it out. restless: how fast a kind not picked lately climbs, per day, for at most 10 days. cost_usd: the estimated spend of an S, M or L card, which Astra checks against the day's money left before it queues one.",
+ "mode": "dry",
+ "weights": {"venture": 1, "feature": 1, "refinement": 1, "optimization": 1},
+ "restless": 0.05,
+ "cost_usd": {"S": 0.5, "M": 1.5, "L": 4}
+}

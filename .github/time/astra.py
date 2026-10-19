@@ -11,9 +11,18 @@ TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; 
 has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means Astra writes its note
 and queues nothing; the spend cap is checked by the engine like any other call. Everything Astra does is a comment on
 one issue, "Astra log", so a human can read the day's reasoning in one place and object there.
+
+The router (time/router.json, `mode`: off | dry | live; router.py): instead of picking cards in prose, the seat judges
+every candidate (its kind, its value 1-5, its size) and code ranks them with the owner's weights per kind, a restless
+boost for kinds not picked lately, and the card's age. The log shows the ranked table. `dry` writes it and queues
+nothing; `live` queues from the top while the day's money left covers each card's estimated cost, creates the seat's
+new cards unqueued (they are candidates the next day), and the heartbeat promotes queued cards in the ranked order.
+`off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
 
+import base64
+import datetime as dt
 import importlib.util
 import json
 import os
@@ -25,6 +34,10 @@ HERE = Path(__file__).resolve().parent
 _spec = importlib.util.spec_from_file_location("tm", HERE / "time.py")
 tm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tm)
+_rspec = importlib.util.spec_from_file_location("router", HERE / "router.py")
+router = importlib.util.module_from_spec(_rspec)
+_rspec.loader.exec_module(router)
+ROUTER_FILE = "time/router.json"
 
 SPINE = os.environ.get("TIME_SPINE") or "teahubxyz/teahub"   # where AGENTS.md and docs/decisions.md live
 LOG_TITLE = "Astra log"
@@ -49,6 +62,25 @@ Answer with JSON only, no prose around it:
 {{"note": "<3-6 sentences: what the factory did yesterday, what matters today, and why you chose these>",
   "queue": [<existing open issue numbers to queue now; they must already have a DONE: line>],
   "new": [{{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>", "queue": true}}]}}"""
+
+
+ROUTER = """You are Astra, the daily planner of a small, fully AI-run software factory (Teahub). Today you judge the
+candidates below; code ranks them with the owner's weights and queues from the top, so don't choose: judge each one.
+
+For every candidate give:
+- kind: venture (a new venture, or a venture's next version), feature (new functionality), refinement (making what
+  exists better: fixes, polish, a live venture's page or skills) or optimization (cost, speed, reliability)
+- value: 1-5, what finishing it is worth to the factory now (5: it unblocks the factory, or the owner asked for it and
+  it matters today; 1: nice to have, stale, or a duplicate of another card)
+- size: S (well under one worker session), M (one session), L (more than one: it must be split first)
+- why: one short sentence
+You may also write up to {max_new} new cards for work the board is missing; they are candidates from tomorrow on.
+Never write one that posts outside the repo or touches workflows, secrets or variables.
+
+Answer with JSON only, no prose around it:
+{{"note": "<3-6 sentences: what happened yesterday and what matters today>",
+  "assess": [{{"key": "<the candidate's key, e.g. #82>", "kind": "feature", "value": 3, "size": "M", "why": "..."}}],
+  "new": [{{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>"}}]}}"""
 
 
 def env_int(name: str, default: int) -> int:
@@ -103,6 +135,94 @@ def decide(state: dict, context: str, seat: str) -> dict:
             "new": [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]}
 
 
+def router_config() -> dict:
+    """time/router.json on the default branch; missing or unreadable, the router is off and Astra plans as before."""
+    try:
+        f = tm.gh("GET", f"/repos/{tm.REPO}/contents/{ROUTER_FILE}")
+        return router.config(base64.b64decode(f.get("content") or "").decode(errors="replace"))
+    except Exception as e:  # noqa: BLE001
+        if "-> 404" not in str(e):
+            print(f"router config unreadable: {str(e)[:120]}")
+        return router.config(None)
+
+
+def recent(log: int, days: int = 14) -> list[dict]:
+    """The log's comments of the last `days` days, oldest first (Gitea pages from the oldest, so a plain limit=20
+    read the thread's first twenty comments forever)."""
+    since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=days)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    out: list[dict] = []
+    for page in range(1, 5):
+        batch = tm.gh("GET", f"/repos/{tm.REPO}/issues/{log}/comments?since={since}&limit=50&page={page}") or []
+        out += batch
+        if len(batch) < 50:
+            break
+    return out
+
+
+def parse(raw: str) -> dict:
+    """The first JSON object in the seat's reply."""
+    dec = json.JSONDecoder()
+    for m in re.finditer(r"\{", raw or ""):
+        try:
+            out, _ = dec.raw_decode(raw, m.start())
+        except ValueError:
+            continue
+        if isinstance(out, dict):
+            return out
+    return {}
+
+
+def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
+    """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
+    open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
+    cands = router.candidates(open_issues) + [dict(router.NEW_VENTURE)]
+    listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
+                          f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
+    today, day_cap, month, month_cap = tm.budget()
+    user = (f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nSpend: ${today:.2f} of "
+            f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month.\n\nCandidates ({len(cands)}):\n\n{listing}")
+    try:
+        out = parse(tm.think(seat, None, None, ROUTER.format(max_new=max_new), user))
+    except tm.Budget as e:
+        tm.comment(log, f"🔭 Astra: {e}. No ranking today.", {"beat": "astra", "router": cfg["mode"], "queued": 0, "capped": True})
+        return 0
+    assess = {str(a.get("key") or "").strip(): a for a in out.get("assess") or [] if isinstance(a, dict)}
+    ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), dt.datetime.now(dt.timezone.utc).date())
+    picks = router.pick(ranked, cfg, max(0.0, day_cap - today), max_ready)
+    new = [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")][:max_new]
+    live, created = cfg["mode"] == "live", []
+    if live:
+        for r in picks:
+            tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+        for c in new:
+            body = str(c.get("body") or "")
+            if not router.DONE.search(body):
+                body += "\n\nDONE: PR open that does the above, tests green."
+            created.append(tm.new_issue(str(c["title"])[:200], body + "\n\n<sub>card written by Astra</sub>", [])["number"])
+    unjudged = sum(1 for r in ranked if not r["judged"])
+    w = cfg["weights"]
+    head = (f"🔭 Astra ({seat}), router `{cfg['mode']}`, spend ${today:.2f} of ${day_cap:.2f} today. Weights: "
+            + ", ".join(f"{k} {w[k]:g}" for k in router.KINDS) + f"; restless {cfg['restless']:g}/day.")
+    lines = [head, "", str(out.get("note") or "(no note)"), "", router.table(ranked, picks, cfg["mode"]), ""]
+    if unjudged:
+        lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
+    if live:
+        lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in picks)) if picks else "Queued nothing today.")
+        if created:
+            lines.append("New cards (candidates from tomorrow): " + ", ".join(f"#{n}" for n in created))
+    else:
+        lines.append("Dry run: nothing queued or created. Live, it would queue: "
+                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + ".")
+        if new:
+            lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
+    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
+            "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
+            "would": [r["n"] for r in picks] if not live else [], "new": created}
+    tm.comment(log, "\n".join(lines), meta)
+    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}")
+    return 0
+
+
 def tick() -> int:
     seat = (os.environ.get("TIME_ASTRA_SEAT") or "opus").strip()
     max_ready, max_new = env_int("TIME_ASTRA_MAX_READY", 2), env_int("TIME_ASTRA_MAX_NEW", 2)
@@ -114,10 +234,13 @@ def tick() -> int:
         return 0
     context = spine_file("AGENTS.md")[:6000] + "\n\n" + "\n".join(spine_file("docs/decisions.md").splitlines()[-25:])
     # the log thread is part of the context: humans object there
-    thread = tm.gh("GET", f"/repos/{tm.REPO}/issues/{log}/comments?limit=20")
+    thread = recent(log)
     human = [c["body"][:500] for c in thread if not tm.is_time(c)][-5:]
     if human:
         context += "\n\nRecent human replies on the Astra log (follow these):\n- " + "\n- ".join(human)
+    cfg = router_config()
+    if cfg["mode"] != "off":
+        return router_tick(cfg, seat, log, context, thread, max_ready, max_new)
     try:
         plan = decide(state, context, seat)
     except tm.Budget as e:

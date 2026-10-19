@@ -620,13 +620,31 @@ def plan_spec(spec: dict) -> None:
     label(n, "planned")
 
 
+def rank_order() -> list[int]:
+    """The router's latest live ranking (Astra's beat on its log, router.py), card numbers best first; [] when the
+    router is off or dry, or the log can't be read: then cards are promoted oldest first, as before."""
+    try:
+        log = next(iter(issues("state=open&labels=astra")), None)
+        if not log:
+            return []
+        since = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=3)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        beats = [b for b in beats_of(gh("GET", f"/repos/{REPO}/issues/{log['number']}/comments?since={since}&limit=50") or [])
+                 if b.get("beat") == "astra" and b.get("router") == "live" and b.get("order")]
+        return [int(n) for n in beats[-1]["order"]] if beats else []
+    except Exception as e:  # noqa: BLE001  the ranking is a preference; oldest first still works
+        print(f"rank order unavailable: {str(e)[:120]}")
+        return []
+
+
 def promote_next() -> int | None:
-    """Label the oldest `queued` card whose dependencies are closed `ready`; at most TIME_PARALLEL cards in flight."""
+    """Label the best `queued` card whose dependencies are closed `ready`: the router's live ranking first (Astra's
+    latest), then the oldest; at most TIME_PARALLEL cards in flight."""
     ready = issues("state=open&labels=ready")
     if len(ready) >= int(os.environ.get("TIME_PARALLEL") or 1):
         return None
     queued = issues("state=open&labels=queued")
-    for card in sorted(queued, key=lambda i: i["number"]):
+    pos = {n: k for k, n in enumerate(rank_order())}
+    for card in sorted(queued, key=lambda i: (pos.get(i["number"], len(pos)), i["number"])):
         deps = [int(d) for d in re.findall(r"Depends on #(\d+)", card.get("body") or "")]
         if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
             try:

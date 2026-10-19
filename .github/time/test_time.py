@@ -1131,6 +1131,106 @@ assert gv.research(repos79, "opus", gv.registry()) is None
 gv.tm.comment, gv.registry, gv.ask_json, gv.readme_of = real79c
 print("ALL OK 79c")
 
+# 80 the router (time#68, #72): the seat judges every candidate, router.py ranks them with the owner's weights per kind,
+# Astra queues from the top in live mode and only shows the ranking in dry mode, and the heartbeat promotes queued
+# cards in the live ranking's order
+rspec = importlib.util.spec_from_file_location("rt", Path(__file__).resolve().parent / "router.py")
+rt = importlib.util.module_from_spec(rspec); rspec.loader.exec_module(rt)
+cfg80 = rt.config(None)
+assert cfg80["mode"] == "off" and cfg80["weights"] == dict.fromkeys(rt.KINDS, 1.0), "no router.json: off, balanced"
+assert rt.config("not json")["mode"] == "off" and rt.config('{"mode": "LIVE"}')["mode"] == "live" and rt.config('{"mode": "x"}')["mode"] == "off"
+c80 = rt.config('{"mode": "dry", "weights": {"venture": 2, "feature": "junk"}, "restless": 9, "cost_usd": {"S": 1}, "_about": "ok"}')
+assert c80["weights"]["venture"] == 2 and c80["weights"]["feature"] == 1 and c80["restless"] == 1, c80
+assert c80["cost_usd"] == {"S": 1, "M": 1.5, "L": 4.0}
+# the kind when the seat gives none
+assert rt.guess_kind("x", "Base: gh-pages\nDONE: y", set()) == "refinement", "a live venture's folder"
+assert rt.guess_kind("Adaptive budget", "pace spend to the pool", set()) == "optimization"
+assert rt.guess_kind("Fix the header", "", set()) == "refinement" and rt.guess_kind("Mentions are handoffs", "", set()) == "feature"
+assert rt.guess_kind("Fix it", "", {"kind:optimization"}) == "optimization" and rt.guess_kind("x", "", {"signal"}) == "venture"
+# candidates: a DONE line and not held; lined-up cards are ranked (for promotion) but never queued again
+iss80 = lambda n, title, body="DONE: x", labels=(), created="2026-10-18T00:00:00Z": {
+    "number": n, "title": title, "body": body, "labels": [{"name": l} for l in labels], "created_at": created}
+open80 = [iss80(1, "Engine feature"), iss80(2, "Fix the docs", labels=["queued"]), iss80(3, "Parent", labels=["planned"]),
+          iss80(4, "No done line", body="just an idea"), iss80(5, "Cheaper reviews", body="Depends on #1\nDONE: z"),
+          iss80(6, "A human's", labels=["needs-human"]), iss80(7, "Huge rewrite", created="2026-10-01T00:00:00Z"),
+          iss80(8, "Huebrain: want the next version?", labels=["signal"])]
+cands80 = rt.candidates(open80)
+assert [c["n"] for c in cands80] == [1, 2, 5, 7] and cands80[0]["unblocks"] == 1 and cands80[1]["lined_up"], cands80
+# scoring: the seat's value and size, the owner's weight per kind, restless per kind, age per card
+today80 = dt.date(2026, 10, 19)
+assess80 = {"#1": {"kind": "feature", "value": 4, "size": "M", "why": "w"}, "#2": {"kind": "refinement", "value": 5, "size": "s"},
+            "#5": {"kind": "optimization", "value": 2, "size": "S"}, "#7": {"kind": "feature", "value": 5, "size": "L"},
+            "venture:new": {"kind": "venture", "value": 3, "size": "M"}}
+live80 = rt.config('{"mode": "live"}')
+r80 = rt.rank(cands80 + [dict(rt.NEW_VENTURE)], assess80, live80, {}, today80)
+s80 = {r["key"]: r for r in r80}
+assert [r["key"] for r in r80] == ["#2", "#1", "#5", "#7", "venture:new"], [(r["key"], r["score"]) for r in r80]
+assert s80["#1"]["restless"] == 1.5 and abs(s80["#1"]["score"] - 1.5 * 1.02 * 4.5 / 2) < 0.002, s80["#1"]   # never picked: 1.5
+assert s80["#7"]["actionable"] is False and "split" in s80["#7"]["why_not"] and s80["#7"]["age"] == 1.36, s80["#7"]
+assert s80["venture:new"]["actionable"] is False and s80["venture:new"]["n"] is None and s80["#2"]["size"] == "S"
+assert rt.order(r80) == [2, 1, 5, 7]
+# a kind picked yesterday is less restless; the owner's weight lifts a kind
+r80b = rt.rank(cands80, assess80, rt.config('{"weights": {"optimization": 4}}'), {"refinement": "2026-10-18"}, today80)
+assert {r["key"]: r for r in r80b}["#2"]["restless"] == 1.05 and r80b[0]["key"] == "#5", [(r["key"], r["score"]) for r in r80b]
+u80 = rt.score(cands80[0], {}, live80, {}, today80)
+assert u80["value"] == 3 and u80["size"] == "M" and u80["kind"] == "feature" and not u80["judged"], "unjudged: 3, M, the guessed kind"
+assert rt.score(cands80[0], {"kind": "nonsense", "value": 99, "size": "huge"}, live80, {}, today80)["value"] == 5
+# picks: from the top, past lined-up and unwired candidates, while the money left covers each size's estimate
+assert [r["key"] for r in rt.pick(r80, live80, 10.0, 2)] == ["#1", "#5"]
+assert [r["key"] for r in rt.pick(r80, live80, 1.0, 2)] == ["#5"], "an M doesn't fit $1; the S behind it does"
+assert rt.pick(r80, live80, 10.0, 0) == []
+beats80 = [{"beat": "astra", "router": "live", "at": "2026-10-17T13:13:00Z", "picked": [{"n": 1, "kind": "feature"}]},
+           {"beat": "astra", "router": "dry", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 2, "kind": "refinement"}]},
+           {"beat": "astra", "router": "live", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 5, "kind": "feature"}, "junk"]}]
+assert rt.last_picked(beats80) == {"feature": "2026-10-18"}, "live picks only"
+t80 = rt.table(r80, rt.pick(r80, live80, 10.0, 2), "dry")
+assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "not wired" in t80
+assert "**queued today**" in rt.table(r80, rt.pick(r80, live80, 10.0, 2), "live")
+# Astra's router tick: dry shows the ranking and touches nothing; live queues the picks and writes the new cards unqueued
+aspec = importlib.util.spec_from_file_location("astra80", Path(__file__).resolve().parent / "astra.py")
+astra = importlib.util.module_from_spec(aspec); aspec.loader.exec_module(astra)
+said80, labelled80, made80, asked80 = [], [], [], []
+astra.tm.issues = lambda q: open80 + [iss80(57, "Astra log", labels=["astra"])]
+astra.tm.budget = lambda: (1.0, 15.0, 10.0, 100.0)
+astra.tm.comment = lambda n, text, meta: said80.append((n, text, meta))
+astra.tm.label = lambda n, name: labelled80.append((n, name))
+astra.tm.new_issue = lambda title, body, labels: made80.append((title, body, labels)) or {"number": 90 + len(made80)}
+reply80 = {"note": "the note", "assess": [dict(assess80[k], key=k) for k in assess80] + ["junk"],
+           "new": [{"title": "Write a thing", "body": "do it"}, {"no": "title"}]}
+astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]
+assert astra.router_tick(rt.config('{"mode": "dry"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert not labelled80 and not made80, "dry: nothing queued, nothing created"
+n80, text80, meta80 = said80[-1]
+assert n80 == 57 and meta80["router"] == "dry" and meta80["would"] == [1, 5] and meta80["queued"] == 0 and meta80["order"] == [2, 1, 5, 7]
+assert "Dry run" in text80 and "Write a thing" in text80 and "| 1 | #2 Fix the docs" in text80 and "the note" in text80
+assert "### #4" not in asked80[0][2] and "Astra log" not in asked80[0][2] and "venture:new" in asked80[0][2] and "ctx" in asked80[0][2]
+assert asked80[0][0] == "opus" and "judge each one" in asked80[0][1]
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert labelled80 == [(1, "queued"), (5, "queued")] and [m[0] for m in made80] == ["Write a thing"] and made80[0][2] == []
+assert "DONE:" in made80[0][1] and "card written by Astra" in made80[0][1]
+meta80 = said80[-1][2]
+assert meta80["picked"] == [{"n": 1, "kind": "feature"}, {"n": 5, "kind": "optimization"}] and meta80["new"] == [91] and meta80["queued"] == 2
+astra.tm.think = lambda *a: (_ for _ in ()).throw(astra.tm.Budget("today's spend is over the cap"))
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0 and said80[-1][2]["capped"]
+assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
+# the heartbeat promotes queued cards in the live ranking's order, oldest first without one
+real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)
+moved80 = []
+q80 = [iss80(10, "a", labels=["queued"]), iss80(11, "b", labels=["queued"]), iss80(12, "c", body="Depends on #99\nDONE: x", labels=["queued"])]
+beat80 = {"user": {"login": tm.TIME_BOT}, "created_at": "2026-10-19T13:13:00Z",
+          "body": "x\n<!-- time " + json.dumps({"beat": "astra", "router": "live", "order": [12, 11, 10]}) + " -->"}
+tm.issues = lambda q: {"state=open&labels=ready": [], "state=open&labels=queued": q80,
+                       "state=open&labels=astra": [iss80(57, "Astra log", labels=["astra"])]}[q]
+tm.gh = lambda method, path, body=None, **k: [beat80] if "/comments" in path else {"state": "open" if path.endswith("/issues/99") else "closed"}
+tm.label = lambda n, name: moved80.append((n, name)); tm.unlabel = lambda n, name: None
+assert tm.rank_order() == [12, 11, 10] and tm.promote_next() == 11 and moved80[-1] == (11, "ready"), "the best whose dependencies are closed"
+beat80["body"] = beat80["body"].replace('"live"', '"dry"')
+assert tm.rank_order() == [] and tm.promote_next() == 10, "a dry ranking moves nothing: oldest first"
+tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
+assert tm.rank_order() == [], "the ranking is a preference: an unreadable log never stops promotion"
+tm.issues, tm.gh, tm.label, tm.unlabel = real80
+print("ALL OK 80")
+
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
 if not os.environ.get("TIME_TEST_VENTURE"):
