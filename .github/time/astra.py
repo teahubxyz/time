@@ -76,6 +76,9 @@ For every candidate give:
   it matters today; 1: nice to have, stale, or a duplicate of another card)
 - size: S (well under one worker session), M (one session), L (more than one: it must be split first)
 - why: one short sentence
+- blocked: only when it can't move today, what it waits on (a PR that can't merge, a human, something outside the
+  repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on #N` card
+  is still open is already held back by code.
 You may also write up to {max_new} new cards for work the board is missing; they are candidates from tomorrow on.
 Never write one that posts outside the repo or touches workflows, secrets or variables, and never one for work that is
 already a candidate or is in the list of cards closed lately: that work is done or under way.

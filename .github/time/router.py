@@ -15,7 +15,9 @@ refinement or optimization.
 - restless: a kind the factory hasn't picked for a while climbs, 1 + rate x days (at most 10 days), so none starves.
 - age: an old card climbs a little, 1 + 0.02 x days open (at most 20 days).
 
-An L is ranked but never queued: a card is what one worker session finishes, so it is split first. The policy is
+An L is ranked but never queued: a card is what one worker session finishes, so it is split first. Nor is a card that
+waits: on a card still open (its `Depends on #N`), or on whatever the seat says blocks it (a PR that can't merge, a
+human). Cards that can move come first in the promotion order, the ones that wait after them. The policy is
 `score`; a bandit policy (Beth, Jev, Fable's restless-bandit maths) can replace it without touching how candidates are
 gathered or how picks are queued.
 """
@@ -93,15 +95,18 @@ def candidates(issues: list[dict]) -> list[dict]:
     for i in issues:
         for d in set(re.findall(r"Depends on #(\d+)", i.get("body") or "")):
             waits[int(d)] = waits.get(int(d), 0) + 1
+    open_n = {i.get("number") for i in issues}
     out = []
     for i in issues:
         labels, body = labels_of(i), i.get("body") or ""
         if labels & HELD or not DONE.search(body):
             continue
+        deps = sorted({int(d) for d in re.findall(r"Depends on #(\d+)", body)} & open_n)   # a closed dependency is done
         out.append({"key": f"#{i['number']}", "n": i["number"], "title": _txt(i.get("title"), 120), "body": body[:500],
-                    "labels": sorted(labels), "lined_up": bool(labels & LINED_UP), "actionable": True,
+                    "labels": sorted(labels), "lined_up": bool(labels & LINED_UP), "actionable": not deps,
                     "kind": guess_kind(i.get("title") or "", body, labels), "unblocks": waits.get(i["number"], 0),
-                    "created": str(i.get("created_at") or "")})
+                    "created": str(i.get("created_at") or ""),
+                    **({"why_not": "waits on " + ", ".join(f"#{d}" for d in deps)} if deps else {})})
     return out
 
 
@@ -139,6 +144,9 @@ def score(c: dict, a: dict, cfg: dict, last: dict[str, str], today: dt.date) -> 
            "restless": round(restless, 2), "age": round(age, 2), "score": round(s, 3), "judged": bool(a)}
     if size == "L" and out["actionable"]:
         out["actionable"], out["why_not"] = False, "L: split it into cards a worker finishes in one session first"
+    blocked = _txt(a.get("blocked"), 120) if isinstance(a.get("blocked"), str) else ""
+    if blocked.lower() not in ("", "no", "none", "false", "-", "n/a") and out["actionable"]:
+        out["actionable"], out["why_not"] = False, f"blocked: {blocked}"   # the seat knows what no Depends line says
     return out
 
 
@@ -165,8 +173,10 @@ def pick(ranked: list[dict], cfg: dict, left_usd: float, max_n: int) -> list[dic
 
 
 def order(ranked: list[dict]) -> list[int]:
-    """Card numbers best first: the heartbeat promotes queued cards in this order."""
-    return [r["n"] for r in ranked if r["n"] is not None]
+    """Card numbers best first, the ones that can move before the ones that wait: the heartbeat promotes queued cards in
+    this order (and still skips a card whose dependency is open)."""
+    cards = [r for r in ranked if r["n"] is not None]
+    return [r["n"] for r in cards if r["actionable"]] + [r["n"] for r in cards if not r["actionable"]]
 
 
 def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15) -> str:
@@ -174,8 +184,8 @@ def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15) ->
     mark = "queued today" if mode == "live" else "would queue"
     rows = []
     for k, r in enumerate(ranked[:limit], 1):
-        note = (f"**{mark}**" if r["key"] in chosen else "lined up" if r["lined_up"]
-                else r.get("why_not", "") if not r["actionable"] else "")
+        note = (f"**{mark}**" if r["key"] in chosen else "; ".join(x for x in ("lined up" if r["lined_up"] else "",
+                r.get("why_not", "") if not r["actionable"] else "") if x))
         name = f"{r['key']} {r['title']}" if r["n"] is not None else r["title"]
         rows.append(f"| {k} | {_txt(name, 80).replace('|', '/')} | {r['kind']} | {r['value']:g} | {r['size']} | "
                     f"{r['unblocks']} | {r['restless']:g} | {r['score']:g} | {_txt(r['why'], 140).replace('|', '/')} | "

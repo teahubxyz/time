@@ -1151,11 +1151,12 @@ assert rt.guess_kind("Fix it", "", {"kind:optimization"}) == "optimization" and 
 iss80 = lambda n, title, body="DONE: x", labels=(), created="2026-10-18T00:00:00Z": {
     "number": n, "title": title, "body": body, "labels": [{"name": l} for l in labels], "created_at": created}
 open80 = [iss80(1, "Engine feature"), iss80(2, "Fix the docs", labels=["queued"]), iss80(3, "Parent", labels=["planned"]),
-          iss80(4, "No done line", body="just an idea"), iss80(5, "Cheaper reviews", body="Depends on #1\nDONE: z"),
+          iss80(4, "No done line", body="just an idea"), iss80(5, "Cheaper reviews", body="Depends on #40\nDONE: z"),
           iss80(6, "A human's", labels=["needs-human"]), iss80(7, "Huge rewrite", created="2026-10-01T00:00:00Z"),
-          iss80(8, "Huebrain: want the next version?", labels=["signal"])]
+          iss80(8, "Huebrain: want the next version?", labels=["signal"]), iss80(9, "After the feature", body="Depends on #1\nDONE: q")]
 cands80 = rt.candidates(open80)
-assert [c["n"] for c in cands80] == [1, 2, 5, 7] and cands80[0]["unblocks"] == 1 and cands80[1]["lined_up"], cands80
+assert [c["n"] for c in cands80] == [1, 2, 5, 7, 9] and cands80[0]["unblocks"] == 1 and cands80[1]["lined_up"], cands80
+assert cands80[2]["actionable"] and not cands80[4]["actionable"] and cands80[4]["why_not"] == "waits on #1", "a closed dependency is done; an open one waits"
 # scoring: the seat's value and size, the owner's weight per kind, restless per kind, age per card
 today80 = dt.date(2026, 10, 19)
 assess80 = {"#1": {"kind": "feature", "value": 4, "size": "M", "why": "w"}, "#2": {"kind": "refinement", "value": 5, "size": "s"},
@@ -1164,11 +1165,19 @@ assess80 = {"#1": {"kind": "feature", "value": 4, "size": "M", "why": "w"}, "#2"
 live80 = rt.config('{"mode": "live"}')
 r80 = rt.rank(cands80 + [dict(rt.NEW_VENTURE)], assess80, live80, {}, today80)
 s80 = {r["key"]: r for r in r80}
-assert [r["key"] for r in r80] == ["#2", "#1", "#5", "#7", "venture:new"], [(r["key"], r["score"]) for r in r80]
+assert [r["key"] for r in r80] == ["#2", "#1", "#5", "#7", "#9", "venture:new"], [(r["key"], r["score"]) for r in r80]
 assert s80["#1"]["restless"] == 1.5 and abs(s80["#1"]["score"] - 1.5 * 1.02 * 4.5 / 2) < 0.002, s80["#1"]   # never picked: 1.5
 assert s80["#7"]["actionable"] is False and "split" in s80["#7"]["why_not"] and s80["#7"]["age"] == 1.36, s80["#7"]
 assert s80["venture:new"]["actionable"] is False and s80["venture:new"]["n"] is None and s80["#2"]["size"] == "S"
-assert rt.order(r80) == [2, 1, 5, 7]
+assert rt.order(r80) == [2, 1, 5, 7, 9]
+# the seat can say a card is blocked by what no Depends line shows (a PR that can't merge): never picked, promoted last
+b80 = rt.rank(cands80, {**assess80, "#1": {"kind": "feature", "value": 5, "size": "S", "blocked": "PR #75 can't merge"}}, live80, {}, today80)
+sb80 = {r["key"]: r for r in b80}
+assert b80[0]["key"] == "#1" and sb80["#1"]["actionable"] is False and sb80["#1"]["why_not"] == "blocked: PR #75 can't merge"
+assert rt.order(b80) == [2, 5, 1, 7, 9] and [r["key"] for r in rt.pick(b80, live80, 10.0, 2)] == ["#5"], "the top scorer waits"
+assert all(rt.score(cands80[0], {"blocked": x}, live80, {}, today80)["actionable"] for x in ("", "none", "No", False, None, 0))
+assert "lined up; waits on #1" in rt.table(rt.rank(rt.candidates(open80[:1] + [iss80(9, "q", body="Depends on #1\nDONE: q", labels=["queued"])]),
+                                                  {}, live80, {}, today80), [], "live")
 # a kind picked yesterday is less restless; the owner's weight lifts a kind
 r80b = rt.rank(cands80, assess80, rt.config('{"weights": {"optimization": 4}}'), {"refinement": "2026-10-18"}, today80)
 assert {r["key"]: r for r in r80b}["#2"]["restless"] == 1.05 and r80b[0]["key"] == "#5", [(r["key"], r["score"]) for r in r80b]
@@ -1202,7 +1211,8 @@ astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system,
 assert astra.router_tick(rt.config('{"mode": "dry"}'), "opus", 57, "ctx", [], 2, 2) == 0
 assert not labelled80 and not made80, "dry: nothing queued, nothing created"
 n80, text80, meta80 = said80[-1]
-assert n80 == 57 and meta80["router"] == "dry" and meta80["would"] == [1, 5] and meta80["queued"] == 0 and meta80["order"] == [2, 1, 5, 7]
+assert n80 == 57 and meta80["router"] == "dry" and meta80["would"] == [1, 5] and meta80["queued"] == 0 and meta80["order"] == [2, 1, 5, 7, 9]
+assert "blocked:" in asked80[0][1], "the seat is told it can mark a card blocked"
 assert "Dry run" in text80 and "Write a thing" in text80 and "| 1 | #2 Fix the docs" in text80 and "the note" in text80
 assert "### #4" not in asked80[0][2] and "Astra log" not in asked80[0][2] and "venture:new" in asked80[0][2] and "ctx" in asked80[0][2]
 assert asked80[0][0] == "opus" and "judge each one" in asked80[0][1]

@@ -32,3 +32,5 @@ jobs:
           TIME_SPINE: ${{ vars.TIME_SPINE }}
           TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}
           TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}
+          TIME_WORKER: ${{ vars.TIME_WORKER }}   # the router's money left is the pool that takes the worker's route (#175)
+          TIME_PACE: ${{ vars.TIME_PACE }}       # and that pool's allowance is paced the same as in the heartbeat
