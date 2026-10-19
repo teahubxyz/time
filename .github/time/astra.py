@@ -218,10 +218,46 @@ def repeat_of(title: str, known: list[dict]) -> int | None:
     return None
 
 
+def venture_registry() -> dict:
+    """ventures/ventures.json on the Pages branch; unreadable, there are no ventures to iterate on."""
+    try:
+        f = tm.gh("GET", f"/repos/{tm.REPO}/contents/ventures/ventures.json?ref=gh-pages")
+        return json.loads(base64.b64decode(f.get("content") or "").decode(errors="replace"))
+    except Exception as e:  # noqa: BLE001  context, not a dependency
+        print(f"venture registry unreadable: {str(e)[:120]}")
+        return {}
+
+
+def start_venture(r: dict, open_issues: list[dict]) -> str:
+    """A picked venture candidate. A new venture: venture.yml is dispatched with start=true (the loop in router mode then
+    starts one card; it is never queued as a card here). A v2: the venture's existing v2 card, else a new one on gh-pages
+    (no dispatch: that would start a different, new venture). Returns what happened, for the log."""
+    if r["key"] == router.NEW_VENTURE["key"]:
+        try:
+            tm.gh("POST", f"/repos/{tm.REPO}/actions/workflows/venture.yml/dispatches",
+                  {"ref": tm.default_branch(), "inputs": {"start": "true"}})
+        except RuntimeError as e:
+            return f"new venture: dispatching venture.yml failed ({str(e)[:100]})"
+        return "new venture: dispatched venture.yml with start=true"
+    v = f"v{r['next_v']}"
+    for i in open_issues:
+        t = (i.get("title") or "").lower()
+        if re.search(rf"\b{v}\b", t) and (r["name"].lower() in t or r["slug"] in t):
+            return f"{r['name']} {v}: already on #{i['number']}, posted that card"
+    n = tm.new_issue(f"{r['name']} {v}: build the next version from what signups asked for",
+                     f"Build {v} of **{r['name']}** in ventures/{r['slug']}/ from what its signups asked for (its signal issue "
+                     f"and early-access issues). {r['body']}\n\nBase: gh-pages\n\nRead the folder first and keep what works.\n\n"
+                     f"DONE: PR open against gh-pages with {v} of ventures/{r['slug']}/, checks green.\n\n"
+                     "<sub>card written by Astra</sub>", [])["number"]
+    tm.label(n, "queued")
+    return f"{r['name']} {v}: no card yet, wrote and queued #{n}"
+
+
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
-    cands = router.candidates(open_issues) + [dict(router.NEW_VENTURE)]
+    mode = (os.environ.get("TIME_VENTURE_MODE") or "").strip().lower()   # the loop's TIME_VENTURE, passed on by astra.yml
+    cands = router.candidates(open_issues) + [router.new_venture(mode)] + router.v2_candidates(venture_registry())
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
@@ -246,10 +282,13 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         n = repeat_of(str(c["title"]), open_issues + closed)
         (repeats.append((c, n)) if n else new.append(c))
     new = new[:max_new]
-    live, created = cfg["mode"] == "live", []
+    live, created, started = cfg["mode"] == "live", [], []
     if live:
         for r in picks:
-            tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+            if r["n"] is None:
+                started.append(start_venture(r, open_issues))   # a venture: dispatched or written, never queued as itself
+            else:
+                tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
         for c in new:
             body = str(c.get("body") or "")
             if not router.DONE.search(body):
@@ -264,22 +303,24 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     if unjudged:
         lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
     if live:
-        lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in picks)) if picks else "Queued nothing today.")
+        queued = [f"#{r['n']}" for r in picks if r["n"] is not None]
+        lines.append(("Queued: " + ", ".join(queued)) if queued else "Queued nothing today.")
+        lines += [f"Venture: {x}" for x in started]
         if created:
             lines.append("New cards (candidates from tomorrow): " + ", ".join(f"#{n}" for n in created))
     else:
         lines.append("Dry run: nothing queued or created. Live, it would queue: "
-                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + ".")
+                     + (", ".join(f"#{r['n']}" if r["n"] is not None else r["title"] for r in picks) or "nothing") + ".")
         if new:
             lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
     if repeats:
         lines.append("Not written, repeats of existing cards: "
                      + "; ".join(f"{router._txt(c['title'], 80)} (#{n})" for c, n in repeats) + ".")
-    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
+    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) - len(started) if live else 0, "started": started, "order": router.order(ranked),
             "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
-            "would": [r["n"] for r in picks] if not live else [], "new": created}
+            "would": [r["n"] for r in picks if r["n"] is not None] if not live else [], "new": created}
     tm.comment(log, "\n".join(lines), meta)
-    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}")
+    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}" + "".join(f" | {x}" for x in started))
     return 0
 
 
