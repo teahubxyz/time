@@ -478,6 +478,262 @@ css += lift(':root[data-theme="light"]') + "\n@media (prefers-color-scheme: ligh
 with open(P, "w", encoding="utf-8") as f:
     f.write(css)
 
+COMPOSE_TS = r"""/**
+ * Cover + Track: play a still image over an audio track and record the two into one video file, in the
+ * browser. No server and no ffmpeg: the image is drawn on a canvas, the audio is decoded by the Web Audio
+ * API, the canvas stream and the audio stream are recorded together by MediaRecorder. Recording runs in
+ * real time, so a 60-second track takes 60 seconds. The result is a blob: URL of an mp4 where the browser
+ * records mp4 (Safari, newer Chrome), otherwise webm.
+ */
+
+const MIME_CANDIDATES = [
+  'video/mp4;codecs="avc1.42E01E,mp4a.40.2"',
+  'video/mp4;codecs=avc1,mp4a.40.2',
+  'video/mp4',
+  'video/webm;codecs=vp9,opus',
+  'video/webm;codecs=vp8,opus',
+  'video/webm',
+]
+
+export function pickRecorderMime(): string {
+  if (typeof MediaRecorder === 'undefined') return ''
+  for (const m of MIME_CANDIDATES) {
+    try { if (MediaRecorder.isTypeSupported(m)) return m } catch { /* next */ }
+  }
+  return ''
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('Could not load the cover image'))
+    img.src = src
+  })
+}
+
+function even(n: number): number {
+  return Math.max(2, Math.round(n / 2) * 2)
+}
+
+export interface ComposeOptions {
+  /** longest side of the video, px (the cover keeps its own aspect ratio) */
+  maxSide?: number
+  fps?: number
+  signal?: AbortSignal
+  onProgress?: (seconds: number, total: number) => void
+}
+
+export async function composeCoverTrack(imageSrc: string, audioSrc: string, opts: ComposeOptions = {}): Promise<string> {
+  if (typeof MediaRecorder === 'undefined' || !('captureStream' in HTMLCanvasElement.prototype)) {
+    throw new Error('This browser cannot record video (no MediaRecorder)')
+  }
+  const mime = pickRecorderMime()
+  if (!mime) throw new Error('This browser has no video format MediaRecorder can write')
+  const { signal, onProgress } = opts
+  const fps = opts.fps ?? 24
+  const maxSide = opts.maxSide ?? 1080
+
+  const [img, audioBuf] = await Promise.all([
+    loadImage(imageSrc),
+    fetch(audioSrc, { signal }).then((r) => {
+      if (!r.ok) throw new Error(`Could not fetch the track (${r.status})`)
+      return r.arrayBuffer()
+    }),
+  ])
+  if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+
+  const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+  const canvas = document.createElement('canvas')
+  canvas.width = even(img.naturalWidth * scale)
+  canvas.height = even(img.naturalHeight * scale)
+  const ctx2d = canvas.getContext('2d')
+  if (!ctx2d) throw new Error('No 2d canvas')
+  const draw = () => ctx2d.drawImage(img, 0, 0, canvas.width, canvas.height)
+  draw()
+
+  const ac = new AudioContext()
+  try { await ac.resume() } catch { /* runs anyway */ }
+  const buffer = await ac.decodeAudioData(audioBuf)
+  const total = buffer.duration
+  const dest = ac.createMediaStreamDestination()
+  const source = ac.createBufferSource()
+  source.buffer = buffer
+  source.connect(dest)
+
+  const stream = new MediaStream([
+    ...canvas.captureStream(fps).getVideoTracks(),
+    ...dest.stream.getAudioTracks(),
+  ])
+  const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 160_000 })
+  const chunks: Blob[] = []
+  recorder.ondataavailable = (e) => { if (e.data.size > 0) chunks.push(e.data) }
+
+  // keep frames flowing: captureStream only emits when the canvas changes
+  const ticker = window.setInterval(draw, 1000 / Math.min(fps, 10))
+  const started = performance.now()
+  const progress = window.setInterval(() => onProgress?.(Math.min(total, (performance.now() - started) / 1000), total), 1000)
+
+  const cleanup = () => {
+    window.clearInterval(ticker)
+    window.clearInterval(progress)
+    stream.getTracks().forEach((t) => t.stop())
+    void ac.close().catch(() => undefined)
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    let finished = false
+    const finish = () => {
+      if (finished) return
+      finished = true
+      cleanup()
+      if (signal?.aborted) { reject(new DOMException('Aborted', 'AbortError')); return }
+      const blob = new Blob(chunks, { type: mime.split(';')[0] })
+      if (blob.size === 0) { reject(new Error('Recording produced no data')); return }
+      resolve(URL.createObjectURL(blob))
+    }
+    recorder.onstop = finish
+    recorder.onerror = () => { cleanup(); reject(new Error('Recording failed')) }
+    source.onended = () => { window.setTimeout(() => { if (recorder.state !== 'inactive') recorder.stop() }, 250) }
+    signal?.addEventListener('abort', () => {
+      try { source.stop() } catch { /* already stopped */ }
+      if (recorder.state !== 'inactive') recorder.stop(); else finish()
+    }, { once: true })
+    recorder.start(1000)
+    source.start()
+  })
+}
+
+export function recorderFileExtension(): string {
+  return pickRecorderMime().startsWith('video/mp4') ? 'mp4' : 'webm'
+}
+"""
+
+# ---------- workflows: a Cover + Track node, so a cover image and a music track come out as one video ----------
+# Venice has no compositing endpoint, so the node records the still over the track in the browser (canvas +
+# Web Audio + MediaRecorder; real time, mp4 where the browser can write it, else webm). The playground agent
+# used to be told music and video can't be combined; now it's told to use this node.
+write(S + "lib/compose.ts", COMPOSE_TS)
+
+edit(S + "stores/workflow-store.ts",
+     ("export type VeniceNodeType = 'chat' | 'imageGen' | 'tts' | 'music' | 'video' | 'textInput' | 'output'",
+      "export type VeniceNodeType = 'chat' | 'imageGen' | 'tts' | 'music' | 'video' | 'compose' | 'textInput' | 'output'"),
+     ("  // Text input\n  inputText?: string\n",
+      "  // Text input\n  inputText?: string\n  // Compose (cover + track)\n  maxSide?: number\n"))
+
+edit(S + "lib/workflow-schema.ts",
+     ("""      { name: 'videoResolution', type: 'enum', description: 'Resolution. Empty means model default.', default: '', enumValues: VIDEO_RESOLUTION_VALUES },
+    ],
+  },
+}""", """      { name: 'videoResolution', type: 'enum', description: 'Resolution. Empty means model default.', default: '', enumValues: VIDEO_RESOLUTION_VALUES },
+    ],
+  },
+  compose: {
+    type: 'compose',
+    label: 'Cover + Track',
+    description: 'Combines an upstream image and an upstream audio clip into one video file: the image stays on screen while the audio plays. Connect exactly one image node (imageGen) and one audio node (music or tts) to it. Recorded in the browser in real time (a 60s track takes 60s). No model, no prompt.',
+    input: 'text',
+    output: 'video',
+    params: [
+      { name: 'maxSide', type: 'number', description: 'Longest side of the video in pixels; the cover keeps its aspect ratio.', default: 1080, min: 256, max: 2048 },
+    ],
+  },
+}"""))
+
+edit(S + "lib/workflow-engine.ts",
+     ("import { validateWorkflow } from './workflow-validator'\n",
+      "import { validateWorkflow } from './workflow-validator'\nimport { composeCoverTrack } from './compose'\n"),
+     ("""    case 'textInput':
+      return data.inputText ?? ''
+""", """    case 'textInput':
+      return data.inputText ?? ''
+
+    case 'compose': {
+      const image = /\\[image:([^\\]]+)\\]/.exec(input)?.[1]
+      const audio = /\\[audio:([^\\]]+)\\]/.exec(input)?.[1]
+      if (!image || !audio) {
+        const has = [image && 'an image', audio && 'audio'].filter(Boolean).join(' and ') || 'neither'
+        throw new Error(`Cover + Track needs one image node and one audio node connected to it (got ${has})`)
+      }
+      const url = await composeCoverTrack(image, audio, { maxSide: data.maxSide ?? 1080, signal })
+      return `[video:${url}]`
+    }
+"""))
+
+# the playground agent: compose is a node type it may add (no model), and the old "can't combine" rule is gone
+P = S + "lib/playground-agent-tools.ts"
+edit(P,
+     ("            enum: ['chat', 'imageGen', 'tts', 'music', 'video'],",
+      "            enum: ['chat', 'imageGen', 'tts', 'music', 'video', 'compose'],"),
+     ("""9. **For social-video / reel requests**: canonical shape is textInput → chat(research, web) → chat(script) → video (9:16, 1080p, 5-10s) → output. For music: add a SEPARATE branch (textInput → music → output) — DO NOT connect music nodes to video nodes; they can't compose into a single AV file from this engine. Each modality gets its own output.""",
+      """9. **For social-video / reel requests**: canonical shape is textInput → chat(research, web) → chat(script) → video (9:16, 1080p, 5-10s) → output. Video models cannot take an audio track, so never connect music or tts to a video node.
+9b. **To combine a picture with a sound** (a cover that shows while a track plays, a slideshow still with narration, a music video from a still): use a compose node ("Cover + Track"). Connect one imageGen node and one music (or tts) node into it, and connect it to an output. It has no model and no prompt. Shape: textInput → imageGen (cover) and textInput → music (track), both → compose → output. The output is one video file the user can preview and download."""),
+     ("  if (nodeType === 'video') return c.video.includes(modelId)\n  return true // textInput / output don't have models",
+      "  if (nodeType === 'video') return c.video.includes(modelId)\n  return true // textInput / output / compose don't have models"))
+
+edit(S + "lib/playground-agent.ts",
+     ("""7. Use {{input}} inside a node's prompt to place upstream text precisely, or leave prompt empty to append input after.""",
+      """7. Use {{input}} inside a node's prompt to place upstream text precisely, or leave prompt empty to append input after.
+7b. To show a picture while a sound plays (cover + track, still + narration), add a "compose" node with one imageGen and one music/tts node connected into it, then connect it to an output. It has no model or prompt. Video models cannot take audio, so never connect music or tts to a video node."""))
+
+# the canvas: a palette entry, a node card without model or prompt, and videos that play in place
+P = S + "components/workflows/workflows-view.tsx"
+edit(P,
+     ("  { type: 'video', label: 'Video Gen', Icon: PaletteVideoIcon, color: 'text-orange-400/50' },\n",
+      "  { type: 'video', label: 'Video Gen', Icon: PaletteVideoIcon, color: 'text-orange-400/50' },\n  { type: 'compose', label: 'Cover + Track', Icon: PaletteComposeIcon, color: 'text-cyan-400/50' },\n"),
+     ("function PaletteOutputIcon() {",
+      """function PaletteComposeIcon() {
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4" /><path d="M14 17v-5l4-1v5" /><circle cx="12.5" cy="17.5" r="1.5" /><circle cx="16.5" cy="16.5" r="1.5" /></svg>
+}
+function PaletteOutputIcon() {"""),
+     ("  video: 'wan-2.1',\n}", "  video: 'wan-2.1',\n  compose: '',\n}"))
+
+P = S + "components/workflows/workflow-node.tsx"
+edit(P,
+     ("  video: 'video',\n}", "  video: 'video',\n  compose: undefined,\n}"),
+     ("  video: { label: 'Video Gen', Icon: VideoIcon, color: 'border-orange-500/30', hasInput: true, hasOutput: true },\n",
+      "  video: { label: 'Video Gen', Icon: VideoIcon, color: 'border-orange-500/30', hasInput: true, hasOutput: true },\n  compose: { label: 'Cover + Track', Icon: ComposeIcon, color: 'border-cyan-500/30', hasInput: true, hasOutput: true },\n"),
+     ("\nfunction OutputIcon() {", """
+function ComposeIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 15l5-5 4 4" /><path d="M14 17v-5l4-1v5" /><circle cx="12.5" cy="17.5" r="1.5" /><circle cx="16.5" cy="16.5" r="1.5" /></svg>
+}
+
+function OutputIcon() {"""),
+     ("""        ) : data.nodeType === 'textInput' ? (
+          <textarea""", """        ) : data.nodeType === 'compose' ? (
+          <div className="flex flex-col gap-1.5">
+            <p className="text-[13px] text-white/40 leading-snug">Shows the connected image while the connected audio plays, recorded here in your browser into one video (takes as long as the track).</p>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] text-white/30">max side</span>
+              <input
+                type="number"
+                min={256}
+                max={2048}
+                step={2}
+                value={data.maxSide ?? 1080}
+                onChange={(e) => updateNode({ maxSide: Number(e.target.value) || 1080 })}
+                className={cn(inputCls, 'w-24')}
+              />
+              <span className="text-[12px] text-white/30">px</span>
+            </div>
+          </div>
+        ) : data.nodeType === 'textInput' ? (
+          <textarea"""),
+     ("""                <a href={result.output.slice(7, -1)} target="_blank" rel="noreferrer" className="text-[14px] text-blue-400 underline">Open video</a>""",
+      """                <video src={result.output.slice(7, -1)} controls playsInline className="nodrag w-full rounded-lg border border-white/[0.06]" onClick={(e) => e.stopPropagation()} />"""),
+     ("""              <a href={result.output.slice(7, -1)} target="_blank" rel="noreferrer" className="text-[13px] text-blue-400 underline" onClick={(e) => e.stopPropagation()}>
+                Open video
+              </a>""",
+      """              <video src={result.output.slice(7, -1)} controls playsInline className="nodrag w-full rounded border border-white/[0.06]" onClick={(e) => e.stopPropagation()} />"""))
+
+edit(S + "components/playground/preview-node.tsx",
+     ("  video: 'border-orange-500/30',\n", "  video: 'border-orange-500/30',\n  compose: 'border-cyan-500/30',\n"))
+
+# a playground suggestion for it
+edit(S + "components/playground/playground-chat.tsx",
+     ("  'Write a short song with lyrics, then generate it as music',",
+      "  'Write a short song with lyrics, then generate it as music',\n  'Make a cover image and a music track from one idea, then combine them into one video where the cover shows while the track plays',"))
+
 if FAILED:
     sys.exit("havre.py: upstream no longer matches:\n  " + "\n  ".join(FAILED))
 print("havre.py: applied")
