@@ -87,6 +87,13 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
   background: var(--ink); color: var(--paper); font: 15px/1.4 var(--mono);
 }
 .keybar a { color: var(--paper); }
+/* with a key saved: one line (where it's kept, the balance, change); change brings the form back */
+.keybar:not(.set) .keyset { display: none; }
+.keybar.set > :not(.keyset):not(#balance):not(#keystatus) { display: none !important; }
+.keybar.set { padding-top: 8px; padding-bottom: 8px; }
+.keyset { font: 13px/1.6 var(--mono); }
+.keyset .linkish { color: var(--paper); }
+.keyset .linkish:hover, .keyset .linkish:focus-visible { color: var(--ink); background: var(--hi); }
 .keybar a:hover, .keybar a:focus-visible { color: var(--ink); background: var(--hi); }
 .keybar input:not([type=checkbox]) {
   flex: 0 1 320px; width: auto; min-height: 36px; padding: 0 8px; border-color: var(--paper);

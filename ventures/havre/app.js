@@ -2819,6 +2819,9 @@ function updateKeyUI() {
   $("#keyin").title = on ? "Paste a new key here to replace this one" : "";
   $("#keyforget").hidden = !on;
   $("#keyremember").checked = on ? S.keyRemembered : $("#keyremember").checked;
+  // with a key saved, one line: where it's kept, the balance, and a way to change it
+  $("#keyform").classList.toggle("set", on && !S.keyEditing);
+  $("#keyset-where").textContent = S.keyRemembered ? "saved on this device" : "saved for this tab";
 }
 let keyTimer = 0;
 /** a word about the key, where the fine print sits; good news steps aside after a few seconds */
@@ -3263,6 +3266,11 @@ function toast(text) {
 
 // ---------- wiring ----------
 function bind() {
+  $("#keychange").addEventListener("click", () => { S.keyEditing = true; updateKeyUI(); $("#keyin").focus(); });
+  $("#keyform").addEventListener("submit", () => { S.keyEditing = false; });
+  $("#keyin").addEventListener("blur", () => { setTimeout(() => {
+    if (S.key && !$("#keyin").value && !$("#keyform").contains(document.activeElement)) { S.keyEditing = false; updateKeyUI(); }
+  }, 150); });
   $("#galclose").addEventListener("click", () => $("#gallerydlg").close());
   // the open studio (/open) gets this key: it may open in another window, so the key waits there a minute, then goes
   for (const a of $$('a[href="open/"]')) a.addEventListener("click", () => {
