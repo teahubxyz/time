@@ -240,7 +240,10 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         return 0
     assess = {str(a.get("key") or "").strip(): a for a in out.get("assess") or [] if isinstance(a, dict)}
     ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), dt.datetime.now(dt.timezone.utc).date())
-    picks = router.pick(ranked, cfg, left, max_ready)
+    in_lane = sum(1 for i in open_issues if router.CLOUD in router.labels_of(i))
+    to_cloud = router.pick_cloud(ranked, cfg, in_lane)   # the cloud lane takes its cards first: its credit is separate
+    sent = {r["key"] for r in to_cloud}
+    picks = router.pick([r for r in ranked if r["key"] not in sent], cfg, left, max_ready)
     new, repeats = [], []
     for c in [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]:
         n = repeat_of(str(c["title"]), open_issues + closed)
@@ -250,6 +253,8 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     if live:
         for r in picks:
             tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+        for r in to_cloud:
+            tm.label(r["n"], router.CLOUD)   # the Mac's launcher starts a cloud session for it
         for c in new:
             body = str(c.get("body") or "")
             if not router.DONE.search(body):
@@ -259,17 +264,21 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     w = cfg["weights"]
     head = (f"🔭 Astra ({seat}), router `{cfg['mode']}`, spend ${today:.2f} of ${day_cap:.2f} today, ${left:.2f} left to "
             f"queue against ({source}). Weights: "
-            + ", ".join(f"{k} {w[k]:g}" for k in router.KINDS) + f"; restless {cfg['restless']:g}/day.")
-    lines = [head, "", str(out.get("note") or "(no note)"), "", router.table(ranked, picks, cfg["mode"]), ""]
+            + ", ".join(f"{k} {w[k]:g}" for k in router.KINDS) + f"; restless {cfg['restless']:g}/day."
+            + (f" Cloud lane: {in_lane} in it, up to {cfg['cloud']['per_day']}." if cfg["cloud"]["per_day"] else ""))
+    lines = [head, "", str(out.get("note") or "(no note)"), "", router.table(ranked, picks, cfg["mode"], cloud=to_cloud), ""]
     if unjudged:
         lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
     if live:
         lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in picks)) if picks else "Queued nothing today.")
+        if to_cloud:
+            lines.append("To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud))
         if created:
             lines.append("New cards (candidates from tomorrow): " + ", ".join(f"#{n}" for n in created))
     else:
         lines.append("Dry run: nothing queued or created. Live, it would queue: "
-                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + ".")
+                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + "."
+                     + (" To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud) + "." if to_cloud else ""))
         if new:
             lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
     if repeats:
@@ -277,7 +286,8 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
                      + "; ".join(f"{router._txt(c['title'], 80)} (#{n})" for c, n in repeats) + ".")
     meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
             "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
-            "would": [r["n"] for r in picks] if not live else [], "new": created}
+            "would": [r["n"] for r in picks] if not live else [], "new": created,
+            "cloud": [r["n"] for r in to_cloud] if live else [], "would_cloud": [r["n"] for r in to_cloud] if not live else []}
     tm.comment(log, "\n".join(lines), meta)
     print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}")
     return 0

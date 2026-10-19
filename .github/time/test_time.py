@@ -1186,6 +1186,17 @@ sb80 = {r["key"]: r for r in b80}
 assert b80[0]["key"] == "#1" and sb80["#1"]["actionable"] is False and sb80["#1"]["why_not"] == "blocked: PR #75 can't merge"
 assert rt.order(b80) == [2, 5, 1, 7, 9] and [r["key"] for r in rt.pick(b80, live80, 10.0, 2)] == ["#5"], "the top scorer waits"
 assert all(rt.score(cands80[0], {"blocked": x}, live80, {}, today80)["actionable"] for x in ("", "none", "No", False, None, 0))
+# the cloud lane: off by default; with per_day, the best actionable cards of its sizes, until the lane is full
+assert rt.config(None)["cloud"] == {"per_day": 0, "sizes": ["M"]} and rt.pick_cloud(r80, live80, 0) == []
+cl80 = rt.config('{"mode": "live", "cloud": {"per_day": 2, "sizes": ["M", "L", "x"]}}')
+assert cl80["cloud"] == {"per_day": 2, "sizes": ["M"]}, cl80["cloud"]
+r80c = rt.rank(cands80, assess80, cl80, {}, today80)
+assert [r["key"] for r in rt.pick_cloud(r80c, cl80, 0)] == ["#1"], "the M at the top; #2 is lined up, #5 is an S, #7 an L, #9 waits"
+assert rt.pick_cloud(r80c, cl80, 2) == [] and rt.pick_cloud(r80c, cl80, 5) == [], "a full lane takes nothing"
+assert [r["key"] for r in rt.pick_cloud(r80c, rt.config('{"cloud": {"per_day": 3, "sizes": ["S", "M"]}}'), 1)] == ["#1", "#5"]
+assert rt.candidates([iss80(11, "In the lane", labels=["cloud"])])[0]["lined_up"], "a card in the cloud lane is never queued again"
+assert "**to the cloud today**" in rt.table(r80c, [], "live", cloud=rt.pick_cloud(r80c, cl80, 0))
+assert "cloud lane" in rt.table(rt.rank(rt.candidates([iss80(11, "In the lane", labels=["cloud"])]), {}, cl80, {}, today80), [], "live")
 assert "lined up; waits on #1" in rt.table(rt.rank(rt.candidates(open80[:1] + [iss80(9, "q", body="Depends on #1\nDONE: q", labels=["queued"])]),
                                                   {}, live80, {}, today80), [], "live")
 # a kind picked yesterday is less restless; the owner's weight lifts a kind
@@ -1231,6 +1242,16 @@ assert labelled80 == [(1, "queued"), (5, "queued")] and [m[0] for m in made80] =
 assert "DONE:" in made80[0][1] and "card written by Astra" in made80[0][1]
 meta80 = said80[-1][2]
 assert meta80["picked"] == [{"n": 1, "kind": "feature"}, {"n": 5, "kind": "optimization"}] and meta80["new"] == [91] and meta80["queued"] == 2
+labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "live", "cloud": {"per_day": 1}}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert labelled80 == [(5, "queued"), (1, "cloud")], "the cloud lane takes the M (#1); the API worker gets the S behind it"
+assert said80[-1][2]["cloud"] == [1] and "To the cloud lane: #1" in said80[-1][1] and "Cloud lane: 0 in it, up to 1." in said80[-1][1]
+open80.append(iss80(12, "Already in the lane", labels=["cloud"])); labelled80.clear()
+assert astra.router_tick(rt.config('{"mode": "live", "cloud": {"per_day": 1}}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert (1, "cloud") not in labelled80 and said80[-1][2]["cloud"] == [], "a full lane takes nothing more"
+open80.pop(); labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "dry", "cloud": {"per_day": 1}}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert not labelled80 and said80[-1][2]["would_cloud"] == [1] and "To the cloud lane: #1." in said80[-1][1]
 astra.tm.think = lambda *a: (_ for _ in ()).throw(astra.tm.Budget("today's spend is over the cap"))
 assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0 and said80[-1][2]["capped"]
 # money left (#175): the allowance left in the pool that takes the worker's route, else the daily cap's remainder;
@@ -1453,6 +1474,31 @@ sy.tm.new_issue = lambda title, body, labels: flagged83.append((title, body, lab
 sy.flag("o/r", "github", "main"); sy.flag("o/r", "github", "main")
 assert len(flagged83) == 1 and "force" in flagged83[0][1] and flagged83[0][2] == ["needs-human"], "one issue per diverged branch, a human's"
 assert sync83(force=True)["out"] == {"main": "forced"} and g83("rev-parse", "main", cwd=copy83) == g83("rev-parse", "main", cwd=home83)
+# a cloud-lane card's branch comes home: the PR closes the card, and the card goes from `cloud` to `ready`, with a note
+# that carries no beat (so the heartbeat adopts the PR instead of building the card again)
+assert sy.card_of("claude/card-7-cloud-lane") == 7 and sy.card_of("claude/card-12") == 12 and sy.card_of("claude/fix") is None
+assert sy.card_of("claude/card-7x") is None
+cards83 = {7: {"state": "open", "labels": [{"name": "cloud"}]}, 8: {"state": "open", "labels": [{"name": "queued"}]}}
+moves83, notes83 = [], []
+real_gh83 = sy.tm.gh
+sy.tm.gh = lambda m, path, body=None, **k: (dict(cards83[int(path.rsplit("/", 1)[1])]) if "/issues/" in path else gh83(m, path, body, **k))
+sy.tm.label, sy.tm.unlabel = (lambda n, name: moves83.append(("+", n, name))), (lambda n, name: moves83.append(("-", n, name)))
+sy.tm.comment = lambda n, text, meta: notes83.append((n, text, meta))
+g83("checkout", "-q", "main", cwd=cw83); g83("fetch", "-q", "origin", cwd=cw83); g83("reset", "-q", "--hard", "origin/main", cwd=cw83)
+g83("checkout", "-qb", "claude/card-7-cloud", cwd=cw83); commit83(cw83, "g.txt", "Build card seven"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+g83("checkout", "-qb", "claude/card-8-busy", cwd=cw83); commit83(cw83, "h.txt", "Card eight\n\nCloses #8"); g83("push", "-q", "origin", "claude/card-8-busy", cwd=cw83)
+c83 = sync83()
+pr7 = next(b for b in made83 if b["head"] == "claude/card-7-cloud"); pr8 = next(b for b in made83 if b["head"] == "claude/card-8-busy")
+assert pr7["body"].startswith("Closes #7\n") and not pr8["body"].startswith("Closes"), "added only where the commits don't close it"
+assert moves83 == [("-", 7, "cloud"), ("+", 7, "ready")], moves83
+assert len(notes83) == 1 and notes83[0][0] == 7 and "beat" not in notes83[0][2] and f"PR #{notes83[0][2]['pr']}" in notes83[0][1]
+assert sy.hand_back("x/y", 7, 1) is False and not sy.hand_back("o/r", 8, 1), "another repo's card, or one not in the lane, stays"
+cards83[9] = {"state": "open", "labels": [{"name": "cloud"}]}; moves83.clear()
+g83("checkout", "-qb", "claude/session-abc123", cwd=cw83); commit83(cw83, "i.txt", "Nine, from a session that named its own branch\n\nCloses #9")
+g83("push", "-q", "origin", "claude/session-abc123", cwd=cw83)
+sync83()
+assert moves83 == [("-", 9, "cloud"), ("+", 9, "ready")], "a card the commits close leaves the lane too"
+sy.tm.gh = real_gh83
 # a copy whose token isn't set is skipped; tokens go in the URL and never into anything printed
 c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "gh", "url": "https://github.com/o/r.git", "token": "NO_SUCH_TOKEN_83"}]},
                    "file://" + home83)["copies"][0]

@@ -15,6 +15,12 @@ refinement or optimization.
 - restless: a kind the factory hasn't picked for a while climbs, 1 + rate x days (at most 10 days), so none starves.
 - age: an old card climbs a little, 1 + 0.02 x days open (at most 20 days).
 
+The cloud lane (`cloud` in time/router.json): each day the best-ranked actionable cards of the lane's sizes (M by
+default: the bigger ones) are labelled `cloud`, up to `per_day` cards in the lane at once, instead of going to the API
+worker. A launcher signed in to the owner's claude.ai account starts a Claude Code cloud session for each (the cloud-
+session credit pays); the session's `claude/card-N-*` branch comes home through sync.py as a PR, sync relabels the card
+`ready`, and the heartbeat adopts and reviews it like any card PR. `per_day: 0` (the default) is no cloud lane.
+
 An L is ranked but never queued: a card is what one worker session finishes, so it is split first. Nor is a card that
 waits: on a card still open (its `Depends on #N`), or on whatever the seat says blocks it (a PR that can't merge, a
 human). Cards that can move come first in the promotion order, the ones that wait after them. The policy is
@@ -30,10 +36,12 @@ import re
 KINDS = ("venture", "feature", "refinement", "optimization")
 SIZES = {"S": 1, "M": 2, "L": 4}
 MODES = ("off", "dry", "live")
-DEFAULTS = {"mode": "off", "weights": dict.fromkeys(KINDS, 1.0), "restless": 0.05, "cost_usd": {"S": 0.5, "M": 1.5, "L": 4.0}}
+DEFAULTS = {"mode": "off", "weights": dict.fromkeys(KINDS, 1.0), "restless": 0.05, "cost_usd": {"S": 0.5, "M": 1.5, "L": 4.0},
+            "cloud": {"per_day": 0, "sizes": ["M"]}}
 LOOP = {"venture", "venture-batch", "signal", "signup"}       # the venture loop's own cards: it runs them itself
 HELD = {"needs-human", "andon", "astra", "planned"} | LOOP     # a human's, an alarm, Astra's log, parents, the loop's
-LINED_UP = {"queued", "ready"}                                 # already moving: ranked (for promotion), never queued again
+LINED_UP = {"queued", "ready", "cloud"}                        # already moving: ranked (for promotion), never queued again
+CLOUD = "cloud"                                                # a card in the cloud lane: a cloud session builds it
 DONE = re.compile(r"^\s*DONE:", re.M | re.I)
 NEW_VENTURE = {"key": "venture:new", "n": None, "title": "Start a new venture: research, pick, build and launch one page",
                "body": "The venture loop (venture.py): one venture, researched and picked by the lead, built and judged.",
@@ -62,10 +70,13 @@ def config(raw: str | None) -> dict:
     w = got.get("weights") if isinstance(got.get("weights"), dict) else {}
     c = got.get("cost_usd") if isinstance(got.get("cost_usd"), dict) else {}
     mode = str(got.get("mode", "off")).strip().lower()
+    cl = got.get("cloud") if isinstance(got.get("cloud"), dict) else {}
+    sizes = [s for s in (cl.get("sizes") if isinstance(cl.get("sizes"), list) else DEFAULTS["cloud"]["sizes"]) if s in ("S", "M")]
     return {"mode": mode if mode in MODES else "off",
             "weights": {k: _num(w.get(k), 1.0) for k in KINDS},
             "restless": _num(got.get("restless"), DEFAULTS["restless"], 0.0, 1.0),
-            "cost_usd": {s: _num(c.get(s), DEFAULTS["cost_usd"][s]) for s in SIZES}}
+            "cost_usd": {s: _num(c.get(s), DEFAULTS["cost_usd"][s]) for s in SIZES},
+            "cloud": {"per_day": int(_num(cl.get("per_day"), 0, 0, 10)), "sizes": sizes}}
 
 
 def labels_of(issue: dict) -> set[str]:
@@ -156,6 +167,18 @@ def rank(cands: list[dict], assess: dict[str, dict], cfg: dict, last: dict[str, 
     return sorted(scored, key=lambda r: (-r["score"], r["n"] if r["n"] is not None else 10**9))
 
 
+def pick_cloud(ranked: list[dict], cfg: dict, in_lane: int) -> list[dict]:
+    """From the top: actionable cards of the lane's sizes, not lined up, until the lane holds `per_day` cards (those
+    still labelled `cloud` count). The cloud-session credit pays for these, so no money check."""
+    want, out = cfg["cloud"]["per_day"] - in_lane, []
+    for r in ranked:
+        if len(out) >= want:
+            break
+        if r["n"] is not None and r["actionable"] and not r["lined_up"] and r["size"] in cfg["cloud"]["sizes"]:
+            out.append(r)
+    return out
+
+
 def pick(ranked: list[dict], cfg: dict, left_usd: float, max_n: int) -> list[dict]:
     """From the top: cards not yet lined up, while the day's money left covers their size's estimated cost."""
     out, spent = [], 0.0
@@ -179,13 +202,14 @@ def order(ranked: list[dict]) -> list[int]:
     return [r["n"] for r in cards if r["actionable"]] + [r["n"] for r in cards if not r["actionable"]]
 
 
-def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15) -> str:
-    chosen = {r["key"] for r in picked}
+def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cloud: list[dict] = ()) -> str:
+    chosen, sent = {r["key"] for r in picked}, {r["key"] for r in cloud}
     mark = "queued today" if mode == "live" else "would queue"
     rows = []
     for k, r in enumerate(ranked[:limit], 1):
-        note = (f"**{mark}**" if r["key"] in chosen else "; ".join(x for x in ("lined up" if r["lined_up"] else "",
-                r.get("why_not", "") if not r["actionable"] else "") if x))
+        lane = "cloud lane" if CLOUD in r.get("labels", ()) else "lined up" if r["lined_up"] else ""
+        note = (f"**{mark}**" if r["key"] in chosen else ("**to the cloud today**" if mode == "live" else "**would go to the cloud**")
+                if r["key"] in sent else "; ".join(x for x in (lane, r.get("why_not", "") if not r["actionable"] else "") if x))
         name = f"{r['key']} {r['title']}" if r["n"] is not None else r["title"]
         rows.append(f"| {k} | {_txt(name, 80).replace('|', '/')} | {r['kind']} | {r['value']:g} | {r['size']} | "
                     f"{r['unblocks']} | {r['restless']:g} | {r['score']:g} | {_txt(r['why'], 140).replace('|', '/')} | "

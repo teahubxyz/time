@@ -32,6 +32,7 @@ import fnmatch
 import importlib.util
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -133,6 +134,30 @@ def landed(work: str, ref: str, base: str) -> bool:
     return git("merge-base", "--is-ancestor", ref, base, cwd=work, check=False).returncode == 0
 
 
+CARD_BRANCH = re.compile(r"^claude/card-(\d+)(?:\b|-)")   # a cloud session building card N (router.py's cloud lane)
+
+
+def card_of(branch: str) -> int | None:
+    m = CARD_BRANCH.match(branch)
+    return int(m.group(1)) if m else None
+
+
+def hand_back(repo: str, card: int, pr: int) -> bool:
+    """A cloud-lane card's branch came home as `pr`: the card goes from `cloud` to `ready`, so the heartbeat adopts the PR
+    (it closes the card) and the council reviews and lands it like any card PR. Only a card on this repo still in the
+    lane moves; the note carries no beat, so the card still reads as never dispatched and is adopted, not rebuilt."""
+    if repo != tm.REPO:
+        return False
+    issue = tm.gh("GET", f"/repos/{repo}/issues/{card}")
+    if issue.get("state") != "open" or not tm.has_label(issue, "cloud"):
+        return False
+    tm.unlabel(card, "cloud")
+    tm.label(card, "ready")
+    tm.comment(card, f"☁️ The cloud session's branch came home as PR #{pr}. The heartbeat reviews and lands it like any "
+                     f"card PR.", {"cloud": "home", "pr": pr})
+    return True
+
+
 def ensure_pr(repo: str, work: str, branch: str, base: str, copy: str, where: str) -> int | None:
     """A PR on the home for an imported branch, unless one is open for it, it is already in the base, or a PR for it
     was closed at this same commit (a human or the council said no; a new push brings it back)."""
@@ -146,10 +171,20 @@ def ensure_pr(repo: str, work: str, branch: str, base: str, copy: str, where: st
             return None
     log = git("log", "--reverse", "--format=%s%n%n%b%n---", f"refs/home/{base}..{ref}", cwd=work).stdout.strip()
     title = (log.splitlines() or [branch])[0][:200]
-    body = (f"From {copy}: `{branch}` ({where}), brought in by sync.py. Time's council reviews it like any PR.\n\n"
+    card = card_of(branch)
+    closes = f"Closes #{card}\n\n" if card and not re.search(rf"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#{card}\b", log, re.I) else ""
+    body = (f"{closes}From {copy}: `{branch}` ({where}), brought in by sync.py. Time's council reviews it like any PR.\n\n"
             f"Commits:\n\n{log[:6000]}\n\n<sub>sync.py: edit this branch on {copy}; it is the copy's to write, and the "
             f"next sync brings the change here.</sub>")
-    return tm.gh("POST", f"/repos/{repo}/pulls", {"head": branch, "base": base, "title": title, "body": body})["number"]
+    n = tm.gh("POST", f"/repos/{repo}/pulls", {"head": branch, "base": base, "title": title, "body": body})["number"]
+    # the card the branch is named for, and any the commits close (a cloud session may name its own branch)
+    named = {card} if card else set()
+    for c in sorted(named | {int(x) for x in re.findall(r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", log, re.I)}):
+        try:
+            hand_back(repo, c, n)
+        except Exception as e:  # noqa: BLE001  the PR is home either way; a human can relabel the card
+            print(f"hand_back #{c}: {scrub(str(e))[:200]}")
+    return n
 
 
 def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
