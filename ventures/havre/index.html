@@ -52,6 +52,8 @@
         <button type="button" role="tab" id="lt-chats" aria-controls="lp-chats" aria-selected="false" tabindex="-1">CHATS<span id="chats-new" class="new" hidden></span></button>
         <span class="sep" aria-hidden="true">/</span>
         <button type="button" role="tab" id="lt-chars" aria-controls="lp-chars" aria-selected="true">CHARACTERS</button>
+        <span class="sep" aria-hidden="true">/</span>
+        <button type="button" role="tab" id="lt-harbor" aria-controls="lp-harbor" aria-selected="false" tabindex="-1">HARBOR</button>
       </div>
     </div>
     <div id="lp-chats" role="tabpanel" aria-labelledby="lt-chats" hidden>
@@ -60,8 +62,10 @@
       <p id="threads-empty" class="mono pad">no chats yet. pick one of venice's characters, or one of yours, and say something: every chat you start stays here, and you can keep as many going as you like.</p>
     </div>
     <div id="lp-chars" role="tabpanel" aria-labelledby="lt-chars">
-      <p class="filters mono chars-note">the harbor's own. they answer without a key, from their own examples; with one, for real.</p>
-      <ul id="cast" class="grid cast" aria-label="The harbor's own characters"></ul>
+      <div id="cast-box" hidden>
+        <p class="filters mono chars-note">the harbor's own. they answer without a key, from their own examples; with one, for real.</p>
+        <ul id="cast" class="grid cast" aria-label="The harbor's own characters"></ul>
+      </div>
       <p class="filters mono chars-note">venice's public characters. pick one to start a chat.</p>
       <form class="filters" id="venform" role="search" aria-label="Venice characters">
         <label class="sr" for="vsearch">Search Venice characters</label>
@@ -79,6 +83,18 @@
       <p id="venstatus" class="status" role="status" aria-live="polite"></p>
       <ul id="vgrid" class="grid" aria-label="Venice characters"></ul>
       <p class="more"><span id="vpager" hidden><button type="button" class="linkish" id="vprev">previous</button> <span id="vrange"></span> <button type="button" class="linkish" id="vnext">next</button> / </span><button type="button" class="linkish" id="plain">chat without a character</button> / <button type="button" class="linkish" id="import">import a card</button> (v1, v2, v3, json or png) / <button type="button" class="linkish" id="new">write one</button></p>
+    </div>
+    <div id="lp-harbor" role="tabpanel" aria-labelledby="lt-harbor" hidden>
+      <div class="harbor" id="harbor">
+        <p class="filters mono chars-note">every character you have, kept in this browser. export a file to keep one anywhere else.</p>
+        <div class="tablewrap">
+          <table class="table">
+            <thead><tr><th scope="col">NAME</th><th scope="col">FROM</th><th scope="col">LICENSE</th><th scope="col">FILE</th></tr></thead>
+            <tbody id="roster"></tbody>
+          </table>
+        </div>
+        <p id="harbor-empty" class="mono pad">nothing here yet. pick one of venice's characters, import a card, or write one.</p>
+      </div>
     </div>
   </section>
 
@@ -102,20 +118,6 @@
     </form>
   </section>
 </main>
-
-<section class="block harbor" id="harbor" aria-labelledby="harbor-h">
-  <div class="sechead">
-    <h2 id="harbor-h">YOUR HARBOR</h2>
-    <span class="meta">kept in this browser. export a file to keep a character anywhere else.</span>
-  </div>
-  <div class="tablewrap">
-    <table class="table">
-      <thead><tr><th scope="col">NAME</th><th scope="col">FROM</th><th scope="col">LICENSE</th><th scope="col">FILE</th></tr></thead>
-      <tbody id="roster"></tbody>
-    </table>
-  </div>
-  <p id="harbor-empty" class="mono pad">nothing here yet. pick one of venice's characters, import a card, or write one.</p>
-</section>
 
 <section class="block card" id="card" aria-labelledby="card-h">
   <div class="sechead">
@@ -243,13 +245,15 @@
   </div>
 </section>
 
+<details class="about" id="about">
+<summary>ABOUT HAVRE <span class="hint">how it works / for agents / costs / plans / fine print</span></summary>
 <section class="row" id="how" aria-labelledby="how-h">
   <h2 id="how-h">HOW IT WORKS</h2>
   <div class="body">
     <ol>
       <li>Paste your Venice API key. It stays in this browser and goes only to api.venice.ai; the page can reach nothing but Venice.</li>
-      <li>Pick a character: one of the harbor's own, one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
-      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the harbor's own and the characters you write answer from their own examples.</li>
+      <li>Pick a character: one of Venice's, a card file you import, or one you write. Venice's characters say hello first. Or chat with a model and no character at all.</li>
+      <li>Talk. Replies come as a few short texts, through whichever Venice model you pick. Keep as many chats going as you like, with different characters or several with the same one: a reply keeps coming while you're in another chat, and your chats show what's new. Without a key, the characters you write answer from their own examples.</li>
       <li>They remember. Every dozen messages, a character you wrote, imported or remixed writes down what they remember of your chats: what you've told them, what happened, what they've said about themselves. It goes into every chat with them, so a new chat picks up where the last one left off. Read it, add to it, or make them forget, on their card.</li>
       <li>More than texts. When you come back after a while, characters text first, in the chat you open and in a few of your others, and they send a photo or a voice note when it fits, out of a daily allowance you set. Ask them for a photo or a short clip whenever you like: a clip always shows Venice's price first, and is made only if you say yes. A character marked adult (18+) can send adult ones, made only from pictures made here with AI. Switch them on, and they hear your voice notes and see your photos.</li>
       <li>Keep them. Export a character as a file, or remix them into someone new; the credit stays in the card.</li>
@@ -330,6 +334,8 @@
     <p><i>Havre</i> means harbor. In July 2025 Venice and Le Havre signed a letter of friendship: two old port cities, both on the UNESCO World Heritage list.</p>
   </div>
 </section>
+
+</details>
 
 <footer class="foot">havre.yolopreneur.lol / a venture on <a href="https://yolopreneur.lol/">yolopreneur.lol</a> / made by claude, october 2026 / not affiliated with venice.ai</footer>
 

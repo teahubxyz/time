@@ -324,7 +324,8 @@ async function main() {
     assert.match(await textOf(page, "#venstatus"), /venice key/);
     assert.match(await textOf(page, "#who-name"), /^chat$/i);
     await has(page, "#log .line.note .said", /paste your venice key/);
-    assert.ok(await page.locator("#harbor-empty").isVisible(), "the empty harbor says so");
+    assert.ok(await page.locator("#cast-box").isHidden(), "the harbor's own aren't listed");
+    assert.equal(await page.locator("#harbor-empty").evaluate((e) => e.hidden), false, "the empty harbor says so");
     assert.ok(await page.locator("#card-empty").isVisible(), "so does the empty card");
     assert.ok(await page.locator("#say").isDisabled(), "nobody to talk to yet");
     assert.equal(await page.evaluate(() => localStorage.length), 0, "a first visit keeps nothing");
@@ -765,10 +766,12 @@ async function main() {
 
     // remix with credit, end to end, from the card that came in. His model can't keep to JSON (it writes it by hand), so
     // the two passes run on one that can, and the new character talks through his
+    await page.click("#lt-harbor");
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Captain Ro's card" }).click();
     await page.selectOption("#model-select", "tiny-model");
     await until(page, () => JSON.parse(localStorage.getItem("havre.cards.v1")).find((c) => c.name === "Captain Ro").model === "tiny-model", null, "his model saved");
     await page.locator("#roster tr", { hasText: "Captain Ro" }).getByRole("button", { name: "Remix Captain Ro" }).click();
+    await page.click("#lt-chars");
     await has(page, "#rx-from", /^Captain Ro$/);
     assert.match(await textOf(page, "#rx-rights"), /reserves the rights/);
     await page.click("#rx-distill");
@@ -1029,7 +1032,9 @@ async function main() {
     await has(page, "#adult-note", /^their photos and clips can be adult/);
 
     // exports, made in the browser; the PNG comes back in whole
+    await page.click("#lt-harbor");
     await page.getByRole("button", { name: "Export Ines Corbel" }).click();
+    await page.click("#lt-chars");
     let png = "";
     for (const [kind, ext] of [["havre", ".havre.json"], ["v3", ".card.json"], ["prompt", ".txt"], ["png", ".png"]]) {
       const [dl] = await Promise.all([page.waitForEvent("download"), page.click(`[data-out="${kind}"]`)]);
@@ -1147,7 +1152,7 @@ async function main() {
     await count(p5, "#cast li", 3);
     assert.deepEqual(await p5.evaluate(() => [...document.querySelectorAll("#cast .nm")].map((e) => e.textContent)), ["Maren", "Odile", "Taskmaster"]);
     assert.equal(await p5.evaluate(() => localStorage.length), 0, "looking at them keeps nothing");
-    await p5.click("#cast .tile[data-cast=maren]");
+    await p5.goto(base + "?meet=maren");
     await has(p5, "#who-name", /^Maren$/);
     await has(p5, "#log .line.them .said", /I'm Maren, I run the harbor\./);
     await has(p5, "#cast .tile[data-cast=maren] .go", /^talking now$/);
@@ -1160,10 +1165,10 @@ async function main() {
     assert.equal(mine.length, 1);
     assert.deepEqual([mine[0].id, mine[0].lineage.at(-1).ref, mine[0].lineage.at(-1).relation], ["maren", "havre:maren", "ported-from"], "a copy with the credit");
     assert.notEqual(mine[0].created, "2026-10-16T00:00:00.000Z", "the copy is dated when it was met, not when the card was written");
-    await p5.click("#cast .tile[data-cast=odile]");
+    await p5.goto(base + "?meet=odile");
     await has(p5, "#who-name", /^Odile$/);
     await has(p5, "#cast .tile[data-cast=maren] .go", /^talk again$/);
-    await p5.click("#cast .tile[data-cast=maren]");
+    await p5.goto(base + "?meet=maren");
     await has(p5, "#who-name", /^Maren$/);
     await count(p5, "#roster tr", 2);
     assert.ok(await p5.locator("#log .line.me .said", { hasText: "What is this place?" }).isVisible(), "the same chat, not a new copy of her");

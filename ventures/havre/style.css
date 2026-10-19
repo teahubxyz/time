@@ -87,6 +87,11 @@ input:disabled, textarea:disabled, select:disabled { background: #f2f2f2; color:
   background: var(--ink); color: var(--paper); font: 15px/1.4 var(--mono);
 }
 .keybar a { color: var(--paper); }
+/* the reading, folded into one footer */
+.about { border-top: 2px solid var(--ink); }
+.about > summary { padding: 14px var(--gut); font: 700 15px/1.4 var(--mono); cursor: pointer; }
+.about > summary .hint { font-weight: 400; }
+.about > summary:hover, .about > summary:focus-visible { background: var(--hi); }
 /* with a key saved: one line (where it's kept, the balance, change); change brings the form back */
 .keybar:not(.set) .keyset { display: none; }
 .keybar.set > :not(.keyset):not(#balance):not(#keystatus) { display: none !important; }

@@ -129,7 +129,7 @@ function boot() {
   const open = S.threads[local.get(K.open, "")], c0 = card();
   S.open = open && c0 && open.card === c0.id ? open.id : c0 ? (latestOf(c0.id) || {}).id || null : null;
   const left = local.get(K.left, "");
-  S.left = left === "chats" || left === "chars" ? left : Object.keys(S.threads).length ? "chats" : "chars";
+  S.left = ["chats", "chars", "harbor"].includes(left) ? left : Object.keys(S.threads).length ? "chats" : "chars";
   const sort = local.get(K.sort, "imports");
   S.v.sort = SORTS.includes(sort) ? sort : "imports";
   S.v.adult = local.get(K.adult, false) === true && local.get(K.adult18, false) === true;
@@ -365,7 +365,7 @@ function setLeft(which, { focus = false } = {}) {
   local.set(K.left, which);
   setPane("list");
   renderLeft();
-  if (focus) $(which === "chats" ? "#lt-chats" : "#lt-chars").focus();
+  if (focus) $("#lt-" + which).focus();
 }
 /**
  * On a narrow screen the studio shows one thing at a time, the way a phone's messages do: the list (your chats, the
@@ -379,13 +379,13 @@ function setPane(which) {
   if (S.pane === "chat") scrollLog();          // drawn while hidden, it couldn't scroll: now it can
 }
 function renderLeft() {
-  for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"]]) {
+  for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"], ["harbor", "#lt-harbor", "#lp-harbor"]]) {
     $(tab).setAttribute("aria-selected", S.left === w ? "true" : "false");
     $(tab).tabIndex = S.left === w ? 0 : -1;
     $(panel).hidden = S.left !== w;
   }
   // a narrow screen's way back from a chat: to whichever list you came from
-  $("#chat-back").textContent = S.left === "chats" ? "← your chats" : "← characters";
+  $("#chat-back").textContent = S.left === "chats" ? "← your chats" : S.left === "harbor" ? "← your harbor" : "← characters";
 }
 const faces = new Map();         // each chat's face in the list, kept between drawings so the photos don't flicker
 function threadFace(t, src) {
@@ -998,8 +998,8 @@ function renderLog() {
   const log = $("#log"), c = card(), t = thread();
   log.textContent = "";
   if (!c) {
-    put(line(S.key ? "pick one of the harbor's own or one of venice's characters, or write your own. they talk here."
-      : "meet one of the harbor's own, write a character of your own, or import a card: those work without a key. paste your venice key above, and venice's characters come too.", "havre", "note"));
+    put(line(S.key ? "pick one of venice's characters, or write your own. they talk here."
+      : "paste your venice key above, then pick one of venice's characters. or write a character of your own, or import a card: those work without a key.", "havre", "note"));
     return;
   }
   const hist = t ? t.msgs : [];
@@ -3266,6 +3266,13 @@ function toast(text) {
 
 // ---------- wiring ----------
 function bind() {
+  // the reading lives folded in the footer: a link to a part of it (#costs, #fine…) opens it there
+  const openAbout = () => {
+    const el = location.hash && document.getElementById(location.hash.slice(1)), about = $("#about");
+    if (el && about && about.contains(el)) { about.open = true; el.scrollIntoView({ block: "start" }); }
+  };
+  window.addEventListener("hashchange", openAbout);
+  openAbout();
   $("#keychange").addEventListener("click", () => { S.keyEditing = true; updateKeyUI(); $("#keyin").focus(); });
   $("#keyform").addEventListener("submit", () => { S.keyEditing = false; });
   $("#keyin").addEventListener("blur", () => { setTimeout(() => {
@@ -3446,13 +3453,15 @@ function bind() {
 
   // your chats, and the left column's two tabs (on a narrow screen, the chat has its way back to them)
   $("#chat-back").addEventListener("click", backToList);
-  const left = [$("#lt-chats"), $("#lt-chars")];
-  for (const t of left) {
-    t.addEventListener("click", () => setLeft(t.id === "lt-chats" ? "chats" : "chars"));
+  const leftTabs = ["chats", "chars", "harbor"];
+  for (const w of leftTabs) {
+    const t = $("#lt-" + w);
+    t.addEventListener("click", () => setLeft(w));
     t.addEventListener("keydown", (e) => {
       if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
       e.preventDefault();
-      setLeft(t.id === "lt-chats" ? "chars" : "chats", { focus: true });
+      const i = leftTabs.indexOf(w) + (e.key === "ArrowRight" ? 1 : -1);
+      setLeft(leftTabs[(i + leftTabs.length) % leftTabs.length], { focus: true });
     });
   }
   // coming back to the tab: what's on screen has been seen, and after a while away, characters text first
