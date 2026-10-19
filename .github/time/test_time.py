@@ -1362,6 +1362,25 @@ c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "gh", "url": "https://git
 assert c83["note"] == "skipped: the secret NO_SUCH_TOKEN_83 isn't set" and c83["out"] == {}
 assert sy.authed("https://github.com/o/r.git", "t0k/en") == "https://x-access-token:t0k%2Fen@github.com/o/r.git"
 assert sy.authed("file:///x", "t0k") == "file:///x" and sy.scrub("https://x-access-token:t0k%2Fen@github.com said t0k/en") == "https://x-access-token:***@github.com said ***"
+# a copy over SSH with a deploy key: the key is written 0600 for the run only, the host's keys are pinned (never learned)
+assert sy.ssh_host("git@github.com:teahubxyz/time.git") == "github.com" and sy.ssh_host("ssh://git@github.com/o/r.git") == "github.com"
+assert sy.ssh_host("https://github.com/o/r.git") == "" and sy.ssh_host("file:///x") == ""
+kd83 = _tf83.mkdtemp()
+env83 = sy.ssh_env("-----BEGIN KEY-----\nabc\n-----END KEY-----", "github.com", None, kd83)
+assert "StrictHostKeyChecking=yes" in env83["GIT_SSH_COMMAND"] and f"-i {kd83}/sync_key" in env83["GIT_SSH_COMMAND"]
+assert oct(os.stat(os.path.join(kd83, "sync_key")).st_mode)[-3:] == "600"
+assert "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl" in Path(kd83, "known_hosts").read_text()
+try: sy.ssh_env("k", "forge.example", None, kd83); raise AssertionError("an unknown host needs pinned keys")
+except RuntimeError as e: assert "known_hosts" in str(e)
+os.environ["SYNC_KEY_83"] = "-----BEGIN KEY-----\nk83\n-----END KEY-----"
+c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "ssh", "url": "file://" + copy83, "ssh_key": "SYNC_KEY_83",
+                                                "known_hosts": ["copy.test ssh-ed25519 AAAA"]}]}, "file://" + home83)["copies"][0]
+assert c83["out"] == {"main": "up to date"} and not sy.ENV, (c83, sy.ENV)
+assert sy.scrub("leaked -----BEGIN KEY-----\nk83\n-----END KEY----- here") == "leaked *** here"
+os.environ.pop("SYNC_KEY_83")
+c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "ssh", "url": "git@github.com:o/r.git", "ssh_key": "SYNC_KEY_83"}]},
+                   "file://" + home83)["copies"][0]
+assert c83["note"] == "skipped: the secret SYNC_KEY_83 isn't set"
 sy.tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 404: not found"))
 assert sy.config() == [] and sy.main() == 0, "no sync.json: nothing to sync"
 print("ALL OK 83")

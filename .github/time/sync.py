@@ -20,7 +20,9 @@ time/sync.json:
                             "token": "GITHUB_MIRROR_TOKEN", "import": ["claude/*"]}]}]}
 
 `token` names a secret (an environment variable the workflow passes), never the token itself; a copy whose token isn't
-set is skipped with a note. The same script syncs Gitea with Gitea: it runs on the home, so a pair the home can't
+set is skipped with a note. Or `ssh_key` names a secret holding an SSH private key (a GitHub deploy key: write access
+to that one repo and nothing else) for an `ssh://` or `git@host:` URL; the host's keys are pinned (github.com's are
+built in, others go in `known_hosts`), never learned on first use. The same script syncs Gitea with Gitea: it runs on the home, so a pair the home can't
 reach (hb-5's local Gitea from prod) runs from the side that can reach both, with that side's own sync.json.
 """
 from __future__ import annotations
@@ -42,6 +44,11 @@ tm = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(tm)
 CONFIG = "time/sync.json"
 SECRETS: list[str] = []   # every token used this run, scrubbed from anything printed or posted
+# github.com's published SSH host keys (api.github.com/meta), pinned so a copy over SSH never trusts a key on first use
+HOST_KEYS = {"github.com": ["github.com ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOMqqnkVzrm0SdG6UOoqKLsabgH5C9okWi0dh2l9GKJl",
+                            "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxk"
+                            "ZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg="]}
+ENV: dict[str, str] = {}  # extra environment for the git calls to the copy being synced (its SSH command)
 
 
 def scrub(text: str) -> str:
@@ -73,9 +80,31 @@ def authed(url: str, token: str, user: str = "x-access-token") -> str:
     return urllib.parse.urlunsplit((p.scheme, f"{cred}@{p.netloc}", p.path, p.query, p.fragment))
 
 
+def ssh_host(url: str) -> str:
+    """The host of an ssh:// or scp-style (git@host:path) URL; '' for anything else."""
+    if url.startswith("ssh://"):
+        return (urllib.parse.urlsplit(url).hostname or "")
+    if "://" not in url and "@" in url and ":" in url.split("@", 1)[1]:
+        return url.split("@", 1)[1].split(":", 1)[0]
+    return ""
+
+
+def ssh_env(key: str, host: str, known: list[str] | None, folder: str) -> dict[str, str]:
+    """GIT_SSH_COMMAND for one copy: its deploy key (written 0600 in the run's temp folder) and the host's pinned keys."""
+    keys = known or HOST_KEYS.get(host)
+    if not keys:
+        raise RuntimeError(f"no pinned host key for {host}: put the host's keys in the copy's known_hosts")
+    kf, hf = Path(folder, "sync_key"), Path(folder, "known_hosts")
+    kf.write_text(key.strip() + "\n")
+    kf.chmod(0o600)
+    hf.write_text("\n".join(keys) + "\n")
+    return {"GIT_SSH_COMMAND": f"ssh -i {kf} -o IdentitiesOnly=yes -o UserKnownHostsFile={hf} -o StrictHostKeyChecking=yes "
+                               f"-o BatchMode=yes"}
+
+
 def git(*args: str, cwd: str | None = None, check: bool = True) -> subprocess.CompletedProcess:
     p = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=300,
-                       env={**os.environ, "GIT_TERMINAL_PROMPT": "0"})
+                       env={**os.environ, "GIT_TERMINAL_PROMPT": "0", **ENV})
     if check and p.returncode:
         raise RuntimeError(f"git {args[0]} failed: {scrub(p.stderr.strip())[-400:]}")
     return p
@@ -136,13 +165,20 @@ def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
             git("fetch", "-q", home_url, *[f"+refs/heads/{b}:refs/home/{b}" for b in wanted], cwd=work)
         for c in entry.get("copies") or []:
             name, where = str(c.get("name") or c.get("url")), str(c.get("url") or "")
-            token = os.environ.get(str(c.get("token") or ""), "") if c.get("token") else ""
+            secret = str(c.get("ssh_key") or c.get("token") or "")
+            token = os.environ.get(secret, "") if secret else ""
             r: dict = {"copy": name, "out": {}, "imported": [], "prs": [], "note": ""}
             report["copies"].append(r)
-            if c.get("token") and not token:
-                r["note"] = f"skipped: the secret {c['token']} isn't set"
+            if secret and not token:
+                r["note"] = f"skipped: the secret {secret} isn't set"
                 continue
-            url = authed(where, token, str(c.get("user") or "x-access-token"))
+            ENV.clear()
+            if c.get("ssh_key"):
+                SECRETS.append(token)
+                ENV.update(ssh_env(token, ssh_host(where), c.get("known_hosts"), work))
+                url = where
+            else:
+                url = authed(where, token, str(c.get("user") or "x-access-token"))
             for b in out:
                 r["out"][b] = push_out(work, home, url, b, force)
             pats = [p for p in c.get("import") or [] if isinstance(p, str)]
@@ -160,6 +196,7 @@ def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
                 n = ensure_pr(repo, work, branch, base, name, where)
                 if n:
                     r["prs"].append(n)
+        ENV.clear()
     return report
 
 
