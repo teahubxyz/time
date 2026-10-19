@@ -1,0 +1,11 @@
+{
+  "$schema": "https://schemas.agentskills.io/discovery/0.2.0/schema.json",
+  "skills": [
+    {
+      "name": "havre",
+      "type": "skill-md",
+      "description": "Write AI characters as Havre cards (.havre.json), export them as Character Card V3 for SillyTavern-style apps, talk to them through Venice's API, and remix someone else's character into an original one, with credit.",
+      "url": "/skill.md"
+    }
+  ]
+}

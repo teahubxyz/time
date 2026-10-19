@@ -10,10 +10,18 @@ set -eu
 cd "$(dirname "$0")/.."
 
 # files from earlier versions of the site that this one doesn't serve: a commit can add files but never remove them,
-# so the build does
+# so the build does. (c/ is this version's: the pages of the harbor's own, which tools/pages.mjs writes. Keep it off
+# this list.)
 rm -rf art fonts tools/paint.py tools/draw.py tools/vendor tests/smoke.py
 
+# what agents look for stays: .well-known/ (the skills index) and robots.txt are served as they are, so the build
+# never clears them, and fails if they're gone
+for f in .well-known/skills/index.json robots.txt; do
+  [ -f "$f" ] || { echo "tools/build.sh: $f is missing: agents look for it" >&2; exit 1; }
+done
+
 node tools/cast.mjs          # cast/index.js, the harbor's own as the module the page imports, from cast/*.havre.json
+node tools/pages.mjs         # c/ (a page and a V3 card for each of them, and the list) and sitemap.txt, from the same cards
 node --test tests/*.test.mjs
 
 if [ -z "${PW_MODULE:-}" ]; then
