@@ -111,7 +111,8 @@ def board() -> dict:
             "closed_recently": [{"n": i["number"], "title": i["title"], "closed": i.get("closed_at")} for i in closed[:20]],
             "prs": [{"n": p["number"], "title": p["title"], "head": p["head"]["ref"], "mergeable": p.get("mergeable")} for p in prs],
             "andons": [i["number"] for i in open_issues if any(l["name"] == "andon" for l in i.get("labels") or [])],
-            "spend": {"today": round(today, 2), "daily_cap": day_cap, "month": round(month, 2), "monthly_cap": month_cap}}
+            "spend": {"today": round(today, 2), "daily_cap": day_cap, "month": round(month, 2), "monthly_cap": month_cap,
+                      "pools": {p["name"]: {"spent": round(tm.pool_spent(p), 2), "allowance": round(tm.allowance(p), 2)} for p in tm.pools()}}}
 
 
 def log_issue() -> int:
@@ -263,7 +264,9 @@ def tick() -> int:
         created.append(issue["number"])
         if c.get("queue", c.get("ready", True)) and len(queued) + len(created) <= max_ready:
             tm.label(issue["number"], "queued")   # the heartbeat promotes it when nothing else is in flight
-    lines = [f"🔭 Astra ({seat}), spend ${state['spend']['today']:.2f} of ${state['spend']['daily_cap']:.2f} today:", "", plan["note"], ""]
+    per = ", ".join(f"{k} ${v['spent']:.2f} of ${v['allowance']:.2f}" for k, v in state["spend"]["pools"].items()) \
+        or f"${state['spend']['today']:.2f} of ${state['spend']['daily_cap']:.2f}"
+    lines = [f"🔭 Astra ({seat}), spend today, {per}:", "", plan["note"], ""]
     if queued:
         lines.append("Queued: " + ", ".join(f"#{n}" for n in queued))
     if created:

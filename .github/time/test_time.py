@@ -1231,6 +1231,63 @@ assert tm.rank_order() == [], "the ranking is a preference: an unreadable log ne
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
 print("ALL OK 80")
 
+# 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
+import io, contextlib
+real_pools = tm.pools
+day0 = tm._midnight(NOW)
+def spent_row(usd, pool="anthropic"): return {"at": tm._iso(NOW), "model": "m", "pool": pool, "usd": usd}
+def fresh82(*rows):
+    tm.LEDGER[:] = list(rows)
+    for back in (0, 40): tm._ledger_files[(NOW - dt.timedelta(days=back)).strftime("%Y-%m")] = ([], None)
+def refused(route, now=None):
+    try: tm.budget_check(route, now); return False
+    except tm.Budget: return True
+credit = {"name": "credits", "kind": "expiring", "balance_usd": 30, "as_of": day0.strftime("%Y-%m-%d"),
+          "resets_at": (day0 + dt.timedelta(days=10)).strftime("%Y-%m-%d"), "routes": ["anthropic"]}
+sub_ = {"name": "sub", "kind": "window", "window_usd": 2, "resets_at": "hours:5", "routes": ["venice"]}
+tm.pools = lambda: [credit, sub_]
+os.environ["TIME_DAILY_USD"] = "1"  # the global cap is not what a pooled route answers to
+fresh82()
+assert tm.allowance(credit, NOW) == 3.0, "$30 over 10 days"
+fresh82(spent_row(1), spent_row(1)); assert not refused("anthropic")
+fresh82(spent_row(1), spent_row(1), spent_row(1)); assert refused("anthropic"), "the fourth dollar"
+nxt = NOW + dt.timedelta(days=1)
+fresh82(spent_row(3))  # a day passes: yesterday's $3 is spent, $27 over 9 days
+assert tm.allowance(credit, nxt) == 3.0 and not refused("anthropic", nxt)
+fresh82(); assert tm.allowance(credit, nxt) == 30 / 9 > 3, "a quiet day raises the share"
+os.environ["TIME_PACE"] = "0.8"; assert abs(tm.allowance(credit, NOW) - 2.4) < 1e-9; os.environ.pop("TIME_PACE")
+real_slack = tm.slack; fresh82(spent_row(3.5)); tm.slack = lambda: 1.5
+assert not refused("anthropic"), "a run under way may go over, against the pool's allowance"
+fresh82(spent_row(4.5)); assert refused("anthropic"); tm.slack = real_slack
+# a window pool refuses once the window is spent and allows again after its reset
+fresh82(spent_row(2, "venice")); assert refused("venice")
+assert not refused("venice", tm.window_bounds("hours:5", NOW)[1] + dt.timedelta(minutes=1)), "new window"
+# weekly windows start on their day
+assert tm.window_bounds("weekly:mon", dt.datetime(2026, 10, 21, 9, tzinfo=dt.timezone.utc))[0] == dt.datetime(2026, 10, 19, tzinfo=dt.timezone.utc)
+# a route with no pool falls back to TIME_DAILY_USD (the global cap), and the monthly cap stays hard
+fresh82(spent_row(1.5, "codex")); assert refused("codex") and refused(None)
+fresh82(spent_row(0.5, "codex")); assert not refused("codex")
+# booking names the pool, and the doctor and Astra report each pool
+fresh82(); tm.book("claude-sonnet-5-5", {"prompt_tokens": 10}); tm.book("kimi-k3", {}); assert [r["pool"] for r in tm.LEDGER] == ["anthropic", "venice"]
+fresh82(spent_row(1)); tm.http = World([]).http; os.environ["CURSOR_API_KEY"] = "ck"
+out = io.StringIO()
+with contextlib.redirect_stdout(out): tm.cmd_doctor()
+assert "pool `credits` | expiring, $30.00; spent $1.00 since reset; next reset " in out.getvalue() and "allowance today $3.00" in out.getvalue(), out.getvalue()
+assert "pool `sub` | window, $2.00; spent $0.00" in out.getvalue()
+assert tm.pool_spent(credit) == 1 and tm.pool_spent(sub_) == 0
+tm.pools = real_pools; os.environ.pop("TIME_DAILY_USD"); tm.LEDGER.clear(); tm._ledger_files.clear()
+# pools.json is read through the API (the workflows check out only .github/time), once per run
+import base64 as _b82
+real_gh82, reads82 = tm.gh, []
+tm._pools = None
+tm.gh = lambda m, path, b=None, **k: reads82.append(path) or {"content": _b82.b64encode(b'[{"name": "x", "kind": "balance", "routes": ["venice"]}]').decode()}
+assert tm.pools()[0]["name"] == "x" and tm.pool_for("venice")["name"] == "x" and reads82 == ["/repos/o/r/contents/time/pools.json"], reads82
+tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 404: not found")); tm._pools = None
+assert tm.pools() == [] and tm.pool_for("anthropic") is None, "no pools.json: no pools, the daily cap paces"
+tm.gh = real_gh82; tm._pools = None
+print("ALL OK 82")
+
+
 # ---------- venture loop lifecycle: these still run against the old GitHub-shaped fake (Pages API, author_association,
 # per_page); the Gitea shapes are pinned by 79 above. They run only with TIME_TEST_VENTURE=1 until the fake is ported.
 if not os.environ.get("TIME_TEST_VENTURE"):

@@ -4,7 +4,8 @@
     python3 .github/time/time.py heartbeat   # on schedule: plan specs, dispatch `ready` cards, merge approved PRs, pull the next card
 
 Ledger = this Gitea repo. Brains = Venice (VENICE_API_KEY) or Claude (ANTHROPIC_API_KEY), per seat in .github/time/seats.json.
-Spend = time/ledger/<YYYY-MM>.jsonl in the repo; TIME_DAILY_USD / TIME_MONTHLY_USD cap it before every call.
+Spend = time/ledger/<YYYY-MM>.jsonl in the repo; TIME_MONTHLY_USD caps it before every call, and each call is paced to the
+capacity pool it books to (time/pools.json), or to TIME_DAILY_USD when no pool takes its route.
 Loop guards: Time's own comments (author gitea-actions) never trigger replies or count as verdicts; the heartbeat
 has a daily cap and a concurrency group. Unlike GitHub, Gitea does fire events for the Actions token's own writes,
 so every event-driven workflow filters on the author.
@@ -326,7 +327,7 @@ def anthropic_messages(body: dict, timeout: float) -> dict:
 
 def chat(body: dict, timeout: float) -> dict:
     """Every model call goes through here: the budget is checked first and the spend booked after."""
-    budget_check()
+    budget_check(provider_of(body["model"]))
     if provider_of(body["model"]) == "anthropic":
         native = (os.environ.get("TIME_ANTHROPIC_API") or "messages").strip().lower() != "compat"
         out = (anthropic_messages if native else anthropic_chat)(body, timeout)
@@ -377,8 +378,8 @@ def book(model: str, usage: dict) -> None:
     if not LEDGER:  # first line: every entry point (heartbeat, mention, venture) flushes without remembering to
         atexit.register(flush_ledger)
     usd = round(((i - r - w) * p[0] + r * p[0] * 0.1 + w * p[0] * 1.25 + o * p[1]) / 1e6, 6) if p else None
-    LEDGER.append({"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": model, "in": i, "out": o,
-                   "usd": usd, **({"cached": r, "written": w} if r or w else {})})
+    LEDGER.append({"at": dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "model": model, "pool": provider_of(model),
+                   "in": i, "out": o, "usd": usd, **({"cached": r, "written": w} if r or w else {})})
 
 
 def flush_ledger() -> None:
@@ -402,8 +403,8 @@ def spend(prefix: str) -> float:
     return sum(r.get("usd") or 0 for r in ledger_lines(prefix[:7]) + LEDGER if r.get("at", "").startswith(prefix))
 
 
-def budget() -> tuple[float, float, float, float]:
-    now = dt.datetime.now(dt.timezone.utc)
+def budget(now: dt.datetime | None = None) -> tuple[float, float, float, float]:
+    now = now or dt.datetime.now(dt.timezone.utc)
     return (spend(now.strftime("%Y-%m-%d")), float(os.environ.get("TIME_DAILY_USD") or 5),
             spend(now.strftime("%Y-%m")), float(os.environ.get("TIME_MONTHLY_USD") or 100))
 
@@ -428,13 +429,98 @@ def finishing():
         _slack.value = old
 
 
-def budget_check() -> None:
-    today, day_cap, month, month_cap = budget()
+# Capacity pools (time/pools.json, kept by the operator): [{"name", "kind": "expiring" | "window" | "balance", "routes": ["anthropic"],
+# "balance_usd" + "as_of" + "resets_at": "2026-11-01" | "window_usd" + "resets_at": "weekly:mon" or "hours:5"}]. A call is paced to
+# the pool its route books to; with no pool the daily cap applies as before.
+POOLS_FILE = "time/pools.json"
+DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+_pools: list[dict] | None = None
+
+
+def pools() -> list[dict]:
+    """time/pools.json on the default branch, read once per run through the API like the ledger: the workflows check out
+    only .github/time, so a file on disk was invisible to every one of them. Missing or unreachable: no pools, and the
+    daily cap paces as before. Malformed: it fails loudly."""
+    global _pools
+    if _pools is None:
+        try:
+            f = gh("GET", f"/repos/{REPO}/contents/{POOLS_FILE}")
+        except Exception as e:  # noqa: BLE001
+            if "-> 404" not in str(e):
+                print(f"pools unreadable, pacing by TIME_DAILY_USD: {str(e)[:120]}")
+            _pools = []
+            return _pools
+        _pools = json.loads(base64.b64decode(f.get("content") or "").decode() or "[]")
+    return _pools
+
+
+def pool_for(route: str | None) -> dict | None:
+    return next((p for p in pools() if route in p["routes"]), None)
+
+
+def _iso(t: dt.datetime) -> str:
+    return t.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _midnight(t: dt.datetime) -> dt.datetime:
+    return t.replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def window_bounds(cadence: str, now: dt.datetime) -> tuple[dt.datetime, dt.datetime]:
+    """The refill window holding `now`. shortcut: `hours:N` counts from the epoch, not from a provider's first use; add an anchor if one needs it."""
+    kind, _, arg = cadence.partition(":")
+    if kind == "hours":
+        span = int(arg) * 3600
+        start = dt.datetime.fromtimestamp(now.timestamp() // span * span, dt.timezone.utc)
+        return start, start + dt.timedelta(seconds=span)
+    if kind == "weekly":
+        start = _midnight(now) - dt.timedelta(days=(now.weekday() - DAYS.index(arg[:3].lower())) % 7)
+        return start, start + dt.timedelta(days=7)
+    raise ValueError(f"bad window cadence {cadence!r}: use weekly:mon or hours:5")
+
+
+def pool_spend(p: dict, since: str, until: str = "9999") -> float:
+    """Dollars booked to the pool's routes in [since, until) (ISO strings). A row from before the `pool` field is placed by its model."""
+    rows, m, last = list(LEDGER), since[:7], dt.datetime.now(dt.timezone.utc).strftime("%Y-%m")
+    while m <= last:
+        rows += ledger_lines(m)
+        m = f"{int(m[:4]) + (m[5:] == '12')}-{int(m[5:]) % 12 + 1:02d}"
+    return sum(r.get("usd") or 0 for r in rows if since <= r.get("at", "") < until
+               and (r.get("pool") or provider_of(r.get("model", ""))) in p["routes"])
+
+
+def pool_spent(p: dict, now: dt.datetime | None = None) -> float:
+    """What counts against allowance(): this window's spend for a window pool, today's for the others."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    return pool_spend(p, _iso(window_bounds(p["resets_at"], now)[0] if p["kind"] == "window" else _midnight(now)))
+
+
+def allowance(p: dict, now: dt.datetime | None = None) -> float:
+    """Dollars the pool may spend today (a window pool: in the whole window). Expiring credit is spread over the days left
+    before it lapses, so a quiet day raises tomorrow's share: (balance - spent before today) / days to reset x TIME_PACE."""
+    now = now or dt.datetime.now(dt.timezone.utc)
+    if p["kind"] == "window":
+        return p["window_usd"]
+    if p["kind"] == "expiring":
+        day = _midnight(now)
+        left = p["balance_usd"] - pool_spend(p, p["as_of"], _iso(day))
+        days = max(1, (dt.date.fromisoformat(p["resets_at"]) - day.date()).days)
+        return max(0.0, left) / days * float(os.environ.get("TIME_PACE") or 1)
+    return float(os.environ.get("TIME_DAILY_USD") or 5)
+
+
+def budget_check(route: str | None = None, now: dt.datetime | None = None) -> None:
+    today, day_cap, month, month_cap = budget(now)
     if month >= month_cap:
         raise Budget(f"this month's spend is ${month:.2f} of the ${month_cap:.2f} cap; Time is back in dry-run until a human raises it")
-    if today >= day_cap * slack():
-        allowance = f" (a run under way may go to ${day_cap * slack():.2f})" if slack() > 1 else ""
-        raise Budget(f"today's spend is ${today:.2f} of the ${day_cap:.2f} cap{allowance}; carrying on tomorrow")
+    if (p := pool_for(route)):
+        spent, limit = pool_spent(p, now), allowance(p, now)
+        if spent >= limit * slack():
+            more = f" (a run under way may go to ${limit * slack():.2f})" if slack() > 1 else ""
+            raise Budget(f"pool {p['name']} has spent ${spent:.2f} of its ${limit:.2f} allowance{more}; carrying on when it refills")
+    elif today >= day_cap * slack():
+        more = f" (a run under way may go to ${day_cap * slack():.2f})" if slack() > 1 else ""
+        raise Budget(f"today's spend is ${today:.2f} of the ${day_cap:.2f} cap{more}; carrying on tomorrow")
 
 
 def andon(reason: str) -> None:
@@ -1468,7 +1554,7 @@ def tick() -> None:
                     print(f"#{n}: daily cap reached")
                     continue
                 # out of budget: skip like the launches cap, but through the Budget handler so the card says why
-                budget_check()  # and before the "working on this" beat, so a capped card never looks dispatched
+                budget_check(provider_of(worker_seat_model(worker)[1]) if seat_worker(worker) else None)  # and before the "working on this" beat, so a capped card never looks dispatched
                 rev = revision["pr"] if revision else None
                 if seat_worker(worker):
                     prov = provider_of(worker_seat_model(worker)[1])
@@ -1573,6 +1659,14 @@ def cmd_doctor() -> int:
     row("TIME_CAP_SLACK", True, os.environ.get("TIME_CAP_SLACK") or "1.5 (default)")
     row("TIME_MONTHLY_USD", True, os.environ.get("TIME_MONTHLY_USD") or "100 (default)")
     row("spend", today < day_cap and month < month_cap, f"${today:.2f} today, ${month:.2f} this month ({ledger_path(dt.datetime.now(dt.timezone.utc).strftime('%Y-%m'))})")
+    now = dt.datetime.now(dt.timezone.utc)
+    for p in pools():
+        win = p["kind"] == "window"
+        reset = window_bounds(p["resets_at"], now)[1].strftime("%Y-%m-%d %H:%MZ") if win else p.get("resets_at", "none")
+        since = pool_spent(p, now) if win else pool_spend(p, p.get("as_of") or now.strftime("%Y-%m-01"))
+        limit = allowance(p, now)
+        row(f"pool `{p['name']}`", pool_spent(p, now) < limit,
+            f"{p['kind']}, ${p.get('balance_usd', p.get('window_usd', 0)):.2f}; spent ${since:.2f} since reset; next reset {reset}; allowance today ${limit:.2f}")
     row("(optional) ANTHROPIC_API_KEY (Claude seats)", bool(os.environ.get("ANTHROPIC_API_KEY")),
         "set" if os.environ.get("ANTHROPIC_API_KEY") else "not set")
     row("TIME_ANTHROPIC_API", True, os.environ.get("TIME_ANTHROPIC_API") or "messages (default, with prompt caching; compat = the OpenAI-compatible endpoint)")

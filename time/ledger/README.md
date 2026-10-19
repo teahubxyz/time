@@ -8,6 +8,7 @@ Time keeps a record of what it spends on models. This folder holds it.
   - `model`: the model that was called.
   - `in`: input (prompt) tokens.
   - `out`: output (completion) tokens.
+  - `pool`: the provider the call booked to (`anthropic`, `venice`); `time/pools.json` maps it to a capacity pool.
   - `usd`: the cost in US dollars, or `null` if the seat has no price (unpriced seats).
 
 Example line:
@@ -28,3 +29,15 @@ Time stops calling models. The next time the heartbeat has a card to run, it ope
 ## Don't edit it by hand
 
 Humans should never edit these files. The caps rely on them being exact, and Time only ever appends. A hand edit can hide spend or break the next append.
+
+## Pools (`time/pools.json`)
+
+The operator keeps one entry per capacity pool; a route with no entry is paced by `TIME_DAILY_USD`. Time reads the file through the API once per run. Fields: `name`, `kind`, `routes`, and by kind:
+
+- `expiring`: `balance_usd` (as of `as_of`, a date), `resets_at` (the date the credit lapses). Allows `(balance - spent since as_of) / days to resets_at x TIME_PACE` a day.
+- `window`: `window_usd`, `resets_at` as `weekly:mon` or `hours:5`. Allows `window_usd` per window.
+- `balance`: `balance_usd`. Allows `TIME_DAILY_USD` a day.
+
+```json
+[{"name": "anthropic-credits", "kind": "expiring", "balance_usd": 30, "as_of": "2026-10-19", "resets_at": "2026-10-29", "routes": ["anthropic"]}]
+```
