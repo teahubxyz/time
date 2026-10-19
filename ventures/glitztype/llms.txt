@@ -1,0 +1,8 @@
+# Glitztype
+
+> Retro WordArt in seconds. Glitztype draws a name or word in one of twelve WordArt styles and opens in the browser, with the whole piece carried inside the link (after ?s=), so nothing is uploaded and no account is needed.
+
+Read SKILL.md and follow it to make WordArt for people as Glitztype links.
+
+- [SKILL.md](https://glitztype.yolopreneur.lol/SKILL.md): the piece format and how to build its link
+- [Editor](https://glitztype.yolopreneur.lol/): the page a Glitztype link opens in
