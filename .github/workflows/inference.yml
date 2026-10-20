@@ -1,0 +1,44 @@
+name: inference
+# Deploy the shared inference Worker (.github/time/cloudflare/inference.js) at inference.<TIME_VENTURE_DOMAIN>.
+# The pages never see a key: VENICE_API_KEY and, when staged, RUNWARE_API_KEY become Worker secrets here.
+# Actions -> inference -> Run workflow, or any push that touches the worker or its deploy script.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/time/cloudflare/inference.js
+      - .github/time/inference.py
+      - .github/time/cloudflare.py
+      - .github/workflows/inference.yml
+permissions:
+  contents: read
+concurrency:
+  group: inference
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          RUNWARE_API_KEY: ${{ secrets.RUNWARE_API_KEY }}       # optional: Runware ACE-Step behind /v1/render
+          TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
+          TIME_INFERENCE_ORIGINS: "*.yolopreneur.lol,gandora.lol,www.gandora.lol"
+          TIME_INFERENCE_RENDER_DAILY: "500"
+          TIME_INFERENCE_CHAT_DAILY: "1500"
+          TIME_INFERENCE_RENDER_TOTAL: "2000"
+          TIME_INFERENCE_CHAT_TOTAL: "6000"
+        run: python3 .github/time/inference.py deploy
+      - name: check
+        env:
+          TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN }}
+        run: |
+          sleep 5
+          for i in 1 2 3 4 5 6; do python3 .github/time/inference.py check && exit 0; sleep 10; done
+          echo "::error::worker did not answer /health"; exit 1
