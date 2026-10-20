@@ -146,6 +146,40 @@ input,textarea{font:inherit;color:inherit}
 #tasteNote{color:var(--dim);font-size:12px;text-align:center;margin:12px auto 0;max-width:520px}
 #tasteLegend{display:flex;justify-content:center;gap:16px;font:11px var(--font);letter-spacing:.08em;color:var(--dim);margin-top:10px;flex-wrap:wrap}
 
+/* ---------- tapes ---------- */
+#lib .t .addTape{position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:50%;background:rgba(11,11,14,.75);border:1px solid var(--line);color:var(--ink);font-size:16px;line-height:1;display:grid;place-items:center}
+#lib .t .addTape:hover{background:var(--acc);color:#111}
+#tapeRow{display:flex;gap:14px;overflow-x:auto;padding:4px 4px 10px;scrollbar-width:none;grid-column:1/-1}
+#tapeRow .s{flex:0 0 110px;cursor:pointer;text-align:center}
+#tapeRow .s .tc{width:88px;height:88px;border-radius:14px;margin:0 auto 6px;position:relative;overflow:hidden;background:var(--card);display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px}
+#tapeRow .s .tc canvas{width:100%;height:100%;display:block}
+#tapeRow .s .tc.one{grid-template-columns:1fr;grid-template-rows:1fr}
+#tapeRow .s.new .tc{display:grid;place-items:center;border:1px dashed var(--line);font-size:26px;color:var(--dim)}
+#tapeRow .s b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tapeRow .s small{color:var(--dim);font-size:11px}
+#tapePick{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));z-index:6;box-shadow:0 -20px 60px rgba(0,0,0,.6)}
+#tapePick h4{font:600 10px var(--font);letter-spacing:.2em;color:var(--dim);margin:0 0 10px}
+#tapePick button{display:block;width:100%;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid var(--line);margin-bottom:6px}
+#tapePick button:hover{background:#1a1a20}
+#tapePick input{width:100%;background:#0a0a0d;border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none;margin-bottom:6px}
+#tape{position:fixed;inset:0;background:rgba(11,11,14,.97);padding:18px 16px calc(18px + env(safe-area-inset-bottom));overflow:auto;z-index:4}
+#tape header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:12px;gap:10px}
+#tape header input{flex:1;background:transparent;border:0;border-bottom:1px solid var(--line);font:600 18px var(--sans);letter-spacing:0;color:var(--ink);outline:none;padding:4px 0;min-width:0}
+#tape .acts{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+#tape .acts button{padding:9px 16px;border-radius:999px;border:1px solid var(--line);font:600 12px var(--font);letter-spacing:.14em;background:var(--card)}
+#tape .acts button.go{background:var(--acc);color:#111;border-color:var(--acc)}
+#tape .list{display:flex;flex-direction:column;gap:8px;max-width:640px;margin:0 auto}
+#tape .row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+#tape .row.on{border-color:var(--acc)}
+#tape .row canvas{width:52px;height:52px;border-radius:10px;flex:0 0 52px;cursor:pointer}
+#tape .row .m{flex:1;min-width:0;cursor:pointer}
+#tape .row b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#tape .row small{color:var(--dim);font-size:11px;font-family:var(--font)}
+#tape .row .ctl{display:flex;gap:2px}
+#tape .row .ctl button{width:32px;height:32px;border-radius:8px;color:var(--dim);font-size:14px}
+#tape .row .ctl button:hover{background:#1a1a20;color:var(--ink)}
+#tape .empty{color:var(--dim);text-align:center;padding:40px 0}
+
 /* ---------- library ---------- */
 #lib{position:fixed;inset:0;background:rgba(11,11,14,.96);padding:18px 16px;overflow:auto}
 #lib header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
@@ -253,6 +287,14 @@ input,textarea{font:inherit;color:inherit}
   <div id="tasteNote"></div>
   <div id="tastePalette"></div>
 </section>
+
+<section id="tape" class="hidden">
+  <header><span>TAPE</span><input id="tapeName" maxlength="60"><button id="tapeClose">CLOSE</button></header>
+  <div class="acts"><button class="go" id="tapePlay">▶ PLAY ALL</button><button id="tapeLoop">🔁 REPEAT ALL</button><button id="tapeShare">↗ SHARE</button><button id="tapeDelete">DELETE TAPE</button></div>
+  <div class="list" id="tapeList"></div>
+  <div class="empty hidden" id="tapeEmpty">Empty tape. Add tracks from the library with the ＋ on a tile.</div>
+</section>
+<div id="tapePick" class="hidden"></div>
 
 <section id="lib" class="hidden">
   <header><span>LIBRARY</span><button id="libClose">CLOSE</button></header>
@@ -501,7 +543,7 @@ async function renderTrack(spec, onStatus) {
 
 /* ---------- the library (IndexedDB) ---------- */
 const db = {
-  open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 2); r.onupgradeneeded = () => { const d = r.result; for (const s of ["tracks", "stations"]) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: "id" }); }; r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
+  open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 3); r.onupgradeneeded = () => { const d = r.result; for (const s of ["tracks", "stations", "tapes"]) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: "id" }); }; r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
   async put(t, store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction(store, "readwrite"); tx.objectStore(store).put(t); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
   async all(store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const r = d.transaction(store).objectStore(store).getAll(); r.onsuccess = () => ok(r.result.sort((a, b) => (b.last || b.made) - (a.last || a.made))); r.onerror = () => no(r.error); }); },
   async del(id, store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction(store, "readwrite"); tx.objectStore(store).delete(id); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
@@ -609,6 +651,7 @@ async function playJob(job) {
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
   await remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
+  if (job.fileInto) { const tp = (await db.all("tapes")).find((t) => t.id === job.fileInto); if (tp && !tp.ids.includes(spec.id)) { tp.ids.push(spec.id); await db.put(tp, "tapes"); } }
   if (!job.stepping) { state.recent = state.recent.slice(0, state.pos + 1); state.recent.push(spec.id); state.pos = state.recent.length - 1; }
   try { await state.audio.play(); state.playing = true; setPlayIcon(); vizStart(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
@@ -634,6 +677,17 @@ async function shuffled() {
   return pool[pool.length - 1];
 }
 async function advance() {
+  // a tape playing: the next track on it, around again if it repeats, otherwise back to the station
+  if (state.tape) {
+    const tp = (await db.all("tapes")).find((t) => t.id === state.tape.id);
+    if (tp) { const n = state.tape.i + 1; if (n < tp.ids.length || state.tape.loop) return playTape(tp, n); }
+    state.tape = null; $("#stationName").textContent = state.station || state.seed; toast("End of the tape — back to the station.");
+  }
+  // a shared tape still rendering: its next track comes before anything fresh
+  if (state.tapeQueue && state.tapeQueue.length && !state.nextJob) {
+    const t = state.tapeQueue.shift(); const spec = { ...t, seed: t.seed || state.seed, made: Date.now() };
+    state.nextJob = makeJob(spec); state.nextJob.fileInto = state.sharedTapeId;
+  }
   if (await step(+1)) return;                      // forward through the session first, then cook new
   if (!state.nextJob && state.after) { state.nextJob = state.after; state.after = null; }
   if (state.shuffle && Math.random() < 0.5) {
@@ -868,6 +922,9 @@ $("#libBtn").addEventListener("click", async () => {
     if (t.kept && !inKept) art.append(Object.assign(document.createElement("span"), { className: "kept", textContent: "KEPT" }));
     const re = reactionEmoji(t.spec.reaction).trim();
     if (re) art.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
+    const addT = Object.assign(document.createElement("button"), { className: "addTape", textContent: "＋", title: "add to a tape" });
+    addT.addEventListener("click", (e) => { e.stopPropagation(); pickTape(t); });
+    art.append(addT);
     d.append(art, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key}${(t.plays || 0) > 1 ? " · ×" + t.plays : ""}`, title: t.spec.seed }));
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     return d;
@@ -881,6 +938,22 @@ $("#libBtn").addEventListener("click", async () => {
     if (count != null) h.append(Object.assign(document.createElement("small"), { textContent: `· ${count}` }));
     return h;
   };
+  // tapes first: a strip of mixtapes, and a way to start one
+  const tapes = await db.all("tapes");
+  g.append(head("TAPES", "", tapes.length));
+  const strip = document.createElement("div"); strip.id = "tapeRow";
+  for (const tp of tapes) {
+    const s = document.createElement("div"); s.className = "s";
+    const tc = document.createElement("div"); tc.className = "tc" + (tp.ids.length < 4 ? " one" : "");
+    const covers = tp.ids.map((id) => list.find((t) => t.id === id)).filter(Boolean).slice(0, tp.ids.length < 4 ? 1 : 4);
+    for (const t of covers) { const c = document.createElement("canvas"); c.width = c.height = 120; drawCover(c, t.spec); tc.append(c); }
+    s.append(tc, Object.assign(document.createElement("b"), { textContent: tp.name }), Object.assign(document.createElement("small"), { textContent: `${tp.ids.length} tracks` }));
+    s.addEventListener("click", () => openTape(tp.id));
+    strip.append(s);
+  }
+  const nw = document.createElement("div"); nw.className = "s new"; nw.innerHTML = '<div class="tc">＋</div><b>new tape</b>';
+  nw.addEventListener("click", async () => { const name = prompt("Name the tape:", ""); if (!name) return; const tp = { id: "tape-" + Date.now(), name: name.trim().slice(0, 60), ids: [], made: Date.now(), last: Date.now() }; await db.put(tp, "tapes"); openTape(tp.id); });
+  strip.append(nw); g.append(strip);
   const kept = list.filter((t) => t.kept);
   if (kept.length) { g.append(head("KEPT", "", kept.length)); for (const t of kept) g.append(tile(t, true)); }
   const groups = new Map();
@@ -894,6 +967,78 @@ $("#libBtn").addEventListener("click", async () => {
   $("#lib").classList.remove("hidden");
 });
 $("#libClose").addEventListener("click", () => $("#lib").classList.add("hidden"));
+
+/* ---------- mixtapes: a named, ordered list of tracks; play through, repeat all, share as a link ---------- */
+async function pickTape(track) {
+  const p = $("#tapePick"); p.innerHTML = "";
+  const tapes = await db.all("tapes");
+  p.append(Object.assign(document.createElement("h4"), { textContent: "ADD “" + track.spec.title.toUpperCase() + "” TO" }));
+  const add = async (tp) => { if (!tp.ids.includes(track.id)) { tp.ids.push(track.id); tp.last = Date.now(); await db.put(tp, "tapes"); } p.classList.add("hidden"); toast(`On “${tp.name}”.`); };
+  for (const tp of tapes) { const b = document.createElement("button"); b.textContent = `${tp.name} · ${tp.ids.length}`; b.addEventListener("click", () => add(tp)); p.append(b); }
+  const inp = document.createElement("input"); inp.placeholder = "new tape…"; inp.maxLength = 60;
+  inp.addEventListener("keydown", async (e) => { if (e.key !== "Enter") return; e.preventDefault(); const name = inp.value.trim(); if (!name) return; const tp = { id: "tape-" + Date.now(), name, ids: [], made: Date.now(), last: Date.now() }; await add(tp); });
+  const close = document.createElement("button"); close.textContent = "cancel"; close.addEventListener("click", () => p.classList.add("hidden"));
+  p.append(inp, close); p.classList.remove("hidden"); inp.focus({ preventScroll: true });
+}
+state.tape = null;                                   // { id, ids, i, loop } while a tape is playing
+async function tapeRows(tp) { const all = await db.all(); return tp.ids.map((id) => all.find((t) => t.id === id)).filter(Boolean); }
+async function openTape(id) {
+  const tp = (await db.all("tapes")).find((t) => t.id === id); if (!tp) return;
+  $("#lib").classList.add("hidden"); $("#tape").classList.remove("hidden"); $("#tape").dataset.id = id;
+  $("#tapeName").value = tp.name;
+  const rows = await tapeRows(tp), list = $("#tapeList"); list.innerHTML = "";
+  $("#tapeEmpty").classList.toggle("hidden", rows.length > 0);
+  $("#tapeLoop").classList.toggle("go", !!(state.tape && state.tape.id === id && state.tape.loop));
+  rows.forEach((t, i) => {
+    const r = document.createElement("div"); r.className = "row" + (state.current && state.current.spec.id === t.id ? " on" : "");
+    const c = document.createElement("canvas"); c.width = c.height = 120; drawCover(c, t.spec);
+    const m = document.createElement("div"); m.className = "m"; m.append(Object.assign(document.createElement("b"), { textContent: `${i + 1}. ${t.spec.title}` }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
+    const play = () => playTape(tp, i);
+    c.addEventListener("click", play); m.addEventListener("click", play);
+    const ctl = document.createElement("div"); ctl.className = "ctl";
+    const mv = async (d) => { const j = i + d; if (j < 0 || j >= tp.ids.length) return; [tp.ids[i], tp.ids[j]] = [tp.ids[j], tp.ids[i]]; await db.put(tp, "tapes"); openTape(id); };
+    const up = Object.assign(document.createElement("button"), { textContent: "▲", title: "earlier" }), dn = Object.assign(document.createElement("button"), { textContent: "▼", title: "later" }), rm = Object.assign(document.createElement("button"), { textContent: "✕", title: "remove from tape" });
+    up.addEventListener("click", () => mv(-1)); dn.addEventListener("click", () => mv(1));
+    rm.addEventListener("click", async () => { tp.ids.splice(i, 1); await db.put(tp, "tapes"); openTape(id); });
+    ctl.append(up, dn, rm); r.append(c, m, ctl); list.append(r);
+  });
+}
+async function playTape(tp, i, loop) {
+  const rows = await tapeRows(tp); if (!rows.length) return;
+  i = ((i % rows.length) + rows.length) % rows.length;
+  state.tape = { id: tp.id, ids: rows.map((t) => t.id), i, loop: loop ?? (state.tape && state.tape.id === tp.id ? state.tape.loop : false) };
+  $("#tape").classList.add("hidden"); $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
+  $("#stationName").textContent = "📼 " + tp.name;
+  const t = rows[i]; state.audio.pause();
+  await playJob({ id: ++seq, spec: t.spec, blob: t.blob, err: null, done: Promise.resolve(), stepping: true });
+}
+$("#tapePlay").addEventListener("click", async () => { const tp = (await db.all("tapes")).find((t) => t.id === $("#tape").dataset.id); if (tp) playTape(tp, 0); });
+$("#tapeLoop").addEventListener("click", async () => { const tp = (await db.all("tapes")).find((t) => t.id === $("#tape").dataset.id); if (!tp) return; const on = !(state.tape && state.tape.id === tp.id && state.tape.loop); if (state.tape && state.tape.id === tp.id) state.tape.loop = on; else await playTape(tp, 0, on); $("#tapeLoop").classList.toggle("go", on); toast(on ? "Repeating the whole tape." : "Tape plays through once."); });
+$("#tapeName").addEventListener("change", async () => { const tp = (await db.all("tapes")).find((t) => t.id === $("#tape").dataset.id); if (!tp) return; tp.name = $("#tapeName").value.trim().slice(0, 60) || tp.name; await db.put(tp, "tapes"); });
+$("#tapeDelete").addEventListener("click", async () => { const id = $("#tape").dataset.id; if (!confirm("Delete this tape? The tracks stay in the library.")) return; await db.del(id, "tapes"); if (state.tape && state.tape.id === id) state.tape = null; $("#tape").classList.add("hidden"); $("#libBtn").click(); });
+$("#tapeShare").addEventListener("click", async () => {
+  const tp = (await db.all("tapes")).find((t) => t.id === $("#tape").dataset.id); if (!tp) return;
+  const rows = await tapeRows(tp);
+  const payload = { name: tp.name, tracks: rows.map(({ spec: s }) => ({ seed: s.seed, station: s.station || "", title: s.title, tags: s.tags, lyrics: s.lyrics || "", bpm: s.bpm, key: s.key, energy: s.energy, line: s.line || "" })) };
+  const url = `${location.origin}/?tape=${b64u(JSON.stringify(payload))}`;
+  if (navigator.share) { try { await navigator.share({ title: tp.name, text: `${tp.name} · a gandora mixtape, ${rows.length} tracks`, url }); return; } catch {} }
+  try { await navigator.clipboard.writeText(url); toast("Tape link copied. It renders each track for whoever opens it."); } catch { prompt("Copy this link:", url); }
+});
+$("#tapeClose").addEventListener("click", () => $("#tape").classList.add("hidden"));
+// a shared tape (?tape=): make it a tape of this browser's own, rendering each track as it comes up
+const sharedTape = new URLSearchParams(location.search).get("tape");
+if (sharedTape) {
+  (async () => {
+    try {
+      const t = JSON.parse(unb64u(sharedTape)); if (!t || !Array.isArray(t.tracks) || !t.tracks.length) throw 0;
+      const tp = { id: "tape-" + Date.now(), name: String(t.name || "shared tape").slice(0, 60), ids: [], pending: t.tracks, made: Date.now(), last: Date.now() };
+      await db.put(tp, "tapes"); openStation(t.tracks[0].seed, { name: t.tracks[0].station || "" }); state.sharedTapeId = tp.id;
+      toast(`Tape “${tp.name}”: ${t.tracks.length} tracks to render, one by one.`);
+      // render the tracks in order as the station's next ones, and file each into the tape as it lands
+      state.nextJob = null; state.tapeQueue = t.tracks.slice();
+    } catch { toast("That link didn't carry a tape."); }
+  })();
+}
 $("#libBtn2").addEventListener("click", () => $("#libBtn").click());
 $("#tasteBtn2").addEventListener("click", () => $("#tasteBtn").click());
 
