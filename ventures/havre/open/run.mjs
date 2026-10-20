@@ -94,6 +94,7 @@ async function runNode(node, graph) {
   switch (d.nodeType) {
     case "textInput": return d.inputText ?? "";
     case "output": return input;
+    case "step": return input;   // a runner's own step: the workflow file runs it, not this
     case "chat": {
       const r = await venice("/chat/completions", { model: d.model || "llama-3.3-70b", messages: [{ role: "user", content: resolvePrompt(d.prompt, input) }],
         temperature: d.temperature ?? 0.7, max_tokens: d.maxTokens ?? 4096, venice_parameters: { enable_web_search: d.webSearch ?? "off" } });
