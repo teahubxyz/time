@@ -379,6 +379,7 @@ async function playJob(job) {
   $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
   $("#lyric").textContent = spec.line || "";
   drawCover($("#cover canvas"), spec);
+  if (!$("#nowRow").classList.contains("hidden")) { drawCover($("#now canvas"), spec); $("#nowTitle").textContent = `${spec.title} · ${state.station || spec.seed}`; }
   $("#cover").classList.add("cooking"); $("#bar i").style.width = "0";
   await job.done;
   if (state.current !== job) return;             // skipped while cooking
