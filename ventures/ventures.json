@@ -501,6 +501,7 @@
   },
   {
    "slug": "roll-credits",
+   "shot": "roll-credits/shots/desktop.png",
    "name": "Roll Credits",
    "one_liner": "Type the names of the people who made something, pick a credits style, and download a scrolling end-credits video, entirely in your browser.",
    "for_whom": "A team lead or friend-group organizer who wants to thank the people behind a launch, a trip, a bake-off, or a last day at a job, and wants it to feel like a film ending.",
