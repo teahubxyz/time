@@ -3692,6 +3692,12 @@ function bind() {
   $("#vprev").addEventListener("click", () => loadVenice(Math.max(0, S.v.offset - PAGE), { paging: true }));
   $("#vnext").addEventListener("click", () => loadVenice(S.v.offset + PAGE, { paging: true }));
 
+  $("#card-fresh").addEventListener("click", () => {
+    S.fresh = true;
+    if (S.left !== "harbor") setLeft("harbor"); else syncNew();
+    $("#card").scrollIntoView({ behavior: motion(), block: "start" });
+    $("#nc-name").focus({ preventScroll: true });
+  });
   $("#new").addEventListener("click", () => {
     addCard({ name: "New character", persona: "", greeting: "", voice: { short_form: true }, model: S.model, license: "remix-with-credit" });
     openCard("edit");
