@@ -748,9 +748,10 @@ function drawTaste(rows, title) {
     let like = 0, heard = 0;
     for (const p of pts) { const d2 = (p.x - gx) ** 2 + (p.y - gy) ** 2, k = Math.exp(-d2 / (2 * sig * sig)); like += k * p.w; heard += k; }
     if (heard < 0.02) continue;
-    const v = Math.tanh(like / 1.5);                      // -1..1
-    const a = Math.min(0.55, heard * 0.35);
-    ctx.fillStyle = v >= 0 ? `hsl(44 60% 60% / ${a * (0.25 + 0.75 * v)})` : `hsl(220 30% 45% / ${a * (0.25 + 0.75 * -v)})`;
+    const v = Math.tanh(like / 1.5);                      // -1..1; 0 means heard but nothing said
+    const a = Math.min(0.5, heard * 0.3);
+    if (Math.abs(v) < 0.05) ctx.fillStyle = `hsl(240 6% 30% / ${a * 0.5})`;                      // heard, neutral
+    else ctx.fillStyle = v > 0 ? `hsl(44 60% 60% / ${a * Math.abs(v)})` : `hsl(220 30% 45% / ${a * Math.abs(v)})`;
     ctx.fillRect(gx, gy, cell, cell);
   }
   // axes
