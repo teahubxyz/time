@@ -67,6 +67,12 @@ input,textarea{font:inherit;color:inherit}
 #title{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
 #tags{color:var(--dim);font:12px var(--font);margin:6px 0 0;letter-spacing:.02em}
 #lyric{color:var(--dim);font-size:13px;margin:10px 0 0;min-height:1.5em;font-style:italic}
+#lyricsBtn{display:block;margin:8px auto 0;font:600 11px var(--font);letter-spacing:.18em;color:var(--dim);text-decoration:underline;text-underline-offset:3px}
+#lyricsBtn.on{color:var(--acc)}
+#lyrics{white-space:pre-wrap;text-align:center;font-size:14px;line-height:1.7;margin:14px 0 0;color:var(--ink);max-height:40dvh;overflow:auto;padding:0 8px;font-family:var(--sans)}
+#lyrics .sec{display:block;color:var(--dim);font:600 10px var(--font);letter-spacing:.2em;margin:12px 0 2px}
+#lyrics .sec:first-child{margin-top:0}
+#cover{cursor:pointer}
 #bar{width:min(78vw,380px);height:2px;background:var(--line);border-radius:2px;overflow:hidden}
 #bar i{display:block;height:100%;width:0;background:var(--acc)}
 #controls{display:flex;align-items:center;gap:26px}
@@ -141,7 +147,7 @@ input,textarea{font:inherit;color:inherit}
   </div>
   <div id="stage">
     <div id="cover"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
-    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p></div>
+    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p><button id="lyricsBtn" class="hidden">LYRICS</button><pre id="lyrics" class="hidden"></pre></div>
     <div id="bar"><i></i></div>
     <div id="controls">
       <button id="prev" title="replay">
@@ -446,6 +452,7 @@ async function playJob(job) {
   keepLabel();
   $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
   $("#lyric").textContent = spec.line || "";
+  showLyrics(spec);
   drawCover($("#cover canvas"), spec);
   if (!$("#nowRow").classList.contains("hidden")) { drawCover($("#now canvas"), spec); $("#nowTitle").textContent = `${spec.title} · ${state.station || spec.seed}`; }
   $("#cover").classList.add("cooking"); $("#bar i").style.width = "0";
@@ -509,6 +516,26 @@ $("#seedForm").addEventListener("submit", (e) => {
   const v = $("#seedIn").value.trim(); if (!v) return;
   openStation(v);                                  // a new seed is a new station
 });
+/* lyrics: the DJ's words for the track, under the title; tap LYRICS or the cover */
+function showLyrics(spec) {
+  const has = !!(spec.lyrics && spec.lyrics.trim()), b = $("#lyricsBtn"), p = $("#lyrics");
+  b.classList.toggle("hidden", !has); b.textContent = has ? "LYRICS" : "";
+  p.innerHTML = "";
+  if (!has) { p.classList.add("hidden"); b.classList.remove("on"); return; }
+  for (const line of spec.lyrics.split(/\r?\n/)) {
+    const m = line.match(/^\s*\[([^\]]+)\]\s*$/);
+    if (m) p.append(Object.assign(document.createElement("span"), { className: "sec", textContent: m[1].toUpperCase() }));
+    else p.append(document.createTextNode(line + "\n"));
+  }
+  if (state.lyricsOpen) { p.classList.remove("hidden"); b.classList.add("on"); }
+}
+function toggleLyrics() {
+  if ($("#lyricsBtn").classList.contains("hidden")) return;
+  state.lyricsOpen = !state.lyricsOpen;
+  $("#lyrics").classList.toggle("hidden", !state.lyricsOpen); $("#lyricsBtn").classList.toggle("on", state.lyricsOpen);
+}
+$("#lyricsBtn").addEventListener("click", toggleLyrics);
+$("#cover").addEventListener("click", toggleLyrics);
 /* keep: an explicit pin, next to the controls; ❤️ does it too */
 async function keepLabel() {
   const b = $("#keep"), cur = state.current && state.current.spec;
