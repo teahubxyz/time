@@ -830,6 +830,7 @@ async function runNode(node, graph) {
   switch (d.nodeType) {
     case "textInput": return d.inputText ?? "";
     case "output": return input;
+    case "step": return input;   // a runner's own step: the workflow file runs it, not this
     case "chat": {
       const r = await venice("/chat/completions", { model: d.model || "llama-3.3-70b", messages: [{ role: "user", content: resolvePrompt(d.prompt, input) }],
         temperature: d.temperature ?? 0.7, max_tokens: d.maxTokens ?? 4096, venice_parameters: { enable_web_search: d.webSearch ?? "off" } });
@@ -921,11 +922,15 @@ async function main() {
 main().catch((e) => fail(e.message || String(e)));
 """
 
-ACTIONS_YAML_TS = r"""// actions-yaml.ts: a workflow as a Gitea Actions workflow file, and back. The graph itself rides in the file (an
-// `env` value, as base64 JSON), so import reads back exactly what was exported, whatever else was edited around it;
-// the steps are the same graph as a runner would walk it, one node per step, in dependency order, on
-// https://havre.yolopreneur.lol/open/run.mjs (the browser engine's node calls, headless).
-import type { Workflow } from '../stores/workflow-store'
+ACTIONS_YAML_TS = r"""// actions-yaml.ts: a workflow as a Gitea Actions workflow file, and back. Two views of one thing:
+// - a workflow made here exports as a job that walks the graph, one node per step, in dependency order, on
+//   https://havre.yolopreneur.lol/open/run.mjs (the browser engine's node calls, headless);
+// - any Actions workflow imports as a chain of Step nodes (one per step, each keeping its own YAML), with the rest of
+//   the file (on, permissions, concurrency, the job's runs-on and env) kept as the workflow's frame, so it exports back
+//   as it came in, with any Venice nodes spliced in as runner steps.
+// The graph also rides in the file (env.OV_WORKFLOW, base64 JSON) so positions and params come back exactly; a Step
+// node re-reads its YAML from the file on import, so an edit made in the file wins over the canvas's copy.
+import type { Workflow, VeniceNodeData } from '../stores/workflow-store'
 import { NODE_SCHEMAS } from './workflow-schema'
 
 export const RUNNER_URL = 'https://havre.yolopreneur.lol/open/run.mjs'
@@ -936,12 +941,16 @@ const ENV_KEY = 'OV_WORKFLOW'
 const q = (s: string) => JSON.stringify(String(s))
 export const slug = (s: string) => (s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'workflow').slice(0, 60)
 
-/** the graph as the file carries it: name, nodes (id, data, position) and edges (source, target) */
+/** the file around the steps of an imported Actions workflow: text before the steps list, text after it, and how far in the items sit */
+export interface Frame { pre: string; post: string; indent: number }
+
+/** the graph as the file carries it: name, nodes (id, data, position), edges (source, target) and the frame, if any */
 export function graphOf(wf: Workflow) {
   return {
     name: wf.name,
     nodes: wf.nodes.map((n) => ({ id: n.id, type: n.type, position: n.position, data: n.data })),
     edges: wf.edges.map((e) => ({ id: e.id, source: e.source, target: e.target })),
+    ...(wf.frame ? { frame: wf.frame } : {}),
   }
 }
 
@@ -966,12 +975,133 @@ function ordered(wf: Workflow): Workflow['nodes'] {
 
 const b64 = (s: string) => btoa(String.fromCharCode(...new TextEncoder().encode(s)))
 const unb64 = (s: string) => new TextDecoder().decode(Uint8Array.from(atob(s.replace(/\s+/g, '')), (c) => c.charCodeAt(0)))
+const indentBy = (text: string, n: number) => text.split('\n').map((l) => (l.trim() ? ' '.repeat(n) + l : l)).join('\n')
+
+/** one Step node as YAML list-item lines, at indent 0 ("- name: ..."): its own YAML if it has one, else from its fields */
+export function stepYaml(d: VeniceNodeData): string {
+  if (d.stepYaml && d.stepYaml.trim()) return d.stepYaml.replace(/\s+$/, '')
+  const lines: string[] = []
+  if (d.label && d.label !== 'Step') lines.push(`- name: ${q(d.label)}`)
+  const head = lines.length ? '  ' : '- '
+  let first = !lines.length
+  const key = () => { const k = first ? head : '  '; first = false; return k }
+  if (d.uses) lines.push(`${key()}uses: ${d.uses}`)
+  const run = (d.run ?? '').replace(/\s+$/, '')
+  if (run) {
+    if (run.includes('\n')) lines.push(`${key()}run: |`, ...run.split('\n').map((l) => (l ? '    ' + l : '')))
+    else lines.push(`${key()}run: ${run}`)
+  }
+  for (const [k, v] of [['with', d.with], ['env', d.stepEnv]] as const) {
+    const body = (v ?? '').replace(/\s+$/, '')
+    if (body) lines.push(`${key()}${k}:`, ...body.split('\n').map((l) => (l ? '    ' + l : '')))
+  }
+  if (!lines.length) lines.push(`- run: ${q(d.label || 'step')}`)
+  return lines.join('\n')
+}
+
+/** the text of a step item -> name, uses, run (a `|` block joined), with and env (raw lines) */
+function stepFields(item: string): Partial<VeniceNodeData> {
+  const lines = item.split('\n')
+  const out: Partial<VeniceNodeData> = {}
+  const scalar = (k: string) => {
+    const m = new RegExp(`^(?:- |  )${k}:\\s*(.*?)\\s*$`, 'm').exec(item)
+    if (!m) return undefined
+    const v = m[1]
+    return /^".*"$/.test(v) ? JSON.parse(v) : /^'.*'$/.test(v) ? v.slice(1, -1).replace(/''/g, "'") : v
+  }
+  const block = (k: string) => {
+    const i = lines.findIndex((l) => new RegExp(`^(?:- |  )${k}:\\s*(\\|[-+]?|>[-+]?)?\\s*$`).test(l))
+    if (i < 0) return undefined
+    const body: string[] = []
+    for (let j = i + 1; j < lines.length; j++) {
+      const l = lines[j]
+      if (l.trim() && !/^\s{4}/.test(l)) break
+      body.push(l.slice(4))
+    }
+    return body.join('\n').replace(/\s+$/, '')
+  }
+  const name = scalar('name'); if (name) out.label = name
+  const uses = scalar('uses'); if (uses) out.uses = uses
+  const run = block('run') ?? scalar('run'); if (run) out.run = run
+  const w = block('with'); if (w) out.with = w
+  const e = block('env'); if (e) out.stepEnv = e
+  return out
+}
+
+/** a hand-written Actions file as a frame and its step items; null when it has no steps list */
+export function frameOf(text: string): { frame: Frame; items: string[]; name: string } | null {
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
+  const at = lines.findIndex((l) => /^\s+steps:\s*(#.*)?$/.test(l))
+  if (at < 0) return null
+  let i = at + 1
+  while (i < lines.length && (!lines[i].trim() || /^\s*#/.test(lines[i]))) i++
+  const m = /^(\s*)- /.exec(lines[i] ?? '')
+  if (!m) return null
+  const indent = m[1].length
+  const items: string[][] = []
+  let j = i
+  for (; j < lines.length; j++) {
+    const l = lines[j]
+    if (l.trim() && !/^\s*#/.test(l)) {
+      const ind = /^\s*/.exec(l)![0].length
+      if (ind < indent) break
+      if (ind === indent) { if (!l.startsWith(' '.repeat(indent) + '- ')) break; items.push([]) }
+    }
+    if (!items.length) continue
+    items[items.length - 1].push(l.slice(indent))
+  }
+  const pre = lines.slice(0, i).filter((l) => !/^\s*OV_WORKFLOW:/.test(l)).join('\n')
+  const post = lines.slice(j).join('\n').replace(/\s+$/, '')
+  const nm = /^name:\s*(.*?)\s*$/m.exec(pre)
+  const name = nm ? (/^".*"$/.test(nm[1]) ? JSON.parse(nm[1]) : nm[1].replace(/^'|'$/g, '')) : ''
+  return { frame: { pre: pre.replace(/^env:\s*\n(?=\S)/m, ''), post, indent }, items: items.map((it) => it.join('\n').replace(/\s+$/, '')), name }
+}
+
+/** the runner steps a framed job needs before its first Venice node */
+function runnerSteps(needsFfmpeg: boolean): string[] {
+  const s = ['- uses: actions/setup-node@v4', '  with:', '    node-version: 22']
+  if (needsFfmpeg) s.push('- name: ffmpeg, for Cover + Track', '  run: |', '    command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null || apt-get install -y -qq ffmpeg >/dev/null')
+  s.push('- name: the runner', '  run: |', `    curl -fsSLo run.mjs ${q(RUNNER_URL)}`)
+  if (RUNNER_SHA && !RUNNER_SHA.startsWith('__')) s.push(`    echo "${RUNNER_SHA}  run.mjs" | sha256sum -c -`)
+  s.push('    mkdir -p out')
+  return s
+}
+
+/** one Venice node as runner step lines at indent 0; `keyed` adds the Venice key to the step (framed jobs have none at job level) */
+function nodeStep(n: Workflow['nodes'][number], keyed: boolean): string[] {
+  const s = NODE_SCHEMAS[n.data.nodeType]
+  const lines = [`- name: ${q(`${n.id} (${s?.label ?? n.data.nodeType})`)}`]
+  if (n.data.nodeType === 'textInput') {
+    lines.push('  run: |', `    printf '%s' "$INPUT" > out/${n.id}.txt && echo "${n.id} = $INPUT"`, '  env:', `    INPUT: \${{ inputs.${n.id} }}`)
+  } else {
+    lines.push(`  run: node run.mjs --node ${q(n.id)}`)
+    if (keyed) lines.push('  env:', '    VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}')
+  }
+  return lines
+}
 
 export function toActionsYaml(wf: Workflow): string {
   const nodes = ordered(wf)
-  const inputs = nodes.filter((n) => n.data.nodeType === 'textInput')
   const needsFfmpeg = nodes.some((n) => n.data.nodeType === 'compose')
   const outputs = nodes.filter((n) => n.data.nodeType === 'output')
+  const graph = `${ENV_KEY}: ${q(b64(JSON.stringify(graphOf(wf))))}`
+  if (wf.frame) {
+    // the file as it came in, its steps replaced by the graph's: Step nodes as their own YAML, Venice nodes as runner steps
+    let pre = wf.frame.pre.replace(/\s+$/, '')
+    pre = /^env:\s*$/m.test(pre) ? pre.replace(/^env:\s*$/m, `env:\n  ${graph}`) : pre.replace(/^(jobs:\s*)$/m, `env:\n  ${graph}\n$1`)
+    if (!pre.includes(ENV_KEY)) pre += `\nenv:\n  ${graph}`
+    const body: string[] = []
+    let runnerIn = false
+    for (const n of nodes) {
+      if (n.data.nodeType === 'step') { body.push(stepYaml(n.data)); continue }
+      if (!runnerIn) { body.push(runnerSteps(needsFfmpeg).join('\n')); runnerIn = true }
+      body.push(nodeStep(n, true).join('\n'))
+    }
+    if (outputs.length) body.push(['- name: outputs', '  run: |', ...outputs.map((n) => `    echo "== ${n.id} =="; cat out/${n.id}.txt; echo`)].join('\n'))
+    const steps = body.map((b) => indentBy(b, wf.frame!.indent)).join('\n')
+    return pre + '\n' + steps + (wf.frame.post ? '\n' + wf.frame.post : '') + '\n'
+  }
+  const inputs = nodes.filter((n) => n.data.nodeType === 'textInput')
   const lines: string[] = []
   lines.push(`name: ${q(wf.name)}`)
   lines.push(`# An openvenice workflow, exported from https://havre.yolopreneur.lol/open/ (Workflows → Export).`)
@@ -991,7 +1121,7 @@ export function toActionsYaml(wf: Workflow): string {
   lines.push(`  # schedule:               # uncomment to run on a timer, e.g. every morning at 8:`)
   lines.push(`  #   - cron: "0 8 * * *"`)
   lines.push(`env:`)
-  lines.push(`  ${ENV_KEY}: ${q(b64(JSON.stringify(graphOf(wf))))}`)
+  lines.push(`  ${graph}`)
   lines.push(`jobs:`)
   lines.push(`  run:`)
   lines.push(`    runs-on: ubuntu-latest`)
@@ -999,69 +1129,61 @@ export function toActionsYaml(wf: Workflow): string {
   lines.push(`    env:`)
   lines.push(`      VENICE_API_KEY: \${{ secrets.VENICE_API_KEY }}`)
   lines.push(`    steps:`)
-  lines.push(`      - uses: actions/setup-node@v4`)
-  lines.push(`        with:`)
-  lines.push(`          node-version: 22`)
-  if (needsFfmpeg) {
-    lines.push(`      - name: ffmpeg, for Cover + Track`)
-    lines.push(`        run: |`)
-    lines.push(`          command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null || apt-get install -y -qq ffmpeg >/dev/null`)
-  }
-  lines.push(`      - name: the runner`)
-  lines.push(`        run: |`)
-  lines.push(`          curl -fsSLo run.mjs ${q(RUNNER_URL)}`)
-  if (RUNNER_SHA && !RUNNER_SHA.startsWith('__')) lines.push(`          echo "${RUNNER_SHA}  run.mjs" | sha256sum -c -`)
-  lines.push(`          mkdir -p out`)
-  for (const n of nodes) {
-    const s = NODE_SCHEMAS[n.data.nodeType]
-    lines.push(`      - name: ${q(`${n.id} (${s?.label ?? n.data.nodeType})`)}`)
-    if (n.data.nodeType === 'textInput') {
-      // the dispatch input, if one was given, else what the canvas holds
-      lines.push(`        run: |`)
-      lines.push(`          printf '%s' "$INPUT" > out/${n.id}.txt && echo "${n.id} = $INPUT"`)
-      lines.push(`        env:`)
-      lines.push(`          INPUT: \${{ inputs.${n.id} }}`)
-    } else {
-      lines.push(`        run: node run.mjs --node ${q(n.id)}`)
-    }
-  }
-  if (outputs.length) {
-    lines.push(`      - name: outputs`)
-    lines.push(`        run: |`)
-    for (const n of outputs) lines.push(`          echo "== ${n.id} =="; cat out/${n.id}.txt; echo`)
-  }
-  lines.push(`      - uses: actions/upload-artifact@v4`)
-  lines.push(`        if: always()`)
-  lines.push(`        continue-on-error: true`)
-  lines.push(`        with:`)
-  lines.push(`          name: ${q(slug(wf.name))}`)
-  lines.push(`          path: out/`)
+  const body: string[] = []
+  const anyVenice = nodes.some((n) => n.data.nodeType !== 'step')
+  if (anyVenice) body.push(runnerSteps(needsFfmpeg).join('\n'))
+  for (const n of nodes) body.push(n.data.nodeType === 'step' ? stepYaml(n.data) : nodeStep(n, false).join('\n'))
+  if (outputs.length) body.push(['- name: outputs', '  run: |', ...outputs.map((n) => `    echo "== ${n.id} =="; cat out/${n.id}.txt; echo`)].join('\n'))
+  if (anyVenice) body.push(['- uses: actions/upload-artifact@v4', '  if: always()', '  continue-on-error: true', '  with:', `    name: ${q(slug(wf.name))}`, '    path: out/'].join('\n'))
+  lines.push(indentBy(body.join('\n'), 6))
   return lines.join('\n') + '\n'
 }
 
-export type Imported = { name: string; nodes: Workflow['nodes']; edges: Workflow['edges'] }
+export type Imported = { name: string; nodes: Workflow['nodes']; edges: Workflow['edges']; frame?: Frame }
 
-/** the graph an exported file carries (also a plain graph JSON); null if there is none */
+/** the graph an exported file carries (also a plain graph JSON), or any Actions file as a chain of Step nodes; null if neither */
 export function fromActionsYaml(text: string): Imported | null {
   const raw = text.trim()
   let g: unknown = null
+  const framed = raw.startsWith('{') ? null : frameOf(raw)
   if (raw.startsWith('{')) {
     try { g = JSON.parse(raw) } catch { return null }
   } else {
     const m = new RegExp(`^\\s*${ENV_KEY}:\\s*(?:"([^"]+)"|'([^']+)'|(\\S+))\\s*$`, 'm').exec(raw)
-    if (!m) return null
-    try { g = JSON.parse(unb64(m[1] ?? m[2] ?? m[3])) } catch { return null }
+    if (m) { try { g = JSON.parse(unb64(m[1] ?? m[2] ?? m[3])) } catch { g = null } }
+  }
+  if (!g && framed) {
+    // a hand-written workflow: one Step node per step, chained in the file's order
+    const nodes = framed.items.map((item, i) => ({
+      id: `step${i + 1}`, type: 'venice', position: { x: 280, y: 40 + i * 180 },
+      data: { label: 'Step', nodeType: 'step', model: '', prompt: '', ...stepFields(item), stepYaml: item } as VeniceNodeData,
+    }))
+    const edges = nodes.slice(1).map((n, i) => ({ id: `e${i}-${nodes[i].id}-${n.id}`, source: nodes[i].id, target: n.id, animated: true }))
+    if (!nodes.length) return null
+    return { name: framed.name || 'Imported workflow', nodes, edges, frame: framed.frame }
   }
   if (!g || typeof g !== 'object') return null
-  const o = g as { name?: unknown; nodes?: unknown; edges?: unknown }
+  const o = g as { name?: unknown; nodes?: unknown; edges?: unknown; frame?: unknown }
   if (!Array.isArray(o.nodes) || !Array.isArray(o.edges)) return null
   const nodes = (o.nodes as Array<Record<string, unknown>>).filter((n) => n && typeof n.id === 'string' && n.data && typeof n.data === 'object' && typeof (n.data as { nodeType?: unknown }).nodeType === 'string' && (n.data as { nodeType: string }).nodeType in NODE_SCHEMAS)
-    .map((n, i) => ({ id: n.id as string, type: 'venice', position: (n.position && typeof n.position === 'object' ? n.position : { x: 280, y: 40 + i * 200 }) as { x: number; y: number }, data: n.data as Workflow['nodes'][number]['data'] }))
+    .map((n, i) => ({ id: n.id as string, type: 'venice', position: (n.position && typeof n.position === 'object' ? n.position : { x: 280, y: 40 + i * 200 }) as { x: number; y: number }, data: { ...(n.data as VeniceNodeData) } }))
   const ids = new Set(nodes.map((n) => n.id))
   const edges = (o.edges as Array<Record<string, unknown>>).filter((e) => e && typeof e.source === 'string' && typeof e.target === 'string' && ids.has(e.source) && ids.has(e.target))
     .map((e, i) => ({ id: typeof e.id === 'string' ? e.id : `e${i}-${e.source}-${e.target}`, source: e.source as string, target: e.target as string, animated: true }))
   if (!nodes.length) return null
-  return { name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : 'Imported workflow', nodes, edges }
+  let frame = o.frame && typeof o.frame === 'object' && typeof (o.frame as Frame).pre === 'string' ? (o.frame as Frame) : undefined
+  if (framed && frame) {
+    // a framed file is the other view of the same thing: its frame and its steps' YAML win over the graph's copies
+    // (a file exported from a plain canvas workflow has no frame: the graph alone is the workflow)
+    frame = framed.frame
+    const byName = new Map<string, string>(framed.items.map((it) => [stepFields(it).label ?? '', it]))
+    for (const n of nodes) {
+      if (n.data.nodeType !== 'step') continue
+      const it = byName.get(n.data.label) ?? (n.data.stepYaml ? framed.items.find((x) => x.split('\n')[0] === n.data.stepYaml!.split('\n')[0]) : undefined)
+      if (it) Object.assign(n.data, stepFields(it), { stepYaml: it })
+    }
+  }
+  return { name: typeof o.name === 'string' && o.name.trim() ? o.name.trim() : 'Imported workflow', nodes, edges, ...(frame ? { frame } : {}) }
 }
 
 export function downloadText(name: string, text: string, type = 'text/yaml') {
@@ -1139,6 +1261,111 @@ edit(P,
             />
           </label>
         </div>"""))
+
+# ---------- step node: a literal Actions step, so any workflow file is a chain of nodes and comes back as it went ----------
+# A Step node carries one step's YAML (run, uses, with, env). In the browser it does nothing (it passes upstream text
+# through); on export it is itself, verbatim; a workflow imported from a hand-written file keeps that file's frame
+# (on, permissions, concurrency, runs-on, job env) and exports back into it, with Venice nodes spliced in as runner steps.
+edit(S + "stores/workflow-store.ts",
+     ("export type VeniceNodeType = 'chat' | 'imageGen' | 'tts' | 'music' | 'video' | 'compose' | 'textInput' | 'output'",
+      "export type VeniceNodeType = 'chat' | 'imageGen' | 'tts' | 'music' | 'video' | 'compose' | 'step' | 'textInput' | 'output'"),
+     ("  // Compose (cover + track)\n  maxSide?: number\n",
+      "  // Compose (cover + track)\n  maxSide?: number\n  // Step (an Actions step as it is): its fields, and its YAML as it came from a file\n  run?: string\n  uses?: string\n  with?: string\n  stepEnv?: string\n  stepYaml?: string\n"),
+     ("  edges: Edge[]\n  createdAt: number\n}",
+      "  edges: Edge[]\n  createdAt: number\n  /** an imported Actions file's text around its steps: the workflow exports back into it */\n  frame?: { pre: string; post: string; indent: number }\n}"),
+     ("  updateWorkflow: (id: string, updates: Partial<Pick<Workflow, 'name' | 'nodes' | 'edges'>>) => void",
+      "  updateWorkflow: (id: string, updates: Partial<Pick<Workflow, 'name' | 'nodes' | 'edges' | 'frame'>>) => void"))
+
+edit(S + "lib/workflow-schema.ts",
+     ("""  compose: {
+    type: 'compose',""", """  step: {
+    type: 'step',
+    label: 'Step',
+    description: 'A Gitea Actions step as it is (run, uses, with, env). Does nothing in the browser: it passes upstream text through. On export it is this step, verbatim, in the workflow file.',
+    input: 'text',
+    output: 'text',
+    params: [
+      { name: 'run', type: 'text', description: 'Shell to run on the runner.', default: '' },
+      { name: 'uses', type: 'string', description: 'An action to use instead of run, e.g. actions/checkout@v5.', default: '' },
+    ],
+  },
+  compose: {
+    type: 'compose',"""))
+
+edit(S + "lib/workflow-engine.ts",
+     ("""    case 'output':
+      return input
+""", """    case 'output':
+      return input
+
+    case 'step':
+      return input   // a runner's step: nothing to do in a browser
+"""))
+
+P = S + "components/workflows/workflows-view.tsx"
+edit(P,
+     ("  { type: 'compose', label: 'Cover + Track', Icon: PaletteComposeIcon, color: 'text-cyan-400/50' },\n",
+      "  { type: 'compose', label: 'Cover + Track', Icon: PaletteComposeIcon, color: 'text-cyan-400/50' },\n  { type: 'step', label: 'Step', Icon: PaletteStepIcon, color: 'text-white/40' },\n"),
+     ("function PaletteOutputIcon() {",
+      """function PaletteStepIcon() {
+  return <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
+}
+function PaletteOutputIcon() {"""),
+     ("  compose: '',\n}", "  compose: '',\n  step: '',\n}"),
+     ("                useWorkflowStore.getState().updateWorkflow(id, { nodes: got.nodes, edges: got.edges })",
+      "                useWorkflowStore.getState().updateWorkflow(id, { nodes: got.nodes, edges: got.edges, frame: got.frame })"),
+     ("                if (!got) { toast.error('No workflow in that file', 'Import a .yml exported from here, or a graph as JSON.'); return }",
+      "                if (!got) { toast.error('No workflow in that file', 'Import an Actions workflow (.yml) or a graph as JSON.'); return }"),
+     ("""            title="A workflow file exported from here (.yml), or a graph as JSON\"""",
+      """            title="Any Gitea Actions workflow (.yml): one exported from here comes back as it was; any other becomes a chain of Step nodes. Or a graph as JSON\""""))
+
+P = S + "components/workflows/workflow-node.tsx"
+edit(P,
+     ("  compose: undefined,\n}", "  compose: undefined,\n  step: undefined,\n}"),
+     ("  compose: { label: 'Cover + Track', Icon: ComposeIcon, color: 'border-cyan-500/30', hasInput: true, hasOutput: true },\n",
+      "  compose: { label: 'Cover + Track', Icon: ComposeIcon, color: 'border-cyan-500/30', hasInput: true, hasOutput: true },\n  step: { label: 'Step', Icon: StepIcon, color: 'border-white/20', hasInput: true, hasOutput: true },\n"),
+     ("\nfunction OutputIcon() {", """
+function StepIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></svg>
+}
+
+function OutputIcon() {"""),
+     ("""        <span className="text-[14px] font-medium text-white/60">{config.label}</span>""",
+      """        <span className="text-[14px] font-medium text-white/60">{data.nodeType === 'step' && data.label && data.label !== 'Step' ? data.label : config.label}</span>"""),
+     ("""        ) : data.nodeType === 'compose' ? (""", """        ) : data.nodeType === 'step' ? (
+          <div className="flex flex-col gap-1.5">
+            <input
+              value={data.label === 'Step' ? '' : data.label}
+              onChange={(e) => updateNode({ label: e.target.value || 'Step', stepYaml: '' })}
+              placeholder="name (optional)"
+              className={inputCls}
+            />
+            <input
+              value={data.uses ?? ''}
+              onChange={(e) => updateNode({ uses: e.target.value, stepYaml: '' })}
+              placeholder="uses: owner/action@v1 (optional)"
+              className={inputCls}
+            />
+            <textarea
+              value={data.run ?? ''}
+              onChange={(e) => updateNode({ run: e.target.value, stepYaml: '' })}
+              placeholder="run: shell for the runner"
+              rows={3}
+              className="nodrag nowheel w-full bg-white/[0.03] border border-white/[0.06] rounded-md px-2 py-1.5 text-[13px] font-mono text-white/70 outline-none resize-none placeholder:text-white/15"
+            />
+            {(data.with || data.stepEnv) && (
+              <pre className="nodrag nowheel text-[12px] font-mono text-white/40 whitespace-pre-wrap max-h-24 overflow-auto">{[data.with && 'with:\\n' + data.with, data.stepEnv && 'env:\\n' + data.stepEnv].filter(Boolean).join('\\n')}</pre>
+            )}
+            <p className="text-[12px] text-white/30 leading-snug">Runs on the factory, not here: on export this is the step as written.</p>
+          </div>
+        ) : data.nodeType === 'compose' ? ("""))
+
+edit(S + "components/playground/preview-node.tsx",
+     ("  compose: 'border-cyan-500/30',\n", "  compose: 'border-cyan-500/30',\n  step: 'border-white/20',\n"))
+
+edit(S + "lib/playground-agent-tools.ts",
+     ("  return true // textInput / output / compose don't have models",
+      "  return true // textInput / output / compose / step don't have models"))
 
 if FAILED:
     sys.exit("havre.py: upstream no longer matches:\n  " + "\n  ".join(FAILED))
