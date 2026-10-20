@@ -9,7 +9,10 @@
    "launched": "2026-10-20",
    "status": "live",
    "signups": 0,
-   "source": "yolopreneur"
+   "source": "yolopreneur",
+   "repo": "https://teahub.xyz/gandora/site",
+   "hosting": "pages",
+   "shot": "https://gandora.yolopreneur.lol/shots/desktop.png"
   },
   {
    "slug": "slyng",
