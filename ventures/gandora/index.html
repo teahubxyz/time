@@ -111,7 +111,9 @@ input,textarea{font:inherit;color:inherit}
 #lib{position:fixed;inset:0;background:rgba(11,11,14,.96);padding:18px 16px;overflow:auto}
 #lib header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
 #lib .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
-#lib h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:22px 0 10px}
+#lib h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:22px 0 10px;display:flex;align-items:center;gap:10px}
+#lib h3 canvas{width:22px;height:22px;border-radius:50%}
+#lib h3 small{font-weight:400;letter-spacing:.08em;opacity:.7}
 #lib .t.on canvas{outline:2px solid var(--acc);outline-offset:2px}
 #lib .t .heart{position:absolute;top:6px;right:6px;font-size:14px;opacity:.9}
 #lib .t .re{position:absolute;left:6px;bottom:40px;font-size:13px;letter-spacing:1px;background:rgba(11,11,14,.6);border-radius:8px;padding:2px 6px;max-width:calc(100% - 12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -657,10 +659,22 @@ $("#libBtn").addEventListener("click", async () => {
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     return d;
   };
-  const kept = list.filter((t) => t.kept), played = list.filter((t) => !t.kept);
-  for (const [name, rows] of [["KEPT", kept], ["PLAYED", played]]) {
-    if (!rows.length) continue;
-    g.append(Object.assign(document.createElement("h3"), { textContent: name, style: "grid-column:1/-1" }));
+  // kept first, then everything played, grouped by station (channel), newest station first
+  const stations = await db.all("stations"); const byId = Object.fromEntries(stations.map((s) => [s.id, s]));
+  const head = (text, seed, count) => {
+    const h = document.createElement("h3"); h.style.gridColumn = "1/-1";
+    if (seed) { const c = document.createElement("canvas"); c.width = c.height = 44; drawCover(c, { seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(seed) % 12], energy: 0.5 }); h.append(c); }
+    h.append(Object.assign(document.createElement("span"), { textContent: text }));
+    if (count != null) h.append(Object.assign(document.createElement("small"), { textContent: `· ${count}` }));
+    return h;
+  };
+  const kept = list.filter((t) => t.kept);
+  if (kept.length) { g.append(head("KEPT", "", kept.length)); for (const t of kept) g.append(tile(t)); }
+  const groups = new Map();
+  for (const t of list) { const k = t.spec.stationId || "seed:" + t.spec.seed; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
+  for (const [k, rows] of groups) {
+    const s = byId[k]; const name = (s && s.name) || rows[0].spec.seed, seed = (s && s.seed) || rows[0].spec.seed;
+    g.append(head(name.toUpperCase(), seed, rows.length));
     for (const t of rows) g.append(tile(t));
   }
   $("#libCost").textContent = `~$${state.cost.toFixed(2)} of music rendered from this browser · replays from the library are free`;
