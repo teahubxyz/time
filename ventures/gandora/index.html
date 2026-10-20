@@ -415,19 +415,21 @@ function drawChord(canvas, spec, { lit = 1, pulse = null } = {}) {
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
   const [fa, fb] = p.minor ? [6, 5] : [5, 4];
   const fc = 1 + Math.round(p.bpm / 40);                               // a third pendulum: tempo adds a faster harmonic
-  const damp = 0.0025 + (p.bpm - 60) / 120 * 0.004, ph1 = rnd() * Math.PI * 2, ph2 = rnd() * Math.PI * 2, ph3 = rnd() * Math.PI * 2;
-  const amp = W * 0.4 * (1 + 0.1 * bass), mix = 0.25 + 0.5 * p.energy;
+  const damp = 0.00045 + (p.bpm - 60) / 120 * 0.0006, ph1 = rnd() * Math.PI * 2, ph2 = rnd() * Math.PI * 2, ph3 = rnd() * Math.PI * 2;
+  const amp = W * 0.36 * (1 + 0.1 * bass), mix = 0.2 + 0.5 * p.energy, detune = 0.004 + 0.01 * rnd();
   ctx.globalCompositeOperation = "lighter";
-  for (let pass = 0; pass < 2; pass++) {
+  // three traces: a soft wide one, then two fine ones a hair apart in frequency, so the figure fills with moiré
+  for (let pass = 0; pass < 3; pass++) {
+    const dt = pass === 2 ? detune : 0;
     ctx.beginPath();
-    for (let t = 0; t < 900; t += 0.5) {
+    for (let t = 0; t < 2600; t += 0.6) {
       const e = Math.exp(-damp * t);
-      const x = cx + amp * e * (Math.sin(fa * t * 0.02 + ph1 + tm * 0.02) + mix * 0.3 * Math.sin(fc * t * 0.02 + ph3));
-      const y = cy + amp * e * (Math.sin(fb * t * 0.02 + ph2 - tm * 0.02) + mix * 0.3 * Math.cos(fc * t * 0.02 + ph3));
+      const x = cx + amp * e * (Math.sin((fa + dt) * t * 0.02 + ph1 + tm * 0.02) + mix * 0.3 * Math.sin(fc * t * 0.02 + ph3));
+      const y = cy + amp * e * (Math.sin((fb - dt) * t * 0.02 + ph2 - tm * 0.02) + mix * 0.3 * Math.cos(fc * t * 0.02 + ph3));
       t === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
-    ctx.lineWidth = pass ? (0.6 + high) * (W / 380) : (2.4 + 2 * bass) * (W / 380);
-    ctx.strokeStyle = pass ? `hsl(${p.hue} ${p.sat}% ${p.light + 35}% / ${0.85 * lit})` : `hsl(${p.hue2} ${p.sat}% ${p.light + 10}% / ${0.18 * lit})`;
+    ctx.lineWidth = pass ? (0.55 + 0.6 * high) * (W / 380) : (3 + 2 * bass) * (W / 380);
+    ctx.strokeStyle = pass ? `hsl(${pass === 2 ? p.hue2 : p.hue} ${p.sat}% ${p.light + 36}% / ${0.42 * lit})` : `hsl(${p.hue2} ${p.sat}% ${p.light + 12}% / ${0.12 * lit})`;
     ctx.stroke();
   }
   ctx.globalCompositeOperation = "source-over";
