@@ -99,7 +99,8 @@ input,textarea{font:inherit;color:inherit}
 #controls button:hover{opacity:1}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
 #controls svg{width:22px;height:22px;fill:currentColor}
-#controls #loop,#controls #shuffle{opacity:.5}
+#controls #loop,#controls #shuffle,#controls #remix{opacity:.6}
+#controls #remix:hover{opacity:1}
 #controls #shuffle.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
 #controls #loop svg{width:18px;height:18px}
 #controls #loop.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
@@ -205,6 +206,9 @@ input,textarea{font:inherit;color:inherit}
       <button id="backTrack" title="previous track">
         <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6 8.5 6V6zM6 6v12h2V6H6z"/></svg>
       </button>
+      <button id="shuffle" title="shuffle: mix the station's own library in">
+        <svg viewBox="0 0 24 24"><path d="M17 4h4v4l-1.5-1.5L16 10l-1.4-1.4 3.5-3.5L17 4zM3 6h4.5l3 3-1.4 1.4L7 8H3V6zm14.6 10.6 1.5-1.5v4h-4l1.5-1.5-3.1-3.1 1.4-1.4 2.7 2.7zM3 18v-2h4l9.5-9.5L18 8l-10 10H3z"/></svg>
+      </button>
       <button id="prev" title="replay from the start">
         <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
       </button>
@@ -212,8 +216,8 @@ input,textarea{font:inherit;color:inherit}
       <button id="loop" title="repeat this track">
         <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
       </button>
-      <button id="shuffle" title="shuffle: mix the station's own library in">
-        <svg viewBox="0 0 24 24"><path d="M10.6 9.2 7.8 6H3V4h5.5l3.3 3.7-1.2 1.5zM14 4h4.2l-1.6-1.6L18 1l4 4-4 4-1.4-1.4L18.2 6H14.9l-9 10H3v-2h2.1l9-10zm4.2 14L16.6 16.4 18 15l4 4-4 4-1.4-1.4 1.6-1.6H14.9l-3.2-3.6 1.3-1.5 2.7 3.1h2.5z"/></svg>
+      <button id="remix" title="remix this track: same bones, your changes">
+        <svg viewBox="0 0 24 24"><path d="M12 3a9 9 0 1 0 9 9h-2a7 7 0 1 1-7-7v3l4-4-4-4v3zm0 5a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm0 2a2 2 0 1 1 0 4 2 2 0 0 1 0-4z"/></svg>
       </button>
       <button id="skip" title="next">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
@@ -417,9 +421,16 @@ const DJ_SCHEMA = {
     station: { type: "string" }, line: { type: "string" },
   },
 };
+function remixText() {
+  const s = state.remixOf; if (!s) return "";
+  const likes = [], avoids = [];
+  for (const m of String(s.reaction || "").matchAll(/(?:^|\s)([+\-])([^\s]+)/g)) (m[1] === "+" ? likes : avoids).push(m[2].replace(/_/g, " "));
+  const words = [...String(s.reaction || "").matchAll(/"([^"]*)"/g)].map((m) => m[1]);
+  return `\nTHIS IS A REMIX REQUEST. Rework this exact track rather than writing a new one:\n- title: ${s.title}\n- tags: ${s.tags}\n- bpm ${s.bpm}, key ${s.key}, energy ${s.energy}\n- lyrics:\n${s.lyrics || "(instrumental)"}\nKeep its bones (hook, mood, most of the lyrics) and apply the listener's changes: ${likes.length ? "more " + likes.join(", ") + "; " : ""}${avoids.length ? "less or no " + avoids.join(", ") + "; " : ""}${words.length ? "in their words: " + words.join(" / ") : ""}${!likes.length && !avoids.length && !words.length ? "a fresh take on the same song (new arrangement, same heart)" : ""}. Title it as a remix of the original (e.g. "${s.title} (remix)" or a named version).\n`;
+}
 function djPrompt() {
   const prev = state.history.slice(-4).map((t, i) => `- ${t.title} [${t.tags}] ${t.bpm}bpm ${t.key} energy ${t.energy}${t.reaction ? " ← listener: " + t.reaction : ""}`).join("\n");
-  return `You are the DJ of a one-listener radio station. The listener typed a seed and the station grows from it.
+  return `You are the DJ of a one-listener radio station. The listener typed a seed and the station grows from it.${remixText()}
 Seed: "${state.seed}"
 ${state.station ? `Station name: ${state.station}\n` : ""}Listener asked for more of: ${state.taste.like.join("; ") || "(nothing yet)"}
 Listener asked to avoid: ${state.taste.avoid.join("; ") || "(nothing yet)"}
@@ -624,6 +635,7 @@ async function shuffled() {
 }
 async function advance() {
   if (await step(+1)) return;                      // forward through the session first, then cook new
+  if (!state.nextJob && state.after) { state.nextJob = state.after; state.after = null; }
   if (state.shuffle && Math.random() < 0.5) {
     const t = await shuffled();
     if (t) { state.audio.pause(); await playJob({ id: ++seq, spec: t.spec, blob: t.blob, err: null, done: Promise.resolve() }); return; }
@@ -774,6 +786,17 @@ $("#play").addEventListener("click", async () => {
   setPlayIcon();
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
+$("#remix").addEventListener("click", async () => {
+  const cur = state.current && state.current.spec; if (!cur) return;
+  state.remixOf = cur; toast("Remixing — it goes next.");
+  try {
+    const spec = await askDJ(); spec.remixOf = cur.id;
+    const job = makeJob(spec);
+    if (state.nextJob && !state.nextJob.blob) state.after = state.nextJob;   // the one already cooking plays after the remix
+    state.nextJob = job; $("#next").textContent = "NEXT · " + spec.title.toUpperCase() + " · REMIX";
+  } catch (e) { toast(e.message, 5000); }
+  finally { state.remixOf = null; }
+});
 $("#shuffle").addEventListener("click", () => { state.shuffle = !state.shuffle; $("#shuffle").classList.toggle("on", state.shuffle); toast(state.shuffle ? "Shuffle: mixing the station's library in." : "Shuffle off: all fresh."); });
 $("#loop").addEventListener("click", () => { state.audio.loop = !state.audio.loop; $("#loop").classList.toggle("on", state.audio.loop); toast(state.audio.loop ? "Repeating this track." : "Back to the station."); });
 $("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
