@@ -1282,7 +1282,7 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
     }
     arrived(t, msg);
     await play(t, bubblesOf(c, reply), ctrl.signal, c, msg, drawn);
-    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden && !msg.voice) onTheirOwn(t);
+    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden) onTheirOwn(t, { voiced: !!msg.voice });
   } catch (e) {
     if (e && e.name === "AbortError") return;
     done(t);
@@ -2540,7 +2540,7 @@ async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}
  */
 const noPicSaid = new Set(), moveSaid = new Set();
 let allowanceSaid = "";
-async function onTheirOwn(t) {
+async function onTheirOwn(t, { voiced = false } = {}) {       // voiced: the reply came with a voice note already, so not another
   const c = cardOf(t);
   if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs, { every: tempoEvery() })) return;
   // the call that decides is paid for too: set aside its most, from what's left today, and settle after
@@ -2568,7 +2568,7 @@ async function onTheirOwn(t) {
     if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once per chat
       if (!noPicSaid.has(t.id) && here(t)) { noPicSaid.add(t.id); err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
     } else if (move === "photo" && !lately) await ownPhoto(t, shot);
-    else if (move === "voice") await ownVoice(t);
+    else if (move === "voice" && !voiced) await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
   } catch (e) {                                                // then they just text; set to every round, the reason is shown once
     if (tempoEvery() === 1 && !moveSaid.has(t.id) && here(t)) { moveSaid.add(t.id); err(`nothing on their own this time: ${e && e.message ? e.message : e}`); }
