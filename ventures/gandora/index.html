@@ -7,6 +7,7 @@
 <title>gandora</title>
 <meta name="description" content="Type a seed. Get a station. Every song is made for you as it plays, and every cover is drawn from the song's own settings.">
 <link rel="icon" href="favicon.svg">
+<script src="demo.js"></script>
 <style>
 :root{
   --bg:#0b0b0e; --ink:#ededf0; --dim:#8a8a96; --line:#232329; --card:#121216;
@@ -173,6 +174,11 @@ const state = {
   audio: new Audio(), cost: parseFloat(localStorage.getItem(LS.cost) || "0"),
 };
 state.audio.preload = "auto";
+// a ?demo link with no personal key saved: use the shared demo key from demo.js, while it lasts
+const DEMO = window.GANDORA_DEMO || null;
+if (!state.key && DEMO && DEMO.key && new URLSearchParams(location.search).has("demo") && (!DEMO.until || new Date(DEMO.until) > new Date())) {
+  state.key = DEMO.key; state.demo = true;
+}
 
 /* ---------- small utils ---------- */
 const toast = (m, ms = 2400) => { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), ms); };
@@ -447,7 +453,8 @@ $("#keySave").addEventListener("click", () => {
   localStorage.setItem(LS.key, state.key); localStorage.setItem(LS.dj, state.dj);
   $("#keyBox").classList.add("hidden"); $("#keyBtn").textContent = state.key ? "venice key ✓" : "venice key"; $("#seedIn").focus();
 });
-if (state.key) $("#keyBtn").textContent = "venice key ✓";
+if (state.demo) { $("#keyBtn").textContent = "demo key · shared, until " + (DEMO.until || "it runs out"); $("#seedHint").textContent = "a mood, a line, a place, a word · demo: ~3¢ a track on a shared key"; }
+else if (state.key) $("#keyBtn").textContent = "venice key ✓";
 
 /* library */
 $("#libBtn").addEventListener("click", async () => {
