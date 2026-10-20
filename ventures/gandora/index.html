@@ -3,11 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.venice.ai; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob:; font-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.venice.ai https://inference.yolopreneur.lol; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob:; font-src 'self'">
 <title>gandora</title>
 <meta name="description" content="Type a seed. Get a station. Every song is made for you as it plays, and every cover is drawn from the song's own settings.">
 <link rel="icon" href="favicon.svg">
-<script src="demo.js"></script>
 <style>
 :root{
   --bg:#0b0b0e; --ink:#ededf0; --dim:#8a8a96; --line:#232329; --card:#121216;
@@ -99,11 +98,11 @@ input,textarea{font:inherit;color:inherit}
     <input id="seedIn" placeholder="type a seed" maxlength="200" autofocus>
     <div class="hint" id="seedHint">a mood, a line, a place, a word</div>
   </form>
-  <div id="keyRow"><button id="keyBtn" type="button">venice key</button></div>
+  <div id="keyRow"><button id="keyBtn" type="button">shared budget · add a venice key</button></div>
   <div id="keyBox" class="hidden">
-    <p>Your Venice API key stays in this browser and is only ever sent to api.venice.ai.</p>
+    <p>Optional. Without a key, gandora runs on a shared budget through inference.yolopreneur.lol (a few tracks a day per person). With your own Venice key it goes straight to api.venice.ai from this browser and the key goes nowhere else.</p>
     <input id="keyIn" placeholder="sk-…" spellcheck="false">
-    <label>DJ model <input id="djIn" placeholder="llama-3.3-70b" spellcheck="false"></label>
+    <label>DJ model <input id="djIn" placeholder="claude-haiku-5-5" spellcheck="false"></label>
     <div class="row"><button id="keyCancel" type="button">cancel</button><button id="keySave" class="go" type="button">save</button></div>
   </div>
 </section>
@@ -161,12 +160,13 @@ input,textarea{font:inherit;color:inherit}
    Every cover is drawn from the song's own settings: hue from key,
    rings from BPM, density from energy, symmetry from the seed.
    ============================================================ */
-const BASE = "https://api.venice.ai/api/v1";
+const DIRECT = "https://api.venice.ai/api/v1";              // with a personal key
+const SHARED = "https://inference.yolopreneur.lol/v1";      // without one: the factory's worker, quota'd per person
 const $ = (s) => document.querySelector(s);
 const LS = { key: "gandora.key", dj: "gandora.dj", cost: "gandora.cost" };
 const state = {
   key: localStorage.getItem(LS.key) || "",
-  dj: localStorage.getItem(LS.dj) || "llama-3.3-70b",
+  dj: localStorage.getItem(LS.dj) || "claude-haiku-5-5",
   seed: "", station: "",
   taste: { like: [], avoid: [], notes: [] },     // what the listener has told the station
   history: [],                                    // tracks played this session (specs)
@@ -174,11 +174,6 @@ const state = {
   audio: new Audio(), cost: parseFloat(localStorage.getItem(LS.cost) || "0"),
 };
 state.audio.preload = "auto";
-// a ?demo link with no personal key saved: use the shared demo key from demo.js, while it lasts
-const DEMO = window.GANDORA_DEMO || null;
-if (!state.key && DEMO && DEMO.key && new URLSearchParams(location.search).has("demo") && (!DEMO.until || new Date(DEMO.until) > new Date())) {
-  state.key = DEMO.key; state.demo = true;
-}
 
 /* ---------- small utils ---------- */
 const toast = (m, ms = 2400) => { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), ms); };
@@ -248,12 +243,13 @@ function drawCover(canvas, spec, { lit = 1 } = {}) {
 
 /* ---------- Venice ---------- */
 async function venice(path, body, { raw = false } = {}) {
-  if (!state.key) throw new Error("Add your Venice key first (bottom of the seed screen).");
-  const res = await fetch(BASE + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + state.key, "Content-Type": "application/json", Accept: raw ? "*/*" : "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const headers = { "Content-Type": "application/json", Accept: raw ? "*/*" : "application/json" };
+  if (state.key) headers.Authorization = "Bearer " + state.key; else headers["x-app"] = "gandora";
+  const res = await fetch((state.key ? DIRECT : SHARED) + path, { method: body ? "POST" : "GET", headers, body: body ? JSON.stringify(body) : undefined });
   if (!res.ok) {
     let d = null; try { d = await res.json(); } catch {}
     const said = d && (d.error && (d.error.message || d.error) || d.message) || "";
-    const why = { 401: "Venice didn't accept that key.", 402: "Venice says the key is out of credit.", 422: "Venice turned that down: " + said, 429: "Venice is rate-limiting. Breathe.", 503: "That model is busy at Venice." }[res.status];
+    const why = { 401: "Venice didn't accept that key.", 402: "Venice says the key is out of credit.", 422: "Venice turned that down: " + said, 429: state.key ? "Venice is rate-limiting. Breathe." : (said || "Over today's shared budget."), 503: "That model is busy at Venice." }[res.status];
     throw new Error(why || ("Venice answered " + res.status + (said ? ": " + said : "")));
   }
   return raw ? res : res.json();
@@ -424,7 +420,6 @@ $("#seedIn").addEventListener("input", (e) => {
 $("#seedForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const v = $("#seedIn").value.trim(); if (!v) return;
-  if (!state.key) { openKey(); toast("Add a Venice key first."); return; }
   state.seed = v; state.station = ""; state.taste = { like: [], avoid: [], notes: [] }; state.history = []; state.nextJob = null;
   $("#stationName").textContent = v;
   $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
@@ -449,12 +444,12 @@ function openKey() { $("#keyIn").value = state.key; $("#djIn").value = state.dj;
 $("#keyBtn").addEventListener("click", openKey);
 $("#keyCancel").addEventListener("click", () => $("#keyBox").classList.add("hidden"));
 $("#keySave").addEventListener("click", () => {
-  state.key = $("#keyIn").value.trim(); state.dj = $("#djIn").value.trim() || "llama-3.3-70b";
+  state.key = $("#keyIn").value.trim(); state.dj = $("#djIn").value.trim() || "claude-haiku-5-5";
   localStorage.setItem(LS.key, state.key); localStorage.setItem(LS.dj, state.dj);
-  $("#keyBox").classList.add("hidden"); $("#keyBtn").textContent = state.key ? "venice key ✓" : "venice key"; $("#seedIn").focus();
+  $("#keyBox").classList.add("hidden"); keyLabel(); $("#seedIn").focus();
 });
-if (state.demo) { $("#keyBtn").textContent = "demo key · shared, until " + (DEMO.until || "it runs out"); $("#seedHint").textContent = "a mood, a line, a place, a word · demo: ~3¢ a track on a shared key"; }
-else if (state.key) $("#keyBtn").textContent = "venice key ✓";
+function keyLabel() { $("#keyBtn").textContent = state.key ? "your venice key ✓" : "shared budget · add a venice key"; }
+keyLabel();
 
 /* library */
 $("#libBtn").addEventListener("click", async () => {
@@ -467,7 +462,7 @@ $("#libBtn").addEventListener("click", async () => {
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     g.append(d);
   }
-  $("#libCost").textContent = `spent on venice this browser: ~$${state.cost.toFixed(2)} · replays from the library are free`;
+  $("#libCost").textContent = `~$${state.cost.toFixed(2)} of music rendered from this browser · replays from the library are free`;
   $("#lib").classList.remove("hidden");
 });
 $("#libClose").addEventListener("click", () => $("#lib").classList.add("hidden"));
