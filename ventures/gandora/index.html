@@ -197,7 +197,7 @@ input,textarea{font:inherit;color:inherit}
   <div id="react">
     <div id="emojis">
       <button data-e="🔥" title="more of this">🔥</button>
-      <button data-e="❤️" title="love it (keeps it too)">❤️</button>
+      <button data-e="❤️" title="love it">❤️</button>
       <button data-e="😴" title="too sleepy">😴</button>
       <button data-e="🌧️" title="sadder">🌧️</button>
       <button data-e="⚡" title="faster, louder">⚡</button>
@@ -222,7 +222,7 @@ input,textarea{font:inherit;color:inherit}
 <section id="lib" class="hidden">
   <header><span>LIBRARY</span><button id="libClose">CLOSE</button></header>
   <div class="grid" id="libGrid"></div>
-  <div class="empty hidden" id="libEmpty">Nothing played yet. Every track lands here; ❤️ one to keep it for good.</div>
+  <div class="empty hidden" id="libEmpty">Nothing played yet. Every track lands here; KEEP one to pin it for good.</div>
   <div class="cost" id="libCost"></div>
 </section>
 
@@ -582,7 +582,7 @@ function setPlayIcon() { $("#playIco").innerHTML = state.playing ? '<path d="M6 
 
 /* ---------- reactions: each one edits the taste, and the next cover shows it ---------- */
 const EMOJI_MEANING = {
-  "🔥": { like: "more exactly like the current track" }, "❤️": { like: "the current track's sound", keep: true },
+  "🔥": { like: "more exactly like the current track" }, "❤️": { like: "the current track's sound; the listener loves this one" },
   "😴": { avoid: "this sleepy energy; wake it up", energy: +0.25 }, "🌧️": { like: "sadder, more melancholy, minor keys" },
   "⚡": { like: "faster and louder", energy: +0.3 }, "🎸": { like: "more guitar" }, "🎹": { like: "more piano and keys" },
   "🚫": { avoid: "anything like the current track" },
@@ -596,7 +596,6 @@ async function react(emoji, text) {
     if (m.avoid) state.taste.avoid.push(`${m.avoid} — re ${who}`);
     if (m.notes) state.taste.notes.push(`${m.notes} (an emoji, re ${who})`);
     cur.reaction = (cur.reaction ? cur.reaction + " " : "") + emoji;
-    if (m.keep && state.current.blob) { await remember(state.current, true); keepLabel(); toast("Kept in your library."); }
   }
   if (text) { state.taste.notes.push(`${text} (re ${who})`); cur.reaction = (cur.reaction ? cur.reaction + " " : "") + `"${text}"`; }
   for (const k of ["like", "avoid", "notes"]) state.taste[k] = state.taste[k].slice(-8);
@@ -638,7 +637,7 @@ function toggleLyrics() {
 }
 $("#lyricsBtn").addEventListener("click", toggleLyrics);
 $("#cover").addEventListener("click", toggleLyrics);
-/* keep: an explicit pin, next to the controls; ❤️ does it too */
+/* keep: the one and only pin, under the controls; emoji are reactions, not saves */
 async function keepLabel() {
   const b = $("#keep"), cur = state.current && state.current.spec;
   if (!cur || !cur.id) { b.disabled = true; b.classList.remove("on"); b.textContent = "➕ KEEP"; return; }
