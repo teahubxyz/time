@@ -119,6 +119,13 @@ input,textarea{font:inherit;color:inherit}
 #tasteTabs button.on{color:var(--ink);border-color:var(--acc)}
 #tasteTabs canvas{width:22px;height:22px;border-radius:50%}
 #tasteMap{width:100%;max-width:640px;aspect-ratio:1;display:block;margin:0 auto;border-radius:18px;background:var(--card)}
+#brainMap{width:100%;max-width:640px;aspect-ratio:2.2;display:block;margin:0 auto 14px;border-radius:18px;background:var(--card)}
+#tastePalette{max-width:640px;margin:18px auto 0}
+#tastePalette h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:0 0 10px;text-align:center}
+#tastePalette .row{display:flex;gap:14px;overflow-x:auto;padding:4px;scrollbar-width:none;justify-content:safe center}
+#tastePalette .s{flex:0 0 96px;cursor:pointer;text-align:center}
+#tastePalette .s canvas{width:80px;height:80px;border-radius:14px;display:block;margin:0 auto 6px}
+#tastePalette .s b{display:block;font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tasteNote{color:var(--dim);font-size:12px;text-align:center;margin:12px auto 0;max-width:520px}
 #tasteLegend{display:flex;justify-content:center;gap:16px;font:11px var(--font);letter-spacing:.08em;color:var(--dim);margin-top:10px;flex-wrap:wrap}
 
@@ -214,9 +221,11 @@ input,textarea{font:inherit;color:inherit}
 <section id="taste" class="hidden">
   <header><span>TASTE</span><button id="tasteClose">CLOSE</button></header>
   <div id="tasteTabs"></div>
+  <canvas id="brainMap" width="880" height="400"></canvas>
   <canvas id="tasteMap" width="900" height="900"></canvas>
   <div id="tasteLegend"><span>← slow · tempo · fast →</span><span>↑ energy</span><span>colour = key</span><span>ring = 🔥❤️ warm · 🚫⏭ cold</span></div>
   <div id="tasteNote"></div>
+  <div id="tastePalette"></div>
 </section>
 
 <section id="lib" class="hidden">
@@ -506,7 +515,7 @@ async function remember(job, kept) {
   const s = job.spec; if (!job.blob) return;
   s.id ||= s.made + "-" + hash32(s.title);
   const old = (await db.all()).find((t) => t.id === s.id);
-  await db.put({ id: s.id, spec: s, blob: job.blob, made: s.made, kept: kept || (old && old.kept) || false });
+  await db.put({ id: s.id, spec: s, blob: job.blob, made: s.made, kept: kept || (old && old.kept) || false, plays: (old && old.plays) || s.plays || 0 });
   const loose = (await db.all()).filter((t) => !t.kept).slice(KEEP_UNKEPT);
   for (const t of loose) await db.del(t.id);
 }
@@ -801,5 +810,6 @@ listStations().catch(() => {});
 // first paint of the seed mark, for a visitor who lands with a hash like #rainy+trains
 if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
 </script>
+<script src="brain.js"></script>
 </body>
 </html>
