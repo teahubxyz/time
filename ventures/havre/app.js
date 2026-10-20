@@ -2533,6 +2533,7 @@ async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}
  * showing, or now and then), the character's model decides: a photo or a voice note, sent out of the day's
  * allowance, or a clip, offered with Venice's price for you to take or leave.
  */
+const noPicSaid = new Set();
 async function onTheirOwn(t) {
   const c = cardOf(t);
   if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs, { every: tempoEvery() })) return;
@@ -2549,8 +2550,8 @@ async function onTheirOwn(t) {
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
     const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
     const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
-    if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once in a while
-      if (!A.sentLately(t.msgs.filter((m) => m && m.role === "havre"), 8)) { if (here(t)) err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
+    if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once per chat
+      if (!noPicSaid.has(t.id) && here(t)) { noPicSaid.add(t.id); err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
     } else if (move === "photo" && !lately) await ownPhoto(t, shot);
     else if (move === "voice") await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
