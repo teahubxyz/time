@@ -15,5 +15,8 @@
     apply();
     var b = document.getElementById("theme");
     if (b) b.addEventListener("click", function () { try { localStorage.setItem(K, dark() ? "light" : "dark"); } catch (e) { /* this time only */ } apply(); });
+    // installed as an app there's no address bar and no pull to refresh: this is the way to the latest Havre
+    var r = document.getElementById("reload");
+    if (r) r.addEventListener("click", function () { r.textContent = "reloading…"; location.reload(); });
   });
 })();
