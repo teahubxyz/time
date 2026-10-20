@@ -71,9 +71,20 @@ class Net {
   }
 }
 /* a net for a set of library rows: warm → 1, cold → 0, sample weight by how loud the signal was */
+// tag taps (+word / -word, the last word of each wins; ~word lets it go) become word-level samples: the track's
+// numbers with just that word, so the net learns the word itself rather than the whole track
+function tagSignals(spec) {
+  const out = new Map();
+  for (const m of String(spec.reaction || "").matchAll(/(?:^|\s)([+\-~])([^\s]+)/g)) out.set(m[2].replace(/_/g, " "), m[1]);
+  return [...out].filter(([, s]) => s !== "~").map(([word, s]) => ({ word, like: s === "+" }));
+}
 function brainFor(rows) {
   const samples = [];
-  for (const t of rows) { const w = reactionWeight(t.spec, t); if (Math.abs(w) < 0.25) continue; samples.push({ x: feats(t.spec), t: w > 0 ? 1 : 0, w: Math.min(3, Math.abs(w)) }); }
+  for (const t of rows) {
+    const w = reactionWeight(t.spec, t);
+    if (Math.abs(w) >= 0.25) samples.push({ x: feats(t.spec), t: w > 0 ? 1 : 0, w: Math.min(3, Math.abs(w)) });
+    for (const { word, like } of tagSignals(t.spec)) samples.push({ x: feats({ bpm: t.spec.bpm, energy: t.spec.energy, key: t.spec.key, tags: word }), t: like ? 1 : 0, w: 1.5 });
+  }
   if (samples.length < 3) return null;                               // not enough to say anything
   return new Net(7).train(samples);
 }
@@ -102,7 +113,7 @@ function tasteText() {
   const word = (c) => `~${c.bpm} bpm, ${c.en < 0.4 ? "calm" : c.en < 0.7 ? "mid" : "high"} energy, ${/minor/.test(c.key) ? "minor" : "major"} (${Math.round(c.p * 100)}%)`;
   const top = cells.slice(0, 3).map(word).join("; "), low = cells.slice(-2).map(word).join("; ");
   // which words the net warms to: score each tag word by the net's response when it is the only word present
-  const vocab = new Map(); for (const t of rows) for (const w of tokens(t.spec.tags)) vocab.set(w, (vocab.get(w) || 0) + 1);
+  const vocab = new Map(); for (const t of rows) { for (const w of tokens(t.spec.tags)) vocab.set(w, (vocab.get(w) || 0) + 1); for (const { word } of tagSignals(t.spec)) for (const w of tokens(word)) vocab.set(w, (vocab.get(w) || 0) + 2); }
   const base = { bpm: cells[0].bpm, energy: cells[0].en, key: cells[0].key };
   const p0 = net.predict({ ...base, tags: "" });
   const scored = [...vocab.keys()].filter((w) => vocab.get(w) >= 2).map((w) => [w, net.predict({ ...base, tags: w }) - p0]).sort((a, b) => b[1] - a[1]);
@@ -213,8 +224,9 @@ function drawTaste(rows, title, net) {
     ctx.fillStyle = `hsl(${p.hue} ${p.minor ? 55 : 80}% ${p.minor ? 48 : 62}% / .9)`; ctx.fill();
     if (Math.abs(p.w) >= 0.25) { ctx.lineWidth = 3; ctx.strokeStyle = p.w > 0 ? "hsl(44 80% 70%)" : "hsl(220 40% 60%)"; ctx.stroke(); }
     if (p.t.kept) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 7, 0, Math.PI * 2); ctx.lineWidth = 1.5; ctx.strokeStyle = "hsl(44 80% 70% / .7)"; ctx.stroke(); }
-    const em = String(p.t.spec.reaction || "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "");
-    const tag = [...em].slice(0, 4).join("") + ((p.t.plays || 0) > 1 ? `×${p.t.plays}` : "");
+    const em = reactionEmoji(p.t.spec.reaction);
+    const tg = tagSignals(p.t.spec), tagMark = tg.length ? ` ${tg.filter((s) => s.like).length}▲${tg.filter((s) => !s.like).length}▼` : "";
+    const tag = [...em].slice(0, 4).join("") + ((p.t.plays || 0) > 1 ? `×${p.t.plays}` : "") + tagMark;
     if (tag) { ctx.font = `${W * 0.024}px -apple-system, system-ui, sans-serif`; ctx.fillStyle = "#ededf0"; ctx.fillText(tag, p.x, p.y - r - 8); }
   }
   // the track in the oven, as a hollow mark
