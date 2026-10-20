@@ -458,7 +458,7 @@ async function listStations() {
   }
 }
 function openStation(seed, { id, name = "", taste, history, played } = {}) {
-  if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; }
+  if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; }
   state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
   state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
   $("#stationName").textContent = name || seed;
@@ -509,7 +509,8 @@ function cookNext() {
 }
 async function playJob(job) {
   const spec = job.spec;
-  state.current = job; state.history.push(spec); state.played = (state.played || 0) + 1; spec.stationId = state.stationId;
+  state.current = job;
+  if (!job.stepping) { state.history.push(spec); state.played = (state.played || 0) + 1; spec.stationId ||= state.stationId; }
   keepLabel();
   $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
   $("#lyric").textContent = spec.line || "";
