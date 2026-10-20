@@ -30,6 +30,7 @@ jobs:
           RUNWARE_API_KEY: ${{ secrets.RUNWARE_API_KEY }}       # optional: Runware ACE-Step behind /v1/render
           TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN || 'yolopreneur.lol' }}
           TIME_INFERENCE_ORIGINS: "*.yolopreneur.lol,gandora.lol,www.gandora.lol"
+          TIME_INFERENCE_AUDIO_SECONDS: "120"
           TIME_INFERENCE_RENDER_DAILY: "500"
           TIME_INFERENCE_CHAT_DAILY: "1500"
           TIME_INFERENCE_RENDER_TOTAL: "2000"
