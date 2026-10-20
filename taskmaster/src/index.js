@@ -15,28 +15,33 @@
 //   TASKMASTER_WHOP_LIVE      "on" lets the app create checkout configurations and write membership metadata.
 //                             Card #66 leaves it off: nothing is created on Whop until the previews are approved.
 //
-// `stores` is left to the host, because the right answer depends on where this runs: the in-memory default is for
-// a single process and the tests, and a Whop deployment passes a KV- or D1-backed pair with the same two methods.
+// The stores are left to the host, because the right answer depends on where this runs: the in-memory defaults are
+// for a single process and the tests, and a Whop deployment passes KV- or D1-backed ones with the same methods.
+// All three hold derived state — the deals and threads of conversations in flight, and `packs`, which only says
+// which pack membership to read for a seat holder (Whop's own metadata still decides whether the seat is there).
 
 import { app } from "./server.js";
 import { voice } from "./voice.js";
 import { whop } from "./whop.js";
 import { fileSink } from "./deallog.js";
+import { packIndex } from "./seats.js";
 
 export function memoryStore() {
   const m = new Map();
   return { get: async (id) => m.get(id) ?? null, save: async (v) => void m.set(v.id, v) };
 }
 
-export function create(env = process.env, { deals = memoryStore(), threads = memoryStore(), log, experiments = null } = {}) {
+export function create(env = process.env, { deals = memoryStore(), threads = memoryStore(), packs = packIndex(),
+                                            log, experiments = null } = {}) {
   return app(env, {
     voice: voice({ apiKey: env.VENICE_API_KEY, model: env.TASKMASTER_MODEL }),
     whop: whop({ apiKey: env.WHOP_API_KEY, live: env.TASKMASTER_WHOP_LIVE === "on" }),
     deals,
     threads,
+    packs,
     log: log ?? fileSink(env.TASKMASTER_DEAL_LOG ?? "deals.jsonl"),
     experiments,
   });
 }
 
-export default { create, memoryStore };
+export default { create, memoryStore, packIndex };

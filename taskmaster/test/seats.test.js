@@ -1,7 +1,7 @@
 // Seat packs in membership metadata: assign, swap within the limit, and a buyer view with no chats in it.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { assign, buyerView, useSeat, size, assertNoChats, SWAP_LIMIT } from "../src/seats.js";
+import { assign, buyerView, useSeat, size, assertNoChats, buyerOf, isBuyer, packIndex, SWAP_LIMIT } from "../src/seats.js";
 
 const NOW = Date.parse("2026-10-20T12:00:00Z");
 const day = (n) => new Date(NOW + n * 86400000).toISOString();
@@ -70,4 +70,31 @@ test("the buyer sees seats and usage, never anyone's chats", () => {
   assert.ok(!JSON.stringify(buyerView(nosy, { now: NOW })).includes("deadlines"));
   assert.throws(() => assertNoChats({ holders: [{ user: "bob", messages: 4 }] }), /must not carry holders.0.messages/);
   assert.throws(() => assertNoChats({ chat: [] }), /must not carry chat/);
+});
+
+test("the pack is the buyer's, and a seat holder of it is not its buyer", () => {
+  assert.equal(buyerOf({ metadata: { member: "lead" } }), "lead");
+  assert.equal(buyerOf({ user_id: "lead" }), "lead", "Whop's own answer, when the checkout's metadata is not on the membership");
+  assert.equal(buyerOf({ metadata: { seats: [{ user: "bob" }] } }), null);
+  assert.ok(isBuyer({ metadata: { member: "Lead" } }, "lead"), "a username is a username in either case");
+  assert.equal(isBuyer({ metadata: { member: "lead", seats: [{ user: "bob" }] } }, "bob"), false);
+  assert.equal(isBuyer({ metadata: {} }, "lead"), false, "a pack with no buyer on it is nobody's");
+  assert.equal(isBuyer({ metadata: { member: "lead" } }, null), false);
+});
+
+test("the pack index says where to look for a seat, and forgets a seat that was swapped out", async () => {
+  const index = packIndex();
+  assert.deepEqual(await index.for("bob"), [], "a seat holder holds no membership, so Whop cannot answer this");
+  await index.remember("bob", "mem_pack");
+  await index.remember("@Bob", "mem_pack");
+  assert.deepEqual(await index.for("BOB"), ["mem_pack"], "one entry, however the username was written");
+  await index.remember("bob", "mem_other");
+  assert.deepEqual(await index.for("bob"), ["mem_pack", "mem_other"], "a person can hold a seat on two packs");
+  await index.forget("bob", "mem_pack");
+  assert.deepEqual(await index.for("bob"), ["mem_other"]);
+  await index.forget("bob", "mem_other");
+  assert.deepEqual(await index.for("bob"), []);
+  await index.remember("", "mem_pack");
+  await index.remember("bob", null);
+  assert.deepEqual(await index.for(""), [], "and it holds nothing it cannot look up");
 });

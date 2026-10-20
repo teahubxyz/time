@@ -8,6 +8,7 @@ import { memorySink } from "../src/deallog.js";
 import { PRODUCT } from "../src/mode.js";
 import { QUOTE_TOOL } from "../src/voice.js";
 import { unseal } from "../src/cards.js";
+import { buyerOf, packIndex } from "../src/seats.js";
 
 const NOW = Date.parse("2026-10-20T12:00:00Z");
 const ENV = { TASKMASTER_CARD_SECRET: "card-secret", WHOP_WEBHOOK_SECRET: "whsec_test",
@@ -28,25 +29,33 @@ function script(turns) {
   return voice;
 }
 
-// `arm` pins the anchor-height experiment, so these tests read one mechanic rather than whichever arm the member's
-// id happens to hash into.
-function world({ turns = [], memberships = [], now = NOW, arm = "list" } = {}) {
+// A fake Whop that answers the way Whop answers: `membershipsFor` returns what that user *holds*, so a lead's seat
+// pack is the lead's and a seat holder of theirs holds nothing at all. A merge really merges, so a write is visible
+// to the next read. `arm` pins the anchor-height experiment, so these tests read one mechanic rather than whichever
+// arm the member's id happens to hash into.
+function world({ turns = [], memberships = [], now = NOW, arm = "list", checkout, merge } = {}) {
   const deals = new Map(), threads = new Map(), writes = [];
   const sink = memorySink();
+  const packs = packIndex();
   const whop = {
-    membershipsFor: async () => memberships,
+    membershipsFor: async (user) => memberships.filter((m) => buyerOf(m) === user),
     membership: async (id) => memberships.find((m) => m.id === id) ?? null,
-    checkout: async ({ tier, price, deal }) => ({ id: `cfg_${tier}_${price}`, url: `https://whop.com/checkout/cfg_${tier}_${price}`,
-                                                  variant: `${tier}:${price}`, reused: false, metadata: { deal } }),
-    mergeMembershipMetadata: async (id, patch) => { writes.push([id, patch]); return { id }; },
+    checkout: checkout ?? (async ({ tier, price, deal }) => ({ id: `cfg_${tier}_${price}`, url: `https://whop.com/checkout/cfg_${tier}_${price}`,
+                                                               variant: `${tier}:${price}`, reused: false, metadata: { deal } })),
+    mergeMembershipMetadata: merge ?? (async (id, patch) => {
+      writes.push([id, patch]);
+      const m = memberships.find((x) => x.id === id);
+      if (m) m.metadata = { ...m.metadata, ...patch };
+      return m ?? { id };
+    }),
   };
   const voice = script(turns);
   const fetch = app(ENV, {
-    voice, whop, clock: () => now, log: sink, experiments: { arm: async () => arm },
+    voice, whop, packs, clock: () => now, log: sink, experiments: { arm: async () => arm },
     deals: { get: async (id) => deals.get(id) ?? null, save: async (d) => void deals.set(d.id, d) },
     threads: { get: async (id) => threads.get(id) ?? null, save: async (t) => void threads.set(t.id, t) },
   });
-  return { fetch, deals, threads, writes, sink, voice, memberships };
+  return { fetch, deals, threads, writes, sink, voice, memberships, packs };
 }
 
 const post = (fetch, path, body) => fetch(new Request(`https://taskmaster.whop.site${path}`,
@@ -107,7 +116,7 @@ test("greet, haggle, quote card, simulated payment, coach mode", async () => {
   assert.equal(deal.outcome, "paid");
 
   // ---- Whop now says there is a membership, so the next turn is coach mode
-  w.memberships.push({ id: "mem_ann", valid: true, product_id: PRODUCT, metadata: { tier: "sprint" } });
+  w.memberships.push({ id: "mem_ann", valid: true, product_id: PRODUCT, user_id: "user_ann", metadata: { tier: "sprint" } });
   w.voice.seen.length = 0;
   const coached = await (await post(w.fetch, "/api/chat", { thread: "t1", text: "ok, what first?" })).json();
   assert.equal(coached.mode, "coach");
@@ -145,30 +154,40 @@ test('typing "Paid $100" without a membership leaves the thread in haggle mode',
   assert.equal(w.writes.length, 0, "and nothing was written to Whop");
 });
 
+// The pack is the lead's membership, so Whop has nothing to say about bob: asking it what bob holds answers
+// nothing, however valid the pack is and whoever is on its list. The seat has to be found from the pack's side.
+const packOf = (seats = []) => ({ id: "mem_pack", valid: true, product_id: PRODUCT, user_id: "lead",
+                                  metadata: { tier: "seats5", member: "lead", seats, seat_swaps: [] } });
+
 test("a user on a pack's seat list gets coach mode; one off the list keeps haggling", async () => {
-  const pack = { id: "mem_pack", valid: true, product_id: PRODUCT,
-                 metadata: { tier: "seats5", seats: [{ user: "bob", used: 0 }], seat_swaps: [] } };
-  const on = world({ turns: [{ text: "What did you commit to yesterday?" }], memberships: [pack] });
+  const on = world({ turns: [{ text: "What did you commit to yesterday?" }, { text: "Still no." }],
+                     memberships: [packOf()] });
+  on.threads.set("t_lead", { id: "t_lead", member: "lead", deal: null, turns: [] });
   on.threads.set("t_bob", { id: "t_bob", member: "bob", deal: null, turns: [] });
+  on.threads.set("t_dee", { id: "t_dee", member: "dee", deal: null, turns: [] });
+
+  await post(on.fetch, "/api/seats", { thread: "t_lead", membership: "mem_pack", add: ["bob"] });
   const bob = await (await post(on.fetch, "/api/chat", { thread: "t_bob", text: "morning" })).json();
-  assert.equal(bob.mode, "coach");
+  assert.equal(bob.mode, "coach", "bob holds no membership of his own; the pack is the lead's");
   assert.equal(bob.via, "seat");
-  assert.deepEqual(on.writes, [["mem_pack", { seats: [{ user: "bob", used: 1, last: new Date(NOW).toISOString() }] }]],
+  assert.equal(bob.usage_noted, true);
+  assert.deepEqual(on.writes.at(-1), ["mem_pack", { seats: [{ user: "bob", assigned: new Date(NOW).toISOString(), used: 1, last: new Date(NOW).toISOString() }] }],
     "usage is a count of days, and that is the only thing written");
 
-  const off = world({ turns: [{ text: "You are not on that list. Five hundred for five seats." }], memberships: [pack] });
-  off.threads.set("t_dee", { id: "t_dee", member: "dee", deal: null, turns: [] });
-  const dee = await (await post(off.fetch, "/api/chat", { thread: "t_dee", text: "morning" })).json();
-  assert.equal(dee.mode, "haggle");
+  // the index says where to look, never who is allowed: Whop's own metadata is what holds the seat
+  await on.packs.remember("dee", "mem_pack");
+  const dee = await (await post(on.fetch, "/api/chat", { thread: "t_dee", text: "morning" })).json();
+  assert.equal(dee.mode, "haggle", "dee is not on the pack's list, whatever the index points at");
   assert.equal(dee.via, undefined);
 });
 
-test("the pack buyer sees seats and usage, and no chats", async () => {
-  const pack = { id: "mem_pack", valid: true, product_id: PRODUCT,
-                 metadata: { tier: "seats5", seats: [{ user: "bob", assigned: new Date(NOW - 8.64e7).toISOString(), used: 2 }],
-                             seat_swaps: [] } };
+test("the pack buyer sees seats and usage, and no chats; nobody else sees them at all", async () => {
+  const pack = packOf([{ user: "bob", assigned: new Date(NOW - 8.64e7).toISOString(), used: 2 }]);
   const w = world({ memberships: [pack] });
-  const view = await (await get(w.fetch, "/api/seats?membership=mem_pack")).json();
+  w.threads.set("t_lead", { id: "t_lead", member: "lead", deal: null, turns: [] });
+  w.threads.set("t_bob", { id: "t_bob", member: "bob", deal: null, turns: [] });
+
+  const view = await (await get(w.fetch, "/api/seats?thread=t_lead&membership=mem_pack")).json();
   assert.equal(view.seats, 5);
   assert.equal(view.assigned, 1);
   assert.equal(view.open, 4);
@@ -176,13 +195,130 @@ test("the pack buyer sees seats and usage, and no chats", async () => {
   assert.deepEqual(Object.keys(view.holders[0]).sort(), ["assigned", "last", "used", "user"]);
   assert.ok(!JSON.stringify(view).toLowerCase().includes("chat"));
 
-  const after = await (await post(w.fetch, "/api/seats", { membership: "mem_pack", add: ["cy", "dee"] })).json();
+  // a membership id is not a password: a seat holder of the pack is not its buyer either
+  assert.equal((await get(w.fetch, "/api/seats?thread=t_bob&membership=mem_pack")).status, 403);
+  assert.equal((await post(w.fetch, "/api/seats", { thread: "t_bob", membership: "mem_pack", add: ["cy"] })).status, 403);
+  assert.equal((await get(w.fetch, "/api/seats?membership=mem_pack")).status, 404, "and a thread is how a caller says who they are");
+  assert.equal(w.writes.length, 0);
+
+  const after = await (await post(w.fetch, "/api/seats", { thread: "t_lead", membership: "mem_pack", add: ["cy", "dee"] })).json();
   assert.deepEqual(after.holders.map((h) => h.user), ["bob", "cy", "dee"]);
   assert.equal(w.writes.length, 1);
-  const full = await post(w.fetch, "/api/seats", { membership: "mem_pack", add: ["e", "f", "g", "h", "i"] });
+  assert.deepEqual(await w.packs.for("cy"), ["mem_pack"], "and the new seats are where the server can find them");
+  const full = await post(w.fetch, "/api/seats", { thread: "t_lead", membership: "mem_pack", add: ["e", "f", "g", "h", "i"] });
   assert.equal(full.status, 400);
   assert.match((await full.json()).error, /has 5 seats/);
   assert.equal(w.writes.length, 1, "a refused assignment writes nothing to Whop");
+
+  // a swap takes the seat away, and the index stops pointing at the pack for them
+  await post(w.fetch, "/api/seats", { thread: "t_lead", membership: "mem_pack", add: ["eve"], remove: ["cy"] });
+  assert.deepEqual(await w.packs.for("cy"), []);
+  assert.deepEqual(await w.packs.for("eve"), ["mem_pack"]);
+});
+
+// Whop answers membership queries to a user id and seat lists are written in usernames, so a thread carries both.
+// A seat holder whose thread knows only the id would be a stranger to every seat list there is.
+test("a seat is held by a username while a membership is held by a user id, and one person is both", async () => {
+  const pack = packOf([{ user: "bobby", used: 0 }]);
+  const w = world({ turns: [{ text: "What did you commit to yesterday?" }], memberships: [pack] });
+  w.threads.set("t_bob", { id: "t_bob", member: "user_7f3a", username: "bobby", deal: null, turns: [] });
+  await w.packs.remember("bobby", "mem_pack");
+
+  const bob = await (await post(w.fetch, "/api/chat", { thread: "t_bob", text: "morning" })).json();
+  assert.equal(bob.mode, "coach");
+  assert.equal(bob.via, "seat");
+  assert.deepEqual(w.writes.at(-1)[1].seats.map((s) => s.user), ["bobby"], "the usage is the username's, not the id's");
+
+  // and the lead, whose pack Whop hands back under their user id, is still its buyer
+  const lead = world({ memberships: [{ ...pack, metadata: { ...pack.metadata, member: undefined, seats: [] }, user_id: "user_lead" }] });
+  lead.threads.set("t_lead", { id: "t_lead", member: "user_lead", username: "leadia", deal: null, turns: [] });
+  const view = await (await get(lead.fetch, "/api/seats?thread=t_lead&membership=mem_pack")).json();
+  assert.equal(view.seats, 5);
+  assert.equal(view.assigned, 0);
+});
+
+test("a seat holder still gets their answer when Whop will not take the usage write", async () => {
+  // which is every day of card #66: the live guard refuses membership writes until the previews are approved
+  const w = world({ turns: [{ text: "What did you commit to yesterday?" }], memberships: [packOf([{ user: "bob", used: 0 }])],
+                    merge: async () => { throw new Error("refusing to write membership metadata"); } });
+  w.threads.set("t_bob", { id: "t_bob", member: "bob", deal: null, turns: [] });
+  await w.packs.remember("bob", "mem_pack");
+
+  const out = await post(w.fetch, "/api/chat", { thread: "t_bob", text: "morning" });
+  assert.equal(out.status, 200, "bookkeeping does not get to 500 a turn the member paid for");
+  const body = await out.json();
+  assert.equal(body.mode, "coach");
+  assert.equal(body.reply, "What did you commit to yesterday?");
+  assert.equal(body.usage_noted, false, "and the failed write is reported rather than swallowed");
+});
+
+// The webhook can be late, lost, or named something other than the events webhook.js matches on. A membership is
+// the same confirmation by the other road, and the deal has to close on it: an agreed deal left open would be
+// logged as a walkaway the moment the thread closed, which would put a paid deal in the log as a lost one.
+test("back from checkout with no webhook: the membership closes the deal, logs it once and shares it", async () => {
+  const w = world({ turns: [{ text: "", quote: { tier: "lite", price: 50 } }, { text: "Fifty." }] });
+  w.threads.set("t1", { id: "t1", member: "user_eve", deal: null, turns: [] });
+  const open = await (await post(w.fetch, "/api/chat", { thread: "t1", text: "how much for the short one?" })).json();
+  assert.equal(open.verdict, "accept");
+  const deal = [...w.deals.values()][0];
+  assert.equal(deal.outcome, "agreed");
+
+  // they paid. Whop has a membership for it; no webhook ever arrives.
+  w.memberships.push({ id: "mem_eve", valid: true, product_id: PRODUCT, user_id: "user_eve",
+                       metadata: { tier: "lite", member: "user_eve", deal: deal.id } });
+  const back = await (await get(w.fetch, "/api/return?thread=t1")).json();
+  assert.equal(back.mode, "coach");
+  assert.equal(back.deal.outcome, "paid");
+  assert.equal(deal.receipt, "mem_eve");
+  assert.equal(back.cards.length, 1);
+  assert.match(back.cards[0].headline, /I got Taskmaster down to \$50/);
+  assert.equal(w.sink.rows.length, 1);
+  assert.equal(w.sink.rows[0].outcome, "paid");
+
+  // and it closes once, however often they come back or however the thread ends
+  await get(w.fetch, "/api/return?thread=t1");
+  assert.deepEqual(await (await post(w.fetch, "/api/walkaway", { thread: "t1" })).json(), { ok: true });
+  assert.equal(w.sink.rows.length, 1, "a paid deal is never logged as a walkaway");
+});
+
+test("a membership from another deal does not close this one", async () => {
+  const w = world({ turns: [{ text: "", quote: { tier: "sprint", price: 100 } }, { text: "A hundred." }] });
+  w.threads.set("t1", { id: "t1", member: "user_fay", deal: null, turns: [] });
+  await post(w.fetch, "/api/chat", { thread: "t1", text: "how much?" });
+  // last month's sprint, still valid: coach mode, yes — this haggle paid for, no
+  w.memberships.push({ id: "mem_old", valid: true, product_id: PRODUCT, user_id: "user_fay",
+                       metadata: { tier: "sprint", member: "user_fay", deal: "deal_lastmonth" } });
+  const back = await (await get(w.fetch, "/api/return?thread=t1")).json();
+  assert.equal(back.mode, "coach");
+  assert.equal(back.deal.outcome, "agreed");
+  assert.deepEqual(back.cards, []);
+  assert.equal(w.sink.rows.length, 0);
+});
+
+test("Whop refusing the checkout costs the button, not the deal", async () => {
+  const w = world({
+    turns: [{ text: "", quote: { tier: "sprint", price: 100 } }, { text: "A hundred." }],
+    checkout: async () => { throw new Error("refusing to create a checkout configuration: pass live: true"); },
+  });
+  w.threads.set("t1", { id: "t1", member: "user_gil", deal: null, turns: [] });
+  const open = await (await post(w.fetch, "/api/chat", { thread: "t1", text: "how much?" })).json();
+  assert.equal(open.verdict, "accept", "the price was the desk's and it stands");
+  assert.equal(open.cards.length, 1);
+  assert.equal(open.cards[0].price, 100);
+  assert.equal(open.cards[0].checkout, null, "the card has no button yet");
+  assert.ok(await unseal(open.cards[0], ENV.TASKMASTER_CARD_SECRET), "and it is still a card the model cannot edit");
+
+  const pressed = await post(w.fetch, "/api/agree", { thread: "t1", card: open.cards[0] });
+  assert.equal(pressed.status, 503);
+  assert.equal((await pressed.json()).price, 100);
+
+  // once Whop will take it, the same card buys at the same price: the URL comes from the server, not the card
+  const live = world({ turns: [{ text: "", quote: { tier: "sprint", price: 100 } }, { text: "A hundred." }] });
+  live.threads.set("t1", { id: "t1", member: "user_gil", deal: null, turns: [] });
+  live.deals.set(open.cards[0].deal, { ...[...w.deals.values()][0] });
+  const again = await (await post(live.fetch, "/api/agree", { thread: "t1", card: open.cards[0] })).json();
+  assert.equal(again.checkout, "https://whop.com/checkout/cfg_sprint_100");
+  assert.equal(again.price, 100);
 });
 
 test("a walkaway is logged, and the thread's own rate limit holds", async () => {

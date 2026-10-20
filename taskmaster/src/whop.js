@@ -11,6 +11,10 @@
 //   * `plan.billing_period: 1` for the daily tiers. Whop's membership API mentions daily billing, so it looks
 //     supported; `checkout()` refuses a renewal tier until `dailyBilling: "confirmed"` is passed, so a daily tier
 //     cannot be created on an assumption.
+//   * That a configuration can name an existing plan (`plan_id`) instead of carrying an inline one. That is how a
+//     variant is reused: the plan is made once per price and every later deal gets its own configuration on it.
+//     If Whop turns out to want the inline plan repeated instead, the `plan_id` line in `checkout()` is the one to
+//     change — the per-deal configuration is not negotiable either way, because its metadata routes the payment.
 //   * How a plan is kept off the product's public page. The old app's note calls it a hidden inline variant;
 //     `HIDDEN` holds the field this sends, in one place, so correcting it is one line.
 //   * iOS. Whop's iOS rules may treat a one-off checkout differently from a subscription, which would change what
@@ -36,8 +40,8 @@ export class WhopError extends Error {
   }
 }
 
-// store: { get(key), set(key, value) }. Used for variant reuse, so matching deals share one inline plan instead of
-// leaving a trail of one-off variants on the product.
+// store: { get(key), set(key, value) }. It holds one plan id per variant key, which is what variant reuse is:
+// matching deals share one inline plan instead of leaving a trail of one-off variants on the product.
 export function memoryStore() {
   const m = new Map();
   return { get: async (k) => m.get(k) ?? null, set: async (k, v) => void m.set(k, v) };
@@ -65,7 +69,14 @@ export function whop({ apiKey, fetch: f = globalThis.fetch, base = BASE, product
     product,
     app: APP,
 
-    // One checkout per (tier, price): the variant is reused when a later deal lands on the same number.
+    // One variant per (tier, price), one configuration per deal.
+    //
+    // The variant — the inline plan — is what gets reused when a later deal lands on the same number, so matching
+    // deals share one plan instead of leaving a trail of one-off variants on the product. The configuration on top
+    // of it is this deal's alone, because its metadata is the only thing that maps the payment back to the right
+    // member, thread and deal. Handing a second buyer the first buyer's configuration would send their payment to
+    // a deal that is already paid: the webhook would answer `already`, their own deal would never close and their
+    // thread would never leave haggle mode. The URL is cheap; the routing is not.
     async checkout({ tier: id, price, member, thread, deal, affiliate_code = null, redirect_url = null, platform = null }) {
       const t = tier(id);
       if (t.kind === "renewal" && dailyBilling !== "confirmed") {
@@ -74,10 +85,8 @@ export function whop({ apiKey, fetch: f = globalThis.fetch, base = BASE, product
       const key = variantKey(t.id, price);
       const metadata = { app: APP, tier: t.id, deal, member, thread, seats: t.seats, price: cents(price), variant: key };
 
-      const known = await store.get(key);
-      if (known) return { ...known, reused: true, metadata };
-
       writing("create a checkout configuration");
+      const known = await store.get(key);
       const plan = {
         product_id: product,
         plan_type: t.kind,
@@ -87,14 +96,22 @@ export function whop({ apiKey, fetch: f = globalThis.fetch, base = BASE, product
         ...(t.kind === "renewal" ? { billing_period: t.billing_period } : { expiration_days: t.expiration_days }),
       };
       const made = await call("POST", "/checkout_configurations", {
-        plan, metadata,
+        ...(known?.plan ? { plan_id: known.plan } : { plan }),   // the variant, made once and named thereafter
+        metadata,
         ...(affiliate_code ? { affiliate_code } : {}),   // a creator's commission, paid by Whop; no reseller cut here
         ...(redirect_url ? { redirect_url } : {}),
         ...(platform ? { platform } : {}),
       });
-      const row = { id: made.id ?? null, url: made.purchase_url ?? made.url ?? null, variant: key, plan: made.plan?.id ?? null };
-      await store.set(key, row);
-      return { ...row, reused: false, metadata };
+      const planId = made.plan?.id ?? made.plan_id ?? known?.plan ?? null;
+      if (!known?.plan && planId) await store.set(key, { plan: planId, variant: key });
+      return {
+        id: made.id ?? null,
+        url: made.purchase_url ?? made.url ?? null,
+        variant: key,
+        plan: planId,
+        reused: Boolean(known?.plan),   // the variant was reused; the configuration is this deal's
+        metadata,
+      };
     },
 
     async membership(id) {

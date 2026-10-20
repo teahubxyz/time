@@ -1,8 +1,13 @@
-// Whop's webhook: the one thing that can turn a thread from haggle to coach.
+// Whop's webhook: Whop telling the app the money arrived, which is one of the two ways it can.
 //
 // The old app's handler logged invoices and did nothing. Here the signature is checked before anything else, the
 // deal named in the payment's metadata is the one that moves, and the thread switches mode because Whop said the
 // money arrived — not because a member typed "Paid".
+//
+// The other way is the member coming back from checkout to a membership Whop has already issued (`/api/return` in
+// server.js), because a webhook can be late, can be lost, and is matched here on event names that are still the
+// operator's to confirm. Both roads end in `paid()` on the same deal, and whichever gets there first closes and
+// logs it once; neither of them is the member's word for it.
 //
 // Unconfirmed, and in one place so it is one line to correct: the header names and whether the signed string is
 // the raw body alone or a timestamp joined to it. Both shapes are verified — a request carrying a timestamp header

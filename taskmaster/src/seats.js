@@ -9,6 +9,11 @@
 //
 // What the buyer sees: seats and usage. Never anyone's chats. `buyerView` is built from a fixed key list and
 // `assertNoChats` is what stops a future field from quietly adding them.
+//
+// One thing a pack needs that metadata alone cannot give: a way to find it. A seat holder holds no membership of
+// their own — the pack belongs to the lead who bought it — so asking Whop for the seat holder's memberships
+// answers nothing, however valid the pack is. `packIndex` is the answer to "which pack should I even look at for
+// this username", and nothing more: see its note below.
 
 import { tier, TIERS } from "./tiers.js";
 
@@ -18,6 +23,29 @@ const USER = /^[A-Za-z0-9_.-]{1,32}$/;           // a Whop username, not a displ
 
 const iso = (now) => new Date(now ?? Date.now()).toISOString();
 const norm = (u) => String(u ?? "").trim().replace(/^@/, "").toLowerCase();
+
+// Where to look, never who is allowed. A seat is only real if Whop's own metadata still lists it, so the server
+// reads every pack this names straight from Whop before anyone is coached: a stale entry costs one read and grants
+// nothing, and an entry that is missing costs a seat holder their coach mode until the pack is touched again. It is
+// therefore derived state — rebuildable from the packs' metadata — which is why the in-memory default is enough for
+// one process and the tests, and a host that outlives a process passes a KV-backed index with the same three
+// methods, exactly as it does for the deal and thread stores.
+export function packIndex() {
+  const by = new Map();
+  return {
+    async for(user) { return [...(by.get(norm(user)) ?? [])]; },
+    async remember(user, membership) {
+      const u = norm(user);
+      if (!u || !membership) return;
+      by.set(u, [...new Set([...(by.get(u) ?? []), membership])]);
+    },
+    async forget(user, membership) {
+      const u = norm(user);
+      const left = (by.get(u) ?? []).filter((id) => id !== membership);
+      if (left.length) by.set(u, left); else by.delete(u);
+    },
+  };
+}
 
 export const seatsOf = (membership) => membership?.metadata?.seats ?? [];
 export const swapsOf = (membership) => membership?.metadata?.seat_swaps ?? [];
@@ -81,6 +109,16 @@ export function useSeat(membership, user, { now } = {}) {
   const day = iso(now).slice(0, 10);
   if (String(seat.last ?? "").slice(0, 10) === day) return null;
   return { seats: seats.map((s) => (s === seat ? { ...s, used: (s.used ?? 0) + 1, last: iso(now) } : s)) };
+}
+
+// Whose pack it is. The checkout's metadata carries the member who bought it; `user_id` is Whop's own answer to the
+// same question, and either will do. A pack with no buyer on it is nobody's, and `isBuyer` says no to everyone.
+export const buyerOf = (membership) =>
+  membership?.metadata?.member ?? membership?.user_id ?? membership?.user ?? null;
+
+export function isBuyer(membership, who) {
+  const buyer = buyerOf(membership);
+  return Boolean(buyer) && Boolean(who) && norm(buyer) === norm(who);
 }
 
 const VIEW_SEAT = ["user", "assigned", "used", "last"];

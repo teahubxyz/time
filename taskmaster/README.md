@@ -62,8 +62,19 @@ is 9.5% of a $5 ticket but 3.8% of a $100 one, so every logged deal carries what
 A team lead haggles for a seat pack within a per-seat floor, then assigns seats by Whop username. A Whop checkout
 has no quantity, so a pack is one membership and the seat list lives in that membership's metadata — no database.
 Swaps are allowed but rate-limited. **The buyer sees seats and usage, never anyone's chats**: usage is counted in
-days a seat was used, and `assertNoChats` in `src/seats.js` is what keeps a future field from adding them. An org
-that already runs a whop can install Taskmaster there and buy the pack as the app's plan instead.
+days a seat was used, and `assertNoChats` in `src/seats.js` is what keeps a future field from adding them. The
+seats routes are the buyer's alone — a membership id is not a password — and a caller says who they are with a
+thread, which is the server's own record of the member in it. An org that already runs a whop can install
+Taskmaster there and buy the pack as the app's plan instead.
+
+One thing the metadata cannot do is answer "which pack seats this person?". A seat holder holds no membership —
+the pack belongs to the lead who bought it — so asking Whop what that user holds answers nothing, and coach mode
+for a pack would only ever work for the buyer. `packIndex` in `src/seats.js` remembers which pack a username was
+seated on, and that is all it is: the server reads each pack it names straight from Whop before anyone is coached,
+so a stale pointer costs one read and grants nothing. It is derived state, rebuildable from the packs themselves.
+
+Whop answers membership queries to a user id and seat lists are written in usernames, so a thread carries both —
+`member`, the id, and `username` — and where the host knows only one it stands for both.
 
 If a creator recommends Taskmaster, Whop's affiliate codes pay them: a checkout configuration takes an
 `affiliate_code` and Whop pays the commission. There is no reseller cut here.
@@ -77,12 +88,23 @@ src/cards.js        the sealed quote card and the share card
 src/deallog.js      one line per deal, validated so prose cannot get in
 src/mode.js         haggle or coach, from Whop's answer; the two prompts
 src/seats.js        seat packs in membership metadata, and the buyer's view
-src/whop.js         the Whop client: checkouts with variant reuse, memberships, metadata
-src/webhook.js      the signed payment webhook, the only thing that unlocks coach mode
+src/whop.js         the Whop client: one variant per price, one configuration per deal, memberships, metadata
+src/webhook.js      the signed payment webhook, one of the two roads a confirmed payment arrives by
 src/experiments.js  the three experiments, bucketed by user
 src/voice.js        Venice, the one tool, the rate limit, no asterisk narration
 src/server.js       the routes
 src/index.js        where app secrets become dependencies
+
+test/dealdesk.test.js  the catalog's prices and fees, the anchor, the floor, earned concessions, the round cap,
+                       the two honesty refusals, and a tier switch that is no way round a floor
+test/cards.test.js     the seal: a card that came back edited buys nothing. And the share card
+test/deallog.test.js   one line per deal, validated; prose cannot get in; the summary the operator reads
+test/mode.test.js      "Paid $100" does not buy coaching. Memberships, seat lists, the two prompts
+test/seats.test.js     assignment, swap limits, usage in days, the buyer view, the pack index
+test/webhook.test.js   signed, tampered, replayed, forged, repeated, and a payment short of the agreed price
+test/whop.test.js      the live guard, the inline plan, variant reuse with per-deal metadata, the affiliate code
+test/voice.test.js     no uncensored model, no asterisk narration, the rate limit, the bucketed experiments
+test/flow.test.js      the whole thing: greet, haggle, quote card, payment (webhook or return), coach mode, seats
 ```
 
 `npm test` runs it all: no dependencies, no network, no Whop.
@@ -105,7 +127,12 @@ Card #66 touches nothing on Whop: no checkout configuration, no variant, no depl
 change, until the operator approves the Whop previews. `src/whop.js` therefore refuses every write unless it is
 constructed with `live: true` (`TASKMASTER_WHOP_LIVE=on`), and the tests run against an injected `fetch`.
 
-Four things need confirming against Whop's docs before this runs for real, and each is one line to correct:
+Five things need confirming against Whop's docs before this runs for real, and each is one line to correct:
+
+- **That a configuration can name an existing plan** (`plan_id`) rather than carrying an inline one. That is how a
+  variant is reused: the plan is created once per price, and every later deal gets its own configuration on it,
+  because a configuration's metadata is what maps the payment back to a member, a thread and a deal. If Whop wants
+  the inline plan repeated instead, that is the line to change; the per-deal configuration stays either way.
 
 - **Daily billing** for the `daily` and `checkins` tiers. Whop's membership API mentions daily billing, so it looks
   supported, but `checkout()` refuses a renewal tier until it is passed `dailyBilling: "confirmed"`.

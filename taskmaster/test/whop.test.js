@@ -56,18 +56,43 @@ test("the checkout's metadata maps the payment back to the member, the thread an
   assert.equal(out.metadata.app, APP);
 });
 
-test("matching variants are reused instead of created per deal", async () => {
+test("matching deals reuse the variant, and each gets its own configuration", async () => {
   const f = fake();
   const w = whop({ apiKey: "k", fetch: f, live: true, store: memoryStore() });
   const a = await w.checkout({ tier: "sprint", price: 80, member: "ann", thread: "t1", deal: "d1" });
   const b = await w.checkout({ tier: "sprint", price: 80, member: "bob", thread: "t2", deal: "d2" });
-  assert.equal(f.calls.length, 1, "the second deal landed on the same number, so the same variant");
-  assert.equal(b.reused, true);
-  assert.equal(b.url, a.url);
-  assert.equal(b.metadata.deal, "d2", "but the metadata is this deal's");
-  await w.checkout({ tier: "sprint", price: 92, member: "cy", thread: "t3", deal: "d3" });
-  assert.equal(f.calls.length, 2, "a different price is a different variant");
+
+  // the variant is made once: the second deal landed on the same number, so it names the plan the first one made
   assert.equal(a.variant, variantKey("sprint", 80));
+  assert.equal(b.variant, a.variant);
+  assert.equal(f.calls[0].body.plan.initial_price, 80, "the first deal carries the inline plan");
+  assert.equal(f.calls[0].body.plan_id, undefined);
+  assert.equal(f.calls[1].body.plan_id, "plan_1", "the second names it instead of making another");
+  assert.equal(f.calls[1].body.plan, undefined);
+  assert.equal(b.reused, true);
+  assert.equal(b.plan, a.plan);
+
+  // but the configuration is per deal, because its metadata is what routes the payment back to a conversation.
+  // Handing bob ann's configuration would send his payment to a deal that is already paid.
+  assert.equal(f.calls.length, 2, "one configuration per deal");
+  assert.equal(f.calls[0].body.metadata.deal, "d1");
+  assert.equal(f.calls[1].body.metadata.deal, "d2");
+  assert.equal(f.calls[1].body.metadata.member, "bob");
+  assert.equal(f.calls[1].body.metadata.thread, "t2");
+  assert.equal(b.metadata.deal, "d2", "and what Whop holds is what the caller was told");
+
+  await w.checkout({ tier: "sprint", price: 92, member: "cy", thread: "t3", deal: "d3" });
+  assert.equal(f.calls[2].body.plan.initial_price, 92, "a different price is a different variant");
+});
+
+test("a variant the store already knows still buys nothing without live: true", async () => {
+  const f = fake();
+  const store = memoryStore();
+  await store.set(variantKey("sprint", 80), { plan: "plan_1", variant: variantKey("sprint", 80) });
+  const w = whop({ apiKey: "k", fetch: f, store });
+  await assert.rejects(() => w.checkout({ tier: "sprint", price: 80, member: "ann", thread: "t1", deal: "d1" }),
+    /refusing to create a checkout configuration/);
+  assert.equal(f.calls.length, 0, "a known variant is not a way round the guard: every deal still writes");
 });
 
 test("a daily tier is not created on an assumption about Whop's daily billing", async () => {
