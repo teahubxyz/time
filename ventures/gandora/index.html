@@ -618,7 +618,7 @@ Write the NEXT track. Keep continuity with the recent tracks unless the listener
 Return JSON:
 - title: a short evocative song title (never reuse one)
 - tags: the music prompt for a song model, 60-300 characters, comma-separated descriptors: genre, instruments, vocal style or "instrumental", mood, era, production notes. Concrete and musical, no sentences.
-- lyrics: full lyrics with [verse] / [chorus] / [bridge] section markers, 8-24 lines, or an empty string for instrumental.
+- lyrics: full lyrics with [verse] / [chorus] / [bridge] section markers, 16-32 lines for a two-minute track, or an empty string for instrumental.
 - bpm: integer 60-180 that fits the tags
 - key: like "A minor" or "F# major"
 - energy: 0 to 1
@@ -651,7 +651,7 @@ async function renderTrack(spec, onStatus) {
   if (!state.key) {                                     // shared worker: one call, audio back (Runware when the factory has a key, else Venice)
     const started = Date.now(), tick = setInterval(() => onStatus && onStatus(Math.round((Date.now() - started) / 1000), 0, false), 1000);
     try {
-      const body = { prompt: spec.tags, lyrics: spec.lyrics || "", duration: 60, bpm: spec.bpm, key: spec.key,
+      const body = { prompt: spec.tags, lyrics: spec.lyrics || "", duration: 120, bpm: spec.bpm, key: spec.key,
         seed: spec.rseed ?? (hash32((spec.seed || "") + "|" + (spec.title || "") + "|" + (spec.tags || "")) >>> 1), quality: spec.quality || "turbo" };
       let res;
       try { res = await venice("/render", body, { raw: true }); }
@@ -661,13 +661,13 @@ async function renderTrack(spec, onStatus) {
         const cost = parseFloat(res.headers.get("x-cost") || ""), seed = parseInt(res.headers.get("x-seed") || "");
         spec.renderer = res.headers.get("x-renderer") || "venice:ace-step-15";
         if (!isNaN(seed)) spec.rseed = seed;
-        spec.cost = isNaN(cost) ? 0.03 : cost;
+        spec.cost = isNaN(cost) ? 0.06 : cost;
         state.cost += spec.cost; localStorage.setItem(LS.cost, String(state.cost));
         return blob;
       }
     } finally { clearInterval(tick); }
   }
-  const body = { model: "ace-step-15", prompt: spec.tags, duration_seconds: 60, ...(spec.lyrics ? { lyrics_prompt: spec.lyrics } : {}) };
+  const body = { model: "ace-step-15", prompt: spec.tags, duration_seconds: 120, ...(spec.lyrics ? { lyrics_prompt: spec.lyrics } : {}) };
   const jobs = [await venice("/audio/queue", body)];
   const started = Date.now();
   let hedged = false;
@@ -681,7 +681,7 @@ async function renderTrack(spec, onStatus) {
       const type = res.headers.get("content-type") || "";
       if (/^audio\//i.test(type) || /octet-stream/i.test(type)) {
         const blob = await res.blob();
-        spec.cost = 0.03 * jobs.length; spec.renderer = "venice:ace-step-15";
+        spec.cost = 0.06 * jobs.length; spec.renderer = "venice:ace-step-15";
         state.cost += spec.cost; localStorage.setItem(LS.cost, String(state.cost));
         return blob;
       }
