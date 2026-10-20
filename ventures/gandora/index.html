@@ -446,7 +446,7 @@ async function playJob(job) {
   await job.done;
   if (state.current !== job) return;             // skipped while cooking
   $("#cover").classList.remove("cooking");
-  if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = "That one didn't come out of the oven. Skip to try the next."; return; }
+  if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = job.err.message + (/limit|budget/i.test(job.err.message) ? "" : " · skip to try the next"); return; }
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
   remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
