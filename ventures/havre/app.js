@@ -694,7 +694,7 @@ function selectCard(id, { talk = false, scroll = false, open } = {}) {
   if (was !== id) renderCard();
   if (!talk) return;
   setPane("chat");
-  if (scroll || narrow()) (narrow() ? $("#chat") : $("#studio")).scrollIntoView({ behavior: motion(), block: "start" });
+  if (scroll || narrow()) $("#studio").scrollIntoView({ behavior: motion(), block: "start" });   // on a phone: the tabs, then the chat under them
   if (!narrow()) $("#say").focus({ preventScroll: true });
   speakFirst();
 }
