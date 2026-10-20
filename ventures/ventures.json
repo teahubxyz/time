@@ -1,6 +1,17 @@
 {
  "ventures": [
   {
+   "slug": "gandora",
+   "name": "gandora",
+   "one_liner": "Type a seed, get a station: every song is written and rendered for you as it plays, every cover is drawn from the song's own settings, and your reactions steer what comes next.",
+   "url": "https://gandora.yolopreneur.lol/",
+   "pages": "https://gandora.yolopreneur.lol/",
+   "launched": "2026-10-20",
+   "status": "live",
+   "signups": 0,
+   "source": "yolopreneur"
+  },
+  {
    "slug": "slyng",
    "name": "SLYNG",
    "one_liner": "Sling sats and notes on nostr: aim at someone you follow, pull back for more, let go to send.",
