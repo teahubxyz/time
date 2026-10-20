@@ -399,7 +399,7 @@ function setPane(which) {
   const st = $("#studio");
   st.classList.toggle("pane-chat", S.pane === "chat");
   st.classList.toggle("pane-list", S.pane === "list");
-  if (S.pane === "chat") scrollLog();          // drawn while hidden, it couldn't scroll: now it can
+  if (S.pane === "chat") scrollLog(true);      // drawn while hidden, it couldn't scroll: now it can
 }
 function renderLeft() {
   for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"], ["harbor", "#lt-harbor", "#lp-harbor"]]) {
@@ -907,9 +907,18 @@ function put(el) {
   log.append(el);
   return el;
 }
-/** to the latest message: now, after the next paint, and once more when late layout (a pane shown, a font) has settled */
-function scrollLog() {
-  const l = $("#log"), go = () => { l.scrollTop = l.scrollHeight; };
+/**
+ * To the latest message: now, after the next paint, and once more when late layout (a pane shown, a font) has settled.
+ * Only if you were at the end already: scrolled up to read, the chat stays where you are while they talk. force: it
+ * was you (you sent something, opened the chat), so to the end whatever.
+ */
+let pinned = true;                                            // at the end of the chat, as of the last scroll
+const nearEnd = (l) => l.scrollHeight - l.scrollTop - l.clientHeight < 160;
+function scrollLog(force = false) {
+  const l = $("#log");
+  if (!force && !pinned) return;
+  const go = () => { l.scrollTop = l.scrollHeight; };
+  pinned = true;
   go(); requestAnimationFrame(go); setTimeout(go, 250);
 }
 /** a photo or clip that loads after the chat is drawn pushes the bottom down: follow it, if you were at the bottom */
@@ -1100,7 +1109,7 @@ function renderLog() {
   if (t && S.doing.has(t.id)) put(typingLine(t, S.doing.get(t.id)));
   renderJobs();
   followMedia(log);
-  scrollLog();
+  scrollLog(true);
 }
 
 /** a character texts in short bubbles; a plain chat answers in one piece */
@@ -1213,7 +1222,7 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
   saveThread(t);
   if (here(t)) {
     for (const el of $$("#log .suggest, #log .note")) el.remove();
-    if (!hidden) put(media ? mediaLine(c, said) : line(text, "me"));
+    if (!hidden) { put(media ? mediaLine(c, said) : line(text, "me")); scrollLog(true); }
   }
   const ctrl = new AbortController();
   S.busy.set(t.id, ctrl);
@@ -1832,7 +1841,7 @@ function askFor(kind) {
   if (refsOf(c).length) writeShot();
   if (narrow()) $("#ask").scrollIntoView({ behavior: motion(), block: "nearest" });
   else $("#studio").scrollIntoView({ behavior: motion(), block: "start" });
-  scrollLog();
+  scrollLog(true);
 }
 function closeAsk() { if (S.ask && S.ask.busy) return; S.ask = null; renderAsk(); }
 function renderAsk() {
@@ -2179,6 +2188,7 @@ function lightbox(src, alt) {
   d.append(h("img", { src, alt: alt || "" }));
   d.showModal();
 }
+$("#log").addEventListener("scroll", () => { pinned = nearEnd($("#log")); }, { passive: true });
 document.addEventListener("click", (e) => {
   const img = e.target && e.target.closest && e.target.closest(".log .pic img");
   if (img && img.src) { e.preventDefault(); lightbox(img.src, img.alt); }
@@ -2823,7 +2833,7 @@ async function hearVoice(blob, to) {
   if (blob.size < 600) { toast("That voice note was too short to hear."); return; }
   const id = await M.put(blob);
   const note = put(line("hearing your voice note…", "havre", "typing"));
-  scrollLog();
+  scrollLog(true);
   try {
     await loadList("asr");
     const hm = hearModel(), ext = /mp4/.test(blob.type) ? "m4a" : /ogg/.test(blob.type) ? "ogg" : "webm";
@@ -2860,7 +2870,7 @@ async function showPhoto(file) {
   const sm = seeModel();
   if (!sm) { err("No Venice model can see photos right now."); return; }
   const note = put(line(`${sm.name} is looking at your photo…`, "havre", "typing"));
-  scrollLog();
+  scrollLog(true);
   try {
     const r = await new Venice(S.key).chat({ model: sm.id, maxTokens: 220, temperature: 0.2,
       messages: [{ role: "user", content: [{ type: "text", text: A.SEE_PROMPT }, { type: "image_url", image_url: { url: pic } }] }] });
