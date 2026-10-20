@@ -2558,8 +2558,13 @@ async function onTheirOwn(t) {
     settle(held, A.callCost(r.usage, model));
     held = 0;
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
-    const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
+    let { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
     const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
+    if (tempoEvery() === 1 && move === "nothing" && !lately && refsOf(c).length) {            // every round means every round: a photo, then
+      const sr = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t.msgs), "", "photo", { adult: adultFor(c, t).ok }), maxTokens: 260, temperature: 0.8 });
+      shot = A.cleanText(sr.text);
+      if (shot) move = "photo";
+    }
     if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once per chat
       if (!noPicSaid.has(t.id) && here(t)) { noPicSaid.add(t.id); err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
     } else if (move === "photo" && !lately) await ownPhoto(t, shot);
@@ -2588,9 +2593,10 @@ async function ownPhoto(t, shot) {
   const adult = adultFor(c, t, shot).ok;                        // an adult character's can be adult (abilities.js adultCheck)
   const refs = refsOf(c), tried = [];
   let pm = adult ? adultPhotoModel() : photoModel(), why = null;
+  if (!pm) why = new Error("no photo model is available (abilities → photos).");
   while (pm && refs.length && tried.length < 2) {               // no picture of them yet: nothing to send
     const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
-    if (!reserve(price)) break;                                 // set aside first: nothing else can spend it meanwhile
+    if (!reserve(price)) { why = new Error(`it doesn't fit in what's left of today's allowance (${A.usd(price)} for the photo; the allowance is under abilities).`); break; }
     tried.push(pm.id);
     doing(t, "is taking a photo…");
     try {
