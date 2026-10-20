@@ -1228,8 +1228,11 @@ astra.tm.label = lambda n, name: labelled80.append((n, name))
 astra.tm.new_issue = lambda title, body, labels: made80.append((title, body, labels)) or {"number": 90 + len(made80)}
 import base64 as _b8172  # noqa: E402
 settled80 = []   # the outcomes log (#172); empty, so nothing is summarised over the table
+spine80 = []     # the spine's open issues (#173); empty, so the ranking is Time's own cards
 def gh80(method, path, body=None, **k):
-    """The outcomes log is the only file this world serves; anything else is a fresh repo's 404."""
+    """The outcomes log and the spine's issue list are all this world serves; anything else is a fresh repo's 404."""
+    if f"/repos/{astra.SPINE}/issues" in path:
+        return list(spine80)
     if rt.OUTCOMES not in path:
         raise RuntimeError(f"{method} {path} -> 404: not found")
     return {"content": _b8172.b64encode("".join(json.dumps(r) + "\n" for r in settled80).encode()).decode()}
@@ -1388,6 +1391,49 @@ astra.tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500")
 assert astra.outcomes() == [], "the outcomes log is context: unreadable, the table goes up without it"
 astra.tm.gh = gh80
 print("ALL OK 172")
+
+# 173 the spine's own cards are ranked beside Time's and never queued: a worker here builds in this repo only
+sp173 = rt.spine([iss80(4, "Tea MCP: havre_new", created="2026-10-01T00:00:00Z"), iss80(9, "Just an idea", body="no done line"),
+                  iss80(12, "Pages server: directory listings", labels=["needs-human"])])
+assert [c["key"] for c in sp173] == ["teahub#4", "teahub#12"], "a DONE line is all it takes; the key carries the spine's number"
+assert rt.spine([iss80(4, "x")], "spine")[0]["key"] == "spine#4", "the prefix follows TIME_SPINE"
+s173 = sp173[0]
+assert s173["n"] is None and s173["actionable"] is False and not s173["lined_up"], s173
+assert s173["why_not"] == "spine: not queued (Time builds in this repo only)" and s173["unblocks"] == 0
+assert s173["kind"] == "feature" and s173["created"] == "2026-10-01T00:00:00Z"
+# ranked with Time's own cards, and out of every path that queues, sends to the cloud or promotes
+r173 = rt.rank(cands80 + sp173, {**assess80, "teahub#4": {"kind": "feature", "value": 5, "size": "S", "why": "the MCP"}},
+               live80, {}, today80)
+assert [r["key"] for r in r173] == ["teahub#4", "#2", "#1", "#5", "#7", "#9", "teahub#12"], [(r["key"], r["score"]) for r in r173]
+assert [r["key"] for r in rt.pick(r173, live80, 10.0, 3)] == ["#1", "#5"], "the top scorer is the spine's: never queued"
+assert [r["key"] for r in rt.pick_cloud(r173, cl80, 0)] == ["#1"] and rt.order(r173) == [2, 1, 5, 7, 9]
+t173 = rt.table(r173, rt.pick(r173, live80, 10.0, 2), "live")
+assert "| 1 | teahub#4 Tea MCP: havre_new |" in t173 and rt.SPINE_WHY_NOT in t173, t173
+# Astra reads them through the same API: never a PR, and every row checked against the labels the query names (#137)
+spine80[:] = [iss80(4, "Tea MCP: havre_new"), iss80(5, "Gitea look", labels=["card"]), iss80(9, "Just an idea", body="no done line"),
+              {"number": 13, "title": "A PR of the spine", "body": "DONE: x", "labels": [], "pull_request": {"url": "u"}}]
+assert [i["number"] for i in astra.spine_issues()] == [4, 5, 9], "a PR is not an issue"
+assert [i["number"] for i in astra.spine_issues("state=open&labels=card")] == [5], "a label filter is checked on every row"
+labelled80.clear(); made80.clear()
+astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert "teahub#4 Tea MCP: havre_new" in said80[-1][1] and rt.SPINE_WHY_NOT in said80[-1][1], said80[-1][1]
+assert "### teahub#4:" in asked80[-1][2] and "teahub#9" not in asked80[-1][2], "no DONE line, no candidate"
+assert "teahub#13" not in asked80[-1][2] and "card of the spine" in asked80[-1][1], "the seat is told what the prefix means"
+assert labelled80 == [(1, "queued"), (5, "queued")], "the spine's cards are never labelled from here"
+assert said80[-1][2]["order"] == [2, 1, 5, 7, 9] and said80[-1][2]["queued"] == 2, said80[-1][2]
+# a read failure on the spine is a log line, not a failed tick
+real173 = astra.tm.gh
+astra.tm.gh = lambda method, path, body=None, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500")) \
+    if f"/repos/{astra.SPINE}/issues" in path else real173(method, path, body, **k)
+out173 = io.StringIO()
+with contextlib.redirect_stdout(out173):
+    assert astra.spine_candidates() == [], "the spine is context, not a dependency"
+    assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert "spine issues unreadable" in out173.getvalue(), out173.getvalue()
+assert said80[-1][2]["queued"] == 2 and "teahub#" not in said80[-1][1], "the day's ranking goes up without the spine"
+astra.tm.gh, spine80[:] = real173, []
+print("ALL OK 173")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib
