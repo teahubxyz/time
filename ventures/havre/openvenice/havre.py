@@ -1004,7 +1004,8 @@ export function toActionsYaml(wf: Workflow): string {
   lines.push(`          node-version: 22`)
   if (needsFfmpeg) {
     lines.push(`      - name: ffmpeg, for Cover + Track`)
-    lines.push(`        run: command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null || apt-get install -y -qq ffmpeg >/dev/null`)
+    lines.push(`        run: |`)
+    lines.push(`          command -v ffmpeg >/dev/null || sudo apt-get install -y -qq ffmpeg >/dev/null || apt-get install -y -qq ffmpeg >/dev/null`)
   }
   lines.push(`      - name: the runner`)
   lines.push(`        run: |`)
@@ -1016,7 +1017,8 @@ export function toActionsYaml(wf: Workflow): string {
     lines.push(`      - name: ${q(`${n.id} (${s?.label ?? n.data.nodeType})`)}`)
     if (n.data.nodeType === 'textInput') {
       // the dispatch input, if one was given, else what the canvas holds
-      lines.push(`        run: printf '%s' "$INPUT" > out/${n.id}.txt && echo "${n.id}: $INPUT"`)
+      lines.push(`        run: |`)
+      lines.push(`          printf '%s' "$INPUT" > out/${n.id}.txt && echo "${n.id} = $INPUT"`)
       lines.push(`        env:`)
       lines.push(`          INPUT: \${{ inputs.${n.id} }}`)
     } else {
