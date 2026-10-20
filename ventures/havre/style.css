@@ -500,7 +500,8 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   .chat .back { display: none; }
   .grid { margin-right: 0; }
   .chat { position: static; max-height: none; }
-  .log, .chat.asking .log { height: max(320px, 58vh); }
+  /* the conversation takes what the screen has left under the tabs and above the composer */
+  .log, .chat.asking .log { height: max(360px, calc(100dvh - 300px)); }
   .ask { max-height: none; }
 }
 @media (max-width: 640px) {
