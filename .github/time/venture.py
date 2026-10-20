@@ -1,6 +1,7 @@
 """Venture loop on Teahub: trending repos -> pitches -> board -> launch plan -> launch page on Pages -> 7-day signal.
 
     python3 .github/time/venture.py tick      # advance the venture cards (cron, or on demand)
+    python3 .github/time/venture.py stage <card> [<at>]   # one stage of one card (venture-loop.yml walks the loop this way)
 
 One venture a day, built for quality: the day's card starts only once every other venture card is launched or held
 (one at a time). One seat, the lead (TIME_VENTURE_LEAD, opus), runs it: a research round over the week's trending repos
@@ -2125,5 +2126,38 @@ def _build_on_pages(card: dict, done: str, spec: str, root: str = "") -> dict:
             return super().call(name, a)
     return tm.venice_work(card, done, spec, hands_cls=PagesHands)
 
+def stage(args: list[str]) -> int:
+    """One stage of one card, for a workflow that walks the loop step by step (.github/workflows/venture-loop.yml, which
+    Havre's /open shows as a chain of nodes, one per stage):
+
+        python3 .github/time/venture.py stage <card> [<at>]   # advance card #<card> once, only if it stands at <at>
+        python3 .github/time/venture.py stage new [<title>]   # open a venture card (today's, or the title given); prints its number
+
+    Exit 0 when the card advanced or stood elsewhere (a step that isn't due is not a failure), 1 when the stage errored.
+    `built` is a round (a check, then a fix or polish build): the workflow's step for it loops until the card leaves it.
+    """
+    signup_issues.cache_clear()
+    if not args or args[0] == "new":
+        titles = {c["title"] for c in venture_cards("all")}
+        print(new_card(args[1] if len(args) > 1 else next_title(titles))["number"])
+        return 0
+    n = int(args[0])
+    card = tm.gh("GET", f"/repos/{REPO}/issues/{n}")
+    cm = comments_of(n)
+    beats = tm.beats_of(cm)
+    at = stage_of(beats)
+    want = args[1] if len(args) > 1 else at
+    if at != want:
+        print(f"venture #{n} stands at {at}, not {want}: nothing to do")
+        return 0
+    if not is_due(cm, beats):
+        print(f"venture #{n} at {at}: not due yet")
+        return 0
+    r = advance(card, cm, beats, heavy_ok=True)
+    print(f"venture #{n}: {at} -> {stage_of(tm.beats_of(comments_of(n)))} ({r})")
+    return 1 if r == "error" else 0
+
+
 if __name__ == "__main__":
-    sys.exit({"tick": tick}[sys.argv[1] if len(sys.argv) > 1 else "tick"]())
+    _cmd = sys.argv[1] if len(sys.argv) > 1 else "tick"
+    sys.exit(stage(sys.argv[2:]) if _cmd == "stage" else {"tick": tick}[_cmd]())
