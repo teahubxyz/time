@@ -5,10 +5,14 @@ import { validateCard } from "../card.js";
 
 test("every workflow has a command, doors and a usage line", () => {
   for (const w of W.WORKFLOWS) {
-    assert.ok(w.id && w.command && w.title && w.about && w.usage, w.id);
+    assert.ok(w.id && w.title && w.about && w.usage, w.id);
     assert.ok(w.doors.length >= 1, w.id);
+    assert.ok(w.command || !w.doors.includes("chat"), w.id + ": a chat door needs a command");
     assert.equal(W.byId(w.id), w);
-    assert.equal(W.byCommand(w.command), w);
+    if (w.command) assert.equal(W.byCommand(w.command), w);
+  }
+  assert.equal(W.byCommand(""), null);
+  for (const w of []) {
   }
 });
 
