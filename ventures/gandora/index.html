@@ -817,11 +817,11 @@ $("#libBtn").addEventListener("click", async () => {
   const list = await db.all(); const g = $("#libGrid"); g.innerHTML = "";
   $("#libEmpty").classList.toggle("hidden", list.length > 0);
   const cur = state.current && state.current.spec;
-  const tile = (t) => {
+  const tile = (t, inKept = false) => {
     const d = document.createElement("div"); d.className = "t" + (cur && t.id === cur.id ? " on" : "");
     const art = document.createElement("div"); art.className = "art";
     const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec); art.append(c);
-    if (t.kept) art.append(Object.assign(document.createElement("span"), { className: "kept", textContent: "KEPT" }));
+    if (t.kept && !inKept) art.append(Object.assign(document.createElement("span"), { className: "kept", textContent: "KEPT" }));
     const re = reactionEmoji(t.spec.reaction).trim();
     if (re) art.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
     d.append(art, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key}${(t.plays || 0) > 1 ? " · ×" + t.plays : ""}`, title: t.spec.seed }));
@@ -838,7 +838,7 @@ $("#libBtn").addEventListener("click", async () => {
     return h;
   };
   const kept = list.filter((t) => t.kept);
-  if (kept.length) { g.append(head("KEPT", "", kept.length)); for (const t of kept) g.append(tile(t)); }
+  if (kept.length) { g.append(head("KEPT", "", kept.length)); for (const t of kept) g.append(tile(t, true)); }
   const groups = new Map();
   for (const t of list) { const k = t.spec.stationId || "seed:" + t.spec.seed; if (!groups.has(k)) groups.set(k, []); groups.get(k).push(t); }
   for (const [k, rows] of groups) {
