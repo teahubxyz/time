@@ -239,7 +239,7 @@ input,textarea{font:inherit;color:inherit}
     <div class="hint" id="seedHint">a mood, a line, a place, a word</div>
   </form>
   <div id="stations" class="hidden"><h3>YOUR STATIONS</h3><div class="row" id="stationRow"></div></div>
-  <div id="keyRow"><button class="nav" id="libBtn2" type="button">LIBRARY</button><button class="nav" id="tasteBtn2" type="button">TASTE</button><button id="keyBtn" type="button">shared budget · add a venice key</button></div>
+  <div id="keyRow"><button class="nav" id="libBtn2" type="button">LIBRARY</button><button class="nav" id="tasteBtn2" type="button">TASTE</button><button id="keyBtn" type="button" class="hidden">shared budget · add a venice key</button></div>
   <div id="keyBox" class="hidden">
     <p>Optional. Without a key, gandora runs on a shared budget through inference.yolopreneur.lol (a few tracks a day per person). With your own Venice key it goes straight to api.venice.ai from this browser and the key goes nowhere else.</p>
     <input id="keyIn" placeholder="sk-…" spellcheck="false">
@@ -1105,6 +1105,7 @@ $("#sayRow").addEventListener("submit", (e) => { e.preventDefault(); const v = $
 /* key box */
 function openKey() { $("#keyIn").value = state.key; $("#djIn").value = state.dj; $("#keyBox").classList.remove("hidden"); $("#keyIn").focus(); }
 $("#keyBtn").addEventListener("click", openKey);
+if (new URLSearchParams(location.search).has("key")) $("#keyBtn").classList.remove("hidden");   // key box is parked for now
 $("#keyCancel").addEventListener("click", () => $("#keyBox").classList.add("hidden"));
 $("#keySave").addEventListener("click", () => {
   state.key = $("#keyIn").value.trim(); state.dj = $("#djIn").value.trim() || "claude-haiku-5-5";
