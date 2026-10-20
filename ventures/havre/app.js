@@ -6,6 +6,7 @@ import * as M from "./media.js";
 import * as T from "./threads.js";
 import * as R from "./memory.js";
 import * as W from "./workflows.js";
+import * as B from "./backup.js";
 import { Venice, VeniceError } from "./venice.js";
 import CAST from "./cast/index.js";
 
@@ -3245,9 +3246,50 @@ function forgetKey() {
 }
 
 // ---------- import ----------
+/** the pictures and clips with these ids, as data: URLs (the ones this browser still has) */
+async function mediaAsData(ids) {
+  const out = {};
+  for (const id of ids) {
+    const blob = await M.get(id);
+    if (!blob) continue;
+    out[id] = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => resolve(""); r.readAsDataURL(blob); });
+    if (!out[id]) delete out[id];
+  }
+  return out;
+}
+/**
+ * A bundle (one character with memory and chats, or everything) put back: cards not already here are added, notes are
+ * appended to what's remembered, chats by id are added if missing, pictures are put back by id. Never replaces.
+ */
+async function restoreBundle(bundle) {
+  const m = B.merge(bundle, { cards: S.cards, memory: local.get(K.memory, {}) || {}, threads: S.threads });
+  for (const c of m.addCards) addCard(c, { select: false });
+  for (const [id, mem] of Object.entries(m.memory)) if (S.cards.some((c) => c.id === id)) saveMemory(id, mem);
+  let pics = 0;
+  for (const [id, d] of Object.entries(bundle.media)) { try { await M.put(dataBlob(d), id); pics++; } catch { /* that one's gone */ } }
+  for (const t of m.addThreads) { if (S.cards.some((c) => c.id === t.card) || t.card === PLAIN) { S.threads[t.id] = t; saveThread(t); } }
+  if (bundle.settings) {
+    if (bundle.settings.abilities && typeof bundle.settings.abilities === "object") { S.ab = { ...S.ab, ...bundle.settings.abilities, clip: { ...S.ab.clip, ...(bundle.settings.abilities.clip || {}) } }; saveAb(); }
+    if (bundle.settings.voiceOn && typeof bundle.settings.voiceOn === "object") { S.voiceOn = { ...S.voiceOn, ...bundle.settings.voiceOn }; local.set(K.voiceOn, S.voiceOn); }
+  }
+  renderAll();
+  const bits = [`${m.addCards.length} character${m.addCards.length === 1 ? "" : "s"}`, `${m.addThreads.length} chat${m.addThreads.length === 1 ? "" : "s"}`, `${pics} picture${pics === 1 ? "" : "s"}`];
+  const skipped = [m.skippedCards && `${m.skippedCards} character${m.skippedCards === 1 ? "" : "s"}`, m.skippedThreads && `${m.skippedThreads} chat${m.skippedThreads === 1 ? "" : "s"}`].filter(Boolean);
+  toast(`Restored ${bits.join(", ")}${skipped.length ? "; already here: " + skipped.join(", ") : ""}.`);
+}
 async function importFile(file) {
   const st = $("#impstatus");
   try {
+    if (/\.json$/i.test(file.name) && file.size <= 200 * 1024 * 1024) {
+      let parsed = null;
+      try { parsed = JSON.parse(await file.text()); } catch { /* not a bundle, then */ }
+      const bundle = B.readBundle(parsed);
+      if (bundle) {
+        if ($("#importdlg").open) $("#importdlg").close();
+        await restoreBundle(bundle);
+        return;
+      }
+    }
     if (file.size > 12 * 1024 * 1024) throw new Error("That file is too big for a character card.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { card: c, kind } = C.fromAny(bytes);
@@ -3558,6 +3600,17 @@ async function exportAs(kind) {
     else if (kind === "v3") download(C.fileName(c, "card.json"), JSON.stringify(C.toCharacterCardV3(abs), null, 1) + "\n", "application/json");
     else if (kind === "prompt") download(C.fileName(c, "txt"), C.systemPrompt(c) + "\n", "text/plain");
     else if (kind === "png") download(C.fileName(c, "png"), new Blob([C.toPngCard(await cardPng(c), abs)], { type: "image/png" }), "image/png");
+    else if (kind === "full" || kind === "all") {
+      if (c.plain && kind === "full") throw new Error("A plain chat has no card to export.");
+      const threads = Object.values(S.threads).map((t) => ({ ...t }));
+      const mine = kind === "all" ? threads : threads.filter((t) => t.card === c.id);
+      toast(`Gathering ${kind === "all" ? "everything" : c.name + "'s pictures"}…`);
+      const media = await mediaAsData(B.mediaIds(mine));
+      const bundle = kind === "all"
+        ? B.bundleAll({ cards: S.cards.map(absolute), memory: local.get(K.memory, {}) || {}, threads, media, settings: { abilities: S.ab, model: S.model, voiceOn: S.voiceOn } })
+        : B.bundleOne(abs, { memory: memoryOf(c.id), threads: mine, media });
+      download(B.bundleName(kind === "all" ? null : c), JSON.stringify(bundle) + "\n", "application/json");
+    }
     toast("Made in your browser. Nothing was uploaded.");
   } catch (e) { toast(e.message); }
 }
@@ -3715,6 +3768,7 @@ function bind() {
     openCard("edit");
   });
   $("#nc-import").addEventListener("click", () => $("#import").click());
+  $("#restore").addEventListener("click", () => $("#import").click());
   $("#import").addEventListener("click", () => { $("#impstatus").textContent = ""; $("#impstatus").classList.remove("bad"); $("#importdlg").showModal(); });
   $("#impcancel").addEventListener("click", () => $("#importdlg").close());
   $("#imp-paste").addEventListener("click", importText);
