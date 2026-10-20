@@ -20,35 +20,48 @@ function reactionWeight(spec, row) {
 }
 
 /* ---------- the net ---------- */
+// inputs: 5 numbers (tempo, energy, key on the circle, minor) + WORDS hashed slots for the song's words: the DJ's tags
+// (full weight), the title (half) and the lyrics (a third). Signed hashing, so "wobble bass" and "harmonica" land in
+// slots of their own and the net can learn them; the words block is unit-normalised so a wordy song isn't louder.
+const NUM = 5, WORDS = 48, NIN = NUM + WORDS, NH = 12;
+const tokens = (s) => String(s || "").toLowerCase().replace(/\[[^\]]*\]/g, " ").split(/[^a-z0-9#+']+/).filter((w) => w.length > 1 && !STOP.has(w));
+const STOP = new Set(["the","and","a","an","of","to","in","on","with","for","is","it","my","me","i","you","we","your","our","this","that","at","by","or","as","be","are","was","so","no","not","do","oh","yeah","la","na","from","into","up","down","out","all","just","like","im","its","dont","can","will"]);
 function feats(spec) {
   const bpm = Math.min(180, Math.max(60, +spec.bpm || 100)), en = Math.min(1, Math.max(0, Number.isFinite(+spec.energy) ? +spec.energy : 0.5));
   const h = keyHue(spec.key) * Math.PI / 180, minor = /m(in|inor)?\b/i.test(spec.key || "") && !/maj/i.test(spec.key || "");
-  return [(bpm - 60) / 60 - 1, en * 2 - 1, Math.cos(h), Math.sin(h), minor ? 1 : -1];
+  const x = new Array(NIN).fill(0);
+  x[0] = (bpm - 60) / 60 - 1; x[1] = en * 2 - 1; x[2] = Math.cos(h); x[3] = Math.sin(h); x[4] = minor ? 1 : -1;
+  const add = (words, w) => { for (const t of new Set(words)) { const hh = hash32("w:" + t); x[NUM + hh % WORDS] += ((hh >>> 16) & 1 ? 1 : -1) * w; } };
+  add(tokens(spec.tags), 1); add(tokens(spec.title), 0.5); add(tokens(spec.lyrics), 0.33);
+  let n = 0; for (let i = NUM; i < NIN; i++) n += x[i] * x[i]; n = Math.sqrt(n) || 1;
+  for (let i = NUM; i < NIN; i++) x[i] = x[i] / n * 1.5;
+  return x;
 }
 class Net {
   constructor(seed = 7) {
-    const r = prng(seed), g = () => (r() - 0.5) * 1.2;
-    this.W1 = Array.from({ length: 8 }, () => Array.from({ length: 5 }, g)); this.b1 = Array.from({ length: 8 }, g);
-    this.W2 = Array.from({ length: 8 }, g); this.b2 = 0; this.n = 0;
+    const r = prng(seed), g = () => (r() - 0.5) * 0.8;
+    this.W1 = Array.from({ length: NH }, () => Array.from({ length: NIN }, g)); this.b1 = Array.from({ length: NH }, g);
+    this.W2 = Array.from({ length: NH }, g); this.b2 = 0; this.n = 0;
   }
   forward(x) {
-    const h = this.W1.map((w, i) => Math.tanh(w.reduce((s, wi, j) => s + wi * x[j], this.b1[i])));
-    const z = h.reduce((s, hi, i) => s + hi * this.W2[i], this.b2);
+    const h = this.W1.map((w, i) => { let s = this.b1[i]; for (let j = 0; j < NIN; j++) s += w[j] * x[j]; return Math.tanh(s); });
+    let z = this.b2; for (let i = 0; i < NH; i++) z += h[i] * this.W2[i];
     return { h, y: 1 / (1 + Math.exp(-z)) };
   }
   predict(spec) { return this.forward(feats(spec)).y; }
   /* samples: [{ x, t (0|1), w }] — weighted logistic loss, plain SGD, a touch of L2 so a handful of taps stay smooth */
-  train(samples, epochs = 240, lr = 0.08) {
+  train(samples, epochs = 200, lr = 0.06) {
     this.n = samples.length; if (!samples.length) return this;
     const r = prng(99);
     for (let e = 0; e < epochs; e++) {
       const order = samples.map((s, i) => [r(), i]).sort((a, b) => a[0] - b[0]).map((a) => a[1]);
       for (const i of order) {
         const { x, t, w } = samples[i], { h, y } = this.forward(x), d = (y - t) * w * lr;
-        for (let k = 0; k < 8; k++) {
+        for (let k = 0; k < NH; k++) {
           const dh = d * this.W2[k] * (1 - h[k] * h[k]);
-          this.W2[k] -= d * h[k] + lr * 1e-3 * this.W2[k];
-          for (let j = 0; j < 5; j++) this.W1[k][j] -= dh * x[j] + lr * 1e-3 * this.W1[k][j];
+          this.W2[k] -= d * h[k] + lr * 2e-3 * this.W2[k];
+          const row = this.W1[k];
+          for (let j = 0; j < NIN; j++) row[j] -= dh * x[j] + lr * 2e-3 * row[j];
           this.b1[k] -= dh;
         }
         this.b2 -= d;
@@ -77,16 +90,27 @@ const brainNow = () => brains.station || brains.all;
 /* ---------- the net's picture in words, for the DJ ---------- */
 function tasteText() {
   const net = brainNow(); if (!net) return "";
+  const rows = brains.rows.filter((t) => !state.stationId || t.spec.stationId === state.stationId || !brains.station);
+  // the grid is scored with the station's own wording, so the words block is live, not blank
+  const sample = rows.slice(0, 6).map((t) => t.spec.tags).filter(Boolean);
   const cells = [];
   for (const bpm of [70, 90, 110, 130, 150, 170]) for (const en of [0.2, 0.5, 0.8]) for (const key of ["C major", "A minor"]) {
-    const p = net.predict({ bpm, energy: en, key });
+    let p = 0; for (const tags of sample.length ? sample : [""]) p += net.predict({ bpm, energy: en, key, tags }); p /= (sample.length || 1);
     cells.push({ bpm, en, key, p });
   }
   cells.sort((a, b) => b.p - a.p);
   const word = (c) => `~${c.bpm} bpm, ${c.en < 0.4 ? "calm" : c.en < 0.7 ? "mid" : "high"} energy, ${/minor/.test(c.key) ? "minor" : "major"} (${Math.round(c.p * 100)}%)`;
   const top = cells.slice(0, 3).map(word).join("; "), low = cells.slice(-2).map(word).join("; ");
+  // which words the net warms to: score each tag word by the net's response when it is the only word present
+  const vocab = new Map(); for (const t of rows) for (const w of tokens(t.spec.tags)) vocab.set(w, (vocab.get(w) || 0) + 1);
+  const base = { bpm: cells[0].bpm, energy: cells[0].en, key: cells[0].key };
+  const p0 = net.predict({ ...base, tags: "" });
+  const scored = [...vocab.keys()].filter((w) => vocab.get(w) >= 2).map((w) => [w, net.predict({ ...base, tags: w }) - p0]).sort((a, b) => b[1] - a[1]);
+  const likes = scored.slice(0, 6).filter((s) => s[1] > 0.02).map((s) => s[0]).join(", "), dislikes = scored.slice(-4).filter((s) => s[1] < -0.02).map((s) => s[0]).join(", ");
   const which = brains.station ? "this station" : "all their stations";
-  return `Taste model (a small net trained on the listener's reactions and play counts across ${which}, ${net.n} signals): most likely to land: ${top}. Least likely: ${low}. Aim near the likely region unless the listener's own words say otherwise; keep some variety.`;
+  return `Taste model (a small net trained on the listener's reactions and play counts across ${which}, ${net.n} signals): most likely to land: ${top}. Least likely: ${low}.` +
+    (likes ? ` Words it warms to: ${likes}.` : "") + (dislikes ? ` Words it cools on: ${dislikes}.` : "") +
+    ` Aim near the likely region and lean on the warm words unless the listener's own words say otherwise; keep some variety.`;
 }
 const _djPromptBase = djPrompt;                                       // assignment, not a declaration: a declaration would hoist over this
 djPrompt = function () {
@@ -133,15 +157,18 @@ const guessText = (spec) => spec && spec.guess != null ? ` · ${Math.round(spec.
 function drawBrain(canvas, net, spec, pulse = 0) {
   const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   ctx.clearRect(0, 0, W, H); ctx.fillStyle = "#121216"; ctx.fillRect(0, 0, W, H);
-  const cols = [W * 0.14, W * 0.5, W * 0.86], ins = ["tempo", "energy", "key·x", "key·y", "minor"];
-  const yI = (i) => H * (0.15 + 0.7 * i / 4), yH = (i) => H * (0.08 + 0.84 * i / 7), yO = H / 2;
+  const cols = [W * 0.16, W * 0.5, W * 0.86], ins = ["tempo", "energy", "key·x", "key·y", "minor", "words"];
+  const yI = (i) => H * (0.12 + 0.76 * i / 5), yH = (i) => H * (0.07 + 0.86 * i / (NH - 1)), yO = H / 2;
   if (!net) { ctx.fillStyle = "#8a8a96"; ctx.font = `${W * 0.035}px -apple-system, system-ui, sans-serif`; ctx.textAlign = "center"; ctx.fillText("react to three tracks and the brain wakes up", W / 2, H / 2); return; }
-  const x = spec ? feats(spec) : [0, 0, 0, 0, 0], { h, y } = net.forward(x);
-  const maxW = Math.max(1e-6, ...net.W1.flat().map(Math.abs), ...net.W2.map(Math.abs));
-  // wires: alpha by weight, warm for positive, cold for negative
-  for (let k = 0; k < 8; k++) {
-    for (let j = 0; j < 5; j++) { const w = net.W1[k][j]; ctx.strokeStyle = `hsl(${w > 0 ? 44 : 220} 70% 60% / ${0.08 + 0.6 * Math.abs(w) / maxW})`; ctx.lineWidth = 1 + 2 * Math.abs(w) / maxW; ctx.beginPath(); ctx.moveTo(cols[0], yI(j)); ctx.lineTo(cols[1], yH(k)); ctx.stroke(); }
-    const w = net.W2[k]; ctx.strokeStyle = `hsl(${w > 0 ? 44 : 220} 70% 60% / ${0.08 + 0.6 * Math.abs(w) / maxW})`; ctx.lineWidth = 1 + 2 * Math.abs(w) / maxW; ctx.beginPath(); ctx.moveTo(cols[1], yH(k)); ctx.lineTo(cols[2], yO); ctx.stroke();
+  const x = spec ? feats(spec) : new Array(NIN).fill(0), { h, y } = net.forward(x);
+  // the words block is shown as one input: its activation is how much of the song's wording the net recognises
+  let wordsAct = 0; for (let j = NUM; j < NIN; j++) wordsAct += Math.abs(x[j]); wordsAct = Math.min(1, wordsAct / 3);
+  const shown = [...x.slice(0, NUM), wordsAct];
+  const wIn = (k, j) => j < NUM ? net.W1[k][j] : net.W1[k].slice(NUM).reduce((s, v, i) => s + v * (x[NUM + i] || 0), 0) * 2;
+  const maxW = Math.max(1e-6, ...net.W1.flatMap((row, k) => ins.map((_, j) => Math.abs(wIn(k, j)))), ...net.W2.map(Math.abs));
+  for (let k = 0; k < NH; k++) {
+    for (let j = 0; j < 6; j++) { const w = wIn(k, j); ctx.strokeStyle = `hsl(${w > 0 ? 44 : 220} 70% 60% / ${0.06 + 0.6 * Math.abs(w) / maxW})`; ctx.lineWidth = 0.8 + 2 * Math.abs(w) / maxW; ctx.beginPath(); ctx.moveTo(cols[0], yI(j)); ctx.lineTo(cols[1], yH(k)); ctx.stroke(); }
+    const w = net.W2[k]; ctx.strokeStyle = `hsl(${w > 0 ? 44 : 220} 70% 60% / ${0.06 + 0.6 * Math.abs(w) / maxW})`; ctx.lineWidth = 0.8 + 2 * Math.abs(w) / maxW; ctx.beginPath(); ctx.moveTo(cols[1], yH(k)); ctx.lineTo(cols[2], yO); ctx.stroke();
   }
   const node = (cx, cy, r, a, label) => {
     const glow = Math.abs(a) * (1 + pulse);
@@ -149,8 +176,8 @@ function drawBrain(canvas, net, spec, pulse = 0) {
     ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.fillStyle = `hsl(${a >= 0 ? 44 : 220} ${40 + 50 * Math.abs(a)}% ${35 + 35 * Math.abs(a)}%)`; ctx.fill();
     if (label) { ctx.fillStyle = "#8a8a96"; ctx.font = `600 ${W * 0.026}px ui-monospace, Menlo, monospace`; ctx.textAlign = "right"; ctx.fillText(label, cx - r - 8, cy + 4); }
   };
-  x.forEach((v, j) => node(cols[0], yI(j), W * 0.018, v, ins[j]));
-  h.forEach((v, k) => node(cols[1], yH(k), W * 0.02, v));
+  shown.forEach((v, j) => node(cols[0], yI(j), W * 0.018, v, ins[j]));
+  h.forEach((v, k) => node(cols[1], yH(k), W * 0.017, v));
   node(cols[2], yO, W * 0.034, y * 2 - 1);
   ctx.fillStyle = "#ededf0"; ctx.font = `600 ${W * 0.03}px ui-monospace, Menlo, monospace`; ctx.textAlign = "left"; ctx.fillText(`${Math.round(y * 100)}%`, cols[2] + W * 0.05, yO + 5);
   ctx.fillStyle = "#8a8a96"; ctx.font = `${W * 0.024}px ui-monospace, Menlo, monospace`; ctx.fillText(spec ? "would like this" : "", cols[2] + W * 0.05, yO + 5 + W * 0.03);
@@ -164,10 +191,11 @@ function drawTaste(rows, title, net) {
   // the field: the net's prediction, in the station's usual key; lit gold where it says yes, blue where no
   const keys = {}; for (const t of rows) keys[t.spec.key] = (keys[t.spec.key] || 0) + 1;
   const key = Object.entries(keys).sort((a, b) => b[1] - a[1])[0]?.[0] || "A minor";
+  const tagSample = rows.slice(0, 4).map((t) => t.spec.tags).filter(Boolean); if (!tagSample.length) tagSample.push("");
   const cell = 18;
   for (let gy = pad; gy < H - pad; gy += cell) for (let gx = pad; gx < W - pad; gx += cell) {
     let v = 0;
-    if (net) v = net.predict({ bpm: 60 + (gx - pad) / (W - 2 * pad) * 120, energy: (H - pad - gy) / (H - 2 * pad), key }) * 2 - 1;
+    if (net) { let p = 0; for (const tags of tagSample) p += net.predict({ bpm: 60 + (gx - pad) / (W - 2 * pad) * 120, energy: (H - pad - gy) / (H - 2 * pad), key, tags }); v = p / tagSample.length * 2 - 1; }
     else { let like = 0, heard = 0; for (const p of pts) { const k = Math.exp(-((p.x - gx) ** 2 + (p.y - gy) ** 2) / 16200); like += k * p.w; heard += k; } if (heard < 0.02) continue; v = Math.tanh(like / 1.5); }
     if (Math.abs(v) < 0.06) continue;
     ctx.fillStyle = v > 0 ? `hsl(44 60% 60% / ${0.5 * Math.abs(v)})` : `hsl(220 30% 45% / ${0.45 * Math.abs(v)})`;
