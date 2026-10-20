@@ -79,5 +79,5 @@ jobs:
           done
       - name: launch a venture held for its batch
         run: python3 .github/time/venture.py stage "$card" ready
-      - name: measure (7 days on: signups against the plan's lines)
+      - name: "measure (7 days on: signups against the plan's lines)"
         run: python3 .github/time/venture.py stage "$card" launched
