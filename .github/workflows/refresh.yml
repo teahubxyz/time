@@ -77,11 +77,25 @@ jobs:
         run: |
           set -eu
           [ -f "pages/ventures/ventures.json" ] || { echo "::error::no ledger on gh-pages"; exit 1; }
-          rm -rf "pages/ventures/$SLUG"
-          cp -R "work/ventures/$SLUG" "pages/ventures/$SLUG"
-          find "pages/ventures/$SLUG" -name __pycache__ -type d -prune -exec rm -rf {} +
-          cd pages
-          git add --all "ventures/$SLUG"
+          find "work/ventures/$SLUG" -name __pycache__ -type d -prune -exec rm -rf {} +
+          if [ -n "$FROM" ]; then
+            # a rework from another branch lands whole, in place of what gh-pages has
+            rm -rf "pages/ventures/$SLUG"
+            cp -R "work/ventures/$SLUG" "pages/ventures/$SLUG"
+            cd pages
+            git add --all "ventures/$SLUG"
+          else
+            # the build's own changes only, applied to the newest gh-pages: the source was checked out minutes ago, and
+            # copying it whole would revert whatever landed since (it did, once)
+            cd work
+            git add --all "ventures/$SLUG"
+            git diff --cached --binary > ../build.patch
+            cd ../pages
+            git pull -q --rebase origin gh-pages
+            if [ -s ../build.patch ]; then
+              git apply --index --3way ../build.patch || { echo "::error::the build's changes don't apply to gh-pages as it stands now: refresh again"; exit 1; }
+            fi
+          fi
           if git diff --cached --quiet; then echo "nothing changed in ventures/$SLUG"; exit 0; fi
           git diff --cached --stat | tail -25
           git -c user.name='github-actions[bot]' -c user.email='github-actions[bot]@users.noreply.teahub.xyz' \
