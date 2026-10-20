@@ -511,7 +511,12 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   .keybar { gap: 8px 10px; }
   .keybar input:not([type=checkbox]) { flex: 1 1 100%; }
   .keyfine, .keystatus { margin-left: 0; }
-  .sechead h2, .lefthead [role=tab], .lefthead .sep { font-size: 28px; }
+  .sechead h2 { font-size: 28px; }
+  /* the three tabs on one line: smaller, a dot between them instead of a slash */
+  .lefthead [role=tablist] { flex-wrap: nowrap; gap: 0 10px; }
+  .lefthead [role=tab] { font-size: 21px; white-space: nowrap; }
+  .lefthead .sep { font-size: 0; }
+  .lefthead .sep::before { content: "\00b7"; font: 700 21px/1 var(--serif); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid > li:nth-child(2n) { border-right: 0; }
   .line { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -537,7 +542,9 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 }
 /* a small phone (an iPhone SE is 375px wide): the left column's tabs a little smaller, so a count of what's new fits */
 @media (max-width: 400px) {
-  .lefthead [role=tab], .lefthead .sep { font-size: 24px; }
+  .lefthead [role=tablist] { gap: 0 8px; }
+  .lefthead [role=tab] { font-size: 19px; }
+  .lefthead .sep::before { font-size: 19px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
