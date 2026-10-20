@@ -107,6 +107,17 @@ input,textarea{font:inherit;color:inherit}
 #toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
 #toast.on{opacity:1}
 
+/* ---------- taste ---------- */
+#taste{position:fixed;inset:0;background:rgba(11,11,14,.97);padding:18px 16px calc(18px + env(safe-area-inset-bottom));overflow:auto}
+#taste header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:12px}
+#tasteTabs{display:flex;gap:8px;overflow-x:auto;padding:2px 0 12px;scrollbar-width:none}
+#tasteTabs button{display:flex;align-items:center;gap:8px;padding:6px 12px 6px 6px;border-radius:999px;border:1px solid var(--line);font-size:12px;white-space:nowrap;color:var(--dim)}
+#tasteTabs button.on{color:var(--ink);border-color:var(--acc)}
+#tasteTabs canvas{width:22px;height:22px;border-radius:50%}
+#tasteMap{width:100%;max-width:640px;aspect-ratio:1;display:block;margin:0 auto;border-radius:18px;background:var(--card)}
+#tasteNote{color:var(--dim);font-size:12px;text-align:center;margin:12px auto 0;max-width:520px}
+#tasteLegend{display:flex;justify-content:center;gap:16px;font:11px var(--font);letter-spacing:.08em;color:var(--dim);margin-top:10px;flex-wrap:wrap}
+
 /* ---------- library ---------- */
 #lib{position:fixed;inset:0;background:rgba(11,11,14,.96);padding:18px 16px;overflow:auto}
 #lib header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
@@ -152,7 +163,7 @@ input,textarea{font:inherit;color:inherit}
   <div id="top">
     <button id="back" title="new seed">◂ SEED</button>
     <div class="station" id="stationName"></div>
-    <button id="libBtn">LIBRARY</button>
+    <div><button id="tasteBtn">TASTE</button> &nbsp; <button id="libBtn">LIBRARY</button></div>
   </div>
   <div id="stage">
     <div id="cover"><div class="card">
@@ -191,6 +202,14 @@ input,textarea{font:inherit;color:inherit}
     <form id="sayRow"><input id="say" placeholder="or say it: less snare, sadder but faster…" maxlength="240"><button>send</button></form>
   </div>
   <div id="toast"></div>
+</section>
+
+<section id="taste" class="hidden">
+  <header><span>TASTE</span><button id="tasteClose">CLOSE</button></header>
+  <div id="tasteTabs"></div>
+  <canvas id="tasteMap" width="900" height="900"></canvas>
+  <div id="tasteLegend"><span>← slow · tempo · fast →</span><span>↑ energy</span><span>colour = key</span><span>ring = 🔥❤️ warm · 🚫⏭ cold</span></div>
+  <div id="tasteNote"></div>
 </section>
 
 <section id="lib" class="hidden">
@@ -697,6 +716,77 @@ $("#libBtn").addEventListener("click", async () => {
   $("#lib").classList.remove("hidden");
 });
 $("#libClose").addEventListener("click", () => $("#lib").classList.add("hidden"));
+
+/* ---------- taste: every track as a point (tempo, energy; colour = key), every reaction a signed weight on it.
+   The shading is a kernel estimate of "would like" from the reactions, huebrain-style: lit where the warm ones
+   outweigh the cold ones, dim where the cold ones win, dark where nothing has been heard yet. ---------- */
+function reactionWeight(spec) {
+  const r = String(spec.reaction || "");
+  let w = 0;
+  for (const ch of r.replace(/"[^"]*"/g, "")) { if ("🔥❤️⚡🎸🎹".includes(ch) && ch !== "️") w += 1; if ("🚫😴".includes(ch)) w -= 1; }
+  if (/\[skipped\]/.test(r)) w -= 1.5;
+  if (/"[^"]*"/.test(r)) w += 0.3;             // words mean engagement, mildly warm
+  return w;
+}
+function drawTaste(rows, title) {
+  const c = $("#tasteMap"), ctx = c.getContext("2d"), W = c.width, H = c.height, pad = 70;
+  const X = (bpm) => pad + (Math.min(180, Math.max(60, bpm)) - 60) / 120 * (W - 2 * pad);
+  const Y = (en) => H - pad - Math.min(1, Math.max(0, en)) * (H - 2 * pad);
+  const pts = rows.map((t) => ({ x: X(+t.spec.bpm || 100), y: Y(+t.spec.energy || 0.5), w: reactionWeight(t.spec) + (t.kept ? 1.5 : 0), hue: keyHue(t.spec.key), minor: /m(in|inor)?\b/i.test(t.spec.key || "") && !/maj/i.test(t.spec.key || ""), t }));
+  ctx.fillStyle = "#121216"; ctx.fillRect(0, 0, W, H);
+  // the field: kernel-weighted reactions, with every played track counting a little as "heard"
+  const cell = 18, sig = 90;
+  for (let gy = pad; gy < H - pad; gy += cell) for (let gx = pad; gx < W - pad; gx += cell) {
+    let like = 0, heard = 0;
+    for (const p of pts) { const d2 = (p.x - gx) ** 2 + (p.y - gy) ** 2, k = Math.exp(-d2 / (2 * sig * sig)); like += k * p.w; heard += k; }
+    if (heard < 0.02) continue;
+    const v = Math.tanh(like / 1.5);                      // -1..1
+    const a = Math.min(0.55, heard * 0.35);
+    ctx.fillStyle = v >= 0 ? `hsl(44 60% 60% / ${a * (0.25 + 0.75 * v)})` : `hsl(220 30% 45% / ${a * (0.25 + 0.75 * -v)})`;
+    ctx.fillRect(gx, gy, cell, cell);
+  }
+  // axes
+  ctx.strokeStyle = "#232329"; ctx.lineWidth = 2; ctx.strokeRect(pad, pad, W - 2 * pad, H - 2 * pad);
+  ctx.fillStyle = "#8a8a96"; ctx.font = `600 ${W * 0.018}px ui-monospace, Menlo, monospace`; ctx.textAlign = "center";
+  for (const b of [60, 90, 120, 150, 180]) ctx.fillText(b + "", X(b), H - pad + 34);
+  ctx.textAlign = "right"; for (const e of [0, 0.5, 1]) ctx.fillText(e === 0 ? "calm" : e === 1 ? "wild" : "·", pad - 14, Y(e) + 6);
+  // the points: colour is the key, size is how much was said about it, ring warm or cold
+  for (const p of pts) {
+    const r = (W * 0.012) * (1 + Math.min(3, Math.abs(p.w)) * 0.35);
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = `hsl(${p.hue} ${p.minor ? 55 : 80}% ${p.minor ? 48 : 62}% / .9)`; ctx.fill();
+    if (p.w !== 0) { ctx.lineWidth = 3; ctx.strokeStyle = p.w > 0 ? "hsl(44 80% 70%)" : "hsl(220 40% 60%)"; ctx.stroke(); }
+    if (p.t.kept) { ctx.beginPath(); ctx.arc(p.x, p.y, r + 7, 0, Math.PI * 2); ctx.lineWidth = 1.5; ctx.strokeStyle = "hsl(44 80% 70% / .7)"; ctx.stroke(); }
+  }
+  const warm = pts.filter((p) => p.w > 0).length, cold = pts.filter((p) => p.w < 0).length;
+  const mean = (f) => pts.length ? pts.reduce((s, p) => s + f(p), 0) / pts.length : 0;
+  const liked = pts.filter((p) => p.w > 0);
+  const lb = liked.length ? Math.round(liked.reduce((s, p) => s + (+p.t.spec.bpm || 100), 0) / liked.length) : null;
+  const le = liked.length ? (liked.reduce((s, p) => s + (+p.t.spec.energy || 0.5), 0) / liked.length) : null;
+  const minors = liked.filter((p) => p.minor).length;
+  $("#tasteNote").textContent = !pts.length ? "Nothing heard here yet." :
+    `${title}: ${pts.length} tracks · ${warm} warm, ${cold} cold · ` + (liked.length ? `what you warmed to sits around ${lb} bpm, ${le < 0.4 ? "calm" : le < 0.7 ? "mid" : "high"} energy, ${minors > liked.length / 2 ? "mostly minor keys" : "mostly major keys"}.` : "react to a few tracks and the lit region appears.");
+}
+async function openTaste() {
+  const rows = await db.all(), stations = await db.all("stations"), byId = Object.fromEntries(stations.map((s) => [s.id, s]));
+  const tabs = $("#tasteTabs"); tabs.innerHTML = "";
+  const groups = [["all", "ALL", "", rows]];
+  const seen = new Map();
+  for (const t of rows) { const k = t.spec.stationId || "seed:" + t.spec.seed; if (!seen.has(k)) seen.set(k, []); seen.get(k).push(t); }
+  for (const [k, list] of seen) { const s = byId[k]; groups.push([k, ((s && s.name) || list[0].spec.seed).toUpperCase(), (s && s.seed) || list[0].spec.seed, list]); }
+  let pick = groups.find((g) => g[0] === state.stationId) || groups[0];
+  const show = () => { for (const b of tabs.children) b.classList.toggle("on", b.dataset.k === pick[0]); drawTaste(pick[3], pick[1]); };
+  for (const g of groups) {
+    const b = document.createElement("button"); b.dataset.k = g[0];
+    if (g[2]) { const c = document.createElement("canvas"); c.width = c.height = 44; drawCover(c, { seed: g[2], title: "", tags: "", bpm: 100, key: KEYS[hash32(g[2]) % 12], energy: 0.5 }); b.append(c); }
+    b.append(document.createTextNode(g[1] + " · " + g[3].length));
+    b.addEventListener("click", () => { pick = g; show(); });
+    tabs.append(b);
+  }
+  show(); $("#taste").classList.remove("hidden");
+}
+$("#tasteBtn").addEventListener("click", () => openTaste().catch((e) => toast(e.message)));
+$("#tasteClose").addEventListener("click", () => $("#taste").classList.add("hidden"));
 
 listStations().catch(() => {});
 // first paint of the seed mark, for a visitor who lands with a hash like #rainy+trains
