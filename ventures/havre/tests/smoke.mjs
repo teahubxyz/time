@@ -859,7 +859,8 @@ async function main() {
     await page.fill("#memory-add", "They're called Princess.");
     await page.press("#memory-add", "Enter");
     await count(page, "#memory-list li", 2);
-    assert.deepEqual((await memNow()).notes, ["They're called Princess.", "I told them to ask again after the tide."]);
+    assert.deepEqual((await memNow()).notes.map((n) => n.text), ["I told them to ask again after the tide.", "They're called Princess."], "kept oldest first, with what you added on the end");
+    assert.deepEqual((await memNow()).notes.map((n) => n.kind), ["fact", "mine"]);
     assert.ok(!JSON.stringify(await inesNow()).includes("Princess"), "memory lives beside the card, never in it");
     await shot(page, "desktop-memory.png");
     // leaving a chat with a few new messages, she writes down what she remembers of them, so a new chat picks up there
