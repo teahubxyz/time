@@ -284,9 +284,8 @@ test("the conversation as the model reads it: a photo it sent is mentioned to it
     { role: "user", content: "hello there", media: { kind: "voice-in", id: "u2" } },
   ];
   const api = A.apiHistory(hist);
-  assert.deepEqual(api.map((m) => m.role), ["user", "assistant", "user", "user", "assistant", "user"]);
-  assert.equal(api[1].content, "*sends a photo: On the deck*\n\n*sends a short video: Waving*");
-  assert.equal(api[2].content, "lovely");
+  assert.deepEqual(api.map((m) => m.role), ["user", "user", "user", "assistant", "user"]);
+  assert.equal(api[1].content, "(You sent me a photo: On the deck.) (You sent me a short video: Waving.)\n\nlovely");
   assert.equal(api[2].content, "[a photo: A gull on a post.] what's this?");
   assert.equal(api[4].content, "hello there");
   assert.ok(!api.some((m) => /\[photo\]/.test(m.content)), "the model never sees a photo placeholder in its own voice");

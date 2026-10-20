@@ -24,15 +24,6 @@ has changed, so a newer upstream shows exactly which change needs redoing.
 - **Light and dark**, with Havre's look: Times and Courier, square corners, Havre's blue. The choice is
   `havre.theme` in localStorage, shared with Havre's own page ("light", "dark", or absent to follow the system).
 - **Phones**: a labeled "New chat" button, and no ⌘ shortcut hints.
-- **Workflows and Gitea Actions are two views of one thing.** Export (the active workflow's header) writes a
-  workflow file that walks the graph on a runner with `public/run.mjs` (served at /open/run.mjs); the graph rides in
-  `env.OV_WORKFLOW`. Import (the list view) takes any Actions workflow: one exported from here comes back as it was;
-  any other becomes a chain of **Step** nodes, one per step, and the rest of the file (`on`, permissions,
-  concurrency, the job's `runs-on` and `env`) is kept as the workflow's frame, so it exports back identical, with
-  any Venice nodes spliced in as runner steps. A Step node is one Actions step as it is (run, uses, with, env):
-  inert in the browser, verbatim on export. A **Cover + Track** node records an image over an audio track into one
-  video (in the browser; ffmpeg on a runner). The first real workflow is the factory's venture loop,
-  `.github/workflows/venture-loop.yml` on teahubxyz/time: one step per stage, each `venture.py stage <card> <at>`.
 
 ## Changing it
 

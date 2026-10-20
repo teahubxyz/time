@@ -5,8 +5,6 @@ import * as A from "./abilities.js";
 import * as M from "./media.js";
 import * as T from "./threads.js";
 import * as R from "./memory.js";
-import * as W from "./workflows.js";
-import * as B from "./backup.js";
 import { Venice, VeniceError } from "./venice.js";
 import CAST from "./cast/index.js";
 
@@ -84,14 +82,11 @@ const S = {
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
   ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true,
-    adult: true, adultPhoto: "", adultClip: "", awayMin: 360 }, voiceOn: {}, jobs: [], ask: null,
+    adult: true, adultPhoto: "", adultClip: "" }, voiceOn: {}, jobs: [], ask: null,
   rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
 const ALLOWANCES = [0.1, 0.25, 1, 5];
-/** how long you've been away before a character texts first: minutes, as the setting shows them */
-const AWAYS = [[1, "a minute"], [5, "5 minutes"], [15, "15 minutes"], [30, "half an hour"], [60, "an hour"], [180, "3 hours"], [360, "6 hours"], [1440, "a day"]];
-const backAfter = () => (S.ab.awayMin || 360) * 60e3;
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const spentToday = () => A.spentToday(local.get(K.spent, null), localDay());
 const canAfford = (usd) => A.canSpend(local.get(K.spent, null), localDay(), S.ab.allowance, usd);
@@ -142,7 +137,6 @@ function boot() {
   S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
   S.ab.clip = S.ab.clip && typeof S.ab.clip === "object" ? S.ab.clip : {};
   if (!ALLOWANCES.includes(S.ab.allowance)) S.ab.allowance = 0.25;
-  if (!AWAYS.some(([m]) => m === S.ab.awayMin)) S.ab.awayMin = 360;
   S.voiceOn = local.get(K.voiceOn, {}) || {};
   S.jobs = (local.get(K.jobs, []) || []).filter((j) => j && j.queueId && j.model && Date.now() - (j.started || 0) < 23 * 3600e3);
   pruneEmpty();
@@ -399,7 +393,7 @@ function setPane(which) {
   const st = $("#studio");
   st.classList.toggle("pane-chat", S.pane === "chat");
   st.classList.toggle("pane-list", S.pane === "list");
-  if (S.pane === "chat") scrollLog(true);      // drawn while hidden, it couldn't scroll: now it can
+  if (S.pane === "chat") scrollLog();          // drawn while hidden, it couldn't scroll: now it can
 }
 function renderLeft() {
   for (const [w, tab, panel] of [["chats", "#lt-chats", "#lp-chats"], ["chars", "#lt-chars", "#lp-chars"], ["harbor", "#lt-harbor", "#lp-harbor"]]) {
@@ -657,15 +651,22 @@ function syncAdult(list) {
 function renderRoster() {
   const tb = $("#roster");
   tb.textContent = "";
-  $("#harbor-empty").hidden = S.cards.length > 0;
-  $("#harbor .tablewrap").hidden = !S.cards.length;
+  $("#harbor-empty").hidden = true;
+  $("#harbor .tablewrap").hidden = false;
   const cur = card();
+  // the first row is always someone new: the way back to a blank card from anyone's
+  const fresh = () => { S.fresh = true; syncNew(); $("#card").scrollIntoView({ behavior: motion(), block: "start" }); $("#nc-name").focus({ preventScroll: true }); };
+  tb.append(h("tr", { class: "opens newrow", onclick: (e) => { if (!e.target.closest("button, a")) fresh(); } },
+    h("th", { scope: "row" }, linkish("+ new character", fresh, { class: "linkish rowname" })),
+    h("td", { text: "write one here" }), h("td", { text: "" }),
+    h("td", { class: "files" }, linkish("import a card", () => $("#import").click()))));
+  queueMicrotask(syncNew);
   for (const c of S.cards) {
     const on = cur && c.id === cur.id;
     const from = c.engine.venice_character ? "venice, as a link with credit" : c.lineage[0] ? C.creditLine(c.lineage[0]) : "written here";
     const go = (tab) => () => { selectCard(c.id); openCard(tab); };
     // the whole row opens their card; the links in it do what they say
-    tb.append(h("tr", { "aria-current": on ? "true" : null, class: "opens", onclick: (e) => { if (!e.target.closest("button, a")) go("edit")(); } },
+    tb.append(h("tr", { "data-id": c.id, class: "opens", onclick: (e) => { if (!e.target.closest("button, a")) go("edit")(); } },
       h("th", { scope: "row" }, linkish(c.name, go("edit"), { class: "linkish rowname" }), c.adult ? h("span", { class: "x18", title: "for grown-ups only", text: "18+" }) : null,
         on ? h("span", { class: "now", text: "talking" }) : null),
       h("td", { text: from }),
@@ -699,7 +700,7 @@ function selectCard(id, { talk = false, scroll = false, open } = {}) {
   if (was !== id) renderCard();
   if (!talk) return;
   setPane("chat");
-  if (scroll || narrow()) $("#studio").scrollIntoView({ behavior: motion(), block: "start" });   // on a phone: the tabs, then the chat under them
+  if (scroll || narrow()) (narrow() ? $("#chat") : $("#studio")).scrollIntoView({ behavior: motion(), block: "start" });
   if (!narrow()) $("#say").focus({ preventScroll: true });
   speakFirst();
 }
@@ -808,7 +809,7 @@ function comeBack(t) {
   if (T.byLatest(threadsOf(c.id))[0] !== t) return Promise.resolve();      // only in their latest chat with you
   const go = () => {
     const tried = local.get(K.tried, {}) || {};
-    if (!S.threads[t.id] || S.busy.has(t.id) || !T.readyToTextFirst(t.msgs, { now: Date.now(), after: backAfter(), tried: tried[t.id] })) return;
+    if (!S.threads[t.id] || S.busy.has(t.id) || !T.readyToTextFirst(t.msgs, { now: Date.now(), after: A.BACK_AFTER, tried: tried[t.id] })) return;
     const kept = Object.fromEntries(Object.entries(tried).filter(([id]) => S.threads[id]));
     if (!local.set(K.tried, { ...kept, [t.id]: Date.now() })) return;      // can't write it down: don't risk asking twice
     return send(A.comeBack(A.since(t.msgs, Date.now()), here(t)), { hidden: true, to: t, own: true });
@@ -823,9 +824,9 @@ function comeBack(t) {
 async function comingBack() {
   if (!S.key || !S.ab.own || !seen()) return;
   comeBack(thread());
-  if (Date.now() - (Number(local.get(K.came, 0)) || 0) < backAfter()) return;
+  if (Date.now() - (Number(local.get(K.came, 0)) || 0) < A.BACK_AFTER) return;
   const others = T.textFirst(Object.values(S.threads).filter((t) => t.card !== S.sel && cardOf(t)), (t) => t.msgs,
-    { now: Date.now(), after: backAfter(), tried: local.get(K.tried, {}) || {}, max: 3 });
+    { now: Date.now(), after: A.BACK_AFTER, tried: local.get(K.tried, {}) || {}, max: 3 });
   if (!others.length || !local.set(K.came, Date.now())) return;
   for (const t of others) {
     await sleep(1500 + Math.random() * 2500);
@@ -907,18 +908,9 @@ function put(el) {
   log.append(el);
   return el;
 }
-/**
- * To the latest message: now, after the next paint, and once more when late layout (a pane shown, a font) has settled.
- * Only if you were at the end already: scrolled up to read, the chat stays where you are while they talk. force: it
- * was you (you sent something, opened the chat), so to the end whatever.
- */
-let pinned = true;                                            // at the end of the chat, as of the last scroll
-const nearEnd = (l) => l.scrollHeight - l.scrollTop - l.clientHeight < 160;
-function scrollLog(force = false) {
-  const l = $("#log");
-  if (!force && !pinned) return;
-  const go = () => { l.scrollTop = l.scrollHeight; };
-  pinned = true;
+/** to the latest message: now, after the next paint, and once more when late layout (a pane shown, a font) has settled */
+function scrollLog() {
+  const l = $("#log"), go = () => { l.scrollTop = l.scrollHeight; };
   go(); requestAnimationFrame(go); setTimeout(go, 250);
 }
 /** a photo or clip that loads after the chat is drawn pushes the bottom down: follow it, if you were at the bottom */
@@ -1005,47 +997,10 @@ function jumpTo(t, m) {
 function msgTools(el, t, m) {
   if (!t || !m || !m.id) return;
   el.dataset.msg = m.id;
-  const c = cardOf(t), words = !!String(m.content || "").trim() && c && !c.plain && S.ab.memory;
   el.append(h("span", { class: "msgtools" }, ...slashed([
     m.role === "user" && !m.media ? linkish("edit", () => editMsg(t, m), { "aria-label": "Edit this message" }) : null,
-    words ? linkish("remember", () => rememberMsg(t, m), { "aria-label": "Add this to what they remember", title: "into their memory, in these words" }) : null,
-    words ? linkish("remind", () => remindMsg(t, m), { "aria-label": "Remind them of this at a time", title: "back to mind at a time you pick" }) : null,
     linkish("delete", () => deleteMsg(t, m), { "aria-label": "Delete this message" }),
   ])));
-}
-// ---------- memory from the chat: remember this, remind me, recall ----------
-/** a message into their long-term memory, in its own words (yours as "They said", theirs as "I said"); with a time, as a reminder */
-function rememberMsg(t, m, until) {
-  const c = cardOf(t);
-  if (!c || c.plain) return;
-  const text = `${m.role === "user" ? "They said" : "I said"}: ${String(m.content || "").replace(/\s+/g, " ").trim()}`;
-  const mem = memoryOf(c.id);
-  const notes = R.appended(mem.notes, [R.note(text, { kind: "mine", from: { thread: t.id, msg: m.id }, until })]) || mem.notes;
-  saveMemory(c.id, { ...mem, notes });
-  if ((card() || {}).id === c.id) renderMemory(c);
-  toast(until ? `${c.name} will have that in mind ${R.lines([R.note(text, { until })])[0].slice(1).split(")")[0]}.` : `${c.name} will remember that.`);
-}
-function remindMsg(t, m) {
-  const when = prompt("When should they have this in mind? (tomorrow, in 3 days, friday, next week, 2026-11-01)");
-  if (when == null) return;
-  const until = R.parseWhen(when);
-  if (!until) { toast("That's not a time Havre knows: try tomorrow, in 3 days, friday, next week, or 2026-11-01."); return; }
-  rememberMsg(t, m, until);
-}
-/** /recall <words>: what they remember about that (long-term notes, then the chats themselves), brought to mind for a while */
-function recall(query) {
-  const c = card();
-  if (!c || c.plain) { err("/recall needs a character: pick one in the harbor first."); return; }
-  if (!query) { put(line("/recall needs words to look for: /recall their sister", "havre", "note")); scrollLog(); return; }
-  const mem = memoryOf(c.id), found = R.search(mem.notes, query, 5);
-  const theirs = Object.values(S.threads).filter((x) => x.card === c.id);
-  const deep = R.searchDeep(theirs, (x) => x.msgs, query, 6).filter((d) => !found.some((n) => n.text.endsWith(d.text))).slice(0, 3);
-  if (!found.length && !deep.length) { put(line(`${c.name} doesn't remember anything about that.`, "havre", "note")); scrollLog(); return; }
-  saveMemory(c.id, { ...mem, notes: R.recalled(mem.notes, { found, deep }) });
-  const shown = [...found.map((n) => n.text), ...deep.map((d) => `${d.role === "user" ? "you" : c.name}: ${d.text}`)];
-  put(line(`${c.name} has in mind now:\n` + shown.map((s) => "  " + s).join("\n"), "havre", "note"));
-  scrollLog();
-  if ((card() || {}).id === c.id) renderMemory(c);
 }
 /** take one message out of a chat; another tab's copy doesn't bring it back */
 function deleteMsg(t, m) {
@@ -1109,7 +1064,7 @@ function renderLog() {
   if (t && S.doing.has(t.id)) put(typingLine(t, S.doing.get(t.id)));
   renderJobs();
   followMedia(log);
-  scrollLog(true);
+  scrollLog();
 }
 
 /** a character texts in short bubbles; a plain chat answers in one piece */
@@ -1117,7 +1072,7 @@ const bubblesOf = (c, text) => (c.plain ? [C.stripThinking(text)].filter(Boolean
 /** what the model reads: the conversation, with photos and voice notes as words (see abilities.js), and what they remember */
 function messagesFor(c, hist) {
   const api = A.apiHistory(hist);
-  return c.plain ? C.alternate(api.slice(-40).map(({ role, content }) => ({ role, content }))) : C.chatMessages(c, api, { memory: memoryFor(c), can: canOf(c) });
+  return c.plain ? C.alternate(api.slice(-40).map(({ role, content }) => ({ role, content }))) : C.chatMessages(c, api, { memory: memoryFor(c) });
 }
 
 // ---------- what they remember ----------
@@ -1129,9 +1084,7 @@ function saveMemory(id, m) {
   if (!local.set(K.memory, all)) full();
 }
 /** what goes into their prompt: nothing with memory switched off; for a Venice character, beside Venice's own prompt */
-const memoryFor = (c) => (S.ab.memory && c && !c.plain ? R.lines(R.select(memoryOf(c.id).notes)) : []);
-/** what they can send in this chat, for their prompt (card.js canBlock): photos and clips need a key, "on their own", and a picture of them */
-const canOf = (c) => (c && !c.plain ? { photos: !!S.key && S.ab.own !== false, pictured: refsOf(c).length > 0 } : null);
+const memoryFor = (c) => (S.ab.memory && c && !c.plain ? memoryOf(c.id).notes : []);
 const remembering = new Set(), memoryMissed = new Map();
 /**
  * After every dozen messages in a chat (or a few, when you leave it), its character writes down what they remember now:
@@ -1146,11 +1099,10 @@ async function remember(t, enough = R.EVERY) {
   remembering.add(c.id);
   S.inflight++;
   try {
-    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages: R.memoryMessages(c, R.select(before.notes), R.transcript(c, fresh.slice(-40))),
+    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages: R.memoryMessages(c, before.notes, R.transcript(c, fresh.slice(-40))),
       schema: R.MEMORY_SCHEMA, maxTokens: 700, temperature: 0.3 });
-    const now = memoryOf(c.id), added = R.normalizeNotes(C.parseJsonLoose(r.text), R.MAX_NOTES, { have: now.notes });
-    if (!added) throw new Error("no notes");
-    const notes = R.appended(now.notes, added);
+    const now = memoryOf(c.id), notes = R.merged(now.notes, R.normalizeNotes(C.parseJsonLoose(r.text)));
+    if (!notes) throw new Error("no notes");
     memoryMissed.delete(t.id);
     if (S.cards.some((x) => x.id === c.id)) {
       const upTo = Object.fromEntries(Object.entries({ ...now.upTo, [t.id]: fresh.at(-1).id }).filter(([id]) => S.threads[id]));
@@ -1222,7 +1174,7 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
   saveThread(t);
   if (here(t)) {
     for (const el of $$("#log .suggest, #log .note")) el.remove();
-    if (!hidden) { put(media ? mediaLine(c, said) : line(text, "me")); scrollLog(true); }
+    if (!hidden) put(media ? mediaLine(c, said) : line(text, "me"));
   }
   const ctrl = new AbortController();
   S.busy.set(t.id, ctrl);
@@ -1291,7 +1243,7 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
     }
     arrived(t, msg);
     await play(t, bubblesOf(c, reply), ctrl.signal, c, msg, drawn);
-    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden) onTheirOwn(t, { voiced: !!msg.voice });
+    if (!ctrl.signal.aborted && !demo && !c.plain && !hidden && !msg.voice) onTheirOwn(t);
   } catch (e) {
     if (e && e.name === "AbortError") return;
     done(t);
@@ -1382,16 +1334,7 @@ function mediaLine(c, m) {
   if (md.kind === "photo" || md.kind === "photo-in") {
     const alt = md.kind === "photo" ? `A photo from ${c.name}${md.shot ? ": " + md.shot : ""}` : "Your photo";
     said.append(h("figure", { class: "pic" }, mediaEl("img", md.id, { alt, title: md.shot || null, decoding: "async" }, "photo")));
-    if (md.kind === "photo") said.append(cost([md.offer === "portrait" ? "portrait: " + (md.shot || "") : "photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
-    // a photo of them from the chat, kept on their card: as their portrait (offered as one), or as one of their pictures
-    if (md.kind === "photo" && !me && !c.plain) {
-      const full = !!c.portrait && c.look.references.length >= C.MAX_REFERENCES, row = h("p", { class: "mono" });
-      if (md.offer === "portrait") row.append(h("button", { type: "button", class: "linkish", text: md.kept === "portrait" ? "their portrait now" : "use as their portrait", disabled: md.kept === "portrait" || null,
-        onclick: () => keepFromChat(c, m, "portrait") }), " / ");
-      row.append(h("button", { type: "button", class: "linkish", text: md.kept === "ref" ? "on their card" : full ? "their card has three pictures already" : "keep on their card",
-        disabled: md.kept === "ref" || full || null, title: "one of the pictures their photos and clips are made from", onclick: () => keepFromChat(c, m, "") }));
-      said.append(row);
-    }
+    if (md.kind === "photo") said.append(cost(["photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
     else if (md.saw) said.append(h("span", { class: "cap", text: `${md.seer || "a model"} told them: ${md.saw}` }));
   } else if (md.kind === "clip" && !md.id) {
     // a clip this browser couldn't download: it plays from Venice's link until the link lapses
@@ -1500,6 +1443,11 @@ function renderCard() {
 function syncNew() {
   const c = card(), real = !!c && !c.plain, fresh = S.left === "harbor" && (S.fresh || !real);
   $("#card-new").hidden = !fresh;
+  // one row marked: the one whose card is open below
+  for (const tr of document.querySelectorAll("#roster tr")) {
+    const on = tr.classList.contains("newrow") ? fresh : !fresh && real && tr.dataset.id === c.id;
+    if (on) tr.setAttribute("aria-current", "true"); else tr.removeAttribute("aria-current");
+  }
   $("#card-body").hidden = fresh || !real;
   $("#card-empty").hidden = fresh || real;
   $("#card-h").textContent = fresh ? "NEW CHARACTER" : real ? "CARD: " + c.name.toUpperCase() : "CARD";
@@ -1789,7 +1737,7 @@ function renderAbilities() {
   allowance.addEventListener("change", () => { S.ab.allowance = Number(allowance.value); saveAb(); renderAbilities(); renderTools(); });
   tb.append(
     row("ON THEIR OWN", tick("characters text first when you come back, and send photos and voice notes when they like", S.ab.own, (on) => setOwn(on)),
-      ["up to ", allowance, " a day · how often: ", tempoSelect(), " · text first after you've been away: ", awaySelect(), ` · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
+      ["up to ", allowance, " a day · how often: ", tempoSelect(), ` · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
     row("MEMORY", tick("characters remember your chats with them", S.ab.memory, (on) => {
       S.ab.memory = on;
       saveAb();
@@ -1841,7 +1789,7 @@ function askFor(kind) {
   if (refsOf(c).length) writeShot();
   if (narrow()) $("#ask").scrollIntoView({ behavior: motion(), block: "nearest" });
   else $("#studio").scrollIntoView({ behavior: motion(), block: "start" });
-  scrollLog(true);
+  scrollLog();
 }
 function closeAsk() { if (S.ask && S.ask.busy) return; S.ask = null; renderAsk(); }
 function renderAsk() {
@@ -2188,7 +2136,6 @@ function lightbox(src, alt) {
   d.append(h("img", { src, alt: alt || "" }));
   d.showModal();
 }
-$("#log").addEventListener("scroll", () => { pinned = nearEnd($("#log")); }, { passive: true });
 document.addEventListener("click", (e) => {
   const img = e.target && e.target.closest && e.target.closest(".log .pic img");
   if (img && img.src) { e.preventDefault(); lightbox(img.src, img.alt); }
@@ -2259,199 +2206,7 @@ function renderMakers() {
     b.textContent = "make one with ai" + (price != null ? " · " + A.usd(price) : "");
     b.disabled = drawing || (as !== "portrait" && !!c.portrait && c.look.references.length >= C.MAX_REFERENCES);
   }
-  const { price: one } = makerPlan(c, "portrait"), three = $("#portrait-three");
-  three.textContent = "three to pick from" + (one != null ? " · " + A.usd(one * 3) : "");
-  three.disabled = drawing || portraitsBusy;
 }
-// ---------- workflows: the things the harbor does, by name, from any door (workflows.js) ----------
-/** a slash command from the chat box: /help, a workflow, or a word Havre doesn't know */
-function runCommand({ id, arg }) {
-  if (id === "help") { put(line("commands:\n" + W.helpLines().map((l) => "  " + l).join("\n"), "havre", "note")); scrollLog(); return; }
-  if (id === "unknown") { put(line(`no /${arg} here. /help lists what there is.`, "havre", "note")); scrollLog(); return; }
-  runWorkflow(id, { door: "chat", idea: arg });
-}
-/** one workflow, by id, from a door: the same run whichever door opened it */
-function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
-  const w = W.byId(id);
-  if (!w) return;
-  if (!S.key) return needKey(`${w.title} needs your venice key.`);
-  if (id === "portraits") return threePortraits({ door });
-  if (id === "new") return writeFromIdea(idea, { door, name });
-  if (id === "photoshoot") return photoshoot(idea, { door });
-  if (id === "recall") return recall(idea);
-}
-/** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
-function threadFor(c) {
-  const t = thread();
-  if (t && t.card === c.id) return t;
-  const latest = T.latestOf(Object.values(S.threads), c.id);
-  if (latest) return latest;
-  const fresh = startThread(c);
-  if (here(fresh)) renderChatMeta();
-  return fresh;
-}
-/**
- * Three portraits: three ways they could look, written from their card by a text model, each drawn by the portrait
- * model, delivered into their chat as three pictures with a link under each to make it their portrait. Costs three
- * portraits on your key, asked first.
- */
-let portraitsBusy = false;
-async function threePortraits({ door = "chat" } = {}) {
-  const c = card();
-  if (!c || c.plain) { if (door === "chat") err("/portraits needs a character: pick one in the harbor first."); return; }
-  if (portraitsBusy) { toast("Three portraits are already on their way."); return; }
-  await loadList("image");
-  const { model: pm, adult } = drawPlan(c);
-  if (!pm || pm.price == null) { const why = S.listErr.image || "Venice has no model for that right now."; if (door === "chat") err(why); else lookStatus("#portrait-status", why, true); return; }
-  const price = pm.price * 3;
-  if (!confirm(`Draw ${c.name} three ways with ${pm.name}, to pick a portrait from? It costs about ${A.usd(price)} on your Venice key.`)) return;
-  const t = threadFor(c);
-  if (door !== "chat") { openThread(t.id); setLeft("chats"); }
-  portraitsBusy = true;
-  S.inflight++;
-  renderMakers();
-  doing(t, "is imagining three ways they could look…");
-  try {
-    const v = new Venice(S.key);
-    const o = await askJson(await jsonModel(c), { messages: W.directionsMessages(c), schema: W.DIRECTIONS_SCHEMA, maxTokens: 900, temperature: 0.95, what: "three looks" });
-    const dirs = W.normalizeDirections(o);
-    if (!dirs.length) throw new Error("The model sent back no looks. Try again, or pick another model on the card.");
-    doing(t, `is being drawn ${dirs.length} ways with ${pm.name}…`);
-    const drawn = await Promise.allSettled(dirs.map((d) => drawPicture(c, d.look, v)));
-    done(t);
-    let n = 0, why = null;
-    for (let i = 0; i < dirs.length; i++) {
-      const r = drawn[i];
-      if (r.status !== "fulfilled") { why = why || r.reason; continue; }
-      const id = await M.put(dataBlob(r.value));
-      deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot: dirs[i].title, look: dirs[i].look, model: pm.name, price: pm.price, offer: "portrait", ...(adult ? { adult: true } : {}) } });
-      n++;
-    }
-    if (!n) throw why || new Error("None of the three came out.");
-    if (why) err(`${dirs.length - n} of the three didn't come out: ${redraw(why)}`);
-    if (door !== "chat") toast(`${n} portraits of ${c.name} are in your chat with them: pick one.`);
-  } catch (e) {
-    done(t);
-    err(redraw(e));
-  } finally {
-    portraitsBusy = false;
-    S.inflight--;
-    renderMakers();
-    balanceSoon();
-  }
-}
-/**
- * A photoshoot: a few photos of them from the pictures on their card. One call writes the shots (the single photo's
- * rules, several at once), the photo model makes each from the same pictures, and they land in their chat. The words
- * after /photoshoot: a count (1 to 6, else 3), then what the shoot is about. Costs that many photos, asked first.
- */
-let shooting = false;
-async function photoshoot(arg, { door = "chat" } = {}) {
-  const c = card();
-  if (!c || c.plain) { err("/photoshoot needs a character: pick one in the harbor first."); return; }
-  if (!refsOf(c).length) { err(`${c.name} has no picture yet, and a shoot is made from their pictures: /portraits first, or add one on their card.`); return; }
-  if (shooting) { toast("A shoot is already under way."); return; }
-  const { count, brief } = W.parseShoot(arg);
-  await loadList("inpaint");
-  const t = threadFor(c), adult = adultFor(c, t, brief).ok;
-  const pm = adult ? adultPhotoModel() : photoModel();
-  if (!pm || pm.price == null) { err(S.listErr.inpaint || "Venice has no model for that right now."); return; }
-  const pics = refsOf(c).slice(0, Math.max(1, pm.maxIn)), each = A.photoPrice(pm, pics.length), price = each * count;
-  if (!confirm(`A shoot of ${count} photo${count === 1 ? "" : "s"} of ${c.name} with ${pm.name}${brief ? " (" + brief + ")" : ""}? It costs about ${A.usd(price)} on your Venice key.`)) return;
-  if (door !== "chat") { openThread(t.id); setLeft("chats"); }
-  shooting = true;
-  S.inflight++;
-  doing(t, "is planning a shoot…");
-  try {
-    const v = new Venice(S.key);
-    const lines = t.msgs.filter((m) => !m.hidden && (m.role === "user" || m.role === "assistant")).slice(-10)
-      .map((m) => `${m.role === "user" ? "Them" : c.name}: ${String(m.content || "").replace(/\s+/g, " ").trim().slice(0, 300)}`);
-    const o = await askJson(await jsonModel(c), { messages: W.shootMessages(c, adult ? A.PHOTO_SYSTEM_ADULT : A.PHOTO_SYSTEM, { count, brief, lines }), schema: W.SHOOT_SCHEMA,
-      maxTokens: 300 * count + 200, temperature: 0.9, what: "the shots" });
-    const shots = W.normalizeShots(o, count);
-    if (!shots.length) throw new Error("The model sent back no shots. Try again, or pick another model on the card.");
-    doing(t, `is shooting ${shots.length} photo${shots.length === 1 ? "" : "s"} with ${pm.name}…`);
-    const made = await Promise.allSettled(shots.map((s) => v.editImage({ model: pm.id, prompt: A.photoPrompt(c, s.shot, pics.length, pm.promptLimit, { adult }), images: pics, safe: !adult })));
-    done(t);
-    let n = 0, why = null;
-    for (let i = 0; i < shots.length; i++) {
-      const r = made[i];
-      if (r.status !== "fulfilled") { why = why || r.reason; continue; }
-      const id = await M.put(r.value.blob);
-      deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot: shots[i].shot, model: pm.name, price: each, ...(adult ? { adult: true } : {}), ...(r.value.blurred ? { blurred: true } : {}) } });
-      n++;
-    }
-    if (!n) throw why || new Error("None of the shots came out.");
-    if (why) err(`${shots.length - n} of the shoot didn't come out: ${why.message || why}`);
-  } catch (e) {
-    done(t);
-    err(e.message || String(e));
-  } finally {
-    shooting = false;
-    S.inflight--;
-    balanceSoon();
-  }
-}
-/**
- * A photo of them from the chat, kept on their card: as their portrait (as = "portrait"; the look it was drawn from goes
- * on the card too if it had none), or as one of the pictures their photos and clips are made from (as = "").
- */
-async function keepFromChat(c, m, as = "") {
-  const md = m.media || {}, blob = await M.get(md.id);
-  if (!blob) { toast("That picture isn't kept in this browser any more."); return; }
-  const now = S.cards.find((x) => x.id === c.id);
-  if (!now) return;
-  if (as !== "portrait" && now.portrait && now.look.references.length >= C.MAX_REFERENCES) { toast(`${c.name}'s card has three pictures already: remove one first (card → look).`); return; }
-  const pic = await shrinkImage(blob, as === "portrait" ? 512 : 768, "image/webp", { svg: false });
-  keepPicture(now, pic, as === "portrait" ? md.look || "" : "", as);
-  md.kept = as === "portrait" || !now.portrait ? "portrait" : "ref";
-  const t = Object.values(S.threads).find((x) => x.msgs.includes(m));
-  if (t) saveThread(t);
-  if (t && here(t)) renderLog();
-  toast(md.kept === "portrait" ? `${c.name} has a new portrait.` : `That picture is on ${c.name}'s card now.`);
-}
-/**
- * Someone new from an idea: one call writes the card (name, tagline, greeting, persona, examples, how they look), and
- * they join the harbor with their chat open, for you to say hello. From the harbor form the idea is what's typed
- * under who they are (and the name, if one was given); from the chat it's the words after /new.
- */
-let writingIdea = false;
-async function writeFromIdea(idea, { door = "chat", name = "" } = {}) {
-  idea = (idea || "").trim();
-  if (!idea) {
-    if (door === "chat") { put(line("/new needs an idea after it: /new a lighthouse keeper who writes letters to the sea", "havre", "note")); scrollLog(); }
-    else $("#nc-persona").focus();
-    return;
-  }
-  if (writingIdea) { toast("Someone is already being written."); return; }
-  writingIdea = true;
-  S.inflight++;
-  const note = door === "chat" ? put(line("havre is writing someone new…", "havre", "typing")) : null;
-  if (note) scrollLog();
-  const btn = $("#nc-ai");
-  btn.disabled = true;
-  try {
-    const model = S.model, writer = await jsonModel({ model });
-    if (door !== "chat") $("#nc-persona").placeholder = `writing with ${modelName(writer)}…`;
-    const o = await askJson(writer, { messages: W.ideaMessages(idea, name), schema: W.IDEA_SCHEMA, maxTokens: 2000, temperature: 0.95, what: "a character" });
-    const c = addCard(W.cardFromIdea(o, { model }), { select: false });
-    if (note) note.remove();
-    if (door !== "chat") $("#card-new").reset();
-    selectCard(c.id, { talk: true, scroll: true, open: null });
-    setTab("edit");
-    toast(`${c.name} joined the harbor. Say hello, or /portraits to see them.`);
-  } catch (e) {
-    if (note) note.remove();
-    if (door === "chat") err(e.message); else toast(e.message);
-  } finally {
-    writingIdea = false;
-    S.inflight--;
-    btn.disabled = false;
-    $("#nc-persona").placeholder = "who they are, what they care about, how they talk";
-    balanceSoon();
-  }
-}
-
 /** a picture for their card, made with AI on your key: a new portrait ("portrait"), or one more picture of them */
 async function makePicture(as = "") {
   const c = card(), st = as === "portrait" ? "#portrait-status" : "#look-status";
@@ -2548,41 +2303,26 @@ async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}
  * showing, or now and then), the character's model decides: a photo or a voice note, sent out of the day's
  * allowance, or a clip, offered with Venice's price for you to take or leave.
  */
-const noPicSaid = new Set(), moveSaid = new Set();
-let allowanceSaid = "";
-async function onTheirOwn(t, { voiced = false } = {}) {       // voiced: the reply came with a voice note already, so not another
+async function onTheirOwn(t) {
   const c = cardOf(t);
   if (!c || c.plain || !S.key || !S.ab.own || S.moving.has(t.id) || !A.moveLikely(t.msgs, { every: tempoEvery() })) return;
   // the call that decides is paid for too: set aside its most, from what's left today, and settle after
   const model = (S.models || []).find((m) => m.id === (c.model || S.model)) || null;
-  const messages = A.moveMessages(c, A.apiHistory(t.msgs), { adult: adultFor(c, t).ok, eager: tempoEvery() === 1 }), most = A.callEstimate(messages, 300, model);
-  if (!reserve(most)) {                                        // today's allowance is spent: said once a day, not every round
-    const day = localDay();
-    if (allowanceSaid !== day && here(t)) { allowanceSaid = day; err(`nothing on their own today: the allowance (${A.usd(S.ab.allowance)} a day, under abilities) is spent.`); }
-    return;
-  }
+  const messages = A.moveMessages(c, A.apiHistory(t.msgs), { adult: adultFor(c, t).ok }), most = A.callEstimate(messages, 300, model);
+  if (!reserve(most)) return;
   S.moving.add(t.id);                                         // one move at a time in a chat
   let held = most;
   try {
-    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages, schema: A.MOVE_SCHEMA, maxTokens: 300, temperature: 0.7 });
+    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages, schema: A.MOVE_SCHEMA, maxTokens: 300, temperature: 0.7 });
     settle(held, A.callCost(r.usage, model));
     held = 0;
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
-    let { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
+    const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
     const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
-    if (tempoEvery() === 1 && (move === "nothing" || (move === "voice" && voiced)) && !lately && refsOf(c).length) {            // every round means every round: a photo, then
-      const sr = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t.msgs), "", "photo", { adult: adultFor(c, t).ok }), maxTokens: 260, temperature: 0.8 });
-      shot = A.cleanText(sr.text);
-      if (shot) move = "photo";
-    }
-    if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once per chat
-      if (!noPicSaid.has(t.id) && here(t)) { noPicSaid.add(t.id); err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
-    } else if (move === "photo" && !lately) await ownPhoto(t, shot);
-    else if (move === "voice" && !voiced) await ownVoice(t);
+    if (move === "photo" && !lately) await ownPhoto(t, shot);
+    else if (move === "voice") await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
-  } catch (e) {                                                // then they just text; set to every round, the reason is shown once
-    if (tempoEvery() === 1 && !moveSaid.has(t.id) && here(t)) { moveSaid.add(t.id); err(`nothing on their own this time: ${e && e.message ? e.message : e}`); }
-  } finally { refund(held); S.moving.delete(t.id); }
+  } catch { /* then they just text */ } finally { refund(held); S.moving.delete(t.id); }
 }
 /** something they started on their own that didn't come (a photo, a voice note): said in its chat, or in a word elsewhere */
 function missed(t, what, e) {
@@ -2603,10 +2343,9 @@ async function ownPhoto(t, shot) {
   const adult = adultFor(c, t, shot).ok;                        // an adult character's can be adult (abilities.js adultCheck)
   const refs = refsOf(c), tried = [];
   let pm = adult ? adultPhotoModel() : photoModel(), why = null;
-  if (!pm) why = new Error("no photo model is available (abilities → photos).");
   while (pm && refs.length && tried.length < 2) {               // no picture of them yet: nothing to send
     const pics = refs.slice(0, Math.max(1, pm.maxIn)), price = A.photoPrice(pm, pics.length);
-    if (!reserve(price)) { why = new Error(`it doesn't fit in what's left of today's allowance (${A.usd(price)} for the photo; the allowance is under abilities).`); break; }
+    if (!reserve(price)) break;                                 // set aside first: nothing else can spend it meanwhile
     tried.push(pm.id);
     doing(t, "is taking a photo…");
     try {
@@ -2833,7 +2572,7 @@ async function hearVoice(blob, to) {
   if (blob.size < 600) { toast("That voice note was too short to hear."); return; }
   const id = await M.put(blob);
   const note = put(line("hearing your voice note…", "havre", "typing"));
-  scrollLog(true);
+  scrollLog();
   try {
     await loadList("asr");
     const hm = hearModel(), ext = /mp4/.test(blob.type) ? "m4a" : /ogg/.test(blob.type) ? "ogg" : "webm";
@@ -2870,7 +2609,7 @@ async function showPhoto(file) {
   const sm = seeModel();
   if (!sm) { err("No Venice model can see photos right now."); return; }
   const note = put(line(`${sm.name} is looking at your photo…`, "havre", "typing"));
-  scrollLog(true);
+  scrollLog();
   try {
     const r = await new Venice(S.key).chat({ model: sm.id, maxTokens: 220, temperature: 0.2,
       messages: [{ role: "user", content: [{ type: "text", text: A.SEE_PROMPT }, { type: "image_url", image_url: { url: pic } }] }] });
@@ -2936,20 +2675,18 @@ function renderMemory(c) {
   if (!c || c.plain) return;
   const linked = false, { notes } = memoryOf(c.id);
   how.textContent = (S.ab.memory
-      ? `every dozen messages, one short call on your key writes down what's new for ${c.name} to remember. everything is kept, here in this browser and never in their card; the newest, a reminder as its day nears, and what was just recalled (/recall) go into their chats. remember and remind, under any message, add to it by hand.`
+      ? `every dozen messages, one short call on your key writes down what ${c.name} remembers of your chats. it goes into every chat with them, here in this browser, and never into their card.`
       : "memory is switched off under abilities: nothing goes into their chats, and nothing new is written down.");
   $("#memory-add").hidden = linked;
   $("#memory-forget").hidden = linked || !notes.length;
   ul.textContent = "";
   if (linked) return;
   if (!notes.length) { ul.append(h("li", { class: "empty", text: "nothing yet: a few messages in, they start remembering." })); return; }
-  const inMind = new Set(R.select(notes).map((n) => n.text));
-  [...notes].reverse().forEach((n) => ul.append(h("li", { class: inMind.has(n.text) ? "" : "faint", title: inMind.has(n.text) ? "in mind: goes into their chats now" : "kept, not in mind now; /recall brings it back" },
-    n.until ? R.lines([n])[0] : n.text, n.kind === "mine" || n.kind === "remind" ? h("span", { class: "hint", text: " · yours" }) : "", " ", linkish("forget", () => {
-      const m = memoryOf(c.id);
-      saveMemory(c.id, { ...m, notes: R.without(m.notes, n.text) });
-      renderMemory(card());
-    }, { "aria-label": `Forget: ${n.text}` }))));
+  notes.forEach((n, i) => ul.append(h("li", {}, n, " ", linkish("forget", () => {
+    const m = memoryOf(c.id);
+    saveMemory(c.id, { ...m, notes: m.notes.filter((x) => x !== n) });
+    renderMemory(card());
+  }, { "aria-label": `Forget: ${n}` }))));
 }
 /** a persona that calls them by another name than their card's: the model would answer to either, so it's said, with the fix */
 function renderNameNote(c) {
@@ -3040,12 +2777,6 @@ function setTempo(v) {
   renderTools();
   if ($("#abilitydlg").open) renderAbilities();
   toast(`Photos and voice notes on their own: ${TEMPOS.find(([k]) => k === v)[1]}.`);
-}
-function awaySelect() {
-  const s = h("select", { "aria-label": "How long you've been away before they text first" }, AWAYS.map(([v, t]) => h("option", { value: String(v), text: t })));
-  s.value = String(S.ab.awayMin || 360);
-  s.addEventListener("change", () => { S.ab.awayMin = Number(s.value); saveAb(); toast(`They text first after you've been away ${AWAYS.find(([v]) => v === S.ab.awayMin)[1]}.`); });
-  return s;
 }
 function tempoSelect() {
   const s = h("select", { "aria-label": "How often they send things on their own" }, TEMPOS.map(([v, t]) => h("option", { value: v, text: t })));
@@ -3262,50 +2993,9 @@ function forgetKey() {
 }
 
 // ---------- import ----------
-/** the pictures and clips with these ids, as data: URLs (the ones this browser still has) */
-async function mediaAsData(ids) {
-  const out = {};
-  for (const id of ids) {
-    const blob = await M.get(id);
-    if (!blob) continue;
-    out[id] = await new Promise((resolve) => { const r = new FileReader(); r.onload = () => resolve(String(r.result)); r.onerror = () => resolve(""); r.readAsDataURL(blob); });
-    if (!out[id]) delete out[id];
-  }
-  return out;
-}
-/**
- * A bundle (one character with memory and chats, or everything) put back: cards not already here are added, notes are
- * appended to what's remembered, chats by id are added if missing, pictures are put back by id. Never replaces.
- */
-async function restoreBundle(bundle) {
-  const m = B.merge(bundle, { cards: S.cards, memory: local.get(K.memory, {}) || {}, threads: S.threads });
-  for (const c of m.addCards) addCard(c, { select: false });
-  for (const [id, mem] of Object.entries(m.memory)) if (S.cards.some((c) => c.id === id)) saveMemory(id, mem);
-  let pics = 0;
-  for (const [id, d] of Object.entries(bundle.media)) { try { await M.put(dataBlob(d), id); pics++; } catch { /* that one's gone */ } }
-  for (const t of m.addThreads) { if (S.cards.some((c) => c.id === t.card) || t.card === PLAIN) { S.threads[t.id] = t; saveThread(t); } }
-  if (bundle.settings) {
-    if (bundle.settings.abilities && typeof bundle.settings.abilities === "object") { S.ab = { ...S.ab, ...bundle.settings.abilities, clip: { ...S.ab.clip, ...(bundle.settings.abilities.clip || {}) } }; saveAb(); }
-    if (bundle.settings.voiceOn && typeof bundle.settings.voiceOn === "object") { S.voiceOn = { ...S.voiceOn, ...bundle.settings.voiceOn }; local.set(K.voiceOn, S.voiceOn); }
-  }
-  renderAll();
-  const bits = [`${m.addCards.length} character${m.addCards.length === 1 ? "" : "s"}`, `${m.addThreads.length} chat${m.addThreads.length === 1 ? "" : "s"}`, `${pics} picture${pics === 1 ? "" : "s"}`];
-  const skipped = [m.skippedCards && `${m.skippedCards} character${m.skippedCards === 1 ? "" : "s"}`, m.skippedThreads && `${m.skippedThreads} chat${m.skippedThreads === 1 ? "" : "s"}`].filter(Boolean);
-  toast(`Restored ${bits.join(", ")}${skipped.length ? "; already here: " + skipped.join(", ") : ""}.`);
-}
 async function importFile(file) {
   const st = $("#impstatus");
   try {
-    if (/\.json$/i.test(file.name) && file.size <= 200 * 1024 * 1024) {
-      let parsed = null;
-      try { parsed = JSON.parse(await file.text()); } catch { /* not a bundle, then */ }
-      const bundle = B.readBundle(parsed);
-      if (bundle) {
-        if ($("#importdlg").open) $("#importdlg").close();
-        await restoreBundle(bundle);
-        return;
-      }
-    }
     if (file.size > 12 * 1024 * 1024) throw new Error("That file is too big for a character card.");
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { card: c, kind } = C.fromAny(bytes);
@@ -3616,17 +3306,6 @@ async function exportAs(kind) {
     else if (kind === "v3") download(C.fileName(c, "card.json"), JSON.stringify(C.toCharacterCardV3(abs), null, 1) + "\n", "application/json");
     else if (kind === "prompt") download(C.fileName(c, "txt"), C.systemPrompt(c) + "\n", "text/plain");
     else if (kind === "png") download(C.fileName(c, "png"), new Blob([C.toPngCard(await cardPng(c), abs)], { type: "image/png" }), "image/png");
-    else if (kind === "full" || kind === "all") {
-      if (c.plain && kind === "full") throw new Error("A plain chat has no card to export.");
-      const threads = Object.values(S.threads).map((t) => ({ ...t }));
-      const mine = kind === "all" ? threads : threads.filter((t) => t.card === c.id);
-      toast(`Gathering ${kind === "all" ? "everything" : c.name + "'s pictures"}…`);
-      const media = await mediaAsData(B.mediaIds(mine));
-      const bundle = kind === "all"
-        ? B.bundleAll({ cards: S.cards.map(absolute), memory: local.get(K.memory, {}) || {}, threads, media, settings: { abilities: S.ab, model: S.model, voiceOn: S.voiceOn } })
-        : B.bundleOne(abs, { memory: memoryOf(c.id), threads: mine, media });
-      download(B.bundleName(kind === "all" ? null : c), JSON.stringify(bundle) + "\n", "application/json");
-    }
     toast("Made in your browser. Nothing was uploaded.");
   } catch (e) { toast(e.message); }
 }
@@ -3715,8 +3394,7 @@ function bind() {
     if (!t.trim() || (thread() && S.busy.has(thread().id))) return;
     say.value = "";
     growSay();
-    const cmd = W.parseCommand(t);
-    if (cmd) runCommand(cmd); else send(t);
+    send(t);
   });
   say.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   say.addEventListener("input", growSay);
@@ -3763,12 +3441,6 @@ function bind() {
   $("#vprev").addEventListener("click", () => loadVenice(Math.max(0, S.v.offset - PAGE), { paging: true }));
   $("#vnext").addEventListener("click", () => loadVenice(S.v.offset + PAGE, { paging: true }));
 
-  $("#card-fresh").addEventListener("click", () => {
-    S.fresh = true;
-    if (S.left !== "harbor") setLeft("harbor"); else syncNew();
-    $("#card").scrollIntoView({ behavior: motion(), block: "start" });
-    $("#nc-name").focus({ preventScroll: true });
-  });
   $("#new").addEventListener("click", () => {
     addCard({ name: "New character", persona: "", greeting: "", voice: { short_form: true }, model: S.model, license: "remix-with-credit" });
     openCard("edit");
@@ -3784,7 +3456,6 @@ function bind() {
     openCard("edit");
   });
   $("#nc-import").addEventListener("click", () => $("#import").click());
-  $("#restore").addEventListener("click", () => $("#import").click());
   $("#import").addEventListener("click", () => { $("#impstatus").textContent = ""; $("#impstatus").classList.remove("bad"); $("#importdlg").showModal(); });
   $("#impcancel").addEventListener("click", () => $("#importdlg").close());
   $("#imp-paste").addEventListener("click", importText);
@@ -3838,8 +3509,6 @@ function bind() {
   });
   $("#ref-file").addEventListener("change", () => { const rf = $("#ref-file").files[0]; $("#ref-file").value = ""; if (rf) addReference(rf); });
   $("#portrait-make").addEventListener("click", () => makePicture("portrait"));
-  $("#portrait-three").addEventListener("click", () => runWorkflow("portraits", { door: "sheet" }));
-  $("#nc-ai").addEventListener("click", () => runWorkflow("new", { door: "harbor", idea: $("#nc-persona").value.trim(), name: $("#nc-name").value.trim() }));
   $("#ref-make").addEventListener("click", () => makePicture());
   $("#speech-sample").addEventListener("click", hearSample);
   $("#speech-group").addEventListener("toggle", () => { if ($("#speech-group").open) loadList("tts"); });

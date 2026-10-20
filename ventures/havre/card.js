@@ -172,20 +172,7 @@ const quoted = (s, max = 600) => `"${str(s).replace(/\s+/g, " ").trim().slice(0,
  * The system prompt: who they are, how they talk (with their examples, which teach the voice), their flow, what they
  * remember of your chats (memory: notes from memory.js, never part of the card), their name, and the house rules.
  */
-/**
- * What they can send in this chat, for the prompt: photos and clips (the app makes them from their pictures when they
- * decide to), not yet (no picture on their card), or not at all (no key, or switched off). "" when nothing is known.
- */
-export function canBlock(can) {
-  if (!can || typeof can !== "object") return "";
-  if (!can.photos) return "In this chat you can't send pictures, clips or voice notes: if they ask for one, say so plainly, in your own voice.";
-  if (!can.pictured) return "You could send photos of yourself here, but there's no picture of you on your card yet. If they ask for one, say so: they can " +
-    "make your portrait on your card (or type /portraits in this chat), and after that you can send photos.";
-  return "In this chat you can send photos of yourself and short clips: when you decide to, they are made from your pictures and arrive " +
-    "with your message. Decide the way a person would, and never say you can't send pictures. Never describe a photo you didn't send.";
-}
-
-export function systemPrompt(card, { memory = [], can = null } = {}) {
+export function systemPrompt(card, { memory = [] } = {}) {
   const parts = [`You are ${card.name}.${card.tagline ? " " + card.tagline : ""}`];
   if (card.persona) parts.push(fill(card.persona, card));
   const voice = [card.voice.notes && fill(card.voice.notes, card), card.voice.short_form && SHORT_FORM].filter(Boolean);
@@ -202,8 +189,6 @@ export function systemPrompt(card, { memory = [], can = null } = {}) {
   }
   const mem = memoryBlock(memory);
   if (mem) parts.push(mem);
-  const able = canBlock(can);
-  if (able) parts.push(able);
   if (card.adult) parts.push(ADULT_RULE);
   parts.push(identityRule(card), HOUSE_RULES);
   return parts.join("\n\n");
@@ -221,12 +206,11 @@ export function memoryBlock(memory = []) {
  * of Havre's own (not a Venice character, who brings their own prompt), the last thing said ends with a reminder of
  * who is answering. memory: what they remember, for the system prompt.
  */
-export function chatMessages(card, history, { memory = [], can = null } = {}) {
+export function chatMessages(card, history, { memory = [] } = {}) {
   const own = !card.engine.venice_character;
-  // a Venice character brings its own prompt: beside it go only what they remember, what they can send here and, if
-  // they're adult, the 18+ rule
-  const extra = own ? "" : [memoryBlock(memory), canBlock(can), card.adult ? ADULT_RULE : ""].filter(Boolean).join("\n\n");
-  const msgs = own ? [{ role: "system", content: systemPrompt(card, { memory, can }) }] : extra ? [{ role: "system", content: extra }] : [];
+  // a Venice character brings its own prompt: beside it go only what they remember and, if they're adult, the 18+ rule
+  const extra = own ? "" : [memoryBlock(memory), card.adult ? ADULT_RULE : ""].filter(Boolean).join("\n\n");
+  const msgs = own ? [{ role: "system", content: systemPrompt(card, { memory }) }] : extra ? [{ role: "system", content: extra }] : [];
   // the greeting starts the conversation, so it goes once the conversation's start is out of the window
   if (card.greeting && own && history.length <= 40) msgs.push({ role: "assistant", content: fill(card.greeting, card) });
   for (const m of history.slice(-40)) if (m.role === "user" || m.role === "assistant") msgs.push({ role: m.role, content: str(m.content, 8000) });
