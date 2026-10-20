@@ -4,6 +4,7 @@
     python3 .github/time/inference.py check         # /health of the deployed worker
 
 Needs CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, TIME_VENTURE_DOMAIN and VENICE_API_KEY (bound as a Worker secret).
+Optional RUNWARE_API_KEY (also a secret): when set, /v1/render uses Runware ACE-Step and falls back to Venice.
 Settings (all optional, TIME_INFERENCE_*): APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS, AUDIO_SECONDS,
 MAX_TOKENS, CHAT_DAILY, CHAT_TOTAL, RENDER_DAILY, RENDER_TOTAL. Idempotent: deploying again updates in place.
 """
@@ -60,11 +61,12 @@ def deploy() -> dict:
         raise SystemExit("set VENICE_API_KEY: it becomes the worker's secret")
     vars_ = settings()
     h = hashlib.sha256(WORKER.read_bytes())
-    h.update(json.dumps({**vars_, "host": hostname(), "compat": COMPAT}, sort_keys=True).encode())
+    h.update(json.dumps({**vars_, "host": hostname(), "compat": COMPAT, "runware": bool(env("RUNWARE_API_KEY"))}, sort_keys=True).encode())
     vars_["REV"] = rev = h.hexdigest()[:12]
     kv = namespace()
     meta = {"main_module": "inference.js", "compatibility_date": COMPAT,
             "bindings": [{"type": "kv_namespace", "name": "QUOTA", "namespace_id": kv}, {"type": "secret_text", "name": "VENICE_API_KEY", "text": key}]
+            + ([{"type": "secret_text", "name": "RUNWARE_API_KEY", "text": env("RUNWARE_API_KEY")}] if env("RUNWARE_API_KEY") else [])
             + [{"type": "plain_text", "name": k, "text": str(v)} for k, v in vars_.items()]}
     data, ctype = multipart([("metadata", "application/json", json.dumps(meta).encode()),
                              ("inference.js", "application/javascript+module", WORKER.read_bytes())])
