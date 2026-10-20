@@ -5,8 +5,9 @@ judgments into one ranked list, in arithmetic anyone can check, and picks from t
 promotes queued cards in the same order instead of oldest first.
 
 A candidate is an open card a worker can take (a `DONE:` line; not a parent, not a human's, not the venture loop's
-own), or work with no card yet that the factory could start (a new venture). Each has a kind: venture, feature,
-refinement or optimization.
+own), work with no card yet that the factory could start (a new venture), or a card of the spine (`teahubxyz/teahub`:
+Tea MCP, the Pages server, the Gitea look), which is ranked and shown but never queued, since Time's worker builds in
+this repo only (#173). Each has a kind: venture, feature, refinement or optimization.
 
     score = weight[kind] x restless(kind) x age x (value + 0.5 x unblocks) / size
 
@@ -47,6 +48,7 @@ HELD = {"needs-human", "andon", "astra", "planned"} | LOOP     # a human's, an a
 LINED_UP = {"queued", "ready", "cloud"}                        # already moving: ranked (for promotion), never queued again
 CLOUD = "cloud"                                                # a card in the cloud lane: a cloud session builds it
 DONE = re.compile(r"^\s*DONE:", re.M | re.I)
+SPINE_WHY_NOT = "spine: not queued (Time builds in this repo only)"
 NEW_VENTURE = {"key": "venture:new", "n": None, "title": "Start a new venture: research, pick, build and launch one page",
                "body": "The venture loop (venture.py): one venture, researched and picked by the lead, built and judged.",
                "labels": [], "lined_up": False, "actionable": False, "kind": "venture", "unblocks": 0, "created": "",
@@ -122,6 +124,23 @@ def candidates(issues: list[dict]) -> list[dict]:
                     "kind": guess_kind(i.get("title") or "", body, labels), "unblocks": waits.get(i["number"], 0),
                     "created": str(i.get("created_at") or ""),
                     **({"why_not": "waits on " + ", ".join(f"#{d}" for d in deps)} if deps else {})})
+    return out
+
+
+def spine(issues: list[dict], prefix: str = "teahub") -> list[dict]:
+    """The spine's open cards as candidates, keyed `<prefix>#N` (#173). Every one with a `DONE:` line counts: they are
+    ranked and shown so the owner (or the CEO) reads what the spine needs next, and never queued or labelled from here,
+    since Time's worker builds in this repo only. `n` is None, as for any candidate with no card in this repo, so no
+    pick, no cloud pick and no promotion order can reach one."""
+    out = []
+    for i in issues:
+        labels, body = labels_of(i), i.get("body") or ""
+        if not DONE.search(body):
+            continue
+        out.append({"key": f"{prefix}#{i['number']}", "n": None, "title": _txt(i.get("title"), 120), "body": body[:500],
+                    "labels": sorted(labels), "lined_up": False, "actionable": False,
+                    "kind": guess_kind(i.get("title") or "", body, labels), "unblocks": 0,
+                    "created": str(i.get("created_at") or ""), "why_not": SPINE_WHY_NOT})
     return out
 
 
@@ -307,7 +326,7 @@ def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cl
         lane = "cloud lane" if CLOUD in r.get("labels", ()) else "lined up" if r["lined_up"] else ""
         note = (f"**{mark}**" if r["key"] in chosen else ("**to the cloud today**" if mode == "live" else "**would go to the cloud**")
                 if r["key"] in sent else "; ".join(x for x in (lane, r.get("why_not", "") if not r["actionable"] else "") if x))
-        name = f"{r['key']} {r['title']}" if r["n"] is not None else r["title"]
+        name = f"{r['key']} {r['title']}" if "#" in r["key"] else r["title"]   # a card's number, here or on the spine
         rows.append(f"| {k} | {_txt(name, 80).replace('|', '/')} | {r['kind']} | {r['value']:g} | {r['size']} | "
                     f"{r['unblocks']} | {r['restless']:g} | {r['score']:g} | {_txt(r['why'], 140).replace('|', '/')} | "
                     f"{_txt(note, 90).replace('|', '/')} |")

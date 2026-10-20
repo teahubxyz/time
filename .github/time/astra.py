@@ -19,7 +19,9 @@ nothing; `live` queues from the top while the day's money left covers each card'
 in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
 creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
 card), and the heartbeat promotes queued cards in the ranked order. Over the table the log shows what each kind's past
-picks returned (picks, merged share, median days, median $), from the outcomes housekeeping records (#172).
+picks returned (picks, merged share, median days, median $), from the outcomes housekeeping records (#172). The spine's
+own open cards (`TIME_SPINE`, `teahubxyz/teahub`) are ranked beside Time's, keyed `teahub#N` and marked "spine: not
+queued": a worker here builds in this repo only, so their value only tells the owner what the platform needs next (#173).
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
@@ -31,6 +33,7 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
@@ -43,6 +46,7 @@ _rspec.loader.exec_module(router)
 ROUTER_FILE = "time/router.json"
 
 SPINE = os.environ.get("TIME_SPINE") or "teahubxyz/teahub"   # where AGENTS.md and docs/decisions.md live
+SPINE_KEY = SPINE.split("/")[-1] or "spine"                  # the prefix of a spine card's key in the table: teahub#N
 LOG_TITLE = "Astra log"
 SKIP = {"queued", "ready", "needs-human", "andon", "astra",   # already moving, a human's, or Astra's own log
         "venture", "venture-batch", "signal", "signup"}       # the venture loop's own: it runs them itself
@@ -80,6 +84,8 @@ For every candidate give:
 - blocked: only when it can't move today, what it waits on (a PR that can't merge, a human, something outside the
   repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on #N` card
   is still open is already held back by code.
+A candidate keyed `{spine_key}#N` is a card of the spine, the platform's own repo: judge its value like any other (it
+tells the owner what the platform needs next), but no worker here can build it, so code never queues it.
 You may also write up to {max_new} new cards for work the board is missing; they are candidates from tomorrow on.
 Never write one that posts outside the repo or touches workflows, secrets or variables, and never one for work that is
 already a candidate or is in the list of cards closed lately: that work is done or under way.
@@ -103,6 +109,25 @@ def spine_file(path: str) -> str:
         return base64.b64decode(tm.gh("GET", f"/repos/{SPINE}/contents/{path}")["content"]).decode(errors="replace")
     except Exception as e:  # noqa: BLE001  the spine is context, not a dependency
         return f"(could not read {SPINE}/{path}: {str(e)[:80]})"
+
+
+def spine_issues(query: str = "state=open") -> list[dict]:
+    """The spine's issues (never PRs) through the same API, each row checked against the labels the query names exactly
+    as `tm.issues` checks this repo's: Gitea ignores a filter on a label the repo does not have and answers with every
+    issue instead (#137)."""
+    want = [l for l in (urllib.parse.parse_qs(query).get("labels") or [""])[0].split(",") if l]
+    rows = [i for i in tm.gh("GET", f"/repos/{SPINE}/issues?type=issues&limit=50&{query}") or [] if not i.get("pull_request")]
+    return [i for i in rows if "labels" not in i or all(tm.has_label(i, l) for l in want)]
+
+
+def spine_candidates() -> list[dict]:
+    """The spine's open cards as candidates (#173): ranked and shown, never queued. The spine is context, not a
+    dependency, so a read failure is a log line and the day's ranking goes up without it."""
+    try:
+        return router.spine(spine_issues(), SPINE_KEY)
+    except Exception as e:  # noqa: BLE001
+        print(f"spine issues unreadable: {str(e)[:120]}")
+        return []
 
 
 def board() -> dict:
@@ -234,7 +259,7 @@ def repeat_of(title: str, known: list[dict]) -> int | None:
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
-    cands = router.candidates(open_issues) + [dict(router.NEW_VENTURE)]
+    cands = router.candidates(open_issues) + spine_candidates() + [dict(router.NEW_VENTURE)]
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
@@ -247,7 +272,7 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
             f"\n\nCards closed in the last 14 days (done or dropped; don't write these again):\n{done}"
             f"\n\nCandidates ({len(cands)}):\n\n{listing}")
     try:
-        out = parse(tm.think(seat, None, None, ROUTER.format(max_new=max_new), user))
+        out = parse(tm.think(seat, None, None, ROUTER.format(max_new=max_new, spine_key=SPINE_KEY), user))
     except tm.Budget as e:
         tm.comment(log, f"🔭 Astra: {e}. No ranking today.", {"beat": "astra", "router": cfg["mode"], "queued": 0, "capped": True})
         return 0
