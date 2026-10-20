@@ -1103,7 +1103,7 @@ const bubblesOf = (c, text) => (c.plain ? [C.stripThinking(text)].filter(Boolean
 /** what the model reads: the conversation, with photos and voice notes as words (see abilities.js), and what they remember */
 function messagesFor(c, hist) {
   const api = A.apiHistory(hist);
-  return c.plain ? C.alternate(api.slice(-40).map(({ role, content }) => ({ role, content }))) : C.chatMessages(c, api, { memory: memoryFor(c) });
+  return c.plain ? C.alternate(api.slice(-40).map(({ role, content }) => ({ role, content }))) : C.chatMessages(c, api, { memory: memoryFor(c), can: canOf(c) });
 }
 
 // ---------- what they remember ----------
@@ -1116,6 +1116,8 @@ function saveMemory(id, m) {
 }
 /** what goes into their prompt: nothing with memory switched off; for a Venice character, beside Venice's own prompt */
 const memoryFor = (c) => (S.ab.memory && c && !c.plain ? R.lines(R.select(memoryOf(c.id).notes)) : []);
+/** what they can send in this chat, for their prompt (card.js canBlock): photos and clips need a key, "on their own", and a picture of them */
+const canOf = (c) => (c && !c.plain ? { photos: !!S.key && S.ab.own !== false, pictured: refsOf(c).length > 0 } : null);
 const remembering = new Set(), memoryMissed = new Map();
 /**
  * After every dozen messages in a chat (or a few, when you leave it), its character writes down what they remember now:
@@ -2547,7 +2549,9 @@ async function onTheirOwn(t) {
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
     const { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
     const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
-    if (move === "photo" && !lately) await ownPhoto(t, shot);
+    if ((move === "photo" || move === "clip") && !refsOf(c).length) {                        // nothing to make one from: say so, once in a while
+      if (!A.sentLately(t.msgs.filter((m) => m && m.role === "havre"), 8)) { if (here(t)) err(`${c.name} wanted to send a ${move}, but has no picture yet to make one from: /portraits, or add one on their card (card → look).`); }
+    } else if (move === "photo" && !lately) await ownPhoto(t, shot);
     else if (move === "voice") await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
   } catch { /* then they just text */ } finally { refund(held); S.moving.delete(t.id); }
