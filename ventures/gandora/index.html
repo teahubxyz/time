@@ -114,6 +114,7 @@ input,textarea{font:inherit;color:inherit}
 #lib h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:22px 0 10px}
 #lib .t.on canvas{outline:2px solid var(--acc);outline-offset:2px}
 #lib .t .heart{position:absolute;top:6px;right:6px;font-size:14px;opacity:.9}
+#lib .t .re{position:absolute;left:6px;bottom:40px;font-size:13px;letter-spacing:1px;background:rgba(11,11,14,.6);border-radius:8px;padding:2px 6px;max-width:calc(100% - 12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #lib .t{position:relative}
 #lib .t{cursor:pointer}
 #lib .t canvas{width:100%;aspect-ratio:1;border-radius:12px;display:block;background:var(--card)}
@@ -233,48 +234,65 @@ function keyHue(k) {
 }
 
 /* ---------- the cover: a function of the song ---------- */
-function drawCover(canvas, spec, { lit = 1 } = {}) {
-  const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height, cx = W / 2, cy = H / 2;
-  const seedHash = hash32((spec.seed || "") + "|" + (spec.title || "") + "|" + (spec.tags || ""));
-  const rnd = prng(seedHash);
-  const bpm = +spec.bpm || 100, energy = Math.min(1, Math.max(0, +spec.energy || 0.5)), minor = /m(in|inor)?\b/i.test(spec.key || "") && !/maj/i.test(spec.key || "");
+// pulse: live signal from the analyser { bass, mid, high, t } in 0..1 (and seconds); without it the cover is still.
+// The ground and grain depend only on the song, so they are drawn once per (song, size) and cached; the rings and
+// the seed mark are redrawn on top every frame when the music is playing.
+const groundCache = new Map();
+function palette(spec) {
+  const energy = Math.min(1, Math.max(0, +spec.energy || 0.5)), minor = /m(in|inor)?\b/i.test(spec.key || "") && !/maj/i.test(spec.key || "");
   const hue = keyHue(spec.key), hue2 = (hue + (minor ? 200 : 150)) % 360;
-  const sat = 55 + energy * 35, light = minor ? 36 : 52;
-  // ground: a soft vertical field in the song's key
+  return { energy, minor, hue, hue2, sat: 55 + energy * 35, light: minor ? 36 : 52, bpm: +spec.bpm || 100 };
+}
+function drawGround(W, H, spec, lit) {
+  const key = `${spec.id || ""}|${spec.seed}|${spec.title}|${spec.tags}|${W}|${lit}`;
+  if (groundCache.has(key)) return groundCache.get(key);
+  const off = document.createElement("canvas"); off.width = W; off.height = H;
+  const ctx = off.getContext("2d"), cx = W / 2, cy = H / 2, p = palette(spec);
+  const rnd = prng(hash32((spec.seed || "") + "|" + (spec.title || "") + "|" + (spec.tags || "")) ^ 0x9e37);
   const g = ctx.createLinearGradient(0, 0, 0, H);
-  g.addColorStop(0, `hsl(${hue} ${sat * .5}% ${light * .3}%)`); g.addColorStop(1, `hsl(${hue2} ${sat * .4}% ${light * .18}%)`);
+  g.addColorStop(0, `hsl(${p.hue} ${p.sat * .5}% ${p.light * .3}%)`); g.addColorStop(1, `hsl(${p.hue2} ${p.sat * .4}% ${p.light * .18}%)`);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-  // rings: one per 10 bpm, spaced by tempo; thicker when energetic
+  ctx.globalCompositeOperation = "lighter";
+  const spread = W * .46, dots = Math.floor(400 + p.energy * 2600);
+  for (let i = 0; i < dots; i++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * spread * 1.05;
+    ctx.fillStyle = `hsl(${p.hue2} ${p.sat}% ${p.light + 30}% / ${rnd() * 0.5 * lit})`;
+    ctx.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, (W / 380) * (0.8 + rnd() * 1.6), (W / 380) * (0.8 + rnd() * 1.6));
+  }
+  if (groundCache.size > 24) groundCache.delete(groundCache.keys().next().value);
+  groundCache.set(key, off);
+  return off;
+}
+function drawCover(canvas, spec, { lit = 1, pulse = null } = {}) {
+  const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height, cx = W / 2, cy = H / 2;
+  const p = palette(spec), { energy, minor, hue, sat, light, bpm } = p;
+  const rnd = prng(hash32((spec.seed || "") + "|" + (spec.title || "") + "|" + (spec.tags || "")));
+  const bass = pulse ? pulse.bass : 0, high = pulse ? pulse.high : 0, tm = pulse ? pulse.t : 0;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.drawImage(drawGround(W, H, spec, lit), 0, 0);
+  // rings: one per 10 bpm; the bass breathes them outward, the highs sharpen the line
   const rings = Math.max(4, Math.round(bpm / 10));
   const spread = W * .46, sym = 3 + Math.floor(rnd() * 6);  // symmetry order from the seed
   ctx.globalCompositeOperation = "lighter";
   for (let r = 0; r < rings; r++) {
-    const t = (r + 1) / rings, rad = spread * Math.pow(t, .8);
+    const t = (r + 1) / rings, rad = spread * Math.pow(t, .8) * (1 + 0.07 * bass * (1 - t));
     ctx.beginPath();
-    const wob = 0.02 + energy * 0.08, ph = rnd() * Math.PI * 2;
+    const wob = 0.02 + energy * 0.08 + 0.03 * high, ph = rnd() * Math.PI * 2 + tm * (0.15 + 0.3 * t) * (r % 2 ? 1 : -1);
     for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 90) {
       const rr = rad * (1 + wob * Math.sin(a * sym + ph) + wob * 0.5 * Math.sin(a * sym * 2 + ph * 3));
       const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
       a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
     }
     ctx.closePath();
-    ctx.lineWidth = (0.6 + energy * 2.2) * (W / 380) * (1 - t * 0.5);
-    ctx.strokeStyle = `hsl(${(hue + t * (minor ? -40 : 40)) % 360} ${sat}% ${light + t * 25}% / ${0.12 + 0.6 * (1 - t) * lit})`;
+    ctx.lineWidth = (0.6 + energy * 2.2 + high * 1.5) * (W / 380) * (1 - t * 0.5);
+    ctx.strokeStyle = `hsl(${(hue + t * (minor ? -40 : 40)) % 360} ${sat}% ${light + t * 25}% / ${(0.12 + 0.6 * (1 - t)) * lit * (1 + 0.5 * bass)})`;
     ctx.stroke();
   }
-  // grain: density follows energy
-  const dots = Math.floor(400 + energy * 2600);
-  for (let i = 0; i < dots; i++) {
-    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * spread * 1.05;
-    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
-    ctx.fillStyle = `hsl(${hue2} ${sat}% ${light + 30}% / ${rnd() * 0.5 * lit})`;
-    ctx.fillRect(x, y, (W / 380) * (0.8 + rnd() * 1.6), (W / 380) * (0.8 + rnd() * 1.6));
-  }
   ctx.globalCompositeOperation = "source-over";
-  // a core: the station's seed mark, same shape for every track of one seed
+  // a core: the station's seed mark, same shape for every track of one seed; it beats with the bass
   const core = prng(hash32(spec.seed || ""));
   const petals = 3 + Math.floor(core() * 5);
-  ctx.save(); ctx.translate(cx, cy); ctx.rotate(core() * Math.PI);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(core() * Math.PI + tm * 0.05); ctx.scale(1 + 0.3 * bass, 1 + 0.3 * bass);
   ctx.fillStyle = `hsl(${hue} ${sat}% ${Math.min(92, light + 45)}% / ${0.85 * lit})`;
   ctx.beginPath();
   for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 120) {
@@ -284,6 +302,35 @@ function drawCover(canvas, spec, { lit = 1 } = {}) {
   }
   ctx.closePath(); ctx.fill(); ctx.restore();
 }
+
+/* ---------- the visualizer: an analyser on the player, driving the cover while music plays ---------- */
+const viz = { ctx: null, an: null, data: null, raf: 0, smooth: { bass: 0, mid: 0, high: 0 } };
+function vizStart() {
+  try {
+    if (!viz.ctx) {
+      viz.ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const src = viz.ctx.createMediaElementSource(state.audio);
+      viz.an = viz.ctx.createAnalyser(); viz.an.fftSize = 512; viz.an.smoothingTimeConstant = 0.7;
+      src.connect(viz.an); viz.an.connect(viz.ctx.destination);
+      viz.data = new Uint8Array(viz.an.frequencyBinCount);
+    }
+    if (viz.ctx.state === "suspended") viz.ctx.resume();
+  } catch { return; }
+  cancelAnimationFrame(viz.raf);
+  const canvas = $("#cover canvas"), t0 = performance.now();
+  const band = (a, b) => { let s = 0; for (let i = a; i < b; i++) s += viz.data[i]; return s / (b - a) / 255; };
+  const frame = () => {
+    if (!state.playing || !state.current || !state.current.blob) { viz.raf = 0; return; }
+    viz.an.getByteFrequencyData(viz.data);
+    const raw = { bass: band(1, 8), mid: band(8, 40), high: band(40, 120) };
+    for (const k in raw) viz.smooth[k] += (raw[k] - viz.smooth[k]) * (raw[k] > viz.smooth[k] ? 0.5 : 0.12);   // fast attack, slow decay
+    const s = viz.smooth;
+    drawCover(canvas, state.current.spec, { pulse: { bass: Math.min(1, s.bass * 1.4), mid: s.mid, high: Math.min(1, s.high * 2.5), t: (performance.now() - t0) / 1000 } });
+    viz.raf = requestAnimationFrame(frame);
+  };
+  viz.raf = requestAnimationFrame(frame);
+}
+function vizStop() { cancelAnimationFrame(viz.raf); viz.raf = 0; if (state.current && state.current.spec) drawCover($("#cover canvas"), state.current.spec); }
 
 /* ---------- Venice ---------- */
 async function venice(path, body, { raw = false } = {}) {
@@ -472,7 +519,7 @@ async function playJob(job) {
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
   remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
-  try { await state.audio.play(); state.playing = true; setPlayIcon(); } catch { toast("Tap play."); }
+  try { await state.audio.play(); state.playing = true; setPlayIcon(); vizStart(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
 }
 async function advance() {
@@ -482,7 +529,9 @@ async function advance() {
   await playJob(job);
   cookNext();
 }
-state.audio.addEventListener("ended", () => { state.playing = false; setPlayIcon(); advance(); });
+state.audio.addEventListener("ended", () => { state.playing = false; setPlayIcon(); vizStop(); advance(); });
+state.audio.addEventListener("pause", () => { if (!state.audio.ended) { state.playing = false; setPlayIcon(); vizStop(); } });
+state.audio.addEventListener("play", () => { state.playing = true; setPlayIcon(); vizStart(); });
 state.audio.addEventListener("timeupdate", () => { if (state.audio.duration) $("#bar i").style.width = (state.audio.currentTime / state.audio.duration * 100) + "%"; });
 function setPlayIcon() { $("#playIco").innerHTML = state.playing ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>'; }
 
@@ -510,6 +559,7 @@ async function react(emoji, text) {
   const later = !!state.nextJob;
   if (!later) cookNext();
   saveStation().catch(() => {});
+  remember(state.current, false).catch(() => {});   // the reaction rides with the track in the library
   toast(`${emoji || "Noted"} — the ${later ? "track after next" : "next track"} hears it.`);
 }
 
@@ -568,7 +618,7 @@ $("#back").addEventListener("click", () => {
 $("#now").addEventListener("click", () => { $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden"); });
 $("#play").addEventListener("click", async () => {
   if (!state.audio.src) return;
-  if (state.playing) { state.audio.pause(); state.playing = false; } else { try { await state.audio.play(); state.playing = true; } catch {} }
+  if (state.playing) { state.audio.pause(); state.playing = false; vizStop(); } else { try { await state.audio.play(); state.playing = true; vizStart(); } catch {} }
   setPlayIcon();
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
@@ -600,6 +650,8 @@ $("#libBtn").addEventListener("click", async () => {
     const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec);
     d.append(c, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
     if (t.kept) d.append(Object.assign(document.createElement("span"), { className: "heart", textContent: "❤️" }));
+    const re = String(t.spec.reaction || "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "").trim();
+    if (re) d.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     return d;
   };
