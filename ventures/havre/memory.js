@@ -159,12 +159,13 @@ export function salience(n, now = Date.now()) {
 }
 
 /**
- * The notes for the prompt now: the most salient, newest first among equals, as many as fit the budget. With no
+ * The notes for the prompt now: the most salient, the newer batch first among equals and a batch in the order it was
+ * written (the most important first), as many as fit the budget. With no
  * reminders and nothing recalled this comes down to the newest notes, which is what it was before.
  */
 export function select(notes, { now = Date.now(), budget = BUDGET, max = SHORT } = {}) {
   const scored = notes.map((n, i) => ({ n, i, s: salience(n, now) })).filter((x) => x.s > 0)
-    .sort((a, b) => b.s - a.s || b.i - a.i);
+    .sort((a, b) => b.s - a.s || (b.n.at || 0) - (a.n.at || 0) || a.i - b.i);
   const out = [];
   let used = 0;
   for (const { n } of scored) {
