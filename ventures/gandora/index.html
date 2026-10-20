@@ -1122,7 +1122,15 @@ const sharedT = new URLSearchParams(location.search).get("t");
 if (sharedT) {
   try { const t = JSON.parse(unb64u(sharedT)); if (t && t.seed && t.title) { openStation(t.seed, { name: t.station || "", first: { title: t.title, tags: t.tags, lyrics: t.lyrics || "", bpm: t.bpm, key: t.key, energy: t.energy, line: t.line || "", station: t.station || "" } }); } }
   catch { toast("That link didn't carry a track."); }
-} else if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
+} else if (location.hash.length > 1 && !sharedTape) {
+  // a station link: resume that station if this browser has it (its latest track plays, free); otherwise fill the seed
+  const seed = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " ");
+  db.all("stations").then((list) => {
+    const s = list.find((x) => x.seed === seed);
+    if (s) resumeStation(s);
+    else { $("#seedIn").value = seed; $("#seedIn").dispatchEvent(new Event("input")); }
+  }).catch(() => { $("#seedIn").value = seed; $("#seedIn").dispatchEvent(new Event("input")); });
+}
 </script>
 <script src="brain.js"></script>
 </body>
