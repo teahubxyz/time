@@ -2537,7 +2537,7 @@ async function startClip(c, cm, shot, opts, price, where, { adult = false } = {}
  * showing, or now and then), the character's model decides: a photo or a voice note, sent out of the day's
  * allowance, or a clip, offered with Venice's price for you to take or leave.
  */
-const noPicSaid = new Set();
+const noPicSaid = new Set(), moveSaid = new Set();
 let allowanceSaid = "";
 async function onTheirOwn(t) {
   const c = cardOf(t);
@@ -2553,7 +2553,7 @@ async function onTheirOwn(t) {
   S.moving.add(t.id);                                         // one move at a time in a chat
   let held = most;
   try {
-    const r = await new Venice(S.key).chat({ model: c.model || S.model, messages, schema: A.MOVE_SCHEMA, maxTokens: 300, temperature: 0.7 });
+    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages, schema: A.MOVE_SCHEMA, maxTokens: 300, temperature: 0.7 });
     settle(held, A.callCost(r.usage, model));
     held = 0;
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
@@ -2564,7 +2564,9 @@ async function onTheirOwn(t) {
     } else if (move === "photo" && !lately) await ownPhoto(t, shot);
     else if (move === "voice") await ownVoice(t);
     else if (move === "clip" && !lately) await offerClip(t, shot);
-  } catch { /* then they just text */ } finally { refund(held); S.moving.delete(t.id); }
+  } catch (e) {                                                // then they just text; set to every round, the reason is shown once
+    if (tempoEvery() === 1 && !moveSaid.has(t.id) && here(t)) { moveSaid.add(t.id); err(`nothing on their own this time: ${e && e.message ? e.message : e}`); }
+  } finally { refund(held); S.moving.delete(t.id); }
 }
 /** something they started on their own that didn't come (a photo, a voice note): said in its chat, or in a word elsewhere */
 function missed(t, what, e) {
