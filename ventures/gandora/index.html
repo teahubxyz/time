@@ -912,7 +912,6 @@ function showTags(spec) {
   const total = tags.length + extra.length;
   if (total > 4) { const f = document.createElement("button"); f.className = "fold"; f.textContent = state.tagsOpen ? "▴ less" : `… ${total - 4} more`; f.addEventListener("click", () => { state.tagsOpen = !state.tagsOpen; showTags(spec); }); row.append(f); }
   for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
-  if (!state.tagsOpen && total > 4) return;
   const add = document.createElement("button"); add.className = "add"; add.textContent = "+ tag";
   add.addEventListener("click", () => {
     const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; row.replaceChild(inp, add); inp.focus();
