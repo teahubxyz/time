@@ -110,7 +110,7 @@
     <form id="composer" class="composer">
       <div class="sayrow">
         <label for="say" class="sr">Message</label>
-        <textarea id="say" rows="1" placeholder="say something" autocomplete="off" enterkeyhint="send"></textarea>
+        <textarea id="say" rows="1" placeholder="say something" title="/help lists what the harbor can do from here" autocomplete="off" enterkeyhint="send"></textarea>
         <button type="submit" class="btn solid" id="sendbtn">SEND</button>
       </div>
       <p id="tools" class="tools" hidden></p>
@@ -131,7 +131,7 @@
     <label>NAME <input id="nc-name" maxlength="80" placeholder="what they're called"></label>
     <label>WHO THEY ARE <textarea id="nc-persona" rows="4" placeholder="who they are, what they care about, how they talk"></textarea></label>
     <label>FIRST LINE <input id="nc-greeting" maxlength="400" placeholder="what they say first"></label>
-    <p class="actions"><button type="button" class="btn" id="nc-import">IMPORT A CARD INSTEAD</button> <button type="submit" class="btn solid" id="nc-go">CREATE</button></p>
+    <p class="actions"><button type="button" class="btn" id="nc-import">IMPORT A CARD INSTEAD</button> <button type="button" class="btn" id="nc-ai" title="an idea under who they are is enough: a model writes the rest, on your venice key">WRITE IT WITH AI</button> <button type="submit" class="btn solid" id="nc-go">CREATE</button></p>
   </form>
   <div id="card-body">
   <div class="tabs" role="tablist" aria-label="Card">
@@ -145,7 +145,7 @@
       <div class="col">
         <div class="portrait">
           <span class="face big" id="sheet-face" aria-hidden="true"></span>
-          <p class="mono"><button type="button" class="linkish" id="portrait-pick">change portrait</button> / <button type="button" class="linkish" id="portrait-make">make one with ai</button> / <button type="button" class="linkish" id="portrait-clear">remove</button> <span id="portrait-status" class="status" role="status"></span></p>
+          <p class="mono"><button type="button" class="linkish" id="portrait-pick">change portrait</button> / <button type="button" class="linkish" id="portrait-make">make one with ai</button> / <button type="button" class="linkish" id="portrait-three">three to pick from</button> / <button type="button" class="linkish" id="portrait-clear">remove</button> <span id="portrait-status" class="status" role="status"></span></p>
           <input type="file" id="portrait-file" accept="image/png,image/jpeg,image/webp,image/svg+xml" hidden>
         </div>
         <label>NAME <input name="name" maxlength="120" required></label>

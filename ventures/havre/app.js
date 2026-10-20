@@ -5,6 +5,7 @@ import * as A from "./abilities.js";
 import * as M from "./media.js";
 import * as T from "./threads.js";
 import * as R from "./memory.js";
+import * as W from "./workflows.js";
 import { Venice, VeniceError } from "./venice.js";
 import CAST from "./cast/index.js";
 
@@ -1327,7 +1328,9 @@ function mediaLine(c, m) {
   if (md.kind === "photo" || md.kind === "photo-in") {
     const alt = md.kind === "photo" ? `A photo from ${c.name}${md.shot ? ": " + md.shot : ""}` : "Your photo";
     said.append(h("figure", { class: "pic" }, mediaEl("img", md.id, { alt, title: md.shot || null, decoding: "async" }, "photo")));
-    if (md.kind === "photo") said.append(cost(["photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
+    if (md.kind === "photo") said.append(cost([md.offer === "portrait" ? "portrait: " + (md.shot || "") : "photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
+    if (md.offer === "portrait" && !me) said.append(h("p", { class: "mono" }, h("button", { type: "button", class: "linkish", text: md.kept ? "kept as their portrait" : "use as their portrait", disabled: md.kept || null,
+      onclick: () => useAsPortrait(c, m) })));
     else if (md.saw) said.append(h("span", { class: "cap", text: `${md.seer || "a model"} told them: ${md.saw}` }));
   } else if (md.kind === "clip" && !md.id) {
     // a clip this browser couldn't download: it plays from Venice's link until the link lapses
@@ -2194,7 +2197,141 @@ function renderMakers() {
     b.textContent = "make one with ai" + (price != null ? " · " + A.usd(price) : "");
     b.disabled = drawing || (as !== "portrait" && !!c.portrait && c.look.references.length >= C.MAX_REFERENCES);
   }
+  const { price: one } = makerPlan(c, "portrait"), three = $("#portrait-three");
+  three.textContent = "three to pick from" + (one != null ? " · " + A.usd(one * 3) : "");
+  three.disabled = drawing || portraitsBusy;
 }
+// ---------- workflows: the things the harbor does, by name, from any door (workflows.js) ----------
+/** a slash command from the chat box: /help, a workflow, or a word Havre doesn't know */
+function runCommand({ id, arg }) {
+  if (id === "help") { put(line("commands:\n" + W.helpLines().map((l) => "  " + l).join("\n"), "havre", "note")); scrollLog(); return; }
+  if (id === "unknown") { put(line(`no /${arg} here. /help lists what there is.`, "havre", "note")); scrollLog(); return; }
+  runWorkflow(id, { door: "chat", idea: arg });
+}
+/** one workflow, by id, from a door: the same run whichever door opened it */
+function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
+  const w = W.byId(id);
+  if (!w) return;
+  if (!S.key) return needKey(`${w.title} needs your venice key.`);
+  if (id === "portraits") return threePortraits({ door });
+  if (id === "new") return writeFromIdea(idea, { door, name });
+}
+/** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
+function threadFor(c) {
+  const t = thread();
+  if (t && t.card === c.id) return t;
+  const latest = T.latestOf(Object.values(S.threads), c.id);
+  if (latest) return latest;
+  const fresh = startThread(c);
+  if (here(fresh)) renderChatMeta();
+  return fresh;
+}
+/**
+ * Three portraits: three ways they could look, written from their card by a text model, each drawn by the portrait
+ * model, delivered into their chat as three pictures with a link under each to make it their portrait. Costs three
+ * portraits on your key, asked first.
+ */
+let portraitsBusy = false;
+async function threePortraits({ door = "chat" } = {}) {
+  const c = card();
+  if (!c || c.plain) { if (door === "chat") err("/portraits needs a character: pick one in the harbor first."); return; }
+  if (portraitsBusy) { toast("Three portraits are already on their way."); return; }
+  await loadList("image");
+  const { model: pm, adult } = drawPlan(c);
+  if (!pm || pm.price == null) { const why = S.listErr.image || "Venice has no model for that right now."; if (door === "chat") err(why); else lookStatus("#portrait-status", why, true); return; }
+  const price = pm.price * 3;
+  if (!confirm(`Draw ${c.name} three ways with ${pm.name}, to pick a portrait from? It costs about ${A.usd(price)} on your Venice key.`)) return;
+  const t = threadFor(c);
+  if (door !== "chat") { openThread(t.id); setLeft("chats"); }
+  portraitsBusy = true;
+  S.inflight++;
+  renderMakers();
+  doing(t, "is imagining three ways they could look…");
+  try {
+    const v = new Venice(S.key);
+    const o = await askJson(await jsonModel(c), { messages: W.directionsMessages(c), schema: W.DIRECTIONS_SCHEMA, maxTokens: 900, temperature: 0.95, what: "three looks" });
+    const dirs = W.normalizeDirections(o);
+    if (!dirs.length) throw new Error("The model sent back no looks. Try again, or pick another model on the card.");
+    doing(t, `is being drawn ${dirs.length} ways with ${pm.name}…`);
+    const drawn = await Promise.allSettled(dirs.map((d) => drawPicture(c, d.look, v)));
+    done(t);
+    let n = 0, why = null;
+    for (let i = 0; i < dirs.length; i++) {
+      const r = drawn[i];
+      if (r.status !== "fulfilled") { why = why || r.reason; continue; }
+      const id = await M.put(dataBlob(r.value));
+      deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot: dirs[i].title, look: dirs[i].look, model: pm.name, price: pm.price, offer: "portrait", ...(adult ? { adult: true } : {}) } });
+      n++;
+    }
+    if (!n) throw why || new Error("None of the three came out.");
+    if (why) err(`${dirs.length - n} of the three didn't come out: ${redraw(why)}`);
+    if (door !== "chat") toast(`${n} portraits of ${c.name} are in your chat with them: pick one.`);
+  } catch (e) {
+    done(t);
+    err(redraw(e));
+  } finally {
+    portraitsBusy = false;
+    S.inflight--;
+    renderMakers();
+    balanceSoon();
+  }
+}
+/** one of the three, kept as their portrait (the look it was drawn from goes on their card if it had none) */
+async function useAsPortrait(c, m) {
+  const md = m.media || {}, blob = await M.get(md.id);
+  if (!blob) { toast("That picture isn't kept in this browser any more."); return; }
+  const pic = await shrinkImage(blob, 512, "image/webp", { svg: false });
+  const now = S.cards.find((x) => x.id === c.id);
+  if (!now) return;
+  keepPicture(now, pic, md.look || "", "portrait");
+  md.kept = true;
+  const t = Object.values(S.threads).find((x) => x.msgs.includes(m));
+  if (t) saveThread(t);
+  if (t && here(t)) renderLog();
+  toast(`${c.name} has a new portrait.`);
+}
+/**
+ * Someone new from an idea: one call writes the card (name, tagline, greeting, persona, examples, how they look), and
+ * they join the harbor with their chat open, for you to say hello. From the harbor form the idea is what's typed
+ * under who they are (and the name, if one was given); from the chat it's the words after /new.
+ */
+let writingIdea = false;
+async function writeFromIdea(idea, { door = "chat", name = "" } = {}) {
+  idea = (idea || "").trim();
+  if (!idea) {
+    if (door === "chat") { put(line("/new needs an idea after it: /new a lighthouse keeper who writes letters to the sea", "havre", "note")); scrollLog(); }
+    else $("#nc-persona").focus();
+    return;
+  }
+  if (writingIdea) { toast("Someone is already being written."); return; }
+  writingIdea = true;
+  S.inflight++;
+  const note = door === "chat" ? put(line("havre is writing someone new…", "havre", "typing")) : null;
+  if (note) scrollLog();
+  const btn = $("#nc-ai");
+  btn.disabled = true;
+  try {
+    const model = S.model, writer = await jsonModel({ model });
+    if (door !== "chat") $("#nc-persona").placeholder = `writing with ${modelName(writer)}…`;
+    const o = await askJson(writer, { messages: W.ideaMessages(idea, name), schema: W.IDEA_SCHEMA, maxTokens: 2000, temperature: 0.95, what: "a character" });
+    const c = addCard(W.cardFromIdea(o, { model }), { select: false });
+    if (note) note.remove();
+    if (door !== "chat") $("#card-new").reset();
+    selectCard(c.id, { talk: true, scroll: true, open: null });
+    setTab("edit");
+    toast(`${c.name} joined the harbor. Say hello, or /portraits to see them.`);
+  } catch (e) {
+    if (note) note.remove();
+    if (door === "chat") err(e.message); else toast(e.message);
+  } finally {
+    writingIdea = false;
+    S.inflight--;
+    btn.disabled = false;
+    $("#nc-persona").placeholder = "who they are, what they care about, how they talk";
+    balanceSoon();
+  }
+}
+
 /** a picture for their card, made with AI on your key: a new portrait ("portrait"), or one more picture of them */
 async function makePicture(as = "") {
   const c = card(), st = as === "portrait" ? "#portrait-status" : "#look-status";
@@ -3382,7 +3519,8 @@ function bind() {
     if (!t.trim() || (thread() && S.busy.has(thread().id))) return;
     say.value = "";
     growSay();
-    send(t);
+    const cmd = W.parseCommand(t);
+    if (cmd) runCommand(cmd); else send(t);
   });
   say.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); $("#composer").requestSubmit(); } });
   say.addEventListener("input", growSay);
@@ -3497,6 +3635,8 @@ function bind() {
   });
   $("#ref-file").addEventListener("change", () => { const rf = $("#ref-file").files[0]; $("#ref-file").value = ""; if (rf) addReference(rf); });
   $("#portrait-make").addEventListener("click", () => makePicture("portrait"));
+  $("#portrait-three").addEventListener("click", () => runWorkflow("portraits", { door: "sheet" }));
+  $("#nc-ai").addEventListener("click", () => runWorkflow("new", { door: "harbor", idea: $("#nc-persona").value.trim(), name: $("#nc-name").value.trim() }));
   $("#ref-make").addEventListener("click", () => makePicture());
   $("#speech-sample").addEventListener("click", hearSample);
   $("#speech-group").addEventListener("toggle", () => { if ($("#speech-group").open) loadList("tts"); });
