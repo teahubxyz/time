@@ -198,7 +198,7 @@ input,textarea{font:inherit;color:inherit}
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
       </button>
     </div>
-    <div id="pills"><button id="lyricsBtn">⇄ LYRICS</button><button id="keep" disabled>➕ KEEP</button></div>
+    <div id="pills"><button id="lyricsBtn">⇄ LYRICS</button><button id="keep" disabled>➕ KEEP</button><button id="share" disabled>↗ SHARE</button></div>
     <div id="next"></div>
   </div>
   <div id="react">
@@ -492,13 +492,25 @@ async function listStations() {
     row.append(d);
   }
 }
-async function openStation(seed, { id, name = "", taste, history, played } = {}) {
+/* links: the URL follows the station (#seed); a share link carries the current track's sheet music (?t=) so the same
+   song opens and renders for whoever follows it, even with nothing stored anywhere */
+const b64u = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const unb64u = (s) => decodeURIComponent(escape(atob(String(s).replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4))));
+function shareLink() {
+  const s = state.current && state.current.spec; if (!s) return "";
+  const t = { seed: s.seed, station: state.station, title: s.title, tags: s.tags, lyrics: s.lyrics || "", bpm: s.bpm, key: s.key, energy: s.energy, line: s.line || "" };
+  return `${location.origin}/?t=${b64u(JSON.stringify(t))}`;
+}
+function setUrl() { try { history.replaceState(null, "", state.seed ? "/#" + encodeURIComponent(state.seed).replace(/%20/g, "+") : "/"); } catch {} }
+async function openStation(seed, { id, name = "", taste, history, played, first } = {}) {
   if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; }
   state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
   state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
   $("#stationName").textContent = name || seed;
   $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
+  setUrl();
   if (!state.current) {
+    if (first) { first.seed = seed; first.made = Date.now(); state.nextJob = makeJob(first); drawCover($("#cover canvas"), first, { lit: 0.6 }); $("#title").textContent = first.title; saveStation().catch(() => {}); advance(); return; }
     drawCover($("#cover canvas"), { seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(seed) % 12], energy: 0.5 }, { lit: 0.6 });
     $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = ""; keepLabel();
     saveStation().catch(() => {});
@@ -652,7 +664,14 @@ async function keepLabel() {
   if (!cur || !cur.id) { b.disabled = true; b.classList.remove("on"); b.textContent = "➕ KEEP"; return; }
   const row = (await db.all()).find((t) => t.id === cur.id);
   b.disabled = false; b.classList.toggle("on", !!(row && row.kept)); b.textContent = row && row.kept ? "✓ KEPT" : "➕ KEEP";
+  $("#share").disabled = false;
 }
+$("#share").addEventListener("click", async () => {
+  const url = shareLink(); if (!url) return;
+  const s = state.current.spec, text = `${s.title} · a gandora track from the ${state.station || s.seed} station`;
+  if (navigator.share) { try { await navigator.share({ title: s.title, text, url }); return; } catch {} }
+  try { await navigator.clipboard.writeText(url); toast("Link copied. Whoever opens it gets this song, freshly rendered."); } catch { prompt("Copy this link:", url); }
+});
 $("#keep").addEventListener("click", async () => {
   const cur = state.current && state.current.spec; if (!cur || !cur.id || !state.current.blob) return;
   const row = (await db.all()).find((t) => t.id === cur.id);
@@ -807,8 +826,12 @@ $("#tasteBtn").addEventListener("click", () => openTaste().catch((e) => toast(e.
 $("#tasteClose").addEventListener("click", () => $("#taste").classList.add("hidden"));
 
 listStations().catch(() => {});
-// first paint of the seed mark, for a visitor who lands with a hash like #rainy+trains
-if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
+// a shared track (?t=): open its station and render that song first; a hash (#rainy+trains) just fills the seed
+const sharedT = new URLSearchParams(location.search).get("t");
+if (sharedT) {
+  try { const t = JSON.parse(unb64u(sharedT)); if (t && t.seed && t.title) { openStation(t.seed, { name: t.station || "", first: { title: t.title, tags: t.tags, lyrics: t.lyrics || "", bpm: t.bpm, key: t.key, energy: t.energy, line: t.line || "", station: t.station || "" } }); } }
+  catch { toast("That link didn't carry a track."); }
+} else if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
 </script>
 <script src="brain.js"></script>
 </body>
