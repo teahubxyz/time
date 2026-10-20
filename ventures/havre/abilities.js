@@ -270,25 +270,27 @@ export function clipOptions(model, last = {}) {
 
 /**
  * A conversation with pictures and voice notes in it, as plain messages for a text model. A photo or clip the
- * character sent is mentioned in the next thing the person says ("(You sent me a photo: …)"), so the model knows
- * about it without learning to write "[photo]" itself. Your photo is "[a photo: what it shows]", your voice note is
- * the words you said.
+ * character sent is in their own turn, as a stage direction ("*sends a photo: …*"), the way characters narrate what
+ * they do, so the model knows what it sent and who sent it (told in the person's turn, "you sent me a photo" read as
+ * the person's, and characters got confused about whose photo it was). Your photo is "[a photo: what it shows]", your
+ * voice note is the words you said.
  */
 export function apiHistory(history) {
   const out = [];
-  let notes = [];
   for (const m of history || []) {
     if (!m || m.demo) continue;
     const media = m.media || null;
     if (m.role === "assistant") {
       if (media && (media.kind === "photo" || media.kind === "clip")) {
         const shot = clip(str(media.shot).trim(), 300).replace(/[.!?…\s]+$/, "");
-        notes.push(`(You sent me ${media.kind === "clip" ? "a short video" : "a photo"}${shot ? ": " + shot : ""}.)`);
+        const sent = `*sends ${media.kind === "clip" ? "a short video" : "a photo"}${shot ? ": " + shot : ""}*`;
+        const last = out.at(-1);
+        if (last && last.role === "assistant") last.content += "\n\n" + sent;   // with the words it came after
+        else out.push({ role: "assistant", content: sent });
       } else if (str(m.content).trim()) out.push({ role: "assistant", content: str(m.content) });
     } else if (m.role === "user") {
       let content = str(m.content);
       if (media && media.kind === "photo-in") content = `[a photo${media.saw ? ": " + media.saw : ""}]` + (content ? " " + content : "");
-      if (notes.length) { content = notes.join(" ") + (content ? "\n\n" + content : ""); notes = []; }
       out.push({ role: "user", content, ...(m.hidden ? { hidden: true } : {}) });
     }
   }
@@ -334,10 +336,14 @@ export const MOVE_SCHEMA = {
 };
 
 /** the messages for a text model to decide the character's next move (adult: their pictures can be adult, adultCheck) */
-export function moveMessages(card, history, { adult = false } = {}) {
+/** the move prompt as it stands, or, for someone set to send things every round, told to lean in rather than hold back */
+export const EAGER = " This character is set to send things every round: choose \"photo\" (or \"voice\" or \"clip\" when that fits better) " +
+  "whenever a picture of them could go with what was just said, however small the reason; \"nothing\" only when a photo would make no sense at all.";
+export function moveMessages(card, history, { adult = false, eager = false } = {}) {
   const lines = transcript(card, history, 12);
   const look = card.look && card.look.description;
-  return [{ role: "system", content: adult ? MOVE_SYSTEM_ADULT : MOVE_SYSTEM }, { role: "user", content: [
+  const system = (adult ? MOVE_SYSTEM_ADULT : MOVE_SYSTEM) + (eager ? EAGER : "");
+  return [{ role: "system", content: system }, { role: "user", content: [
     `The character: ${card.name}${card.tagline ? ". " + card.tagline : ""}`,
     look ? `How they look: ${look}` : "",
     "The conversation, latest last (their reply just now is the last line):\n" + lines.join("\n"),
@@ -353,7 +359,7 @@ export function normalizeMove(o) {
 
 // words that make a move likely: asking to see or hear them, or a reply about where they are and what they're doing
 const ASKS = /\b(pics?|picture|photo|selfie|snap|show me|see you|see it|what (?:do )?you look like|look like|wearing|outfit|send (?:me )?(?:a|one|it)|video|clip|film|hear you|your voice|say it|sing|whisper|out loud|aloud)\b/i;
-const SHOWS = /\b(look at (?:this|my|the)|wearing|outfit|dress|view from|sunset|sunrise|my (?:room|place|desk|garden|kitchen|car|boat|bed|window)|just got (?:back|a|my)|i'?m (?:at|in|on) the|picture|photo|selfie|whisper)\b/i;
+const SHOWS = /\b(sends? (?:you )?(?:a |another )?(?:photo|pic|selfie|snap)|look at (?:this|my|the)|wearing|outfit|dress|view from|sunset|sunrise|my (?:room|place|desk|garden|kitchen|car|boat|bed|window)|just got (?:back|a|my)|i'?m (?:at|in|on) the|picture|photo|selfie|whisper)\b/i;
 
 /**
  * Whether to think about a move after this reply: when the person asked to see or hear them, when the reply talks

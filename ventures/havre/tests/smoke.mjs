@@ -171,7 +171,7 @@ async function fakeVenice(route) {
       reply = /^Them:.*\bSend me a pic/i.test(said) ? json({ move: "photo", shot: "The character from the reference picture holds up a mug\nin a half-unpacked kitchen." })
         : /^Them:.*\bFilm the harbor/i.test(said) ? json({ move: "clip", shot: "The character from the reference pictures pans across the harbor at dusk." })
         : /^Them:.*\bWhisper it/i.test(said) ? json({ move: "voice", shot: "" }) : json({ move: "nothing", shot: "" });
-    } else if (/^(?:\(You sent me [^\n]*\)\n\n)?\[Time passes/.test(lastSaid)) {          // after a word about the photo she sent last, if she did
+    } else if (/^\[Time passes/.test(lastSaid)) {
       reply = "You're back!\n\nI kept the kettle warm.";
     } else if (system.startsWith("You write the shot for a photo")) {
       reply = "Shot: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight.";
@@ -417,8 +417,10 @@ async function main() {
     assert.equal(await page.locator("#log .line.me").count(), 0, "what started it isn't shown");
     const hello = seen.chats[chatsBefore];
     assert.equal(hello.venice_parameters.character_slug, "sable-penrose");
-    assert.equal(hello.messages.length, 1);
-    assert.equal(hello.messages[0].role, "user");
+    assert.equal(hello.messages.length, 2, "what they can send here, then what started it");
+    assert.equal(hello.messages[0].role, "system");
+    assert.match(hello.messages[0].content, /you can send photos of yourself/);
+    assert.equal(hello.messages[1].role, "user");
     await count(page, "#roster tr:not(.newrow)", 2);
     assert.match(await page.locator('#vgrid .tile[aria-pressed="true"]').evaluate((el) => el.textContent), /Sable Penrose.*talking now/);
     // the model: their own on Venice to start with, and any other Venice model from the picker
@@ -524,7 +526,8 @@ async function main() {
     await has(page, "#log .line.media .cap", /photo · Grok Imagine · \$0\.03 · save/);
     // the photo is in the conversation the model reads next, as something it sent
     await answered(page, async () => { await page.fill("#say", "Cute."); await page.keyboard.press("Enter"); });
-    assert.match(talks().at(-1).messages.at(-1).content, /^\(You sent me a photo: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight\.\)\n\nCute\.$/);
+    assert.equal(talks().at(-1).messages.at(-1).content, "Cute.");
+    assert.match(talks().at(-1).messages.at(-2).content, /\*sends a photo: The character from the reference picture sits on a stack of moving boxes, grinning, warm lamplight\*$/);
 
     // voice notes: one on request ("hear it"), then every reply, in the voice on her card
     const hears = page.getByRole("button", { name: "Hear this as a voice note from Sable Penrose" });
@@ -614,8 +617,8 @@ async function main() {
     assert.match(seen.heard.at(-1), /name="model"\r\n\r\nnvidia\/parakeet-tdt-0\.6b-v3/);
     assert.match(seen.heard.at(-1), /filename="voice-note\.(webm|ogg|m4a)"/);
     await until(page, () => { const a = [...document.querySelectorAll("#log .line.me audio")].at(-1); return !!a && a.src.startsWith("blob:"); }, null, "your voice note in the chat");
-    assert.equal(talks().at(-1).messages.at(-1).content, "(You sent me a short video: The character from the reference pictures waves from the doorway as the camera drifts closer.)\n\nhello from the mic",
-      "what you said, after a word about the clip she sent");
+    assert.equal(talks().at(-1).messages.at(-1).content, "hello from the mic", "what you said");
+    assert.match(talks().at(-1).messages.at(-2).content, /\*sends a short video: The character from the reference pictures waves from the doorway as the camera drifts closer\*$/, "after the clip she sent, in her turn");
     // your photo, to a model that can see (she talks through Tiny now)
     const red = await page.evaluate(() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d"); g.fillStyle = "#c00"; g.fillRect(8, 8, 48, 48); return c.toDataURL("image/png"); });
     const redPng = Buffer.from(red.split(",")[1], "base64");
@@ -697,9 +700,9 @@ async function main() {
     });
     await page.reload();
     await has(page, "#log .line.them .said", /I kept the kettle warm\./);
-    const nudges = () => talks().filter((b) => /^(?:\(You sent me [^\n]*\)\n\n)?\[Time passes/.test(String(b.messages.at(-1).content)));
-    assert.match(nudges()[0].messages.at(-1).content, /^\(You sent me a photo: The character from the reference picture holds up a mug in a half-unpacked kitchen\.\)\n\n\[Time passes: about 8 hours since you last talked\. They just came back to the chat\./,
-      "the photo she sent last, then the time that's passed");
+    const nudges = () => talks().filter((b) => /^\[Time passes/.test(String(b.messages.at(-1).content)));
+    assert.match(nudges()[0].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. They just came back to the chat\./, "the time that's passed");
+    assert.match(nudges()[0].messages.at(-2).content, /\*sends a photo: The character from the reference picture holds up a mug in a half-unpacked kitchen\*$/, "the photo she sent last, in her turn");
     await poll(() => nudges().length === 2, "Captain Ro texting first", 9000);
     assert.match(nudges()[1].messages.at(-1).content, /^\[Time passes: about 8 hours since you last talked\. Reach out to them first/);
     await has(page, "#chats-new", /^1$/);
@@ -860,7 +863,8 @@ async function main() {
     await page.fill("#memory-add", "They're called Princess.");
     await page.press("#memory-add", "Enter");
     await count(page, "#memory-list li", 2);
-    assert.deepEqual((await memNow()).notes, ["They're called Princess.", "I told them to ask again after the tide."]);
+    assert.deepEqual((await memNow()).notes.map((n) => n.text), ["I told them to ask again after the tide.", "They're called Princess."], "kept oldest first, with what you added on the end");
+    assert.deepEqual((await memNow()).notes.map((n) => n.kind), ["fact", "mine"]);
     assert.ok(!JSON.stringify(await inesNow()).includes("Princess"), "memory lives beside the card, never in it");
     await shot(page, "desktop-memory.png");
     // leaving a chat with a few new messages, she writes down what she remembers of them, so a new chat picks up there
@@ -1260,15 +1264,15 @@ async function main() {
     await p3.locator("#vgrid .tile", { hasText: "Wren" }).click();
     await has(p3, "#log .line.them .said", /Careful, the boxes bite\./);
     assert.ok(await p3.locator("#say").isVisible(), "the chat is on screen");
-    assert.ok(await p3.locator("#chars").isHidden(), "and not stranded below the list: one at a time");
+    assert.ok(await p3.locator("#lp-chars").isHidden() && await p3.locator("#lt-chats").isVisible(), "the list is out of the way, its tabs stay above the chat");
     assert.ok(await wide() <= W, `still no sideways scroll (scrollWidth ${await wide()})`);
     assert.deepEqual(await small(), [], "nor here");
     await p3.waitForTimeout(500);
     await shot(p3, "phone-chat.png");
     await shot(p3, "phone-full.png", { fullPage: true });
-    // from a chat, back to the list it came from; a chat from your chats opens in its place, and goes back to them
-    await has(p3, "#chat-back", /^← characters$/);
-    await p3.click("#chat-back");
+    // from a chat, the tabs above it go back to the list; a chat from your chats opens in its place
+    assert.ok(await p3.locator("#chat-back").isHidden(), "no back link: the tabs are the way back");
+    await p3.click("#lt-chars");
     assert.ok(await p3.locator("#chat").isHidden());
     assert.ok(await p3.locator("#lp-chars").isVisible());
     await p3.click("#lt-chats");
@@ -1276,9 +1280,8 @@ async function main() {
     await p3.waitForTimeout(400);
     await shot(p3, "phone-chats.png");
     await p3.locator("#threads .trow").first().click();
-    assert.ok(await p3.locator("#chars").isHidden() && await p3.locator("#say").isVisible());
-    await has(p3, "#chat-back", /^← your chats$/);
-    await p3.click("#chat-back");
+    assert.ok(await p3.locator("#lp-chats").isHidden() && await p3.locator("#say").isVisible());
+    await p3.click("#lt-chats");
     assert.ok(await p3.locator("#lp-chats").isVisible());
     await phone.close();
   } finally {

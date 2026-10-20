@@ -34,8 +34,7 @@ body {
   color: var(--ink);
   font: 19px/1.35 var(--serif);
 }
-a { color: var(--link); }
-a:visited { color: var(--visited); }
+a, a:visited { color: var(--link); }
 a:hover, a:focus-visible { color: var(--ink); background: var(--hi); }
 :focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
 p { margin: 0; }
@@ -311,7 +310,9 @@ pre.saw {
 .line.media .words { white-space: pre-wrap; }
 .pic { margin: 0; border: 1px solid var(--ink); width: min(100%, 340px); }
 .pic img { width: 100%; height: auto; max-height: 440px; object-fit: contain; background: var(--well); cursor: zoom-in; }
-.lightbox { padding: 0; border: 1px solid var(--ink); background: var(--paper); max-width: 96vw; max-height: 96vh; }
+/* the picture, big: it takes focus when it opens, and the focus ring (link blue) read as a blue background around it */
+.lightbox { padding: 0; border: 0; background: transparent; max-width: 96vw; max-height: 96vh; outline: none; }
+.lightbox:focus, .lightbox:focus-visible { outline: none; }
 .lightbox::backdrop { background: rgba(0, 0, 0, 0.88); }
 .lightbox img { max-width: 96vw; max-height: 94vh; object-fit: contain; cursor: zoom-out; }
 .newcard label { display: block; margin: 12px 0; font: 14px var(--mono); }
@@ -394,6 +395,7 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 .notes li + li { margin-top: 4px; }
 .notes .linkish { font: 12px var(--mono); }
 .notes li.empty { list-style: none; margin-left: -20px; font: 13px var(--mono); }
+.notes li.faint { opacity: 0.55; }
 #memory-add { font: 17px var(--serif); }
 #memory-group p.mono { margin-top: 8px; }
 .lineage h3 { font: 700 13px var(--mono); margin-bottom: 4px; }
@@ -493,13 +495,16 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 /* ---------- narrow screens ---------- */
 @media (max-width: 1040px) {
   .chars { border-right: 0; border-bottom: 1px solid var(--ink); }
-  /* one at a time, like a phone's messages: the list, or the chat with a way back to it */
-  .studio.pane-list .chat, .studio.pane-chat .chars { display: none; }
+  /* one at a time, like a phone's messages: the list, or the chat. In the chat the left column's tabs stay above it,
+     without their panels, so CHATS / CHARACTERS / HARBOR are always one tap away */
+  .studio.pane-list .chat { display: none; }
+  .studio.pane-chat .chars [role=tabpanel] { display: none; }
   .studio.pane-list .chars { border-bottom: 0; }
-  .chat .back { display: block; flex-basis: 100%; font: 14px var(--mono); }
+  .chat .back { display: none; }
   .grid { margin-right: 0; }
   .chat { position: static; max-height: none; }
-  .log, .chat.asking .log { height: max(320px, 58vh); }
+  /* the conversation takes what the screen has left under the tabs and above the composer */
+  .log, .chat.asking .log { height: max(360px, calc(100dvh - 300px)); }
   .ask { max-height: none; }
 }
 @media (max-width: 640px) {
@@ -511,7 +516,12 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   .keybar { gap: 8px 10px; }
   .keybar input:not([type=checkbox]) { flex: 1 1 100%; }
   .keyfine, .keystatus { margin-left: 0; }
-  .sechead h2, .lefthead [role=tab], .lefthead .sep { font-size: 28px; }
+  .sechead h2 { font-size: 28px; }
+  /* the three tabs on one line: smaller, a dot between them instead of a slash */
+  .lefthead [role=tablist] { flex-wrap: nowrap; gap: 0 10px; }
+  .lefthead [role=tab] { font-size: 21px; white-space: nowrap; }
+  .lefthead .sep { font-size: 0; }
+  .lefthead .sep::before { content: "\00b7"; font: 700 21px/1 var(--serif); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid > li:nth-child(2n) { border-right: 0; }
   .line { grid-template-columns: minmax(0, 1fr); gap: 0; }
@@ -537,7 +547,9 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 }
 /* a small phone (an iPhone SE is 375px wide): the left column's tabs a little smaller, so a count of what's new fits */
 @media (max-width: 400px) {
-  .lefthead [role=tab], .lefthead .sep { font-size: 24px; }
+  .lefthead [role=tablist] { gap: 0 8px; }
+  .lefthead [role=tab] { font-size: 19px; }
+  .lefthead .sep::before { font-size: 19px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
