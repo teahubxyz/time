@@ -46,11 +46,12 @@ def hostname() -> str:
     return f"inference.{zone}"
 
 
-def database() -> str:
-    for d in cf("GET", f"{account()}/d1/database?name={NAME}") or []:
-        if d.get("name") == NAME:
-            return d["uuid"]
-    return cf("POST", f"{account()}/d1/database", {"name": NAME})["uuid"]
+def namespace() -> str:
+    """The worker's KV namespace for quota counters (created once). Returns its id."""
+    for n in cf("GET", f"{account()}/storage/kv/namespaces?per_page=100") or []:
+        if n.get("title") == NAME:
+            return n["id"]
+    return cf("POST", f"{account()}/storage/kv/namespaces", {"title": NAME})["id"]
 
 
 def deploy() -> dict:
@@ -61,15 +62,15 @@ def deploy() -> dict:
     h = hashlib.sha256(WORKER.read_bytes())
     h.update(json.dumps({**vars_, "host": hostname(), "compat": COMPAT}, sort_keys=True).encode())
     vars_["REV"] = rev = h.hexdigest()[:12]
-    db = database()
+    kv = namespace()
     meta = {"main_module": "inference.js", "compatibility_date": COMPAT,
-            "bindings": [{"type": "d1", "name": "DB", "id": db}, {"type": "secret_text", "name": "VENICE_API_KEY", "text": key}]
+            "bindings": [{"type": "kv_namespace", "name": "QUOTA", "namespace_id": kv}, {"type": "secret_text", "name": "VENICE_API_KEY", "text": key}]
             + [{"type": "plain_text", "name": k, "text": str(v)} for k, v in vars_.items()]}
     data, ctype = multipart([("metadata", "application/json", json.dumps(meta).encode()),
                              ("inference.js", "application/javascript+module", WORKER.read_bytes())])
     cf("PUT", f"{account()}/workers/scripts/{NAME}", data=data, ctype=ctype)
     url = attach(NAME, hostname())
-    return {"url": url, "worker": NAME, "db": db, "rev": rev}
+    return {"url": url, "worker": NAME, "kv": kv, "rev": rev}
 
 
 def check() -> dict:

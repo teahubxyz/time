@@ -13,13 +13,11 @@
 // (day, app, kind): CHAT_DAILY/RENDER_DAILY per person, CHAT_TOTAL/RENDER_TOTAL per app. A render is an audio queue
 // or an image generate; retrieve polls, quotes and completes are free. Over a limit answers 429 with a plain reason.
 //
-// Bindings: DB (D1). Secret: VENICE_API_KEY. Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
+// Bindings: QUOTA (KV). Secret: VENICE_API_KEY. Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
 // AUDIO_SECONDS, MAX_TOKENS, CHAT_DAILY, CHAT_TOTAL, RENDER_DAILY, RENDER_TOTAL.
 
 const VENICE = "https://api.venice.ai/api/v1";
-const SCHEMA = ["CREATE TABLE IF NOT EXISTS quota (k TEXT PRIMARY KEY, n INTEGER NOT NULL)"];
 const MAX_BODY = 32768;
-let ready = null;
 
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
@@ -39,22 +37,23 @@ function cors(req, env) {
            "access-control-allow-headers": "content-type, x-app", "access-control-max-age": "600", "vary": "origin" };
 }
 
-async function setup(env) {
-  ready ??= env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { ready = null; throw e; });
-  return ready;
-}
 async function who(req, app) {
   const ip = req.headers.get("cf-connecting-ip") || "?";
   const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${app}:${ip}`));
   return [...new Uint8Array(raw).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-// One counter per (day, app, kind, person) and one per (day, app, kind): over either limit means no.
+// One counter per (day, app, kind, person) and one per (day, app, kind) in KV: over either limit means no. KV is
+// eventually consistent, so two calls in the same instant can both count; that only ever over-counts, never under.
 async function spend(env, app, kind, person, perPerson, total) {
   const day = new Date().toISOString().slice(0, 10);
-  const bump = (k) => env.DB.prepare("INSERT INTO quota (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1 RETURNING n").bind(k);
-  const [mine, all] = await env.DB.batch([bump(`${day}:${app}:${kind}:${person}`), bump(`${day}:${app}:${kind}:*`)]);
-  if (mine.results[0].n > perPerson) return "you're over today's limit for this app; add your own Venice key or come back tomorrow";
-  if (all.results[0].n > total) return "this app is over its daily budget; add your own Venice key or come back tomorrow";
+  const bump = async (k) => {
+    const n = Number((await env.QUOTA.get(k)) || 0) + 1;
+    await env.QUOTA.put(k, String(n), { expirationTtl: 2 * 86400 });
+    return n;
+  };
+  const [mine, all] = await Promise.all([bump(`${day}:${app}:${kind}:${person}`), bump(`${day}:${app}:${kind}:*`)]);
+  if (mine > perPerson) return "you're over today's limit for this app; add your own Venice key or come back tomorrow";
+  if (all > total) return "this app is over its daily budget; add your own Venice key or come back tomorrow";
   return "";
 }
 
@@ -79,7 +78,6 @@ async function api(req, env, url, h) {
   if (text.length > MAX_BODY) return json({ error: "too big" }, 413, h);
   let body;
   try { body = JSON.parse(text); if (!body || typeof body !== "object" || Array.isArray(body)) throw 0; } catch { return json({ error: "send a JSON object" }, 400, h); }
-  await setup(env);
   const person = await who(req, app);
   const model = String(body.model || "");
 
