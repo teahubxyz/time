@@ -33,10 +33,25 @@ export const WORKFLOWS = [
     about: "a few photos of them from the pictures on their card, one shoot, each a different moment (3 unless you say)",
     usage: "/photoshoot [how many] [what the shoot is about]",
   },
+  {
+    id: "recall", command: "recall", title: "recall", takes: "words", gives: "memory", doors: ["chat"],
+    about: "what they remember about something (their notes, then the chats themselves), brought to mind for a while",
+    usage: "/recall <what to look for>",
+  },
+  {
+    id: "remember", command: "", title: "remember this", takes: "message", gives: "memory", doors: ["message"],
+    about: "a message into their long-term memory, in its own words",
+    usage: "remember, under a message",
+  },
+  {
+    id: "remind", command: "", title: "remind", takes: "message", gives: "memory", doors: ["message"],
+    about: "a message back to mind at a time you pick",
+    usage: "remind, under a message",
+  },
 ];
 
 export const byId = (id) => WORKFLOWS.find((w) => w.id === id) || null;
-export const byCommand = (cmd) => WORKFLOWS.find((w) => w.command === cmd) || null;
+export const byCommand = (cmd) => (cmd && WORKFLOWS.find((w) => w.command === cmd)) || null;
 
 /**
  * A slash command typed in the chat: { id, arg } for a workflow, { id: "help" } for /help or a bare "/", null for

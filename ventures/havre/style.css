@@ -391,6 +391,7 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 .notes li + li { margin-top: 4px; }
 .notes .linkish { font: 12px var(--mono); }
 .notes li.empty { list-style: none; margin-left: -20px; font: 13px var(--mono); }
+.notes li.faint { opacity: 0.55; }
 #memory-add { font: 17px var(--serif); }
 #memory-group p.mono { margin-top: 8px; }
 .lineage h3 { font: 700 13px var(--mono); margin-bottom: 4px; }

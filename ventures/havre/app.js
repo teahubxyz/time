@@ -991,10 +991,47 @@ function jumpTo(t, m) {
 function msgTools(el, t, m) {
   if (!t || !m || !m.id) return;
   el.dataset.msg = m.id;
+  const c = cardOf(t), words = !!String(m.content || "").trim() && c && !c.plain && S.ab.memory;
   el.append(h("span", { class: "msgtools" }, ...slashed([
     m.role === "user" && !m.media ? linkish("edit", () => editMsg(t, m), { "aria-label": "Edit this message" }) : null,
+    words ? linkish("remember", () => rememberMsg(t, m), { "aria-label": "Add this to what they remember", title: "into their memory, in these words" }) : null,
+    words ? linkish("remind", () => remindMsg(t, m), { "aria-label": "Remind them of this at a time", title: "back to mind at a time you pick" }) : null,
     linkish("delete", () => deleteMsg(t, m), { "aria-label": "Delete this message" }),
   ])));
+}
+// ---------- memory from the chat: remember this, remind me, recall ----------
+/** a message into their long-term memory, in its own words (yours as "They said", theirs as "I said"); with a time, as a reminder */
+function rememberMsg(t, m, until) {
+  const c = cardOf(t);
+  if (!c || c.plain) return;
+  const text = `${m.role === "user" ? "They said" : "I said"}: ${String(m.content || "").replace(/\s+/g, " ").trim()}`;
+  const mem = memoryOf(c.id);
+  const notes = R.appended(mem.notes, [R.note(text, { kind: "mine", from: { thread: t.id, msg: m.id }, until })]) || mem.notes;
+  saveMemory(c.id, { ...mem, notes });
+  if ((card() || {}).id === c.id) renderMemory(c);
+  toast(until ? `${c.name} will have that in mind ${R.lines([R.note(text, { until })])[0].slice(1).split(")")[0]}.` : `${c.name} will remember that.`);
+}
+function remindMsg(t, m) {
+  const when = prompt("When should they have this in mind? (tomorrow, in 3 days, friday, next week, 2026-11-01)");
+  if (when == null) return;
+  const until = R.parseWhen(when);
+  if (!until) { toast("That's not a time Havre knows: try tomorrow, in 3 days, friday, next week, or 2026-11-01."); return; }
+  rememberMsg(t, m, until);
+}
+/** /recall <words>: what they remember about that (long-term notes, then the chats themselves), brought to mind for a while */
+function recall(query) {
+  const c = card();
+  if (!c || c.plain) { err("/recall needs a character: pick one in the harbor first."); return; }
+  if (!query) { put(line("/recall needs words to look for: /recall their sister", "havre", "note")); scrollLog(); return; }
+  const mem = memoryOf(c.id), found = R.search(mem.notes, query, 5);
+  const theirs = Object.values(S.threads).filter((x) => x.card === c.id);
+  const deep = R.searchDeep(theirs, (x) => x.msgs, query, 6).filter((d) => !found.some((n) => n.text.endsWith(d.text))).slice(0, 3);
+  if (!found.length && !deep.length) { put(line(`${c.name} doesn't remember anything about that.`, "havre", "note")); scrollLog(); return; }
+  saveMemory(c.id, { ...mem, notes: R.recalled(mem.notes, { found, deep }) });
+  const shown = [...found.map((n) => n.text), ...deep.map((d) => `${d.role === "user" ? "you" : c.name}: ${d.text}`)];
+  put(line(`${c.name} has in mind now:\n` + shown.map((s) => "  " + s).join("\n"), "havre", "note"));
+  scrollLog();
+  if ((card() || {}).id === c.id) renderMemory(c);
 }
 /** take one message out of a chat; another tab's copy doesn't bring it back */
 function deleteMsg(t, m) {
@@ -1078,7 +1115,7 @@ function saveMemory(id, m) {
   if (!local.set(K.memory, all)) full();
 }
 /** what goes into their prompt: nothing with memory switched off; for a Venice character, beside Venice's own prompt */
-const memoryFor = (c) => (S.ab.memory && c && !c.plain ? memoryOf(c.id).notes : []);
+const memoryFor = (c) => (S.ab.memory && c && !c.plain ? R.lines(R.select(memoryOf(c.id).notes)) : []);
 const remembering = new Set(), memoryMissed = new Map();
 /**
  * After every dozen messages in a chat (or a few, when you leave it), its character writes down what they remember now:
@@ -1093,10 +1130,11 @@ async function remember(t, enough = R.EVERY) {
   remembering.add(c.id);
   S.inflight++;
   try {
-    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages: R.memoryMessages(c, before.notes, R.transcript(c, fresh.slice(-40))),
+    const r = await new Venice(S.key).chat({ model: await jsonModel(c), messages: R.memoryMessages(c, R.select(before.notes), R.transcript(c, fresh.slice(-40))),
       schema: R.MEMORY_SCHEMA, maxTokens: 700, temperature: 0.3 });
-    const now = memoryOf(c.id), notes = R.merged(now.notes, R.normalizeNotes(C.parseJsonLoose(r.text)));
-    if (!notes) throw new Error("no notes");
+    const now = memoryOf(c.id), added = R.normalizeNotes(C.parseJsonLoose(r.text), R.MAX_NOTES, { have: now.notes });
+    if (!added) throw new Error("no notes");
+    const notes = R.appended(now.notes, added);
     memoryMissed.delete(t.id);
     if (S.cards.some((x) => x.id === c.id)) {
       const upTo = Object.fromEntries(Object.entries({ ...now.upTo, [t.id]: fresh.at(-1).id }).filter(([id]) => S.threads[id]));
@@ -2223,6 +2261,7 @@ function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
   if (id === "portraits") return threePortraits({ door });
   if (id === "new") return writeFromIdea(idea, { door, name });
   if (id === "photoshoot") return photoshoot(idea, { door });
+  if (id === "recall") return recall(idea);
 }
 /** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
 function threadFor(c) {
@@ -2864,18 +2903,20 @@ function renderMemory(c) {
   if (!c || c.plain) return;
   const linked = false, { notes } = memoryOf(c.id);
   how.textContent = (S.ab.memory
-      ? `every dozen messages, one short call on your key writes down what ${c.name} remembers of your chats. it goes into every chat with them, here in this browser, and never into their card.`
+      ? `every dozen messages, one short call on your key writes down what's new for ${c.name} to remember. everything is kept, here in this browser and never in their card; the newest, a reminder as its day nears, and what was just recalled (/recall) go into their chats. remember and remind, under any message, add to it by hand.`
       : "memory is switched off under abilities: nothing goes into their chats, and nothing new is written down.");
   $("#memory-add").hidden = linked;
   $("#memory-forget").hidden = linked || !notes.length;
   ul.textContent = "";
   if (linked) return;
   if (!notes.length) { ul.append(h("li", { class: "empty", text: "nothing yet: a few messages in, they start remembering." })); return; }
-  notes.forEach((n, i) => ul.append(h("li", {}, n, " ", linkish("forget", () => {
-    const m = memoryOf(c.id);
-    saveMemory(c.id, { ...m, notes: m.notes.filter((x) => x !== n) });
-    renderMemory(card());
-  }, { "aria-label": `Forget: ${n}` }))));
+  const inMind = new Set(R.select(notes).map((n) => n.text));
+  [...notes].reverse().forEach((n) => ul.append(h("li", { class: inMind.has(n.text) ? "" : "faint", title: inMind.has(n.text) ? "in mind: goes into their chats now" : "kept, not in mind now; /recall brings it back" },
+    n.until ? R.lines([n])[0] : n.text, n.kind === "mine" || n.kind === "remind" ? h("span", { class: "hint", text: " · yours" }) : "", " ", linkish("forget", () => {
+      const m = memoryOf(c.id);
+      saveMemory(c.id, { ...m, notes: R.without(m.notes, n.text) });
+      renderMemory(card());
+    }, { "aria-label": `Forget: ${n.text}` }))));
 }
 /** a persona that calls them by another name than their card's: the model would answer to either, so it's said, with the fix */
 function renderNameNote(c) {
