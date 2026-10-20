@@ -416,8 +416,10 @@ async function main() {
     assert.equal(await page.locator("#log .line.me").count(), 0, "what started it isn't shown");
     const hello = seen.chats[chatsBefore];
     assert.equal(hello.venice_parameters.character_slug, "sable-penrose");
-    assert.equal(hello.messages.length, 1);
-    assert.equal(hello.messages[0].role, "user");
+    assert.equal(hello.messages.length, 2, "what they can send here, then what started it");
+    assert.equal(hello.messages[0].role, "system");
+    assert.match(hello.messages[0].content, /you can send photos of yourself/);
+    assert.equal(hello.messages[1].role, "user");
     await count(page, "#roster tr", 2);
     assert.match(await page.locator('#vgrid .tile[aria-pressed="true"]').evaluate((el) => el.textContent), /Sable Penrose.*talking now/);
     // the model: their own on Venice to start with, and any other Venice model from the picker
