@@ -62,7 +62,7 @@ const noteText = (v) => clip(str(v, 2000).replace(/\s+/g, " ").trim().replace(/^
 
 /** a note as kept, from whatever was stored (a bare string from before notes had dates reads as an undated fact) */
 export function readNote(n, at = 0) {
-  if (typeof n === "string") { const text = noteText(n); return text ? { text, at, kind: "fact" } : null; }
+  if (typeof n === "string" || typeof n === "number") { const text = noteText(n); return text ? { text, at, kind: "fact" } : null; }
   if (!n || typeof n !== "object") return null;
   const text = noteText(n.text);
   if (!text) return null;
@@ -75,7 +75,7 @@ export function readNote(n, at = 0) {
 
 /** a new note: what the model wrote (a fact), what you added ("mine"), or a reminder with its time */
 export function note(text, { at = Date.now(), kind = "fact", from, until } = {}) {
-  return readNote({ text, at, kind, from, until });
+  return readNote({ text, at, kind: until ? "remind" : kind, from, until });
 }
 
 /**
@@ -121,7 +121,7 @@ export function appended(notes, added, keep = KEEP) {
   const fresh = added.filter((n) => n && n.text && !have.has(n.text.toLowerCase()));
   let all = [...notes, ...fresh];
   while (all.length > keep) {
-    const i = all.findIndex((n) => n.kind === "fact" || n.kind === "recalled" || n.kind === "dream");
+    const i = all.findIndex((n) => !n.until && n.kind !== "mine" && n.kind !== "remind");
     if (i < 0) break;
     all = [...all.slice(0, i), ...all.slice(i + 1)];
   }
