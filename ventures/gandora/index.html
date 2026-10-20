@@ -306,15 +306,17 @@ function drawCover(canvas, spec, { lit = 1, pulse = null } = {}) {
 /* ---------- the visualizer: an analyser on the player, driving the cover while music plays ---------- */
 const viz = { ctx: null, an: null, data: null, raf: 0, smooth: { bass: 0, mid: 0, high: 0 } };
 function vizStart() {
+  // the player is only wired through the analyser once the context is actually running: a suspended context
+  // (iOS before a tap) would mute the music, and the cover can wait for the next gesture
   try {
-    if (!viz.ctx) {
-      viz.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    viz.ctx ||= new (window.AudioContext || window.webkitAudioContext)();
+    if (viz.ctx.state !== "running") { viz.ctx.resume().then(() => { if (viz.ctx.state === "running" && state.playing) vizStart(); }).catch(() => {}); if (viz.ctx.state !== "running") return; }
+    if (!viz.an) {
       const src = viz.ctx.createMediaElementSource(state.audio);
       viz.an = viz.ctx.createAnalyser(); viz.an.fftSize = 512; viz.an.smoothingTimeConstant = 0.7;
       src.connect(viz.an); viz.an.connect(viz.ctx.destination);
       viz.data = new Uint8Array(viz.an.frequencyBinCount);
     }
-    if (viz.ctx.state === "suspended") viz.ctx.resume();
   } catch { return; }
   cancelAnimationFrame(viz.raf);
   const canvas = $("#cover canvas"), t0 = performance.now();
