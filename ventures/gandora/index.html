@@ -578,7 +578,7 @@ function shareLink() {
 }
 function setUrl() { try { history.replaceState(null, "", state.seed ? "/#" + encodeURIComponent(state.seed).replace(/%20/g, "+") : "/"); } catch {} }
 async function openStation(seed, { id, name = "", taste, history, played, first } = {}) {
-  if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; }
+  if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; state.tape = null; }
   state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
   state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
   $("#stationName").textContent = name || seed;
@@ -1032,10 +1032,11 @@ if (sharedTape) {
     try {
       const t = JSON.parse(unb64u(sharedTape)); if (!t || !Array.isArray(t.tracks) || !t.tracks.length) throw 0;
       const tp = { id: "tape-" + Date.now(), name: String(t.name || "shared tape").slice(0, 60), ids: [], pending: t.tracks, made: Date.now(), last: Date.now() };
-      await db.put(tp, "tapes"); openStation(t.tracks[0].seed, { name: t.tracks[0].station || "" }); state.sharedTapeId = tp.id;
-      toast(`Tape “${tp.name}”: ${t.tracks.length} tracks to render, one by one.`);
+      await db.put(tp, "tapes");
       // render the tracks in order as the station's next ones, and file each into the tape as it lands
-      state.nextJob = null; state.tapeQueue = t.tracks.slice();
+      state.sharedTapeId = tp.id; state.tapeQueue = t.tracks.slice();
+      openStation(t.tracks[0].seed, { name: t.tracks[0].station || "" });
+      toast(`Tape “${tp.name}”: ${t.tracks.length} tracks to render, one by one.`);
     } catch { toast("That link didn't carry a tape."); }
   })();
 }
