@@ -30,6 +30,11 @@ input,textarea{font:inherit;color:inherit}
 #seedCover{width:120px;height:120px;margin:0 auto 28px;border-radius:14px;overflow:hidden;background:var(--card);opacity:0;transform:scale(.92);transition:opacity .5s,transform .5s}
 #seedCover.on{opacity:1;transform:none}
 #seedCover canvas{width:100%;height:100%;display:block}
+#nowRow{position:absolute;top:44px;left:0;right:0;display:flex;justify-content:center}
+#now{display:flex;align-items:center;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:999px;padding:6px 14px 6px 6px;font-size:13px;cursor:pointer;max-width:calc(100% - 32px)}
+#now canvas{width:28px;height:28px;border-radius:50%;display:block}
+#now span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#now b{font:600 11px var(--font);letter-spacing:.14em;color:var(--dim);margin-left:4px}
 #keyRow{position:absolute;bottom:18px;left:0;right:0;text-align:center;font-size:12px;color:var(--dim)}
 #keyRow button{text-decoration:underline;text-underline-offset:3px}
 #keyBox{position:absolute;bottom:44px;left:50%;transform:translateX(-50%);width:min(420px,calc(100% - 32px));background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13px}
@@ -93,6 +98,7 @@ input,textarea{font:inherit;color:inherit}
 <!-- ============ screen 1: the seed ============ -->
 <section id="seed">
   <div class="wordmark">GANDORA</div>
+  <div id="nowRow" class="hidden"><div id="now" title="back to the station"><canvas width="56" height="56"></canvas><span id="nowTitle"></span><b>▶ PLAYING</b></div></div>
   <form id="seedForm" autocomplete="off">
     <div id="seedCover"><canvas width="240" height="240"></canvas></div>
     <input id="seedIn" placeholder="type a seed" maxlength="200" autofocus>
@@ -430,6 +436,7 @@ $("#seedIn").addEventListener("input", (e) => {
 $("#seedForm").addEventListener("submit", async (e) => {
   e.preventDefault();
   const v = $("#seedIn").value.trim(); if (!v) return;
+  state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null;   // a new seed is a new station
   state.seed = v; state.station = ""; state.taste = { like: [], avoid: [], notes: [] }; state.history = []; state.nextJob = null;
   $("#stationName").textContent = v;
   $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
@@ -437,7 +444,15 @@ $("#seedForm").addEventListener("submit", async (e) => {
   $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = "";
   advance();
 });
-$("#back").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; $("#player").classList.add("hidden"); $("#seed").classList.remove("hidden"); $("#seedIn").focus(); });
+// back to the seed screen keeps the station playing: a small now-playing strip leads back to it
+$("#back").addEventListener("click", () => {
+  $("#player").classList.add("hidden"); $("#seed").classList.remove("hidden");
+  const cur = state.current && state.current.spec;
+  $("#nowRow").classList.toggle("hidden", !cur);
+  if (cur) { drawCover($("#now canvas"), cur); $("#nowTitle").textContent = `${cur.title} · ${state.station || cur.seed}`; }
+  $("#seedIn").value = ""; $("#seedCover").classList.remove("on"); $("#seedHint").textContent = cur ? "type a new seed to change station, or tap the strip to go back" : "a mood, a line, a place, a word";
+});
+$("#now").addEventListener("click", () => { $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden"); });
 $("#play").addEventListener("click", async () => {
   if (!state.audio.src) return;
   if (state.playing) { state.audio.pause(); state.playing = false; } else { try { await state.audio.play(); state.playing = true; } catch {} }
