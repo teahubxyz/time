@@ -1260,15 +1260,15 @@ async function main() {
     await p3.locator("#vgrid .tile", { hasText: "Wren" }).click();
     await has(p3, "#log .line.them .said", /Careful, the boxes bite\./);
     assert.ok(await p3.locator("#say").isVisible(), "the chat is on screen");
-    assert.ok(await p3.locator("#chars").isHidden(), "and not stranded below the list: one at a time");
+    assert.ok(await p3.locator("#lp-chars").isHidden() && await p3.locator("#lt-chats").isVisible(), "the list is out of the way, its tabs stay above the chat");
     assert.ok(await wide() <= W, `still no sideways scroll (scrollWidth ${await wide()})`);
     assert.deepEqual(await small(), [], "nor here");
     await p3.waitForTimeout(500);
     await shot(p3, "phone-chat.png");
     await shot(p3, "phone-full.png", { fullPage: true });
-    // from a chat, back to the list it came from; a chat from your chats opens in its place, and goes back to them
-    await has(p3, "#chat-back", /^← characters$/);
-    await p3.click("#chat-back");
+    // from a chat, the tabs above it go back to the list; a chat from your chats opens in its place
+    assert.ok(await p3.locator("#chat-back").isHidden(), "no back link: the tabs are the way back");
+    await p3.click("#lt-chars");
     assert.ok(await p3.locator("#chat").isHidden());
     assert.ok(await p3.locator("#lp-chars").isVisible());
     await p3.click("#lt-chats");
@@ -1276,9 +1276,8 @@ async function main() {
     await p3.waitForTimeout(400);
     await shot(p3, "phone-chats.png");
     await p3.locator("#threads .trow").first().click();
-    assert.ok(await p3.locator("#chars").isHidden() && await p3.locator("#say").isVisible());
-    await has(p3, "#chat-back", /^← your chats$/);
-    await p3.click("#chat-back");
+    assert.ok(await p3.locator("#lp-chats").isHidden() && await p3.locator("#say").isVisible());
+    await p3.click("#lt-chats");
     assert.ok(await p3.locator("#lp-chats").isVisible());
     await phone.close();
   } finally {
