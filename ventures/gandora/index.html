@@ -74,6 +74,9 @@ input,textarea{font:inherit;color:inherit}
 #controls button:hover{opacity:1}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
 #controls svg{width:22px;height:22px;fill:currentColor}
+#controls #loop{width:40px;height:40px;opacity:.5}
+#controls #loop svg{width:18px;height:18px}
+#controls #loop.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
 #next{font:11px var(--font);letter-spacing:.14em;color:var(--dim);min-height:1.4em;text-align:center}
 #keep{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:999px;border:1px solid var(--line);font:600 12px var(--font);letter-spacing:.14em;color:var(--ink);background:var(--card);transition:background .2s,color .2s,border-color .2s}
 #keep.on{background:var(--acc);color:#111;border-color:var(--acc)}
@@ -147,6 +150,9 @@ input,textarea{font:inherit;color:inherit}
       <button id="play" title="play / pause"><svg id="playIco" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
       <button id="skip" title="skip">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
+      </button>
+      <button id="loop" title="repeat this track">
+        <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
       </button>
     </div>
     <button id="keep" disabled>➕ KEEP THIS TRACK</button>
@@ -532,6 +538,7 @@ $("#play").addEventListener("click", async () => {
   setPlayIcon();
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
+$("#loop").addEventListener("click", () => { state.audio.loop = !state.audio.loop; $("#loop").classList.toggle("on", state.audio.loop); toast(state.audio.loop ? "Repeating this track." : "Back to the station."); });
 $("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
 $("#emojis").addEventListener("click", (e) => { const b = e.target.closest("button[data-e]"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 300); react(b.dataset.e); });
 $("#anyEmoji").addEventListener("change", (e) => { const v = e.target.value.trim(); e.target.value = ""; if (v) react(v); });
