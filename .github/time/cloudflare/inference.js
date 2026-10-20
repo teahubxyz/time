@@ -7,13 +7,16 @@
 //   POST /v1/chat/completions                  model in CHAT_MODELS, no streaming, max_tokens <= MAX_TOKENS
 //   POST /v1/audio/quote | queue | retrieve | complete    model in AUDIO_MODELS, duration_seconds <= AUDIO_SECONDS
 //   POST /v1/image/generate                    model in IMAGE_MODELS
+//   POST /v1/render                            one call, audio back: { prompt, lyrics?, duration?, bpm?, key?, seed?, quality? }
+//                                              Runware ACE-Step when RUNWARE_API_KEY is bound (quality "xl" picks XL Turbo),
+//                                              else Venice queue+poll inside the worker; x-seed / x-cost / x-renderer headers
 //
 // Every call names its app with an `x-app` header (one of APPS) and comes from an allowed origin (ORIGINS, a comma
 // list; `*.yolopreneur.lol` style wildcards allowed). Quotas are counted per (day, app, kind, person) and per
 // (day, app, kind): CHAT_DAILY/RENDER_DAILY per person, CHAT_TOTAL/RENDER_TOTAL per app. A render is an audio queue
 // or an image generate; retrieve polls, quotes and completes are free. Over a limit answers 429 with a plain reason.
 //
-// Bindings: QUOTA (KV). Secret: VENICE_API_KEY. Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
+// Bindings: QUOTA (KV). Secrets: VENICE_API_KEY, RUNWARE_API_KEY (optional). Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
 // AUDIO_SECONDS, MAX_TOKENS, CHAT_DAILY, CHAT_TOTAL, RENDER_DAILY, RENDER_TOTAL.
 
 const VENICE = "https://api.venice.ai/api/v1";
@@ -67,9 +70,69 @@ async function forward(path, body, env) {
 }
 const withCors = (res, h) => { for (const [k, v] of Object.entries(h)) res.headers.set(k, v); return res; };
 
+/* ---------- /v1/render: one call, audio back ---------- */
+const RUNWARE = "https://api.runware.ai/v1";
+const RW_MODELS = { turbo: "runware:ace-step@v1.5-turbo", xl: "runware:ace-step@v1.5-xl-turbo", base: "runware:ace-step@v1.5" };
+const KEY_RE = /^([A-G])(#|b)?\s*(major|minor)$/i;
+function cleanKey(k) {
+  const m = KEY_RE.exec(String(k || "").trim()); if (!m) return "";
+  return m[1].toUpperCase() + (m[2] || "") + " " + m[3].toLowerCase();
+}
+async function renderRunware(body, env) {
+  const model = RW_MODELS[String(body.quality || "turbo").toLowerCase()] || RW_MODELS.turbo;
+  const task = { taskType: "audioInference", taskUUID: crypto.randomUUID(), model, positivePrompt: String(body.prompt).slice(0, 3000),
+    duration: Math.min(num(body.duration, 60), num(env.AUDIO_SECONDS, 60)), outputType: "URL", outputFormat: "MP3", deliveryMethod: "sync", includeCost: true,
+    audioSettings: { bitrate: 192, channels: 2, sampleRate: 44100 }, settings: {} };
+  if (Number.isInteger(+body.seed) && +body.seed >= 0) task.seed = Math.min(2147483647, +body.seed);
+  if (body.steps) task.steps = Math.min(20, Math.max(1, +body.steps | 0));
+  const ly = String(body.lyrics || "").trim(); if (ly.length >= 10) task.settings.lyrics = ly.slice(0, 3000);
+  const bpm = +body.bpm; if (bpm >= 30 && bpm <= 300) task.settings.bpm = Math.round(bpm);
+  const ks = cleanKey(body.key); if (ks) task.settings.keyScale = ks;
+  task.settings.vocalLanguage = ly.length >= 10 ? "en" : "unknown";
+  const res = await fetch(RUNWARE, { method: "POST", headers: { Authorization: "Bearer " + env.RUNWARE_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify([task]) });
+  const d = await res.json().catch(() => null);
+  const out = d && Array.isArray(d.data) ? d.data.find((x) => x.taskType === "audioInference") : null;
+  if (!res.ok || !out || !out.audioURL) {
+    const why = (d && d.errors && d.errors[0] && (d.errors[0].message || d.errors[0].code)) || (d && d.error) || ("runware " + res.status);
+    throw Object.assign(new Error(String(why).slice(0, 200)), { status: res.status === 429 ? 429 : 502 });
+  }
+  const audio = await fetch(out.audioURL);
+  if (!audio.ok) throw Object.assign(new Error("runware audio fetch " + audio.status), { status: 502 });
+  return { body: audio.body, type: audio.headers.get("content-type") || "audio/mpeg", seed: out.seed, cost: out.cost, renderer: model };
+}
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function renderVenice(body, env) {
+  const q = { model: "ace-step-15", prompt: String(body.prompt).slice(0, 512), duration_seconds: Math.min(num(body.duration, 60), num(env.AUDIO_SECONDS, 60)) };
+  const ly = String(body.lyrics || "").trim(); if (ly) q.lyrics_prompt = ly.slice(0, 4000);
+  const H = { Authorization: "Bearer " + env.VENICE_API_KEY, "Content-Type": "application/json", Accept: "*/*" };
+  const qr = await fetch(VENICE + "/audio/queue", { method: "POST", headers: H, body: JSON.stringify(q) });
+  const qd = await qr.json().catch(() => null);
+  if (!qr.ok || !qd || !qd.queue_id) throw Object.assign(new Error((qd && (qd.error || qd.message)) || "venice queue " + qr.status), { status: qr.status === 422 ? 422 : 502 });
+  const t0 = Date.now();
+  while (Date.now() - t0 < 110000) {
+    await sleep(3000);
+    const r = await fetch(VENICE + "/audio/retrieve", { method: "POST", headers: H, body: JSON.stringify({ model: "ace-step-15", queue_id: qd.queue_id, delete_media_on_completion: true }) });
+    const type = r.headers.get("content-type") || "";
+    if (r.ok && /^audio\//i.test(type)) return { body: r.body, type, seed: null, cost: 0.03 * (q.duration_seconds / 60), renderer: "venice:ace-step-15" };
+    const d = await r.json().catch(() => ({}));
+    if (/FAIL|ERROR|CANCEL|REJECT/i.test(String(d.status || ""))) throw Object.assign(new Error("venice: " + String(d.status).toLowerCase()), { status: 502 });
+  }
+  throw Object.assign(new Error("venice: render timed out"), { status: 504 });
+}
+async function render(body, env, h) {
+  if (!body.prompt || String(body.prompt).length < 2) return json({ error: "prompt is empty" }, 400, h);
+  let out, err;
+  if (env.RUNWARE_API_KEY) { try { out = await renderRunware(body, env); } catch (e) { err = e; } }
+  if (!out) { try { out = await renderVenice(body, env); } catch (e) { return json({ error: (err ? err.message + "; then " : "") + e.message }, e.status || 502, h); } }
+  const headers = { "content-type": out.type, "x-renderer": out.renderer, "access-control-expose-headers": "x-seed, x-cost, x-renderer", ...h };
+  if (out.seed != null) headers["x-seed"] = String(out.seed);
+  if (out.cost != null) headers["x-cost"] = String(out.cost);
+  return new Response(out.body, { status: 200, headers });
+}
+
 async function api(req, env, url, h) {
   const path = url.pathname.replace(/\/+$/, "");
-  if (path === "/health") return json({ ok: true, rev: env.REV, apps: list(env.APPS) }, 200, h);
+  if (path === "/health") return json({ ok: true, rev: env.REV, apps: list(env.APPS), renderer: env.RUNWARE_API_KEY ? "runware" : "venice" }, 200, h);
   if (req.method !== "POST") return json({ error: "POST only" }, 405, h);
   if (!env.VENICE_API_KEY) return json({ error: "no key on this worker yet" }, 503, h);
   const app = String(req.headers.get("x-app") || "").toLowerCase();
@@ -89,6 +152,11 @@ async function api(req, env, url, h) {
     const no = await spend(env, app, "chat", person, num(env.CHAT_DAILY, 60), num(env.CHAT_TOTAL, 2000));
     if (no) return json({ error: no }, 429, h);
     return withCors(await forward("/chat/completions", body, env), h);
+  }
+  if (path === "/v1/render") {
+    const no = await spend(env, app, "render", person, num(env.RENDER_DAILY, 20), num(env.RENDER_TOTAL, 400));
+    if (no) return json({ error: no }, 429, h);
+    return render(body, env, h);
   }
   const audio = path.match(/^\/v1\/audio\/(quote|queue|retrieve|complete)$/);
   if (audio) {
