@@ -483,7 +483,7 @@ async function listStations() {
     row.append(d);
   }
 }
-function openStation(seed, { id, name = "", taste, history, played } = {}) {
+async function openStation(seed, { id, name = "", taste, history, played } = {}) {
   if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; }
   state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
   state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
@@ -493,6 +493,9 @@ function openStation(seed, { id, name = "", taste, history, played } = {}) {
     drawCover($("#cover canvas"), { seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(seed) % 12], energy: 0.5 }, { lit: 0.6 });
     $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = ""; keepLabel();
     saveStation().catch(() => {});
+    // coming back to a station: play its latest track from the library straight away, and cook the next behind it
+    const have = id ? (await db.all()).filter((t) => t.spec.stationId === id) : [];
+    if (have.length) { const t = have[0]; await playJob({ id: ++seq, spec: t.spec, blob: t.blob, err: null, done: Promise.resolve(), stepping: true }); state.recent = [t.id]; state.pos = 0; return; }
     advance();
   }
 }
