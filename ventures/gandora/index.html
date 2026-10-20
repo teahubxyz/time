@@ -89,7 +89,7 @@ input,textarea{font:inherit;color:inherit}
 #meta2 #lyric{margin-top:0}
 #tagRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px auto 0;max-width:560px}
 #tagRow button.meta{color:var(--dim);border-style:dotted;cursor:default}
-#tagRow button.fold{color:var(--acc);border-color:transparent}
+#tagRow button.fold{color:var(--acc);border-color:transparent;font-weight:600;letter-spacing:.12em}
 #stage{gap:14px}
 #tagRow button{font:12px var(--font);letter-spacing:.02em;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:transparent;transition:all .15s}
 #tagRow button.like{color:#111;background:var(--acc);border-color:var(--acc)}
@@ -362,13 +362,17 @@ function keyHue(k) {
 // The ground and grain depend only on the song, so they are drawn once per (song, size) and cached; the rings and
 // the seed mark are redrawn on top every frame when the music is playing.
 const groundCache = new Map();
+/* palette dial: mono (one hue, its shades), duo (the key's hue and a complement), tri (a triad) */
+const PALETTES = ["mono", "duo", "tri"];
 function palette(spec) {
   const energy = Math.min(1, Math.max(0, +spec.energy || 0.5)), minor = /m(in|inor)?\b/i.test(spec.key || "") && !/maj/i.test(spec.key || "");
-  const hue = keyHue(spec.key), hue2 = (hue + (minor ? 200 : 150)) % 360;
-  return { energy, minor, hue, hue2, sat: 55 + energy * 35, light: minor ? 36 : 52, bpm: +spec.bpm || 100 };
+  const hue = keyHue(spec.key), mode = spec.palette || "duo";
+  const hue2 = mode === "mono" ? hue : mode === "tri" ? (hue + 120) % 360 : (hue + (minor ? 200 : 150)) % 360;
+  const hue3 = mode === "tri" ? (hue + 240) % 360 : hue2;
+  return { energy, minor, hue, hue2, hue3, mode, sat: 55 + energy * 35, light: minor ? 36 : 52, bpm: +spec.bpm || 100 };
 }
 function drawGround(W, H, spec, lit) {
-  const key = `${spec.seed}|${spec.title}|${spec.tags}|${W}|${lit}`;
+  const key = `${spec.seed}|${spec.title}|${spec.tags}|${spec.palette || ""}|${W}|${lit}`;
   if (groundCache.has(key)) return groundCache.get(key);
   const off = document.createElement("canvas"); off.width = W; off.height = H;
   const ctx = off.getContext("2d"), cx = W / 2, cy = H / 2, p = palette(spec);
@@ -380,7 +384,7 @@ function drawGround(W, H, spec, lit) {
   const spread = W * .46, dots = Math.floor(400 + p.energy * 2600);
   for (let i = 0; i < dots; i++) {
     const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * spread * 1.05;
-    ctx.fillStyle = `hsl(${p.hue2} ${p.sat}% ${p.light + 30}% / ${rnd() * 0.5 * lit})`;
+    ctx.fillStyle = `hsl(${i % 3 ? p.hue2 : p.hue3} ${p.sat}% ${p.light + (p.mode === "mono" ? 38 : 30)}% / ${rnd() * 0.5 * lit})`;
     ctx.fillRect(cx + Math.cos(a) * d, cy + Math.sin(a) * d, (W / 380) * (0.8 + rnd() * 1.6), (W / 380) * (0.8 + rnd() * 1.6));
   }
   if (groundCache.size > 24) groundCache.delete(groundCache.keys().next().value);
@@ -447,7 +451,7 @@ function drawAttractor(canvas, spec, { lit = 1, pulse = null } = {}) {
   const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height;
   const p = palette(spec);
   const bass = pulse ? pulse.bass : 0, tm = pulse ? pulse.t : 0;
-  const key = `${spec.seed}|${spec.title}|${spec.tags}|${W}|${lit}`;
+  const key = `${spec.seed}|${spec.title}|${spec.tags}|${spec.palette || ""}|${W}|${lit}`;
   let off = attractorCache.get(key);
   if (!off) {
     off = document.createElement("canvas"); off.width = W; off.height = H;
@@ -612,7 +616,7 @@ async function askDJ() {
   spec.lyrics = String(spec.lyrics || "").slice(0, 4000);
   spec.bpm = Math.min(180, Math.max(60, parseInt(spec.bpm) || 100));
   spec.energy = Math.min(1, Math.max(0, +spec.energy || 0.5));
-  spec.seed = state.seed; spec.made = Date.now(); spec.look = state.look || "rings";
+  spec.seed = state.seed; spec.made = Date.now(); spec.look = state.look || "rings"; spec.palette = state.palette || "duo";
   if (!state.station && spec.station) { state.station = spec.station; $("#stationName").textContent = state.station; }
   return spec;
 }
@@ -660,7 +664,7 @@ const db = {
 async function saveStation() {
   if (!state.stationId) return;
   const specs = state.history.slice(-8).map(({ id, title, tags, bpm, key, energy, reaction, made }) => ({ id, title, tags, bpm, key, energy, reaction, made }));
-  await db.put({ id: state.stationId, seed: state.seed, name: state.station, taste: state.taste, history: specs, made: +state.stationId.split("-")[1] || Date.now(), last: Date.now(), played: (state.played || 0), look: state.look || "rings" }, "stations");
+  await db.put({ id: state.stationId, seed: state.seed, name: state.station, taste: state.taste, history: specs, made: +state.stationId.split("-")[1] || Date.now(), last: Date.now(), played: (state.played || 0), look: state.look || "rings", palette: state.palette || "duo" }, "stations");
 }
 async function listStations() {
   const list = await db.all("stations"); const box = $("#stations"), row = $("#stationRow"); row.innerHTML = "";
@@ -698,6 +702,20 @@ async function stationSheet(id) {
     lookRow.append(b);
   }
   p.append(lookRow);
+  const palRow = document.createElement("div"); palRow.className = "row"; palRow.style.marginTop = "8px";
+  p.append(Object.assign(document.createElement("label"), { textContent: "palette" }));
+  for (const pm of PALETTES) {
+    const b = Object.assign(document.createElement("button"), { textContent: pm.toUpperCase(), className: (s.palette || "duo") === pm ? "go" : "" });
+    b.addEventListener("click", async () => {
+      s.palette = pm; await db.put(s, "stations");
+      for (const t of (await db.all()).filter((t) => t.spec.stationId === id)) { t.spec.palette = pm; await db.put(t); }
+      if (state.stationId === id) { state.palette = pm; if (state.current) { state.current.spec.palette = pm; drawCover($("#cover canvas"), state.current.spec); } if (state.nextJob) state.nextJob.spec.palette = pm; }
+      for (const x of palRow.children) x.className = x.textContent === pm.toUpperCase() ? "go" : "";
+      toast(`Palette: ${pm}.`);
+    });
+    palRow.append(b);
+  }
+  p.append(palRow);
   const row = document.createElement("div"); row.className = "row";
   const save = Object.assign(document.createElement("button"), { className: "go", textContent: "SAVE" });
   save.addEventListener("click", async () => { s.name = name.value.trim().slice(0, 60); await db.put(s, "stations"); if (state.stationId === id) { state.station = s.name; $("#stationName").textContent = s.name || s.seed; } p.classList.add("hidden"); listStations().catch(() => {}); toast("Renamed."); });
@@ -725,8 +743,8 @@ function shareLink() {
   return `${location.origin}/?t=${b64u(JSON.stringify(t))}`;
 }
 function setUrl() { try { history.replaceState(null, "", state.seed ? "/#" + encodeURIComponent(state.seed).replace(/%20/g, "+") : "/"); } catch {} }
-async function openStation(seed, { id, name = "", taste, history, played, first, look } = {}) {
-  state.look = look || "rings";
+async function openStation(seed, { id, name = "", taste, history, played, first, look, palette: pal } = {}) {
+  state.look = look || "rings"; state.palette = pal || "duo";
   if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.recent = []; state.pos = -1; state.tape = null; }
   state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
   state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
@@ -903,15 +921,17 @@ function showTags(spec) {
   const row = $("#tagRow"); row.innerHTML = "";
   const tags = String(spec.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 12);
   const extra = [...String(spec.reaction || "").matchAll(/(?:^|\s)\+([^\s]+)/g)].map((m) => m[1].replace(/_/g, " ")).filter((t) => !tags.includes(t));
-  for (const [i, tag] of [...tags, ...extra].entries()) {
-    if (!state.tagsOpen && i >= 4) break;
+  const total = tags.length + extra.length, liked = [...tags, ...extra].filter((t) => tagState(spec, t)).length;
+  // one line closed: TAGS ▾ · bpm · key; open: every tag as a chip, and + tag
+  const f = document.createElement("button"); f.className = "fold"; f.textContent = (state.tagsOpen ? "TAGS ▴" : "TAGS ▾") + (liked && !state.tagsOpen ? ` ·${liked}` : "");
+  f.addEventListener("click", () => { state.tagsOpen = !state.tagsOpen; showTags(spec); }); row.append(f);
+  for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
+  if (!state.tagsOpen) return;
+  for (const tag of [...tags, ...extra]) {
     const b = document.createElement("button"); b.textContent = tag; b.className = tagState(spec, tag);
     b.addEventListener("click", () => tagTap(spec, tag, b));
     row.append(b);
   }
-  const total = tags.length + extra.length;
-  if (total > 4) { const f = document.createElement("button"); f.className = "fold"; f.textContent = state.tagsOpen ? "▴ less" : `… ${total - 4} more`; f.addEventListener("click", () => { state.tagsOpen = !state.tagsOpen; showTags(spec); }); row.append(f); }
-  for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
   const add = document.createElement("button"); add.className = "add"; add.textContent = "+ tag";
   add.addEventListener("click", () => {
     const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; row.replaceChild(inp, add); inp.focus();
