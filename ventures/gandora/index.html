@@ -650,7 +650,8 @@ $("#seedForm").addEventListener("submit", (e) => {
 });
 /* tags as controls: tap a tag for more of it, again for less, again to let it go; + adds one of your own.
    Each tap is a reaction (+word / -word) the DJ and the taste net both see. */
-const tagState = (spec, tag) => { const r = " " + String(spec.reaction || "") + " "; const t = tag.replace(/\s+/g, "_"); const last = Math.max(r.lastIndexOf(" +" + t + " "), -1), lastN = r.lastIndexOf(" -" + t + " "); return last < 0 && lastN < 0 ? "" : last > lastN ? "like" : "avoid"; };
+const tagState = (spec, tag) => { const r = " " + String(spec.reaction || "") + " "; const t = tag.replace(/\s+/g, "_"); const L = r.lastIndexOf(" +" + t + " "), N = r.lastIndexOf(" -" + t + " "), Z = r.lastIndexOf(" ~" + t + " "); const m = Math.max(L, N, Z); return m < 0 || m === Z ? "" : m === L ? "like" : "avoid"; };
+const reactionEmoji = (r) => String(r || "").replace(/(?:^|\s)[+\-~][^\s]+/g, "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "");
 function showTags(spec) {
   const row = $("#tagRow"); row.innerHTML = "";
   const tags = String(spec.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 12);
@@ -771,7 +772,7 @@ $("#libBtn").addEventListener("click", async () => {
     const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec);
     d.append(c, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
     if (t.kept) d.append(Object.assign(document.createElement("span"), { className: "heart", textContent: "❤️" }));
-    const re = String(t.spec.reaction || "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "").trim();
+    const re = reactionEmoji(t.spec.reaction).trim();
     if (re) d.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     return d;
