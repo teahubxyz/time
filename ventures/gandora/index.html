@@ -35,6 +35,14 @@ input,textarea{font:inherit;color:inherit}
 #now canvas{width:28px;height:28px;border-radius:50%;display:block}
 #now span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #now b{font:600 11px var(--font);letter-spacing:.14em;color:var(--dim);margin-left:4px}
+#stations{width:min(680px,100%);margin-top:40px}
+#stations h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:0 0 12px;text-align:center}
+#stations .row{display:flex;gap:14px;overflow-x:auto;padding:4px 4px 10px;scrollbar-width:none;justify-content:safe center}
+#stations .s{flex:0 0 96px;cursor:pointer;text-align:center}
+#stations .s canvas{width:72px;height:72px;border-radius:50%;display:block;margin:0 auto 6px;background:var(--card)}
+#stations .s.on canvas{outline:2px solid var(--acc);outline-offset:3px}
+#stations .s b{display:block;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#stations .s small{color:var(--dim);font-size:11px}
 #keyRow{position:absolute;bottom:18px;left:0;right:0;text-align:center;font-size:12px;color:var(--dim)}
 #keyRow button{text-decoration:underline;text-underline-offset:3px}
 #keyBox{position:absolute;bottom:44px;left:50%;transform:translateX(-50%);width:min(420px,calc(100% - 32px));background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13px}
@@ -67,6 +75,9 @@ input,textarea{font:inherit;color:inherit}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
 #controls svg{width:22px;height:22px;fill:currentColor}
 #next{font:11px var(--font);letter-spacing:.14em;color:var(--dim);min-height:1.4em;text-align:center}
+#keep{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:999px;border:1px solid var(--line);font:600 12px var(--font);letter-spacing:.14em;color:var(--ink);background:var(--card);transition:background .2s,color .2s,border-color .2s}
+#keep.on{background:var(--acc);color:#111;border-color:var(--acc)}
+#keep:disabled{opacity:.4;cursor:default}
 
 #react{display:flex;flex-direction:column;gap:10px;align-items:center}
 #emojis{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
@@ -108,6 +119,7 @@ input,textarea{font:inherit;color:inherit}
     <input id="seedIn" placeholder="type a seed" maxlength="200" autofocus>
     <div class="hint" id="seedHint">a mood, a line, a place, a word</div>
   </form>
+  <div id="stations" class="hidden"><h3>YOUR STATIONS</h3><div class="row" id="stationRow"></div></div>
   <div id="keyRow"><button id="keyBtn" type="button">shared budget · add a venice key</button></div>
   <div id="keyBox" class="hidden">
     <p>Optional. Without a key, gandora runs on a shared budget through inference.yolopreneur.lol (a few tracks a day per person). With your own Venice key it goes straight to api.venice.ai from this browser and the key goes nowhere else.</p>
@@ -137,12 +149,13 @@ input,textarea{font:inherit;color:inherit}
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
       </button>
     </div>
+    <button id="keep" disabled>➕ KEEP THIS TRACK</button>
     <div id="next"></div>
   </div>
   <div id="react">
     <div id="emojis">
       <button data-e="🔥" title="more of this">🔥</button>
-      <button data-e="❤️" title="keep it">❤️</button>
+      <button data-e="❤️" title="love it (keeps it too)">❤️</button>
       <button data-e="😴" title="too sleepy">😴</button>
       <button data-e="🌧️" title="sadder">🌧️</button>
       <button data-e="⚡" title="faster, louder">⚡</button>
@@ -177,7 +190,7 @@ const LS = { key: "gandora.key", dj: "gandora.dj", cost: "gandora.cost" };
 const state = {
   key: localStorage.getItem(LS.key) || "",
   dj: localStorage.getItem(LS.dj) || "claude-haiku-5-5",
-  seed: "", station: "",
+  seed: "", station: "", stationId: "",
   taste: { like: [], avoid: [], notes: [] },     // what the listener has told the station
   history: [],                                    // tracks played this session (specs)
   current: null, nextJob: null, playing: false,
@@ -347,11 +360,44 @@ async function renderTrack(spec, onStatus) {
 
 /* ---------- the library (IndexedDB) ---------- */
 const db = {
-  open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 1); r.onupgradeneeded = () => r.result.createObjectStore("tracks", { keyPath: "id" }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
-  async put(t) { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction("tracks", "readwrite"); tx.objectStore("tracks").put(t); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
-  async all() { const d = await this.open(); return new Promise((ok, no) => { const r = d.transaction("tracks").objectStore("tracks").getAll(); r.onsuccess = () => ok(r.result.sort((a, b) => b.made - a.made)); r.onerror = () => no(r.error); }); },
-  async del(id) { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction("tracks", "readwrite"); tx.objectStore("tracks").delete(id); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
+  open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 2); r.onupgradeneeded = () => { const d = r.result; for (const s of ["tracks", "stations"]) if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: "id" }); }; r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
+  async put(t, store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction(store, "readwrite"); tx.objectStore(store).put(t); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
+  async all(store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const r = d.transaction(store).objectStore(store).getAll(); r.onsuccess = () => ok(r.result.sort((a, b) => (b.last || b.made) - (a.last || a.made))); r.onerror = () => no(r.error); }); },
+  async del(id, store = "tracks") { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction(store, "readwrite"); tx.objectStore(store).delete(id); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
 };
+
+/* ---------- stations: a seed, its taste, and what it has played; resumable from the seed screen ---------- */
+async function saveStation() {
+  if (!state.stationId) return;
+  const specs = state.history.slice(-8).map(({ id, title, tags, bpm, key, energy, reaction, made }) => ({ id, title, tags, bpm, key, energy, reaction, made }));
+  await db.put({ id: state.stationId, seed: state.seed, name: state.station, taste: state.taste, history: specs, made: +state.stationId.split("-")[1] || Date.now(), last: Date.now(), played: (state.played || 0) }, "stations");
+}
+async function listStations() {
+  const list = await db.all("stations"); const box = $("#stations"), row = $("#stationRow"); row.innerHTML = "";
+  box.classList.toggle("hidden", !list.length);
+  for (const s of list) {
+    const d = document.createElement("div"); d.className = "s" + (s.id === state.stationId ? " on" : "");
+    const c = document.createElement("canvas"); c.width = c.height = 144;
+    drawCover(c, { seed: s.seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(s.seed) % 12], energy: 0.5 }, { lit: 0.9 });
+    d.append(c, Object.assign(document.createElement("b"), { textContent: s.name || s.seed }), Object.assign(document.createElement("small"), { textContent: `${s.played || 0} tracks` }));
+    d.addEventListener("click", () => resumeStation(s));
+    row.append(d);
+  }
+}
+function openStation(seed, { id, name = "", taste, history, played } = {}) {
+  if (state.stationId !== id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; }
+  state.seed = seed; state.station = name; state.stationId = id || `s-${Date.now()}-${hash32(seed)}`;
+  state.taste = taste || { like: [], avoid: [], notes: [] }; state.history = history || []; state.played = played || 0;
+  $("#stationName").textContent = name || seed;
+  $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
+  if (!state.current) {
+    drawCover($("#cover canvas"), { seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(seed) % 12], energy: 0.5 }, { lit: 0.6 });
+    $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = ""; keepLabel();
+    saveStation().catch(() => {});
+    advance();
+  }
+}
+function resumeStation(s) { openStation(s.seed, s); }
 const KEEP_UNKEPT = 40;
 // every rendered track is saved so the station can be scrolled back through; ❤️ pins one, the rest roll off after KEEP_UNKEPT
 async function remember(job, kept) {
@@ -390,7 +436,8 @@ function cookNext() {
 }
 async function playJob(job) {
   const spec = job.spec;
-  state.current = job; state.history.push(spec);
+  state.current = job; state.history.push(spec); state.played = (state.played || 0) + 1; spec.stationId = state.stationId;
+  keepLabel();
   $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
   $("#lyric").textContent = spec.line || "";
   drawCover($("#cover canvas"), spec);
@@ -402,7 +449,7 @@ async function playJob(job) {
   if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = "That one didn't come out of the oven. Skip to try the next."; return; }
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
-  remember(job, false).catch(() => {});
+  remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
   try { await state.audio.play(); state.playing = true; setPlayIcon(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
 }
@@ -433,13 +480,14 @@ async function react(emoji, text) {
     if (m.avoid) state.taste.avoid.push(`${m.avoid} — re ${who}`);
     if (m.notes) state.taste.notes.push(`${m.notes} (an emoji, re ${who})`);
     cur.reaction = (cur.reaction ? cur.reaction + " " : "") + emoji;
-    if (m.keep && state.current.blob) { await remember(state.current, true); toast("Kept in your library."); }
+    if (m.keep && state.current.blob) { await remember(state.current, true); keepLabel(); toast("Kept in your library."); }
   }
   if (text) { state.taste.notes.push(`${text} (re ${who})`); cur.reaction = (cur.reaction ? cur.reaction + " " : "") + `"${text}"`; }
   for (const k of ["like", "avoid", "notes"]) state.taste[k] = state.taste[k].slice(-8);
   // a next track already in the oven was planned before this was said: it still plays (it's paid for), the one after hears it
   const later = !!state.nextJob;
   if (!later) cookNext();
+  saveStation().catch(() => {});
   toast(`${emoji || "Noted"} — the ${later ? "track after next" : "next track"} hears it.`);
 }
 
@@ -450,16 +498,23 @@ $("#seedIn").addEventListener("input", (e) => {
   c.classList.add("on"); drawCover(c.querySelector("canvas"), { seed: v, title: "", tags: "", bpm: 100, key: KEYS[hash32(v) % 12], energy: 0.5 });
   $("#seedHint").textContent = "↵ to start the station";
 });
-$("#seedForm").addEventListener("submit", async (e) => {
+$("#seedForm").addEventListener("submit", (e) => {
   e.preventDefault();
   const v = $("#seedIn").value.trim(); if (!v) return;
-  state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null;   // a new seed is a new station
-  state.seed = v; state.station = ""; state.taste = { like: [], avoid: [], notes: [] }; state.history = []; state.nextJob = null;
-  $("#stationName").textContent = v;
-  $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
-  drawCover($("#cover canvas"), { seed: v, title: "", tags: "", bpm: 100, key: KEYS[hash32(v) % 12], energy: 0.5 }, { lit: 0.6 });
-  $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = "";
-  advance();
+  openStation(v);                                  // a new seed is a new station
+});
+/* keep: an explicit pin, next to the controls; ❤️ does it too */
+async function keepLabel() {
+  const b = $("#keep"), cur = state.current && state.current.spec;
+  if (!cur || !cur.id) { b.disabled = true; b.classList.remove("on"); b.textContent = "➕ KEEP THIS TRACK"; return; }
+  const row = (await db.all()).find((t) => t.id === cur.id);
+  b.disabled = false; b.classList.toggle("on", !!(row && row.kept)); b.textContent = row && row.kept ? "✓ KEPT" : "➕ KEEP THIS TRACK";
+}
+$("#keep").addEventListener("click", async () => {
+  const cur = state.current && state.current.spec; if (!cur || !cur.id || !state.current.blob) return;
+  const row = (await db.all()).find((t) => t.id === cur.id);
+  await db.put({ ...(row || { id: cur.id, spec: cur, blob: state.current.blob, made: cur.made }), kept: !(row && row.kept) });
+  await keepLabel(); toast(row && row.kept ? "Unkept." : "Kept — it stays in your library.");
 });
 // back to the seed screen keeps the station playing: a small now-playing strip leads back to it
 $("#back").addEventListener("click", () => {
@@ -467,7 +522,8 @@ $("#back").addEventListener("click", () => {
   const cur = state.current && state.current.spec;
   $("#nowRow").classList.toggle("hidden", !cur);
   if (cur) { drawCover($("#now canvas"), cur); $("#nowTitle").textContent = `${cur.title} · ${state.station || cur.seed}`; }
-  $("#seedIn").value = ""; $("#seedCover").classList.remove("on"); $("#seedHint").textContent = cur ? "type a new seed to change station, or tap the strip to go back" : "a mood, a line, a place, a word";
+  $("#seedIn").value = ""; $("#seedCover").classList.remove("on"); $("#seedHint").textContent = cur ? "type a new seed for a new station, or pick one below" : "a mood, a line, a place, a word";
+  listStations().catch(() => {});
 });
 $("#now").addEventListener("click", () => { $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden"); });
 $("#play").addEventListener("click", async () => {
@@ -517,6 +573,7 @@ $("#libBtn").addEventListener("click", async () => {
 });
 $("#libClose").addEventListener("click", () => $("#lib").classList.add("hidden"));
 
+listStations().catch(() => {});
 // first paint of the seed mark, for a visitor who lands with a hash like #rainy+trains
 if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
 </script>
