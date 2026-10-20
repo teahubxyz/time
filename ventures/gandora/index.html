@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; connect-src https://api.venice.ai; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src blob:; font-src 'self'">
+<title>gandora</title>
+<meta name="description" content="Type a seed. Get a station. Every song is made for you as it plays, and every cover is drawn from the song's own settings.">
+<link rel="icon" href="favicon.svg">
+<style>
+:root{
+  --bg:#0b0b0e; --ink:#ededf0; --dim:#8a8a96; --line:#232329; --card:#121216;
+  --acc:#e9d8a6; --font:ui-monospace,"SF Mono",Menlo,Consolas,monospace; --sans:-apple-system,"Inter",system-ui,sans-serif;
+}
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+.hidden{display:none!important}
+
+/* ---------- seed screen ---------- */
+#seed{min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px 16px;position:relative}
+#seed .wordmark{position:absolute;top:18px;left:0;right:0;text-align:center;font:600 13px var(--font);letter-spacing:.28em;color:var(--dim)}
+#seed form{width:min(680px,100%);text-align:center}
+#seedIn{width:100%;background:transparent;border:0;border-bottom:1px solid var(--line);padding:14px 4px;text-align:center;font:400 clamp(24px,5vw,38px)/1.2 var(--sans);outline:none;caret-color:var(--acc);transition:border-color .3s}
+#seedIn:focus{border-color:var(--acc)}
+#seedIn::placeholder{color:#3a3a44}
+#seed .hint{margin-top:18px;color:var(--dim);font-size:13px;min-height:1.5em}
+#seedCover{width:120px;height:120px;margin:0 auto 28px;border-radius:14px;overflow:hidden;background:var(--card);opacity:0;transform:scale(.92);transition:opacity .5s,transform .5s}
+#seedCover.on{opacity:1;transform:none}
+#seedCover canvas{width:100%;height:100%;display:block}
+#keyRow{position:absolute;bottom:18px;left:0;right:0;text-align:center;font-size:12px;color:var(--dim)}
+#keyRow button{text-decoration:underline;text-underline-offset:3px}
+#keyBox{position:absolute;bottom:44px;left:50%;transform:translateX(-50%);width:min(420px,calc(100% - 32px));background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;font-size:13px}
+#keyBox input{width:100%;margin:8px 0;background:#0a0a0d;border:1px solid var(--line);border-radius:8px;padding:9px 10px;font-family:var(--font);font-size:12px;outline:none}
+#keyBox .row{display:flex;gap:8px;justify-content:flex-end}
+#keyBox .row button{padding:6px 12px;border-radius:8px;border:1px solid var(--line)}
+#keyBox .row button.go{background:var(--acc);color:#111;border-color:var(--acc)}
+#keyBox p{margin:0 0 4px;color:var(--dim)}
+#keyBox label{display:block;margin-top:6px;color:var(--dim)}
+
+/* ---------- player ---------- */
+#player{min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;padding:14px 16px calc(16px + env(safe-area-inset-bottom))}
+#top{display:flex;align-items:center;justify-content:space-between;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim)}
+#top .station{letter-spacing:0;font:400 13px var(--sans);color:var(--ink);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#top button{color:var(--dim);letter-spacing:.08em}
+#stage{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:14px 0}
+#cover{width:min(78vw,380px);aspect-ratio:1;border-radius:18px;overflow:hidden;background:var(--card);box-shadow:0 30px 80px -30px rgba(0,0,0,.9);position:relative}
+#cover canvas{width:100%;height:100%;display:block}
+#cover .veil{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(11,11,14,.55);backdrop-filter:blur(2px);font:12px var(--font);letter-spacing:.2em;color:var(--ink);opacity:0;transition:opacity .3s;pointer-events:none}
+#cover.cooking .veil{opacity:1}
+#meta{text-align:center;max-width:520px}
+#title{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
+#tags{color:var(--dim);font:12px var(--font);margin:6px 0 0;letter-spacing:.02em}
+#lyric{color:var(--dim);font-size:13px;margin:10px 0 0;min-height:1.5em;font-style:italic}
+#bar{width:min(78vw,380px);height:2px;background:var(--line);border-radius:2px;overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--acc)}
+#controls{display:flex;align-items:center;gap:26px}
+#controls button{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:var(--ink);opacity:.85}
+#controls button:hover{opacity:1}
+#controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
+#controls svg{width:22px;height:22px;fill:currentColor}
+#next{font:11px var(--font);letter-spacing:.14em;color:var(--dim);min-height:1.4em;text-align:center}
+
+#react{display:flex;flex-direction:column;gap:10px;align-items:center}
+#emojis{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
+#emojis button{font-size:22px;width:44px;height:44px;border-radius:12px;border:1px solid transparent;transition:transform .15s,border-color .15s,background .15s}
+#emojis button:hover{background:var(--card);border-color:var(--line)}
+#emojis button.hit{transform:scale(1.25);border-color:var(--acc)}
+#emojis input{width:44px;height:44px;text-align:center;font-size:20px;background:var(--card);border:1px solid var(--line);border-radius:12px;outline:none}
+#sayRow{display:flex;gap:8px;width:min(520px,100%)}
+#say{flex:1;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 14px;outline:none;font-size:14px}
+#say:focus{border-color:var(--acc)}
+#sayRow button{padding:0 14px;border:1px solid var(--line);border-radius:12px;color:var(--dim)}
+#toast{position:fixed;left:50%;bottom:110px;transform:translateX(-50%);background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 14px;font-size:13px;opacity:0;transition:opacity .25s;pointer-events:none;max-width:calc(100% - 32px);text-align:center}
+#toast.on{opacity:1}
+
+/* ---------- library ---------- */
+#lib{position:fixed;inset:0;background:rgba(11,11,14,.96);padding:18px 16px;overflow:auto}
+#lib header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
+#lib .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+#lib .t{cursor:pointer}
+#lib .t canvas{width:100%;aspect-ratio:1;border-radius:12px;display:block;background:var(--card)}
+#lib .t b{display:block;font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lib .t small{color:var(--dim);font-size:11px}
+#lib .empty{color:var(--dim);text-align:center;padding:40px 0}
+#lib .cost{color:var(--dim);font:11px var(--font);margin-top:24px;text-align:center}
+</style>
+</head>
+<body>
+
+<!-- ============ screen 1: the seed ============ -->
+<section id="seed">
+  <div class="wordmark">GANDORA</div>
+  <form id="seedForm" autocomplete="off">
+    <div id="seedCover"><canvas width="240" height="240"></canvas></div>
+    <input id="seedIn" placeholder="type a seed" maxlength="200" autofocus>
+    <div class="hint" id="seedHint">a mood, a line, a place, a word</div>
+  </form>
+  <div id="keyRow"><button id="keyBtn" type="button">venice key</button></div>
+  <div id="keyBox" class="hidden">
+    <p>Your Venice API key stays in this browser and is only ever sent to api.venice.ai.</p>
+    <input id="keyIn" placeholder="sk-…" spellcheck="false">
+    <label>DJ model <input id="djIn" placeholder="llama-3.3-70b" spellcheck="false"></label>
+    <div class="row"><button id="keyCancel" type="button">cancel</button><button id="keySave" class="go" type="button">save</button></div>
+  </div>
+</section>
+
+<!-- ============ screen 2: the station ============ -->
+<section id="player" class="hidden">
+  <div id="top">
+    <button id="back" title="new seed">◂ SEED</button>
+    <div class="station" id="stationName"></div>
+    <button id="libBtn">LIBRARY</button>
+  </div>
+  <div id="stage">
+    <div id="cover"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
+    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p></div>
+    <div id="bar"><i></i></div>
+    <div id="controls">
+      <button id="prev" title="replay">
+        <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
+      </button>
+      <button id="play" title="play / pause"><svg id="playIco" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
+      <button id="skip" title="skip">
+        <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
+      </button>
+    </div>
+    <div id="next"></div>
+  </div>
+  <div id="react">
+    <div id="emojis">
+      <button data-e="🔥" title="more of this">🔥</button>
+      <button data-e="❤️" title="keep it">❤️</button>
+      <button data-e="😴" title="too sleepy">😴</button>
+      <button data-e="🌧️" title="sadder">🌧️</button>
+      <button data-e="⚡" title="faster, louder">⚡</button>
+      <button data-e="🎸" title="more guitar">🎸</button>
+      <button data-e="🎹" title="more keys">🎹</button>
+      <button data-e="🚫" title="not this">🚫</button>
+      <input id="anyEmoji" placeholder="＋" maxlength="4" title="any emoji">
+    </div>
+    <form id="sayRow"><input id="say" placeholder="or say it: less snare, sadder but faster…" maxlength="240"><button>send</button></form>
+  </div>
+  <div id="toast"></div>
+</section>
+
+<section id="lib" class="hidden">
+  <header><span>LIBRARY</span><button id="libClose">CLOSE</button></header>
+  <div class="grid" id="libGrid"></div>
+  <div class="empty hidden" id="libEmpty">Nothing kept yet. ❤️ a track to keep it.</div>
+  <div class="cost" id="libCost"></div>
+</section>
+
+<script>
+/* ============================================================
+   gandora — a generative station.
+   seed → DJ (Venice chat) → ACE-Step (Venice /audio/queue) → player.
+   Every cover is drawn from the song's own settings: hue from key,
+   rings from BPM, density from energy, symmetry from the seed.
+   ============================================================ */
+const BASE = "https://api.venice.ai/api/v1";
+const $ = (s) => document.querySelector(s);
+const LS = { key: "gandora.key", dj: "gandora.dj", cost: "gandora.cost" };
+const state = {
+  key: localStorage.getItem(LS.key) || "",
+  dj: localStorage.getItem(LS.dj) || "llama-3.3-70b",
+  seed: "", station: "",
+  taste: { like: [], avoid: [], notes: [] },     // what the listener has told the station
+  history: [],                                    // tracks played this session (specs)
+  current: null, nextJob: null, playing: false,
+  audio: new Audio(), cost: parseFloat(localStorage.getItem(LS.cost) || "0"),
+};
+state.audio.preload = "auto";
+
+/* ---------- small utils ---------- */
+const toast = (m, ms = 2400) => { const t = $("#toast"); t.textContent = m; t.classList.add("on"); clearTimeout(toast.h); toast.h = setTimeout(() => t.classList.remove("on"), ms); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+function hash32(str) { let h = 2166136261 >>> 0; for (const c of String(str)) { h ^= c.codePointAt(0); h = Math.imul(h, 16777619) >>> 0; } return h; }
+function prng(seed) { let a = seed >>> 0; return () => { a = (a + 0x6D2B79F5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
+const KEYS = ["C","G","D","A","E","B","F#","C#","G#","D#","A#","F"];    // circle of fifths → hue wheel
+function keyHue(k) {
+  const m = /^([A-G])(#|b)?/.exec(String(k || "C").trim()); if (!m) return 40;
+  let name = m[1] + (m[2] === "#" ? "#" : "");
+  if (m[2] === "b") { const flat = { Db:"C#", Eb:"D#", Gb:"F#", Ab:"G#", Bb:"A#", Cb:"B", Fb:"E" }; name = flat[m[1] + "b"] || m[1]; }
+  const i = KEYS.indexOf(name); return (i < 0 ? 0 : i) * 30;
+}
+
+/* ---------- the cover: a function of the song ---------- */
+function drawCover(canvas, spec, { lit = 1 } = {}) {
+  const ctx = canvas.getContext("2d"), W = canvas.width, H = canvas.height, cx = W / 2, cy = H / 2;
+  const seedHash = hash32((spec.seed || "") + "|" + (spec.title || "") + "|" + (spec.tags || ""));
+  const rnd = prng(seedHash);
+  const bpm = +spec.bpm || 100, energy = Math.min(1, Math.max(0, +spec.energy || 0.5)), minor = /m(in|inor)?\b/i.test(spec.key || "") && !/maj/i.test(spec.key || "");
+  const hue = keyHue(spec.key), hue2 = (hue + (minor ? 200 : 150)) % 360;
+  const sat = 55 + energy * 35, light = minor ? 36 : 52;
+  // ground: a soft vertical field in the song's key
+  const g = ctx.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, `hsl(${hue} ${sat * .5}% ${light * .3}%)`); g.addColorStop(1, `hsl(${hue2} ${sat * .4}% ${light * .18}%)`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+  // rings: one per 10 bpm, spaced by tempo; thicker when energetic
+  const rings = Math.max(4, Math.round(bpm / 10));
+  const spread = W * .46, sym = 3 + Math.floor(rnd() * 6);  // symmetry order from the seed
+  ctx.globalCompositeOperation = "lighter";
+  for (let r = 0; r < rings; r++) {
+    const t = (r + 1) / rings, rad = spread * Math.pow(t, .8);
+    ctx.beginPath();
+    const wob = 0.02 + energy * 0.08, ph = rnd() * Math.PI * 2;
+    for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 90) {
+      const rr = rad * (1 + wob * Math.sin(a * sym + ph) + wob * 0.5 * Math.sin(a * sym * 2 + ph * 3));
+      const x = cx + Math.cos(a) * rr, y = cy + Math.sin(a) * rr;
+      a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    ctx.lineWidth = (0.6 + energy * 2.2) * (W / 380) * (1 - t * 0.5);
+    ctx.strokeStyle = `hsl(${(hue + t * (minor ? -40 : 40)) % 360} ${sat}% ${light + t * 25}% / ${0.12 + 0.6 * (1 - t) * lit})`;
+    ctx.stroke();
+  }
+  // grain: density follows energy
+  const dots = Math.floor(400 + energy * 2600);
+  for (let i = 0; i < dots; i++) {
+    const a = rnd() * Math.PI * 2, d = Math.sqrt(rnd()) * spread * 1.05;
+    const x = cx + Math.cos(a) * d, y = cy + Math.sin(a) * d;
+    ctx.fillStyle = `hsl(${hue2} ${sat}% ${light + 30}% / ${rnd() * 0.5 * lit})`;
+    ctx.fillRect(x, y, (W / 380) * (0.8 + rnd() * 1.6), (W / 380) * (0.8 + rnd() * 1.6));
+  }
+  ctx.globalCompositeOperation = "source-over";
+  // a core: the station's seed mark, same shape for every track of one seed
+  const core = prng(hash32(spec.seed || ""));
+  const petals = 3 + Math.floor(core() * 5);
+  ctx.save(); ctx.translate(cx, cy); ctx.rotate(core() * Math.PI);
+  ctx.fillStyle = `hsl(${hue} ${sat}% ${Math.min(92, light + 45)}% / ${0.85 * lit})`;
+  ctx.beginPath();
+  for (let a = 0; a <= Math.PI * 2 + 0.01; a += Math.PI / 120) {
+    const rr = (W * .06) * (1 + 0.45 * Math.cos(a * petals));
+    const x = Math.cos(a) * rr, y = Math.sin(a) * rr;
+    a === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  }
+  ctx.closePath(); ctx.fill(); ctx.restore();
+}
+
+/* ---------- Venice ---------- */
+async function venice(path, body, { raw = false } = {}) {
+  if (!state.key) throw new Error("Add your Venice key first (bottom of the seed screen).");
+  const res = await fetch(BASE + path, { method: body ? "POST" : "GET", headers: { Authorization: "Bearer " + state.key, "Content-Type": "application/json", Accept: raw ? "*/*" : "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  if (!res.ok) {
+    let d = null; try { d = await res.json(); } catch {}
+    const said = d && (d.error && (d.error.message || d.error) || d.message) || "";
+    const why = { 401: "Venice didn't accept that key.", 402: "Venice says the key is out of credit.", 422: "Venice turned that down: " + said, 429: "Venice is rate-limiting. Breathe.", 503: "That model is busy at Venice." }[res.status];
+    throw new Error(why || ("Venice answered " + res.status + (said ? ": " + said : "")));
+  }
+  return raw ? res : res.json();
+}
+
+const DJ_SCHEMA = {
+  type: "object", additionalProperties: false,
+  required: ["title", "tags", "lyrics", "bpm", "key", "energy", "station", "line"],
+  properties: {
+    title: { type: "string" }, tags: { type: "string" }, lyrics: { type: "string" },
+    bpm: { type: "integer" }, key: { type: "string" }, energy: { type: "number" },
+    station: { type: "string" }, line: { type: "string" },
+  },
+};
+function djPrompt() {
+  const prev = state.history.slice(-4).map((t, i) => `- ${t.title} [${t.tags}] ${t.bpm}bpm ${t.key} energy ${t.energy}${t.reaction ? " ← listener: " + t.reaction : ""}`).join("\n");
+  return `You are the DJ of a one-listener radio station. The listener typed a seed and the station grows from it.
+Seed: "${state.seed}"
+${state.station ? `Station name: ${state.station}\n` : ""}Listener asked for more of: ${state.taste.like.join("; ") || "(nothing yet)"}
+Listener asked to avoid: ${state.taste.avoid.join("; ") || "(nothing yet)"}
+Listener's words: ${state.taste.notes.join(" | ") || "(none yet)"}
+Recent tracks:
+${prev || "- (none yet: this is the first)"}
+
+Write the NEXT track. Keep continuity with the recent tracks unless the listener pushed away; vary something each time so the station moves.
+Return JSON:
+- title: a short evocative song title (never reuse one)
+- tags: the music prompt for a song model, 60-300 characters, comma-separated descriptors: genre, instruments, vocal style or "instrumental", mood, era, production notes. Concrete and musical, no sentences.
+- lyrics: full lyrics with [verse] / [chorus] / [bridge] section markers, 8-24 lines, or an empty string for instrumental.
+- bpm: integer 60-180 that fits the tags
+- key: like "A minor" or "F# major"
+- energy: 0 to 1
+- station: a two or three word station name grown from the seed (keep it stable once chosen)
+- line: one line, under 90 characters, the DJ says about this track to the listener (no quotes, no emoji)`;
+}
+async function askDJ() {
+  const body = { model: state.dj, messages: [{ role: "user", content: djPrompt() }], max_tokens: 1200, temperature: 0.9, stream: false,
+    venice_parameters: { disable_thinking: true, strip_thinking_response: true, include_venice_system_prompt: false },
+    response_format: { type: "json_schema", json_schema: { name: "track", strict: true, schema: DJ_SCHEMA } } };
+  let d;
+  try { d = await venice("/chat/completions", body); }
+  catch (e) { if (!/400/.test(e.message)) throw e; delete body.response_format; body.messages[0].content += "\nAnswer with the JSON object only."; d = await venice("/chat/completions", body); }
+  let text = String(d.choices?.[0]?.message?.content || "");
+  const m = text.match(/\{[\s\S]*\}/); if (!m) throw new Error("The DJ didn't answer in JSON.");
+  const spec = JSON.parse(m[0]);
+  spec.tags = String(spec.tags || "").slice(0, 500); if (spec.tags.length < 10) spec.tags += ", instrumental, warm, lo-fi";
+  spec.lyrics = String(spec.lyrics || "").slice(0, 4000);
+  spec.bpm = Math.min(180, Math.max(60, parseInt(spec.bpm) || 100));
+  spec.energy = Math.min(1, Math.max(0, +spec.energy || 0.5));
+  spec.seed = state.seed; spec.made = Date.now();
+  if (!state.station && spec.station) { state.station = spec.station; $("#stationName").textContent = state.station; }
+  return spec;
+}
+
+/* ACE-Step on Venice: queue, poll, download. 60 s costs about $0.03. */
+async function renderTrack(spec, onStatus) {
+  const q = await venice("/audio/queue", { model: "ace-step-15", prompt: spec.tags, duration_seconds: 60, ...(spec.lyrics ? { lyrics_prompt: spec.lyrics } : {}) });
+  const started = Date.now();
+  for (let i = 0; i < 90; i++) {
+    await sleep(i < 4 ? 2500 : 4000);
+    const res = await venice("/audio/retrieve", { model: q.model || "ace-step-15", queue_id: q.queue_id, delete_media_on_completion: true }, { raw: true });
+    const type = res.headers.get("content-type") || "";
+    if (/^audio\//i.test(type) || /octet-stream/i.test(type)) {
+      const blob = await res.blob();
+      state.cost += 0.03; localStorage.setItem(LS.cost, String(state.cost));
+      return blob;
+    }
+    const d = await res.json();
+    const st = String(d.status || "").toUpperCase();
+    if (/FAIL|ERROR|CANCEL|REJECT/.test(st)) throw new Error("Venice couldn't make the track (" + st.toLowerCase() + ").");
+    onStatus && onStatus(Math.round((Date.now() - started) / 1000), Math.round((d.average_execution_time || 0) / 1000));
+  }
+  throw new Error("That render took too long.");
+}
+
+/* ---------- the library (IndexedDB) ---------- */
+const db = {
+  open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 1); r.onupgradeneeded = () => r.result.createObjectStore("tracks", { keyPath: "id" }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
+  async put(t) { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction("tracks", "readwrite"); tx.objectStore("tracks").put(t); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
+  async all() { const d = await this.open(); return new Promise((ok, no) => { const r = d.transaction("tracks").objectStore("tracks").getAll(); r.onsuccess = () => ok(r.result.sort((a, b) => b.made - a.made)); r.onerror = () => no(r.error); }); },
+};
+
+/* ---------- the station loop ---------- */
+let seq = 0;
+function makeJob(spec) {
+  const job = { id: ++seq, spec, blob: null, err: null, done: null };
+  job.done = (async () => {
+    try { job.blob = await renderTrack(spec, (el, exp) => {
+      const t = `COOKING ${el}s${exp ? " / ~" + exp + "s" : ""}`;
+      if (state.current === job) $("#cover .veil").textContent = t;
+      else if (state.nextJob === job && state.current) $("#next").textContent = "NEXT · " + spec.title.toUpperCase() + " · " + t;
+    }); }
+    catch (e) { job.err = e; }
+  })();
+  return job;
+}
+let cooking = null;
+function cookNext() {
+  if (state.nextJob) return Promise.resolve(state.nextJob);
+  if (cooking) return cooking;
+  cooking = (async () => {
+    try { const spec = await askDJ(); state.nextJob = makeJob(spec); if (state.current) $("#next").textContent = "NEXT · " + spec.title.toUpperCase(); return state.nextJob; }
+    catch (e) { toast(e.message, 5000); return null; }
+    finally { cooking = null; }
+  })();
+  return cooking;
+}
+async function playJob(job) {
+  const spec = job.spec;
+  state.current = job; state.history.push(spec);
+  $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
+  $("#lyric").textContent = spec.line || "";
+  drawCover($("#cover canvas"), spec);
+  $("#cover").classList.add("cooking"); $("#bar i").style.width = "0";
+  await job.done;
+  if (state.current !== job) return;             // skipped while cooking
+  $("#cover").classList.remove("cooking");
+  if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = "That one didn't come out of the oven. Skip to try the next."; return; }
+  if (state.audio.src) URL.revokeObjectURL(state.audio.src);
+  state.audio.src = URL.createObjectURL(job.blob);
+  try { await state.audio.play(); state.playing = true; setPlayIcon(); } catch { toast("Tap play."); }
+  cookNext();                                     // render ahead while this one plays
+}
+async function advance() {
+  const job = state.nextJob || await cookNext();
+  state.nextJob = null; $("#next").textContent = "";
+  if (!job) return;
+  await playJob(job);
+  cookNext();
+}
+state.audio.addEventListener("ended", () => { state.playing = false; setPlayIcon(); advance(); });
+state.audio.addEventListener("timeupdate", () => { if (state.audio.duration) $("#bar i").style.width = (state.audio.currentTime / state.audio.duration * 100) + "%"; });
+function setPlayIcon() { $("#playIco").innerHTML = state.playing ? '<path d="M6 5h4v14H6zm8 0h4v14h-4z"/>' : '<path d="M8 5v14l11-7z"/>'; }
+
+/* ---------- reactions: each one edits the taste, and the next cover shows it ---------- */
+const EMOJI_MEANING = {
+  "🔥": { like: "more exactly like the current track" }, "❤️": { like: "the current track's sound", keep: true },
+  "😴": { avoid: "this sleepy energy; wake it up", energy: +0.25 }, "🌧️": { like: "sadder, more melancholy, minor keys" },
+  "⚡": { like: "faster and louder", energy: +0.3 }, "🎸": { like: "more guitar" }, "🎹": { like: "more piano and keys" },
+  "🚫": { avoid: "anything like the current track" },
+};
+async function react(emoji, text) {
+  const cur = state.current && state.current.spec; if (!cur) return;
+  const m = EMOJI_MEANING[emoji] || (emoji ? { notes: emoji } : null);
+  const who = `${cur.title} (${cur.tags.split(",").slice(0, 3).join(",")})`;
+  if (m) {
+    if (m.like) state.taste.like.push(`${m.like} — re ${who}`);
+    if (m.avoid) state.taste.avoid.push(`${m.avoid} — re ${who}`);
+    if (m.notes) state.taste.notes.push(`${m.notes} (an emoji, re ${who})`);
+    cur.reaction = (cur.reaction ? cur.reaction + " " : "") + emoji;
+    if (m.keep && state.current.blob) { await db.put({ id: cur.made + "-" + hash32(cur.title), spec: cur, blob: state.current.blob, made: cur.made }); toast("Kept in your library."); }
+  }
+  if (text) { state.taste.notes.push(`${text} (re ${who})`); cur.reaction = (cur.reaction ? cur.reaction + " " : "") + `"${text}"`; }
+  for (const k of ["like", "avoid", "notes"]) state.taste[k] = state.taste[k].slice(-8);
+  // a next track already in the oven was planned before this was said: it still plays (it's paid for), the one after hears it
+  const later = !!state.nextJob;
+  if (!later) cookNext();
+  toast(`${emoji || "Noted"} — the ${later ? "track after next" : "next track"} hears it.`);
+}
+
+/* ---------- UI wiring ---------- */
+$("#seedIn").addEventListener("input", (e) => {
+  const v = e.target.value.trim();
+  const c = $("#seedCover"); if (!v) { c.classList.remove("on"); return; }
+  c.classList.add("on"); drawCover(c.querySelector("canvas"), { seed: v, title: "", tags: "", bpm: 100, key: KEYS[hash32(v) % 12], energy: 0.5 });
+  $("#seedHint").textContent = "↵ to start the station";
+});
+$("#seedForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const v = $("#seedIn").value.trim(); if (!v) return;
+  if (!state.key) { openKey(); toast("Add a Venice key first."); return; }
+  state.seed = v; state.station = ""; state.taste = { like: [], avoid: [], notes: [] }; state.history = []; state.nextJob = null;
+  $("#stationName").textContent = v;
+  $("#seed").classList.add("hidden"); $("#player").classList.remove("hidden");
+  drawCover($("#cover canvas"), { seed: v, title: "", tags: "", bpm: 100, key: KEYS[hash32(v) % 12], energy: 0.5 }, { lit: 0.6 });
+  $("#title").textContent = "tuning…"; $("#tags").textContent = ""; $("#lyric").textContent = "";
+  advance();
+});
+$("#back").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; $("#player").classList.add("hidden"); $("#seed").classList.remove("hidden"); $("#seedIn").focus(); });
+$("#play").addEventListener("click", async () => {
+  if (!state.audio.src) return;
+  if (state.playing) { state.audio.pause(); state.playing = false; } else { try { await state.audio.play(); state.playing = true; } catch {} }
+  setPlayIcon();
+});
+$("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
+$("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
+$("#emojis").addEventListener("click", (e) => { const b = e.target.closest("button[data-e]"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 300); react(b.dataset.e); });
+$("#anyEmoji").addEventListener("change", (e) => { const v = e.target.value.trim(); e.target.value = ""; if (v) react(v); });
+$("#sayRow").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#say").value.trim(); if (!v) return; $("#say").value = ""; react("", v); });
+
+/* key box */
+function openKey() { $("#keyIn").value = state.key; $("#djIn").value = state.dj; $("#keyBox").classList.remove("hidden"); $("#keyIn").focus(); }
+$("#keyBtn").addEventListener("click", openKey);
+$("#keyCancel").addEventListener("click", () => $("#keyBox").classList.add("hidden"));
+$("#keySave").addEventListener("click", () => {
+  state.key = $("#keyIn").value.trim(); state.dj = $("#djIn").value.trim() || "llama-3.3-70b";
+  localStorage.setItem(LS.key, state.key); localStorage.setItem(LS.dj, state.dj);
+  $("#keyBox").classList.add("hidden"); $("#keyBtn").textContent = state.key ? "venice key ✓" : "venice key"; $("#seedIn").focus();
+});
+if (state.key) $("#keyBtn").textContent = "venice key ✓";
+
+/* library */
+$("#libBtn").addEventListener("click", async () => {
+  const list = await db.all(); const g = $("#libGrid"); g.innerHTML = "";
+  $("#libEmpty").classList.toggle("hidden", list.length > 0);
+  for (const t of list) {
+    const d = document.createElement("div"); d.className = "t";
+    const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec);
+    d.append(c, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
+    d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
+    g.append(d);
+  }
+  $("#libCost").textContent = `spent on venice this browser: ~$${state.cost.toFixed(2)} · replays from the library are free`;
+  $("#lib").classList.remove("hidden");
+});
+$("#libClose").addEventListener("click", () => $("#lib").classList.add("hidden"));
+
+// first paint of the seed mark, for a visitor who lands with a hash like #rainy+trains
+if (location.hash.length > 1) { $("#seedIn").value = decodeURIComponent(location.hash.slice(1)).replace(/\+/g, " "); $("#seedIn").dispatchEvent(new Event("input")); }
+</script>
+</body>
+</html>
