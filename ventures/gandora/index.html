@@ -57,7 +57,18 @@ input,textarea{font:inherit;color:inherit}
 /* ---------- player ---------- */
 #player{min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;padding:14px 16px calc(16px + env(safe-area-inset-bottom))}
 #top{display:flex;align-items:center;justify-content:space-between;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim)}
-#top .station{letter-spacing:0;font:400 13px var(--sans);color:var(--ink);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#top .station{letter-spacing:0;font:400 13px var(--sans);color:var(--ink);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+#top .station:hover{color:var(--acc)}
+#stations .s{position:relative}
+#stations .s .dots{position:absolute;top:-4px;right:2px;width:22px;height:22px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:12px;line-height:1}
+#stationSheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));z-index:6;box-shadow:0 -20px 60px rgba(0,0,0,.6)}
+#stationSheet h4{font:600 10px var(--font);letter-spacing:.2em;color:var(--dim);margin:0 0 10px}
+#stationSheet label{display:block;color:var(--dim);font-size:12px;margin:8px 0 4px}
+#stationSheet input{width:100%;background:#0a0a0d;border:1px solid var(--line);border-radius:10px;padding:10px 12px;outline:none}
+#stationSheet .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+#stationSheet .row button{padding:9px 14px;border-radius:999px;border:1px solid var(--line);font:600 11px var(--font);letter-spacing:.14em}
+#stationSheet .row button.go{background:var(--acc);color:#111;border-color:var(--acc)}
+#stationSheet .row button.bad{color:hsl(0 60% 70%);border-color:hsl(0 30% 35%)}
 #top button{color:var(--dim);letter-spacing:.08em}
 #stage{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:14px 0}
 #cover{width:min(78vw,380px);aspect-ratio:1;position:relative;perspective:1200px}
@@ -296,6 +307,7 @@ input,textarea{font:inherit;color:inherit}
   <div class="empty hidden" id="tapeEmpty">Empty tape. Add tracks from the library with the ＋ on a tile.</div>
 </section>
 <div id="tapePick" class="hidden"></div>
+<div id="stationSheet" class="hidden"></div>
 
 <section id="lib" class="hidden">
   <header><span>LIBRARY</span><button id="libClose">CLOSE</button></header>
@@ -565,9 +577,36 @@ async function listStations() {
     drawCover(c, { seed: s.seed, title: "", tags: "", bpm: 100, key: KEYS[hash32(s.seed) % 12], energy: 0.5 }, { lit: 0.9 });
     d.append(c, Object.assign(document.createElement("b"), { textContent: s.name || s.seed }), Object.assign(document.createElement("small"), { textContent: `${s.played || 0} tracks` }));
     d.addEventListener("click", () => resumeStation(s));
+    const dots = Object.assign(document.createElement("button"), { className: "dots", textContent: "⋯", title: "rename, reset or delete" });
+    dots.addEventListener("click", (e) => { e.stopPropagation(); stationSheet(s.id); });
+    d.append(dots);
     row.append(d);
   }
 }
+/* the station sheet: rename, reset its taste, delete it (kept tracks stay) */
+async function stationSheet(id) {
+  const s = (await db.all("stations")).find((x) => x.id === id); if (!s) return;
+  const p = $("#stationSheet"); p.innerHTML = "";
+  p.append(Object.assign(document.createElement("h4"), { textContent: "STATION" }));
+  const name = document.createElement("input"); name.value = s.name || ""; name.placeholder = s.seed; name.maxLength = 60;
+  p.append(Object.assign(document.createElement("label"), { textContent: "name" }), name, Object.assign(document.createElement("label"), { textContent: "seed · " + s.seed + " · " + (s.played || 0) + " tracks" }));
+  const row = document.createElement("div"); row.className = "row";
+  const save = Object.assign(document.createElement("button"), { className: "go", textContent: "SAVE" });
+  save.addEventListener("click", async () => { s.name = name.value.trim().slice(0, 60); await db.put(s, "stations"); if (state.stationId === id) { state.station = s.name; $("#stationName").textContent = s.name || s.seed; } p.classList.add("hidden"); listStations().catch(() => {}); toast("Renamed."); });
+  const reset = Object.assign(document.createElement("button"), { textContent: "RESET TASTE" });
+  reset.addEventListener("click", async () => { if (!confirm("Forget what this station has learned? Its tracks stay.")) return; s.taste = { like: [], avoid: [], notes: [] }; s.history = []; await db.put(s, "stations"); if (state.stationId === id) { state.taste = s.taste; state.history = []; } p.classList.add("hidden"); toast("Taste reset."); });
+  const del = Object.assign(document.createElement("button"), { className: "bad", textContent: "DELETE STATION" });
+  del.addEventListener("click", async () => {
+    if (!confirm(`Delete “${s.name || s.seed}” and its unkept tracks? Kept tracks stay in the library.`)) return;
+    for (const t of (await db.all()).filter((t) => t.spec.stationId === id && !t.kept)) await db.del(t.id);
+    await db.del(id, "stations");
+    if (state.stationId === id) { state.audio.pause(); state.playing = false; setPlayIcon(); state.current = null; state.nextJob = null; state.stationId = ""; state.seed = ""; state.station = ""; $("#player").classList.add("hidden"); $("#seed").classList.remove("hidden"); $("#nowRow").classList.add("hidden"); setUrl(); }
+    p.classList.add("hidden"); listStations().catch(() => {}); toast("Station deleted.");
+  });
+  const close = Object.assign(document.createElement("button"), { textContent: "CLOSE" }); close.addEventListener("click", () => p.classList.add("hidden"));
+  row.append(save, reset, del, close); p.append(row); p.classList.remove("hidden"); name.focus({ preventScroll: true });
+}
+$("#stationName").addEventListener("click", () => { if (state.stationId && !state.tape) stationSheet(state.stationId); });
 /* links: the URL follows the station (#seed); a share link carries the current track's sheet music (?t=) so the same
    song opens and renders for whoever follows it, even with nothing stored anywhere */
 const b64u = (s) => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
