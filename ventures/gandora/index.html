@@ -99,7 +99,8 @@ input,textarea{font:inherit;color:inherit}
 #controls button:hover{opacity:1}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
 #controls svg{width:22px;height:22px;fill:currentColor}
-#controls #loop{opacity:.5}
+#controls #loop,#controls #shuffle{opacity:.5}
+#controls #shuffle.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
 #controls #loop svg{width:18px;height:18px}
 #controls #loop.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
 #next{font:11px var(--font);letter-spacing:.14em;color:var(--dim);min-height:1.4em;text-align:center}
@@ -210,6 +211,9 @@ input,textarea{font:inherit;color:inherit}
       <button id="play" title="play / pause"><svg id="playIco" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
       <button id="loop" title="repeat this track">
         <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
+      </button>
+      <button id="shuffle" title="shuffle: mix the station's own library in">
+        <svg viewBox="0 0 24 24"><path d="M10.6 9.2 7.8 6H3V4h5.5l3.3 3.7-1.2 1.5zM14 4h4.2l-1.6-1.6L18 1l4 4-4 4-1.4-1.4L18.2 6H14.9l-9 10H3v-2h2.1l9-10zm4.2 14L16.6 16.4 18 15l4 4-4 4-1.4-1.4 1.6-1.6H14.9l-3.2-3.6 1.3-1.5 2.7 3.1h2.5z"/></svg>
       </button>
       <button id="skip" title="next">
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
@@ -606,8 +610,24 @@ async function step(dir) {
   await playJob({ id: ++seq, spec: row.spec, blob: row.blob, err: null, done: Promise.resolve(), stepping: true });
   return true;
 }
+/* shuffle: a track the station already made, weighted by how much the net thinks you'd like it and whether you kept it,
+   never one of the last few heard; null when the library is too thin */
+async function shuffled() {
+  const rows = (await db.all()).filter((t) => t.spec.stationId === state.stationId && t.blob);
+  const avoid = new Set(state.recent.slice(-4));
+  const pool = rows.filter((t) => !avoid.has(t.id)); if (pool.length < 3) return null;
+  const net = typeof brainNow === "function" ? brainNow() : null;
+  const w = pool.map((t) => Math.exp(3 * (net ? net.predict(t.spec) : 0.5)) * (t.kept ? 2 : 1) * (1 + 0.3 * Math.log1p(t.plays || 0)));
+  let r = Math.random() * w.reduce((a, b) => a + b, 0);
+  for (let i = 0; i < pool.length; i++) { r -= w[i]; if (r <= 0) return pool[i]; }
+  return pool[pool.length - 1];
+}
 async function advance() {
   if (await step(+1)) return;                      // forward through the session first, then cook new
+  if (state.shuffle && Math.random() < 0.5) {
+    const t = await shuffled();
+    if (t) { state.audio.pause(); await playJob({ id: ++seq, spec: t.spec, blob: t.blob, err: null, done: Promise.resolve() }); return; }
+  }
   const job = state.nextJob || await cookNext();
   state.nextJob = null; $("#next").textContent = "";
   if (!job) return;
@@ -754,6 +774,7 @@ $("#play").addEventListener("click", async () => {
   setPlayIcon();
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
+$("#shuffle").addEventListener("click", () => { state.shuffle = !state.shuffle; $("#shuffle").classList.toggle("on", state.shuffle); toast(state.shuffle ? "Shuffle: mixing the station's library in." : "Shuffle off: all fresh."); });
 $("#loop").addEventListener("click", () => { state.audio.loop = !state.audio.loop; $("#loop").classList.toggle("on", state.audio.loop); toast(state.audio.loop ? "Repeating this track." : "Back to the station."); });
 $("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
 $("#backTrack").addEventListener("click", async () => { if (!(await step(-1))) toast("That's the first track of this session."); });
