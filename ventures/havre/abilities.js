@@ -334,10 +334,14 @@ export const MOVE_SCHEMA = {
 };
 
 /** the messages for a text model to decide the character's next move (adult: their pictures can be adult, adultCheck) */
-export function moveMessages(card, history, { adult = false } = {}) {
+/** the move prompt as it stands, or, for someone set to send things every round, told to lean in rather than hold back */
+export const EAGER = " This character is set to send things every round: choose \"photo\" (or \"voice\" or \"clip\" when that fits better) " +
+  "whenever a picture of them could go with what was just said, however small the reason; \"nothing\" only when a photo would make no sense at all.";
+export function moveMessages(card, history, { adult = false, eager = false } = {}) {
   const lines = transcript(card, history, 12);
   const look = card.look && card.look.description;
-  return [{ role: "system", content: adult ? MOVE_SYSTEM_ADULT : MOVE_SYSTEM }, { role: "user", content: [
+  const system = (adult ? MOVE_SYSTEM_ADULT : MOVE_SYSTEM) + (eager ? EAGER : "");
+  return [{ role: "system", content: system }, { role: "user", content: [
     `The character: ${card.name}${card.tagline ? ". " + card.tagline : ""}`,
     look ? `How they look: ${look}` : "",
     "The conversation, latest last (their reply just now is the last line):\n" + lines.join("\n"),
