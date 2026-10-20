@@ -124,6 +124,14 @@ input,textarea{font:inherit;color:inherit}
 #pills button:disabled{opacity:.4;cursor:default}
 #controls button:hover{opacity:1}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
+#trail{display:flex;gap:10px;overflow-x:auto;max-width:560px;width:100%;padding:10px 4px 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+#trail::-webkit-scrollbar{display:none}
+#trail:empty{display:none}
+#trail canvas{width:40px;height:40px;border-radius:9px;flex:none;opacity:.45;cursor:pointer;transition:opacity .2s,transform .2s}
+#trail canvas:hover{opacity:.8}
+#trail canvas.on{opacity:1;transform:scale(1.15);box-shadow:0 0 0 2px var(--ink)}
+#trail canvas.kept{box-shadow:0 0 0 2px var(--acc)}
+#trail canvas.on.kept{box-shadow:0 0 0 2px var(--acc),0 0 0 4px var(--ink)}
 #controls svg{width:22px;height:22px;fill:currentColor}
 #controls #loop,#controls #shuffle,#controls #remix{opacity:.6}
 #controls #remix:hover{opacity:1}
@@ -284,6 +292,7 @@ input,textarea{font:inherit;color:inherit}
         <svg viewBox="0 0 24 24"><path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z"/></svg>
       </button>
     </div>
+    <div id="trail" title="what this station has played · tap to jump"></div>
     <div id="pills"><button id="lyricsBtn">⇄ LYRICS</button><button id="keep" disabled>➕ KEEP</button><button id="share" disabled>↗ SHARE</button></div>
   </div>
   <div id="react">
@@ -850,9 +859,36 @@ async function playJob(job) {
   await remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
   if (job.fileInto) { const tp = (await db.all("tapes")).find((t) => t.id === job.fileInto); if (tp && !tp.ids.includes(spec.id)) { tp.ids.push(spec.id); await db.put(tp, "tapes"); } }
   if (!job.stepping) { state.recent = state.recent.slice(0, state.pos + 1); state.recent.push(spec.id); state.pos = state.recent.length - 1; }
+  drawTrail().catch(() => {});
   try { await state.audio.play(); state.playing = true; setPlayIcon(); vizStart(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
 }
+/* the trail: every track this station has played, oldest left, newest right, the one playing lit. Tapping one plays it and
+   makes it the point back/forward walk from; the trail is the station's own history, so it survives a refresh. */
+let trailIds = [];
+async function drawTrail() {
+  const el = $("#trail"); if (!el) return;
+  const rows = (await db.all()).filter((t) => t.spec && t.spec.stationId === state.stationId).sort((a, b) => a.made - b.made);
+  trailIds = rows.map((t) => t.id);
+  const cur = state.current && state.current.spec && state.current.spec.id;
+  if (trailIds.length < 2) { el.textContent = ""; return; }
+  el.textContent = "";
+  for (const t of rows) {
+    const c = document.createElement("canvas"); c.width = c.height = 120;
+    drawCover(c, t.spec); c.title = t.spec.title; c.dataset.id = t.id;
+    if (t.kept) c.classList.add("kept"); if (t.id === cur) c.classList.add("on");
+    el.append(c);
+  }
+  const on = el.querySelector(".on"); if (on) on.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+}
+$("#trail").addEventListener("click", async (e) => {
+  const c = e.target.closest("canvas"); if (!c) return;
+  const id = c.dataset.id; if (state.current && state.current.spec && state.current.spec.id === id) return;
+  const row = (await db.all()).find((t) => t.id === id); if (!row) return;
+  state.recent = trailIds.slice(); state.pos = trailIds.indexOf(id);
+  state.audio.pause();
+  await playJob({ id: ++seq, spec: row.spec, blob: row.blob, err: null, done: Promise.resolve(), stepping: true });
+});
 // step through what has already played this session: -1 back, +1 forward; false when there's nothing there
 async function step(dir) {
   const i = state.pos + dir; if (i < 0 || i >= state.recent.length) return false;
