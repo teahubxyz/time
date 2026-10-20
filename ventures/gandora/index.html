@@ -304,23 +304,33 @@ async function askDJ() {
   return spec;
 }
 
-/* ACE-Step on Venice: queue, poll, download. 60 s costs about $0.03. */
+/* ACE-Step on Venice: queue, poll, download. 60 s costs about $0.03. Venice usually answers in 10-30 s but its queue
+   sometimes stalls a job for minutes, so after HEDGE_AT a second copy is queued and whichever lands first is taken. */
+const HEDGE_AT = 60000;
 async function renderTrack(spec, onStatus) {
-  const q = await venice("/audio/queue", { model: "ace-step-15", prompt: spec.tags, duration_seconds: 60, ...(spec.lyrics ? { lyrics_prompt: spec.lyrics } : {}) });
+  const body = { model: "ace-step-15", prompt: spec.tags, duration_seconds: 60, ...(spec.lyrics ? { lyrics_prompt: spec.lyrics } : {}) };
+  const jobs = [await venice("/audio/queue", body)];
   const started = Date.now();
+  let hedged = false;
   for (let i = 0; i < 90; i++) {
     await sleep(i < 4 ? 2500 : 4000);
-    const res = await venice("/audio/retrieve", { model: q.model || "ace-step-15", queue_id: q.queue_id, delete_media_on_completion: true }, { raw: true });
-    const type = res.headers.get("content-type") || "";
-    if (/^audio\//i.test(type) || /octet-stream/i.test(type)) {
-      const blob = await res.blob();
-      state.cost += 0.03; localStorage.setItem(LS.cost, String(state.cost));
-      return blob;
+    const elapsed = Date.now() - started;
+    if (!hedged && elapsed > HEDGE_AT) { hedged = true; try { jobs.push(await venice("/audio/queue", body)); } catch {} }
+    let expected = 0;
+    for (const q of jobs) {
+      const res = await venice("/audio/retrieve", { model: q.model || "ace-step-15", queue_id: q.queue_id, delete_media_on_completion: true }, { raw: true });
+      const type = res.headers.get("content-type") || "";
+      if (/^audio\//i.test(type) || /octet-stream/i.test(type)) {
+        const blob = await res.blob();
+        state.cost += 0.03 * jobs.length; localStorage.setItem(LS.cost, String(state.cost));
+        return blob;
+      }
+      const d = await res.json();
+      const st = String(d.status || "").toUpperCase();
+      if (/FAIL|ERROR|CANCEL|REJECT/.test(st)) { if (jobs.length === 1) throw new Error("Venice couldn't make the track (" + st.toLowerCase() + ")."); jobs.splice(jobs.indexOf(q), 1); break; }
+      expected = Math.max(expected, d.average_execution_time || 0);
     }
-    const d = await res.json();
-    const st = String(d.status || "").toUpperCase();
-    if (/FAIL|ERROR|CANCEL|REJECT/.test(st)) throw new Error("Venice couldn't make the track (" + st.toLowerCase() + ").");
-    onStatus && onStatus(Math.round((Date.now() - started) / 1000), Math.round((d.average_execution_time || 0) / 1000));
+    onStatus && onStatus(Math.round(elapsed / 1000), Math.round(expected / 1000), hedged);
   }
   throw new Error("That render took too long.");
 }
@@ -337,8 +347,8 @@ let seq = 0;
 function makeJob(spec) {
   const job = { id: ++seq, spec, blob: null, err: null, done: null };
   job.done = (async () => {
-    try { job.blob = await renderTrack(spec, (el, exp) => {
-      const t = `COOKING ${el}s${exp ? " / ~" + exp + "s" : ""}`;
+    try { job.blob = await renderTrack(spec, (el, exp, hedged) => {
+      const t = `COOKING ${el}s${exp ? " / ~" + exp + "s" : ""}${hedged ? " · SECOND OVEN LIT" : ""}`;
       if (state.current === job) $("#cover .veil").textContent = t;
       else if (state.nextJob === job && state.current) $("#next").textContent = "NEXT · " + spec.title.toUpperCase() + " · " + t;
     }); }
