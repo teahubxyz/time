@@ -73,6 +73,10 @@ input,textarea{font:inherit;color:inherit}
 #stationSheet .row button.bad{color:hsl(0 60% 70%);border-color:hsl(0 30% 35%)}
 #top button{color:var(--dim);letter-spacing:.08em}
 #stage{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:18px;padding:14px 0}
+/* the flow: station, cover, transport, trail, title, bar, lyrics/keep/share, then the DJ line, NEXT and tags */
+#stationName{order:0}#cover{order:1}#controls{order:2}#trail{order:3}#meta{order:4}#bar{order:5}#pills{order:6}#meta2{order:7}
+#stage #controls{margin-top:2px}
+#stage #pills{margin-top:-4px}
 #cover{width:min(78vw,380px);aspect-ratio:1;position:relative;perspective:1200px}
 #cover .card{position:absolute;inset:0;transform-style:preserve-3d;transition:transform .7s cubic-bezier(.4,.1,.2,1)}
 #cover.flipped .card{transform:rotateY(180deg)}
