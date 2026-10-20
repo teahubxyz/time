@@ -1,0 +1,125 @@
+// Front-end inference for the yolopreneur ventures, without a key in any page.
+// One Worker (script time-inference) at inference.<TIME_VENTURE_DOMAIN> holds the Venice key as a secret and lets
+// venture pages call an allowlisted slice of the Venice API under per-person, per-app and per-day limits.
+// Deployed by .github/time/inference.py; the pages talk to it with the same bodies they would send Venice.
+//
+//   GET  /health                               -> { ok, rev, apps }
+//   POST /v1/chat/completions                  model in CHAT_MODELS, no streaming, max_tokens <= MAX_TOKENS
+//   POST /v1/audio/quote | queue | retrieve | complete    model in AUDIO_MODELS, duration_seconds <= AUDIO_SECONDS
+//   POST /v1/image/generate                    model in IMAGE_MODELS
+//
+// Every call names its app with an `x-app` header (one of APPS) and comes from an allowed origin (ORIGINS, a comma
+// list; `*.yolopreneur.lol` style wildcards allowed). Quotas are counted per (day, app, kind, person) and per
+// (day, app, kind): CHAT_DAILY/RENDER_DAILY per person, CHAT_TOTAL/RENDER_TOTAL per app. A render is an audio queue
+// or an image generate; retrieve polls, quotes and completes are free. Over a limit answers 429 with a plain reason.
+//
+// Bindings: DB (D1). Secret: VENICE_API_KEY. Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
+// AUDIO_SECONDS, MAX_TOKENS, CHAT_DAILY, CHAT_TOTAL, RENDER_DAILY, RENDER_TOTAL.
+
+const VENICE = "https://api.venice.ai/api/v1";
+const SCHEMA = ["CREATE TABLE IF NOT EXISTS quota (k TEXT PRIMARY KEY, n INTEGER NOT NULL)"];
+const MAX_BODY = 32768;
+let ready = null;
+
+const json = (body, status = 200, headers = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
+const list = (s) => String(s || "").split(",").map((x) => x.trim()).filter(Boolean);
+const num = (s, d) => { const n = Number(s); return Number.isFinite(n) && n > 0 ? n : d; };
+
+function originOk(origin, env) {
+  if (!origin) return false;
+  let host;
+  try { host = new URL(origin).hostname; } catch { return false; }
+  return list(env.ORIGINS).some((p) => p.startsWith("*.") ? host === p.slice(2) || host.endsWith(p.slice(1)) : host === p);
+}
+function cors(req, env) {
+  const origin = req.headers.get("origin");
+  if (!originOk(origin, env)) return null;
+  return { "access-control-allow-origin": origin, "access-control-allow-methods": "GET, POST, OPTIONS",
+           "access-control-allow-headers": "content-type, x-app", "access-control-max-age": "600", "vary": "origin" };
+}
+
+async function setup(env) {
+  ready ??= env.DB.batch(SCHEMA.map((s) => env.DB.prepare(s))).catch((e) => { ready = null; throw e; });
+  return ready;
+}
+async function who(req, app) {
+  const ip = req.headers.get("cf-connecting-ip") || "?";
+  const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${app}:${ip}`));
+  return [...new Uint8Array(raw).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+// One counter per (day, app, kind, person) and one per (day, app, kind): over either limit means no.
+async function spend(env, app, kind, person, perPerson, total) {
+  const day = new Date().toISOString().slice(0, 10);
+  const bump = (k) => env.DB.prepare("INSERT INTO quota (k, n) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET n = n + 1 RETURNING n").bind(k);
+  const [mine, all] = await env.DB.batch([bump(`${day}:${app}:${kind}:${person}`), bump(`${day}:${app}:${kind}:*`)]);
+  if (mine.results[0].n > perPerson) return "you're over today's limit for this app; add your own Venice key or come back tomorrow";
+  if (all.results[0].n > total) return "this app is over its daily budget; add your own Venice key or come back tomorrow";
+  return "";
+}
+
+// What goes to Venice: the page's body, checked and trimmed, never the page's headers.
+async function forward(path, body, env) {
+  const res = await fetch(VENICE + path, { method: "POST", headers: { Authorization: "Bearer " + env.VENICE_API_KEY, "Content-Type": "application/json", Accept: "*/*" },
+                                           body: JSON.stringify(body) });
+  const headers = new Headers();
+  for (const k of ["content-type", "content-length", "x-venice-is-blurred"]) if (res.headers.get(k)) headers.set(k, res.headers.get(k));
+  return new Response(res.body, { status: res.status, headers });
+}
+const withCors = (res, h) => { for (const [k, v] of Object.entries(h)) res.headers.set(k, v); return res; };
+
+async function api(req, env, url, h) {
+  const path = url.pathname.replace(/\/+$/, "");
+  if (path === "/health") return json({ ok: true, rev: env.REV, apps: list(env.APPS) }, 200, h);
+  if (req.method !== "POST") return json({ error: "POST only" }, 405, h);
+  if (!env.VENICE_API_KEY) return json({ error: "no key on this worker yet" }, 503, h);
+  const app = String(req.headers.get("x-app") || "").toLowerCase();
+  if (!list(env.APPS).includes(app)) return json({ error: "unknown app: send an x-app header this worker knows" }, 403, h);
+  const text = await req.text();
+  if (text.length > MAX_BODY) return json({ error: "too big" }, 413, h);
+  let body;
+  try { body = JSON.parse(text); if (!body || typeof body !== "object" || Array.isArray(body)) throw 0; } catch { return json({ error: "send a JSON object" }, 400, h); }
+  await setup(env);
+  const person = await who(req, app);
+  const model = String(body.model || "");
+
+  if (path === "/v1/chat/completions") {
+    if (!list(env.CHAT_MODELS).includes(model)) return json({ error: `model not allowed here: ${model.slice(0, 40)}` }, 403, h);
+    if (!Array.isArray(body.messages) || !body.messages.length) return json({ error: "messages is empty" }, 400, h);
+    body.stream = false;
+    body.max_tokens = Math.min(num(body.max_tokens, 1024), num(env.MAX_TOKENS, 2000));
+    const no = await spend(env, app, "chat", person, num(env.CHAT_DAILY, 60), num(env.CHAT_TOTAL, 2000));
+    if (no) return json({ error: no }, 429, h);
+    return withCors(await forward("/chat/completions", body, env), h);
+  }
+  const audio = path.match(/^\/v1\/audio\/(quote|queue|retrieve|complete)$/);
+  if (audio) {
+    if (!list(env.AUDIO_MODELS).includes(model)) return json({ error: `model not allowed here: ${model.slice(0, 40)}` }, 403, h);
+    if (audio[1] === "queue") {
+      body.duration_seconds = Math.min(num(body.duration_seconds, 60), num(env.AUDIO_SECONDS, 60));
+      const no = await spend(env, app, "render", person, num(env.RENDER_DAILY, 20), num(env.RENDER_TOTAL, 400));
+      if (no) return json({ error: no }, 429, h);
+    }
+    if (audio[1] === "retrieve") body.delete_media_on_completion = true;    // nothing of theirs stays at Venice
+    return withCors(await forward("/audio/" + audio[1], body, env), h);
+  }
+  if (path === "/v1/image/generate") {
+    if (!list(env.IMAGE_MODELS).includes(model)) return json({ error: `model not allowed here: ${model.slice(0, 40)}` }, 403, h);
+    body.safe_mode = true;
+    const no = await spend(env, app, "render", person, num(env.RENDER_DAILY, 20), num(env.RENDER_TOTAL, 400));
+    if (no) return json({ error: no }, 429, h);
+    return withCors(await forward("/image/generate", body, env), h);
+  }
+  return json({ error: "no such endpoint" }, 404, h);
+}
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    const h = cors(req, env);
+    if (req.method === "OPTIONS") return new Response(null, { status: h ? 204 : 403, headers: h || {} });
+    if (!h && url.pathname !== "/health") return json({ error: "this worker only serves its own ventures' pages" }, 403);
+    try { return await api(req, env, url, h || {}); }
+    catch (e) { return json({ error: "backend error", detail: String(e).slice(0, 200) }, 500, h || {}); }
+  },
+};
