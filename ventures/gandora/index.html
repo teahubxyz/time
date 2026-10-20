@@ -85,6 +85,10 @@ input,textarea{font:inherit;color:inherit}
 #lib{position:fixed;inset:0;background:rgba(11,11,14,.96);padding:18px 16px;overflow:auto}
 #lib header{display:flex;justify-content:space-between;align-items:center;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim);margin-bottom:16px}
 #lib .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:14px}
+#lib h3{font:600 11px var(--font);letter-spacing:.2em;color:var(--dim);margin:22px 0 10px}
+#lib .t.on canvas{outline:2px solid var(--acc);outline-offset:2px}
+#lib .t .heart{position:absolute;top:6px;right:6px;font-size:14px;opacity:.9}
+#lib .t{position:relative}
 #lib .t{cursor:pointer}
 #lib .t canvas{width:100%;aspect-ratio:1;border-radius:12px;display:block;background:var(--card)}
 #lib .t b{display:block;font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -155,7 +159,7 @@ input,textarea{font:inherit;color:inherit}
 <section id="lib" class="hidden">
   <header><span>LIBRARY</span><button id="libClose">CLOSE</button></header>
   <div class="grid" id="libGrid"></div>
-  <div class="empty hidden" id="libEmpty">Nothing kept yet. ❤️ a track to keep it.</div>
+  <div class="empty hidden" id="libEmpty">Nothing played yet. Every track lands here; ❤️ one to keep it for good.</div>
   <div class="cost" id="libCost"></div>
 </section>
 
@@ -346,7 +350,18 @@ const db = {
   open() { return new Promise((ok, no) => { const r = indexedDB.open("gandora", 1); r.onupgradeneeded = () => r.result.createObjectStore("tracks", { keyPath: "id" }); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
   async put(t) { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction("tracks", "readwrite"); tx.objectStore("tracks").put(t); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
   async all() { const d = await this.open(); return new Promise((ok, no) => { const r = d.transaction("tracks").objectStore("tracks").getAll(); r.onsuccess = () => ok(r.result.sort((a, b) => b.made - a.made)); r.onerror = () => no(r.error); }); },
+  async del(id) { const d = await this.open(); return new Promise((ok, no) => { const tx = d.transaction("tracks", "readwrite"); tx.objectStore("tracks").delete(id); tx.oncomplete = ok; tx.onerror = () => no(tx.error); }); },
 };
+const KEEP_UNKEPT = 40;
+// every rendered track is saved so the station can be scrolled back through; ❤️ pins one, the rest roll off after KEEP_UNKEPT
+async function remember(job, kept) {
+  const s = job.spec; if (!job.blob) return;
+  s.id ||= s.made + "-" + hash32(s.title);
+  const old = (await db.all()).find((t) => t.id === s.id);
+  await db.put({ id: s.id, spec: s, blob: job.blob, made: s.made, kept: kept || (old && old.kept) || false });
+  const loose = (await db.all()).filter((t) => !t.kept).slice(KEEP_UNKEPT);
+  for (const t of loose) await db.del(t.id);
+}
 
 /* ---------- the station loop ---------- */
 let seq = 0;
@@ -387,6 +402,7 @@ async function playJob(job) {
   if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = "That one didn't come out of the oven. Skip to try the next."; return; }
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
+  remember(job, false).catch(() => {});
   try { await state.audio.play(); state.playing = true; setPlayIcon(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
 }
@@ -417,7 +433,7 @@ async function react(emoji, text) {
     if (m.avoid) state.taste.avoid.push(`${m.avoid} — re ${who}`);
     if (m.notes) state.taste.notes.push(`${m.notes} (an emoji, re ${who})`);
     cur.reaction = (cur.reaction ? cur.reaction + " " : "") + emoji;
-    if (m.keep && state.current.blob) { await db.put({ id: cur.made + "-" + hash32(cur.title), spec: cur, blob: state.current.blob, made: cur.made }); toast("Kept in your library."); }
+    if (m.keep && state.current.blob) { await remember(state.current, true); toast("Kept in your library."); }
   }
   if (text) { state.taste.notes.push(`${text} (re ${who})`); cur.reaction = (cur.reaction ? cur.reaction + " " : "") + `"${text}"`; }
   for (const k of ["like", "avoid", "notes"]) state.taste[k] = state.taste[k].slice(-8);
@@ -481,12 +497,20 @@ keyLabel();
 $("#libBtn").addEventListener("click", async () => {
   const list = await db.all(); const g = $("#libGrid"); g.innerHTML = "";
   $("#libEmpty").classList.toggle("hidden", list.length > 0);
-  for (const t of list) {
-    const d = document.createElement("div"); d.className = "t";
+  const cur = state.current && state.current.spec;
+  const tile = (t) => {
+    const d = document.createElement("div"); d.className = "t" + (cur && t.id === cur.id ? " on" : "");
     const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec);
     d.append(c, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
+    if (t.kept) d.append(Object.assign(document.createElement("span"), { className: "heart", textContent: "❤️" }));
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
-    g.append(d);
+    return d;
+  };
+  const kept = list.filter((t) => t.kept), played = list.filter((t) => !t.kept);
+  for (const [name, rows] of [["KEPT", kept], ["PLAYED", played]]) {
+    if (!rows.length) continue;
+    g.append(Object.assign(document.createElement("h3"), { textContent: name, style: "grid-column:1/-1" }));
+    for (const t of rows) g.append(tile(t));
   }
   $("#libCost").textContent = `~$${state.cost.toFixed(2)} of music rendered from this browser · replays from the library are free`;
   $("#lib").classList.remove("hidden");
