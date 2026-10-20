@@ -85,7 +85,12 @@ input,textarea{font:inherit;color:inherit}
 #tags{color:var(--dim);font:11px var(--font);margin:4px 0 0;letter-spacing:.06em}
 #lyric{color:var(--dim);font-size:13px;margin:8px 0 0;min-height:1.5em;font-style:italic;cursor:text}
 #lyric:hover{color:var(--ink)}
-#tagRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:0 0 4px;max-width:560px}
+#meta2{text-align:center;max-width:560px;width:100%}
+#meta2 #lyric{margin-top:0}
+#tagRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px auto 0;max-width:560px}
+#tagRow button.meta{color:var(--dim);border-style:dotted;cursor:default}
+#tagRow button.fold{color:var(--acc);border-color:transparent}
+#stage{gap:14px}
 #tagRow button{font:12px var(--font);letter-spacing:.02em;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:transparent;transition:all .15s}
 #tagRow button.like{color:#111;background:var(--acc);border-color:var(--acc)}
 #tagRow button.avoid{color:hsl(220 40% 70%);border-color:hsl(220 30% 40%);text-decoration:line-through;opacity:.8}
@@ -245,8 +250,10 @@ input,textarea{font:inherit;color:inherit}
       <div class="face"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
       <div class="face back"><div class="backTitle">LYRICS</div><pre id="lyrics"></pre></div>
     </div></div>
-    <div id="meta"><h1 id="title">…</h1><p id="lyric" title="reply to the DJ"></p><p id="tags"></p></div>
+    <div id="meta"><h1 id="title">…</h1></div>
     <div id="bar"><i></i></div>
+    <div id="meta2"><p id="lyric" title="reply to the DJ"></p><p id="tags" class="hidden"></p><div id="tagRow"></div></div>
+    <div id="next"></div>
     <div id="controls">
       <button id="backTrack" title="previous track">
         <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6 8.5 6V6zM6 6v12h2V6H6z"/></svg>
@@ -269,10 +276,8 @@ input,textarea{font:inherit;color:inherit}
       </button>
     </div>
     <div id="pills"><button id="lyricsBtn">⇄ LYRICS</button><button id="keep" disabled>➕ KEEP</button><button id="share" disabled>↗ SHARE</button></div>
-    <div id="next"></div>
   </div>
   <div id="react">
-    <div id="tagRow"></div>
     <div id="emojis">
       <button data-e="🔥" title="more of this">🔥</button>
       <button data-e="❤️" title="love it">❤️</button>
@@ -893,15 +898,21 @@ $("#seedForm").addEventListener("submit", (e) => {
    Each tap is a reaction (+word / -word) the DJ and the taste net both see. */
 const tagState = (spec, tag) => { const r = " " + String(spec.reaction || "") + " "; const t = tag.replace(/\s+/g, "_"); const L = r.lastIndexOf(" +" + t + " "), N = r.lastIndexOf(" -" + t + " "), Z = r.lastIndexOf(" ~" + t + " "); const m = Math.max(L, N, Z); return m < 0 || m === Z ? "" : m === L ? "like" : "avoid"; };
 const reactionEmoji = (r) => String(r || "").replace(/(?:^|\s)[+\-~][^\s]+/g, "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "");
+state.tagsOpen = false;                             // the tag row shows a few, and folds the rest behind "… more"
 function showTags(spec) {
   const row = $("#tagRow"); row.innerHTML = "";
   const tags = String(spec.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 12);
   const extra = [...String(spec.reaction || "").matchAll(/(?:^|\s)\+([^\s]+)/g)].map((m) => m[1].replace(/_/g, " ")).filter((t) => !tags.includes(t));
-  for (const tag of [...tags, ...extra]) {
+  for (const [i, tag] of [...tags, ...extra].entries()) {
+    if (!state.tagsOpen && i >= 4) break;
     const b = document.createElement("button"); b.textContent = tag; b.className = tagState(spec, tag);
     b.addEventListener("click", () => tagTap(spec, tag, b));
     row.append(b);
   }
+  const total = tags.length + extra.length;
+  if (total > 4) { const f = document.createElement("button"); f.className = "fold"; f.textContent = state.tagsOpen ? "▴ less" : `… ${total - 4} more`; f.addEventListener("click", () => { state.tagsOpen = !state.tagsOpen; showTags(spec); }); row.append(f); }
+  for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
+  if (!state.tagsOpen && total > 4) return;
   const add = document.createElement("button"); add.className = "add"; add.textContent = "+ tag";
   add.addEventListener("click", () => {
     const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; row.replaceChild(inp, add); inp.focus();
