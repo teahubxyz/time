@@ -162,8 +162,8 @@ input,textarea{font:inherit;color:inherit}
     <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p><button id="lyricsBtn">LYRICS · FLIP</button></div>
     <div id="bar"><i></i></div>
     <div id="controls">
-      <button id="prev" title="replay">
-        <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
+      <button id="prev" title="previous track (tap twice within 3 s of a start to go back further)">
+        <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6 8.5 6V6zM6 6v12h2V6H6z"/></svg>
       </button>
       <button id="play" title="play / pause"><svg id="playIco" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
       <button id="skip" title="skip">
@@ -218,6 +218,7 @@ const state = {
   taste: { like: [], avoid: [], notes: [] },     // what the listener has told the station
   history: [],                                    // tracks played this session (specs)
   current: null, nextJob: null, playing: false,
+  recent: [], pos: -1,                             // ids of tracks played this session, and where the player stands in them
   audio: new Audio(), cost: parseFloat(localStorage.getItem(LS.cost) || "0"),
 };
 state.audio.preload = "auto";
@@ -522,11 +523,21 @@ async function playJob(job) {
   if (job.err) { toast(job.err.message, 6000); $("#lyric").textContent = job.err.message + (/limit|budget/i.test(job.err.message) ? "" : " · skip to try the next"); return; }
   if (state.audio.src) URL.revokeObjectURL(state.audio.src);
   state.audio.src = URL.createObjectURL(job.blob);
-  remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
+  await remember(job, false).then(keepLabel).catch(() => {}); saveStation().catch(() => {});
+  if (!job.stepping) { state.recent = state.recent.slice(0, state.pos + 1); state.recent.push(spec.id); state.pos = state.recent.length - 1; }
   try { await state.audio.play(); state.playing = true; setPlayIcon(); vizStart(); } catch { toast("Tap play."); }
   cookNext();                                     // render ahead while this one plays
 }
+// step through what has already played this session: -1 back, +1 forward; false when there's nothing there
+async function step(dir) {
+  const i = state.pos + dir; if (i < 0 || i >= state.recent.length) return false;
+  const row = (await db.all()).find((t) => t.id === state.recent[i]); if (!row) return false;
+  state.pos = i; state.audio.pause();
+  await playJob({ id: ++seq, spec: row.spec, blob: row.blob, err: null, done: Promise.resolve(), stepping: true });
+  return true;
+}
 async function advance() {
+  if (await step(+1)) return;                      // forward through the session first, then cook new
   const job = state.nextJob || await cookNext();
   state.nextJob = null; $("#next").textContent = "";
   if (!job) return;
@@ -627,7 +638,11 @@ $("#play").addEventListener("click", async () => {
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
 $("#loop").addEventListener("click", () => { state.audio.loop = !state.audio.loop; $("#loop").classList.toggle("on", state.audio.loop); toast(state.audio.loop ? "Repeating this track." : "Back to the station."); });
-$("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
+$("#prev").addEventListener("click", async () => {
+  // within 3 s of a start: the track before; otherwise back to the start of this one (the usual convention)
+  if (state.audio.currentTime > 3 && state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); return; }
+  if (!(await step(-1))) { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } toast("That's the first track of this session."); }
+});
 $("#emojis").addEventListener("click", (e) => { const b = e.target.closest("button[data-e]"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 300); react(b.dataset.e); });
 $("#anyEmoji").addEventListener("change", (e) => { const v = e.target.value.trim(); e.target.value = ""; if (v) react(v); });
 $("#sayRow").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#say").value.trim(); if (!v) return; $("#say").value = ""; react("", v); });
