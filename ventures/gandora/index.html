@@ -71,8 +71,15 @@ input,textarea{font:inherit;color:inherit}
 #cover.cooking .veil{opacity:1}
 #meta{text-align:center;max-width:520px}
 #title{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
-#tags{color:var(--dim);font:12px var(--font);margin:6px 0 0;letter-spacing:.02em}
-#lyric{color:var(--dim);font-size:13px;margin:10px 0 0;min-height:1.5em;font-style:italic}
+#tags{color:var(--dim);font:11px var(--font);margin:4px 0 0;letter-spacing:.06em}
+#lyric{color:var(--dim);font-size:13px;margin:8px 0 0;min-height:1.5em;font-style:italic;cursor:text}
+#lyric:hover{color:var(--ink)}
+#tagRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px 0 0}
+#tagRow button{font:12px var(--font);letter-spacing:.02em;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:transparent;transition:all .15s}
+#tagRow button.like{color:#111;background:var(--acc);border-color:var(--acc)}
+#tagRow button.avoid{color:hsl(220 40% 70%);border-color:hsl(220 30% 40%);text-decoration:line-through;opacity:.8}
+#tagRow button.add{border-style:dashed}
+#tagRow input{font:12px var(--font);width:110px;padding:5px 10px;border-radius:999px;border:1px solid var(--acc);background:var(--card);outline:none}
 
 #lyrics{white-space:pre-wrap;text-align:center;font-size:13px;line-height:1.65;margin:0;color:var(--ink);flex:1;overflow:auto;padding:4px 16px 18px;font-family:var(--sans);-webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
 #lyrics.none{color:var(--dim);font-style:italic;display:grid;place-items:center}
@@ -181,7 +188,7 @@ input,textarea{font:inherit;color:inherit}
       <div class="face"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
       <div class="face back"><div class="backTitle">LYRICS</div><pre id="lyrics"></pre></div>
     </div></div>
-    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p></div>
+    <div id="meta"><h1 id="title">…</h1><p id="lyric" title="reply to the DJ"></p><div id="tagRow"></div><p id="tags"></p></div>
     <div id="bar"><i></i></div>
     <div id="controls">
       <button id="backTrack" title="previous track">
@@ -562,8 +569,9 @@ async function playJob(job) {
   state.current = job;
   if (!job.stepping) { state.history.push(spec); state.played = (state.played || 0) + 1; spec.stationId ||= state.stationId; }
   keepLabel();
-  $("#title").textContent = spec.title; $("#tags").textContent = `${spec.tags.split(",").slice(0, 5).join(",")} · ${spec.bpm} bpm · ${spec.key}`;
+  $("#title").textContent = spec.title; $("#tags").textContent = `${spec.bpm} bpm · ${spec.key}`;
   $("#lyric").textContent = spec.line || "";
+  showTags(spec);
   showLyrics(spec);
   drawCover($("#cover canvas"), spec);
   if (!$("#nowRow").classList.contains("hidden")) { drawCover($("#now canvas"), spec); $("#nowTitle").textContent = `${spec.title} · ${state.station || spec.seed}`; }
@@ -640,6 +648,46 @@ $("#seedForm").addEventListener("submit", (e) => {
   const v = $("#seedIn").value.trim(); if (!v) return;
   openStation(v);                                  // a new seed is a new station
 });
+/* tags as controls: tap a tag for more of it, again for less, again to let it go; + adds one of your own.
+   Each tap is a reaction (+word / -word) the DJ and the taste net both see. */
+const tagState = (spec, tag) => { const r = " " + String(spec.reaction || "") + " "; const t = tag.replace(/\s+/g, "_"); const last = Math.max(r.lastIndexOf(" +" + t + " "), -1), lastN = r.lastIndexOf(" -" + t + " "); return last < 0 && lastN < 0 ? "" : last > lastN ? "like" : "avoid"; };
+function showTags(spec) {
+  const row = $("#tagRow"); row.innerHTML = "";
+  const tags = String(spec.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 12);
+  const extra = [...String(spec.reaction || "").matchAll(/(?:^|\s)\+([^\s]+)/g)].map((m) => m[1].replace(/_/g, " ")).filter((t) => !tags.includes(t));
+  for (const tag of [...tags, ...extra]) {
+    const b = document.createElement("button"); b.textContent = tag; b.className = tagState(spec, tag);
+    b.addEventListener("click", () => tagTap(spec, tag, b));
+    row.append(b);
+  }
+  const add = document.createElement("button"); add.className = "add"; add.textContent = "+ tag";
+  add.addEventListener("click", () => {
+    const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; row.replaceChild(inp, add); inp.focus();
+    const done = () => { const v = inp.value.trim().toLowerCase(); if (v) { tagTap(spec, v, null, "like"); } else showTags(spec); };
+    inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); done(); } if (e.key === "Escape") showTags(spec); });
+    inp.addEventListener("blur", done);
+  });
+  row.append(add);
+}
+function tagTap(spec, tag, btn, force) {
+  const cur = force ? "" : tagState(spec, tag), next = force || (cur === "" ? "like" : cur === "like" ? "avoid" : "");
+  const t = tag.replace(/\s+/g, "_");
+  if (next === "") { spec.reaction = (spec.reaction || "") + " ~" + t; state.taste.like = state.taste.like.filter((s) => !s.startsWith("the tag " + JSON.stringify(tag))); state.taste.avoid = state.taste.avoid.filter((s) => !s.startsWith("the tag " + JSON.stringify(tag))); toast(`${tag}: let go.`); }
+  else {
+    spec.reaction = (spec.reaction || "") + " " + (next === "like" ? "+" : "-") + t;
+    const note = `the tag ${JSON.stringify(tag)}`;
+    state.taste.like = state.taste.like.filter((s) => !s.startsWith(note)); state.taste.avoid = state.taste.avoid.filter((s) => !s.startsWith(note));
+    (next === "like" ? state.taste.like : state.taste.avoid).push(note + (next === "like" ? " — more of this" : " — less of this"));
+    toast(next === "like" ? `More ${tag}.` : `Less ${tag}.`);
+  }
+  for (const k of ["like", "avoid"]) state.taste[k] = state.taste[k].slice(-10);
+  showTags(spec);
+  if (state.current && state.current.spec === spec) remember(state.current, false).catch(() => {});
+  saveStation().catch(() => {});
+  if (!state.nextJob) cookNext();
+  if (typeof rebuildBrains === "function") rebuildBrains().catch(() => {});
+}
+$("#lyric").addEventListener("click", () => { const s = $("#say"); s.focus(); s.placeholder = "reply to the DJ…"; });
 /* lyrics: the DJ's words for the track, under the title; tap LYRICS or the cover */
 function showLyrics(spec) {
   const has = !!(spec.lyrics && spec.lyrics.trim()), p = $("#lyrics");
