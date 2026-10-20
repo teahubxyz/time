@@ -152,9 +152,11 @@ input,textarea{font:inherit;color:inherit}
 #lib h3 canvas{width:22px;height:22px;border-radius:50%}
 #lib h3 small{font-weight:400;letter-spacing:.08em;opacity:.7}
 #lib .t.on canvas{outline:2px solid var(--acc);outline-offset:2px}
-#lib .t .heart{position:absolute;top:6px;right:6px;font-size:14px;opacity:.9}
-#lib .t .re{position:absolute;left:6px;bottom:40px;font-size:13px;letter-spacing:1px;background:rgba(11,11,14,.6);border-radius:8px;padding:2px 6px;max-width:calc(100% - 12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#lib .t{position:relative}
+#lib .t .art{position:relative;aspect-ratio:1;border-radius:12px;overflow:hidden;background:var(--card)}
+#lib .t .art canvas{width:100%;height:100%;display:block}
+#lib .t .kept{position:absolute;top:6px;right:6px;font:600 9px var(--font);letter-spacing:.18em;color:#111;background:var(--acc);border-radius:999px;padding:3px 7px}
+#lib .t .re{position:absolute;left:6px;bottom:6px;font-size:13px;letter-spacing:1px;background:rgba(11,11,14,.65);border-radius:8px;padding:2px 6px;max-width:calc(100% - 12px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#lib .t small{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #lib .t{cursor:pointer}
 #lib .t canvas{width:100%;aspect-ratio:1;border-radius:12px;display:block;background:var(--card)}
 #lib .t b{display:block;font-size:12px;margin-top:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -817,11 +819,12 @@ $("#libBtn").addEventListener("click", async () => {
   const cur = state.current && state.current.spec;
   const tile = (t) => {
     const d = document.createElement("div"); d.className = "t" + (cur && t.id === cur.id ? " on" : "");
-    const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec);
-    d.append(c, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key} · ${t.spec.seed}` }));
-    if (t.kept) d.append(Object.assign(document.createElement("span"), { className: "heart", textContent: "❤️" }));
+    const art = document.createElement("div"); art.className = "art";
+    const c = document.createElement("canvas"); c.width = c.height = 260; drawCover(c, t.spec); art.append(c);
+    if (t.kept) art.append(Object.assign(document.createElement("span"), { className: "kept", textContent: "KEPT" }));
     const re = reactionEmoji(t.spec.reaction).trim();
-    if (re) d.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
+    if (re) art.append(Object.assign(document.createElement("span"), { className: "re", textContent: re, title: t.spec.reaction }));
+    d.append(art, Object.assign(document.createElement("b"), { textContent: t.spec.title }), Object.assign(document.createElement("small"), { textContent: `${t.spec.bpm} bpm · ${t.spec.key}${(t.plays || 0) > 1 ? " · ×" + t.plays : ""}`, title: t.spec.seed }));
     d.addEventListener("click", () => { $("#lib").classList.add("hidden"); const job = { id: ++seq, spec: { ...t.spec }, blob: t.blob, err: null, done: Promise.resolve() }; state.seed = t.spec.seed; $("#player").classList.remove("hidden"); $("#seed").classList.add("hidden"); state.audio.pause(); playJob(job); });
     return d;
   };
