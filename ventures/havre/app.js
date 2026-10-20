@@ -83,11 +83,14 @@ const S = {
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
   ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true,
-    adult: true, adultPhoto: "", adultClip: "" }, voiceOn: {}, jobs: [], ask: null,
+    adult: true, adultPhoto: "", adultClip: "", away: 6 }, voiceOn: {}, jobs: [], ask: null,
   rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
 const ALLOWANCES = [0.1, 0.25, 1, 5];
+/** how long you've been away before a character texts first: hours, as the setting shows them */
+const AWAYS = [[1, "an hour"], [3, "3 hours"], [6, "6 hours"], [12, "12 hours"], [24, "a day"], [72, "3 days"]];
+const backAfter = () => (S.ab.away || 6) * 3600e3;
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
 const spentToday = () => A.spentToday(local.get(K.spent, null), localDay());
 const canAfford = (usd) => A.canSpend(local.get(K.spent, null), localDay(), S.ab.allowance, usd);
@@ -138,6 +141,7 @@ function boot() {
   S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
   S.ab.clip = S.ab.clip && typeof S.ab.clip === "object" ? S.ab.clip : {};
   if (!ALLOWANCES.includes(S.ab.allowance)) S.ab.allowance = 0.25;
+  if (!AWAYS.some(([h]) => h === S.ab.away)) S.ab.away = 6;
   S.voiceOn = local.get(K.voiceOn, {}) || {};
   S.jobs = (local.get(K.jobs, []) || []).filter((j) => j && j.queueId && j.model && Date.now() - (j.started || 0) < 23 * 3600e3);
   pruneEmpty();
@@ -803,7 +807,7 @@ function comeBack(t) {
   if (T.byLatest(threadsOf(c.id))[0] !== t) return Promise.resolve();      // only in their latest chat with you
   const go = () => {
     const tried = local.get(K.tried, {}) || {};
-    if (!S.threads[t.id] || S.busy.has(t.id) || !T.readyToTextFirst(t.msgs, { now: Date.now(), after: A.BACK_AFTER, tried: tried[t.id] })) return;
+    if (!S.threads[t.id] || S.busy.has(t.id) || !T.readyToTextFirst(t.msgs, { now: Date.now(), after: backAfter(), tried: tried[t.id] })) return;
     const kept = Object.fromEntries(Object.entries(tried).filter(([id]) => S.threads[id]));
     if (!local.set(K.tried, { ...kept, [t.id]: Date.now() })) return;      // can't write it down: don't risk asking twice
     return send(A.comeBack(A.since(t.msgs, Date.now()), here(t)), { hidden: true, to: t, own: true });
@@ -818,9 +822,9 @@ function comeBack(t) {
 async function comingBack() {
   if (!S.key || !S.ab.own || !seen()) return;
   comeBack(thread());
-  if (Date.now() - (Number(local.get(K.came, 0)) || 0) < A.BACK_AFTER) return;
+  if (Date.now() - (Number(local.get(K.came, 0)) || 0) < backAfter()) return;
   const others = T.textFirst(Object.values(S.threads).filter((t) => t.card !== S.sel && cardOf(t)), (t) => t.msgs,
-    { now: Date.now(), after: A.BACK_AFTER, tried: local.get(K.tried, {}) || {}, max: 3 });
+    { now: Date.now(), after: backAfter(), tried: local.get(K.tried, {}) || {}, max: 3 });
   if (!others.length || !local.set(K.came, Date.now())) return;
   for (const t of others) {
     await sleep(1500 + Math.random() * 2500);
@@ -1775,7 +1779,7 @@ function renderAbilities() {
   allowance.addEventListener("change", () => { S.ab.allowance = Number(allowance.value); saveAb(); renderAbilities(); renderTools(); });
   tb.append(
     row("ON THEIR OWN", tick("characters text first when you come back, and send photos and voice notes when they like", S.ab.own, (on) => setOwn(on)),
-      ["up to ", allowance, " a day · how often: ", tempoSelect(), ` · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
+      ["up to ", allowance, " a day · how often: ", tempoSelect(), " · text first after you've been away: ", awaySelect(), ` · ${A.usd(spentToday())} spent today · clips are offered with venice's price, and made only if you say yes`]),
     row("MEMORY", tick("characters remember your chats with them", S.ab.memory, (on) => {
       S.ab.memory = on;
       saveAb();
@@ -3012,6 +3016,12 @@ function setTempo(v) {
   renderTools();
   if ($("#abilitydlg").open) renderAbilities();
   toast(`Photos and voice notes on their own: ${TEMPOS.find(([k]) => k === v)[1]}.`);
+}
+function awaySelect() {
+  const s = h("select", { "aria-label": "How long you've been away before they text first" }, AWAYS.map(([v, t]) => h("option", { value: String(v), text: t })));
+  s.value = String(S.ab.away || 6);
+  s.addEventListener("change", () => { S.ab.away = Number(s.value); saveAb(); toast(`They text first after you've been away ${AWAYS.find(([v]) => v === S.ab.away)[1]}.`); });
+  return s;
 }
 function tempoSelect() {
   const s = h("select", { "aria-label": "How often they send things on their own" }, TEMPOS.map(([v, t]) => h("option", { value: v, text: t })));
