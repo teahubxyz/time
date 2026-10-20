@@ -90,6 +90,14 @@ input,textarea{font:inherit;color:inherit}
 #meta2{text-align:center;max-width:560px;width:100%}
 #meta2 #lyric{margin-top:0}
 #tagRow{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:10px auto 0;max-width:560px}
+#tagList{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin:8px auto 0;max-width:560px}
+#tagList:empty{display:none}
+#tagList button{font:12px var(--font);letter-spacing:.02em;padding:5px 10px;border-radius:999px;border:1px solid var(--line);color:var(--dim);background:transparent;transition:all .15s}
+#tagList button.like{color:#111;background:var(--acc);border-color:var(--acc)}
+#tagList button.avoid{color:hsl(220 40% 70%);border-color:hsl(220 30% 40%);text-decoration:line-through;opacity:.8}
+#tagList button.add{border-style:dashed}
+#tagList input{font:12px var(--font);width:110px;padding:5px 10px;border-radius:999px;border:1px solid var(--acc);background:var(--card);outline:none}
+#meta2 #next{margin:8px 0 0}
 #tagRow button.meta{color:var(--dim);border-style:dotted;cursor:default}
 #tagRow button.fold{color:var(--acc);border-color:transparent;font-weight:600;letter-spacing:.12em}
 #stage{gap:14px}
@@ -254,8 +262,7 @@ input,textarea{font:inherit;color:inherit}
     </div></div>
     <div id="meta"><h1 id="title">…</h1></div>
     <div id="bar"><i></i></div>
-    <div id="meta2"><p id="lyric" title="reply to the DJ"></p><p id="tags" class="hidden"></p><div id="tagRow"></div></div>
-    <div id="next"></div>
+    <div id="meta2"><p id="lyric" title="reply to the DJ"></p><div id="next"></div><p id="tags" class="hidden"></p><div id="tagRow"></div><div id="tagList"></div></div>
     <div id="controls">
       <button id="backTrack" title="previous track">
         <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6 8.5 6V6zM6 6v12h2V6H6z"/></svg>
@@ -921,28 +928,28 @@ const tagState = (spec, tag) => { const r = " " + String(spec.reaction || "") + 
 const reactionEmoji = (r) => String(r || "").replace(/(?:^|\s)[+\-~][^\s]+/g, "").replace(/"[^"]*"/g, "💬").replace(/\[skipped\]/g, "⏭").replace(/\s+/g, "");
 state.tagsOpen = false;                             // the tag row shows a few, and folds the rest behind "… more"
 function showTags(spec) {
-  const row = $("#tagRow"); row.innerHTML = "";
+  const row = $("#tagRow"); row.innerHTML = ""; const list = $("#tagList"); list.innerHTML = "";
   const tags = String(spec.tags || "").split(",").map((t) => t.trim()).filter(Boolean).slice(0, 12);
   const extra = [...String(spec.reaction || "").matchAll(/(?:^|\s)\+([^\s]+)/g)].map((m) => m[1].replace(/_/g, " ")).filter((t) => !tags.includes(t));
   const total = tags.length + extra.length, liked = [...tags, ...extra].filter((t) => tagState(spec, t)).length;
   // one line closed: TAGS ▾ · bpm · key; open: every tag as a chip, and + tag
+  for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
   const f = document.createElement("button"); f.className = "fold"; f.textContent = (state.tagsOpen ? "TAGS ▴" : "TAGS ▾") + (liked && !state.tagsOpen ? ` ·${liked}` : "");
   f.addEventListener("click", () => { state.tagsOpen = !state.tagsOpen; showTags(spec); }); row.append(f);
-  for (const m of [`${spec.bpm} bpm`, spec.key]) { const b = document.createElement("button"); b.className = "meta"; b.textContent = m; b.disabled = true; row.append(b); }
   if (!state.tagsOpen) return;
   for (const tag of [...tags, ...extra]) {
     const b = document.createElement("button"); b.textContent = tag; b.className = tagState(spec, tag);
     b.addEventListener("click", () => tagTap(spec, tag, b));
-    row.append(b);
+    list.append(b);
   }
   const add = document.createElement("button"); add.className = "add"; add.textContent = "+ tag";
   add.addEventListener("click", () => {
-    const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; row.replaceChild(inp, add); inp.focus();
+    const inp = document.createElement("input"); inp.placeholder = "more …"; inp.maxLength = 30; list.replaceChild(inp, add); inp.focus();
     const done = () => { const v = inp.value.trim().toLowerCase(); if (v) { tagTap(spec, v, null, "like"); } else showTags(spec); };
     inp.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); done(); } if (e.key === "Escape") showTags(spec); });
     inp.addEventListener("blur", done);
   });
-  row.append(add);
+  list.append(add);
 }
 function tagTap(spec, tag, btn, force) {
   const cur = force ? "" : tagState(spec, tag), next = force || (cur === "" ? "like" : cur === "like" ? "avoid" : "");
