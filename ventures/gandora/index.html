@@ -57,8 +57,8 @@ input,textarea{font:inherit;color:inherit}
 /* ---------- player ---------- */
 #player{min-height:100dvh;display:grid;grid-template-rows:auto 1fr auto;padding:14px 16px calc(16px + env(safe-area-inset-bottom))}
 #top{display:flex;align-items:center;justify-content:space-between;font:600 12px var(--font);letter-spacing:.2em;color:var(--dim)}
-#top .station{letter-spacing:0;font:400 13px var(--sans);color:var(--ink);max-width:60%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
-#top .station:hover{color:var(--acc)}
+#stage .station{font:600 11px var(--font);letter-spacing:.22em;color:var(--dim);max-width:min(78vw,380px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;text-transform:uppercase;margin-bottom:-4px}
+#stage .station:hover{color:var(--acc)}
 #stations .s{position:relative}
 #stations .s .dots{position:absolute;top:-4px;right:2px;width:22px;height:22px;border-radius:50%;background:var(--card);border:1px solid var(--line);color:var(--dim);font-size:12px;line-height:1}
 #stationSheet{position:fixed;left:50%;bottom:0;transform:translateX(-50%);width:min(480px,100%);background:var(--card);border:1px solid var(--line);border-bottom:0;border-radius:18px 18px 0 0;padding:14px 14px calc(14px + env(safe-area-inset-bottom));z-index:6;box-shadow:0 -20px 60px rgba(0,0,0,.6)}
@@ -242,10 +242,10 @@ input,textarea{font:inherit;color:inherit}
 <section id="player" class="hidden">
   <div id="top">
     <button id="back" title="new seed">◂ SEED</button>
-    <div class="station" id="stationName"></div>
     <div><button id="tasteBtn">TASTE</button> &nbsp; <button id="libBtn">LIBRARY</button></div>
   </div>
   <div id="stage">
+    <div class="station" id="stationName" title="rename, look, reset or delete"></div>
     <div id="cover"><div class="card">
       <div class="face"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
       <div class="face back"><div class="backTitle">LYRICS</div><pre id="lyrics"></pre></div>
