@@ -72,8 +72,7 @@ input,textarea{font:inherit;color:inherit}
 #title{font-size:20px;font-weight:600;letter-spacing:-.01em;margin:0}
 #tags{color:var(--dim);font:12px var(--font);margin:6px 0 0;letter-spacing:.02em}
 #lyric{color:var(--dim);font-size:13px;margin:10px 0 0;min-height:1.5em;font-style:italic}
-#lyricsBtn{display:block;margin:8px auto 0;font:600 11px var(--font);letter-spacing:.18em;color:var(--dim);text-decoration:underline;text-underline-offset:3px}
-#lyricsBtn.on{color:var(--acc)}
+
 #lyrics{white-space:pre-wrap;text-align:center;font-size:13px;line-height:1.65;margin:0;color:var(--ink);flex:1;overflow:auto;padding:4px 16px 18px;font-family:var(--sans);-webkit-mask-image:linear-gradient(#000 85%,transparent);mask-image:linear-gradient(#000 85%,transparent)}
 #lyrics.none{color:var(--dim);font-style:italic;display:grid;place-items:center}
 #lyrics .sec{display:block;color:var(--dim);font:600 10px var(--font);letter-spacing:.2em;margin:12px 0 2px}
@@ -81,18 +80,22 @@ input,textarea{font:inherit;color:inherit}
 #cover{cursor:pointer}
 #bar{width:min(78vw,380px);height:2px;background:var(--line);border-radius:2px;overflow:hidden}
 #bar i{display:block;height:100%;width:0;background:var(--acc)}
-#controls{display:flex;align-items:center;gap:26px}
-#controls button{width:48px;height:48px;border-radius:50%;display:grid;place-items:center;color:var(--ink);opacity:.85}
+#controls{display:flex;align-items:center;gap:18px}
+#controls button{width:44px;height:44px;border-radius:50%;display:grid;place-items:center;color:var(--ink);opacity:.85}
+#controls #backTrack svg,#controls #skip svg{width:24px;height:24px}
+#controls #prev{opacity:.6}
+#pills{display:flex;gap:10px;justify-content:center;flex-wrap:wrap}
+#pills button{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:999px;border:1px solid var(--line);font:600 12px var(--font);letter-spacing:.14em;color:var(--ink);background:var(--card);transition:background .2s,color .2s,border-color .2s}
+#pills button.on{background:var(--acc);color:#111;border-color:var(--acc)}
+#pills button:disabled{opacity:.4;cursor:default}
 #controls button:hover{opacity:1}
 #controls #play{width:62px;height:62px;background:var(--ink);color:#0b0b0e}
 #controls svg{width:22px;height:22px;fill:currentColor}
-#controls #loop{width:40px;height:40px;opacity:.5}
+#controls #loop{opacity:.5}
 #controls #loop svg{width:18px;height:18px}
 #controls #loop.on{opacity:1;color:var(--acc);background:rgba(233,216,166,.12)}
 #next{font:11px var(--font);letter-spacing:.14em;color:var(--dim);min-height:1.4em;text-align:center}
-#keep{display:inline-flex;align-items:center;gap:8px;padding:9px 18px;border-radius:999px;border:1px solid var(--line);font:600 12px var(--font);letter-spacing:.14em;color:var(--ink);background:var(--card);transition:background .2s,color .2s,border-color .2s}
-#keep.on{background:var(--acc);color:#111;border-color:var(--acc)}
-#keep:disabled{opacity:.4;cursor:default}
+
 
 #react{display:flex;flex-direction:column;gap:10px;align-items:center}
 #emojis{display:flex;gap:6px;justify-content:center;flex-wrap:wrap}
@@ -170,11 +173,14 @@ input,textarea{font:inherit;color:inherit}
       <div class="face"><canvas width="760" height="760"></canvas><div class="veil">COOKING</div></div>
       <div class="face back"><div class="backTitle">LYRICS</div><pre id="lyrics"></pre></div>
     </div></div>
-    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p><button id="lyricsBtn">LYRICS · FLIP</button></div>
+    <div id="meta"><h1 id="title">…</h1><p id="tags"></p><p id="lyric"></p></div>
     <div id="bar"><i></i></div>
     <div id="controls">
-      <button id="prev" title="previous track (tap twice within 3 s of a start to go back further)">
+      <button id="backTrack" title="previous track">
         <svg viewBox="0 0 24 24"><path d="M18 6l-8.5 6 8.5 6V6zM6 6v12h2V6H6z"/></svg>
+      </button>
+      <button id="prev" title="replay from the start">
+        <svg viewBox="0 0 24 24"><path d="M12 5V2L7 7l5 5V8c3.3 0 6 2.7 6 6s-2.7 6-6 6-6-2.7-6-6H4c0 4.4 3.6 8 8 8s8-3.6 8-8-3.6-8-8-8z"/></svg>
       </button>
       <button id="play" title="play / pause"><svg id="playIco" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg></button>
       <button id="skip" title="skip">
@@ -184,7 +190,7 @@ input,textarea{font:inherit;color:inherit}
         <svg viewBox="0 0 24 24"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"/></svg>
       </button>
     </div>
-    <button id="keep" disabled>➕ KEEP THIS TRACK</button>
+    <div id="pills"><button id="lyricsBtn">⇄ LYRICS</button><button id="keep" disabled>➕ KEEP</button></div>
     <div id="next"></div>
   </div>
   <div id="react">
@@ -624,16 +630,16 @@ function showLyrics(spec) {
 function toggleLyrics() {
   state.lyricsOpen = !state.lyricsOpen;
   $("#cover").classList.toggle("flipped", state.lyricsOpen); $("#lyricsBtn").classList.toggle("on", state.lyricsOpen);
-  $("#lyricsBtn").textContent = state.lyricsOpen ? "COVER · FLIP" : "LYRICS · FLIP";
+  $("#lyricsBtn").textContent = state.lyricsOpen ? "⇄ COVER" : "⇄ LYRICS";
 }
 $("#lyricsBtn").addEventListener("click", toggleLyrics);
 $("#cover").addEventListener("click", toggleLyrics);
 /* keep: an explicit pin, next to the controls; ❤️ does it too */
 async function keepLabel() {
   const b = $("#keep"), cur = state.current && state.current.spec;
-  if (!cur || !cur.id) { b.disabled = true; b.classList.remove("on"); b.textContent = "➕ KEEP THIS TRACK"; return; }
+  if (!cur || !cur.id) { b.disabled = true; b.classList.remove("on"); b.textContent = "➕ KEEP"; return; }
   const row = (await db.all()).find((t) => t.id === cur.id);
-  b.disabled = false; b.classList.toggle("on", !!(row && row.kept)); b.textContent = row && row.kept ? "✓ KEPT" : "➕ KEEP THIS TRACK";
+  b.disabled = false; b.classList.toggle("on", !!(row && row.kept)); b.textContent = row && row.kept ? "✓ KEPT" : "➕ KEEP";
 }
 $("#keep").addEventListener("click", async () => {
   const cur = state.current && state.current.spec; if (!cur || !cur.id || !state.current.blob) return;
@@ -658,11 +664,8 @@ $("#play").addEventListener("click", async () => {
 });
 $("#skip").addEventListener("click", () => { state.audio.pause(); state.playing = false; setPlayIcon(); if (state.current) state.current.spec.reaction = (state.current.spec.reaction || "") + " [skipped]"; advance(); });
 $("#loop").addEventListener("click", () => { state.audio.loop = !state.audio.loop; $("#loop").classList.toggle("on", state.audio.loop); toast(state.audio.loop ? "Repeating this track." : "Back to the station."); });
-$("#prev").addEventListener("click", async () => {
-  // within 3 s of a start: the track before; otherwise back to the start of this one (the usual convention)
-  if (state.audio.currentTime > 3 && state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); return; }
-  if (!(await step(-1))) { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } toast("That's the first track of this session."); }
-});
+$("#prev").addEventListener("click", () => { if (state.audio.src) { state.audio.currentTime = 0; state.audio.play().catch(() => {}); } });
+$("#backTrack").addEventListener("click", async () => { if (!(await step(-1))) toast("That's the first track of this session."); });
 $("#emojis").addEventListener("click", (e) => { const b = e.target.closest("button[data-e]"); if (!b) return; b.classList.add("hit"); setTimeout(() => b.classList.remove("hit"), 300); react(b.dataset.e); });
 $("#anyEmoji").addEventListener("change", (e) => { const v = e.target.value.trim(); e.target.value = ""; if (v) react(v); });
 $("#sayRow").addEventListener("submit", (e) => { e.preventDefault(); const v = $("#say").value.trim(); if (!v) return; $("#say").value = ""; react("", v); });
