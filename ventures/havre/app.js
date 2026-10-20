@@ -2560,7 +2560,7 @@ async function onTheirOwn(t, { voiced = false } = {}) {       // voiced: the rep
     if (!S.threads[t.id] || !cardOf(t)) return;               // the chat, or they, went meanwhile
     let { move, shot } = A.normalizeMove(C.parseJsonLoose(r.text));
     const lately = A.sentLately(t.msgs, tempoEvery() === 1 ? 1 : 4);                          // never two photos in a row
-    if (tempoEvery() === 1 && move === "nothing" && !lately && refsOf(c).length) {            // every round means every round: a photo, then
+    if (tempoEvery() === 1 && (move === "nothing" || (move === "voice" && voiced)) && !lately && refsOf(c).length) {            // every round means every round: a photo, then
       const sr = await new Venice(S.key).chat({ model: c.model || S.model, messages: A.shotMessages(c, A.apiHistory(t.msgs), "", "photo", { adult: adultFor(c, t).ok }), maxTokens: 260, temperature: 0.8 });
       shot = A.cleanText(sr.text);
       if (shot) move = "photo";
