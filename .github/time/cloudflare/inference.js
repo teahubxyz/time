@@ -45,18 +45,19 @@ async function who(req, app) {
   const raw = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${app}:${ip}`));
   return [...new Uint8Array(raw).slice(0, 8)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-// One counter per (day, app, kind, person) and one per (day, app, kind) in KV: over either limit means no. KV is
+// One counter per (day, app, person) in KV holding both kinds, so a call costs one read and one write: free-tier KV
+// allows 1,000 writes a day and two per call ran out. The app-wide total is the sum the counter can't see, so it is
+// approximated as perPerson x people seen today only when KV is on a paid plan; here it is not enforced. KV is
 // eventually consistent, so two calls in the same instant can both count; that only ever over-counts, never under.
+// A KV failure (limit exceeded, outage) never blocks a call: the counter is bookkeeping, the music is the point.
 async function spend(env, app, kind, person, perPerson, total) {
-  const day = new Date().toISOString().slice(0, 10);
-  const bump = async (k) => {
-    const n = Number((await env.QUOTA.get(k)) || 0) + 1;
-    await env.QUOTA.put(k, String(n), { expirationTtl: 2 * 86400 });
-    return n;
-  };
-  const [mine, all] = await Promise.all([bump(`${day}:${app}:${kind}:${person}`), bump(`${day}:${app}:${kind}:*`)]);
-  if (mine > perPerson) return "you're over today's limit for this app; add your own Venice key or come back tomorrow";
-  if (all > total) return "this app is over its daily budget; add your own Venice key or come back tomorrow";
+  try {
+    const k = `${new Date().toISOString().slice(0, 10)}:${app}:${person}`;
+    const c = JSON.parse((await env.QUOTA.get(k)) || "{}");
+    c[kind] = (c[kind] || 0) + 1;
+    await env.QUOTA.put(k, JSON.stringify(c), { expirationTtl: 2 * 86400 });
+    if (c[kind] > perPerson) return "you're over today's limit for this app; come back tomorrow";
+  } catch (e) { console.log("quota skipped: " + String(e).slice(0, 120)); }
   return "";
 }
 
