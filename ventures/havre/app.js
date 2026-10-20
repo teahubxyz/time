@@ -1329,8 +1329,15 @@ function mediaLine(c, m) {
     const alt = md.kind === "photo" ? `A photo from ${c.name}${md.shot ? ": " + md.shot : ""}` : "Your photo";
     said.append(h("figure", { class: "pic" }, mediaEl("img", md.id, { alt, title: md.shot || null, decoding: "async" }, "photo")));
     if (md.kind === "photo") said.append(cost([md.offer === "portrait" ? "portrait: " + (md.shot || "") : "photo", md.model, md.price != null && A.usd(md.price), md.adult && "18+", md.own && "on their own", md.blurred && "blurred by venice's safe mode"]));
-    if (md.offer === "portrait" && !me) said.append(h("p", { class: "mono" }, h("button", { type: "button", class: "linkish", text: md.kept ? "kept as their portrait" : "use as their portrait", disabled: md.kept || null,
-      onclick: () => useAsPortrait(c, m) })));
+    // a photo of them from the chat, kept on their card: as their portrait (offered as one), or as one of their pictures
+    if (md.kind === "photo" && !me && !c.plain) {
+      const full = !!c.portrait && c.look.references.length >= C.MAX_REFERENCES, row = h("p", { class: "mono" });
+      if (md.offer === "portrait") row.append(h("button", { type: "button", class: "linkish", text: md.kept === "portrait" ? "their portrait now" : "use as their portrait", disabled: md.kept === "portrait" || null,
+        onclick: () => keepFromChat(c, m, "portrait") }), " / ");
+      row.append(h("button", { type: "button", class: "linkish", text: md.kept === "ref" ? "on their card" : full ? "their card has three pictures already" : "keep on their card",
+        disabled: md.kept === "ref" || full || null, title: "one of the pictures their photos and clips are made from", onclick: () => keepFromChat(c, m, "") }));
+      said.append(row);
+    }
     else if (md.saw) said.append(h("span", { class: "cap", text: `${md.seer || "a model"} told them: ${md.saw}` }));
   } else if (md.kind === "clip" && !md.id) {
     // a clip this browser couldn't download: it plays from Venice's link until the link lapses
@@ -2215,6 +2222,7 @@ function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
   if (!S.key) return needKey(`${w.title} needs your venice key.`);
   if (id === "portraits") return threePortraits({ door });
   if (id === "new") return writeFromIdea(idea, { door, name });
+  if (id === "photoshoot") return photoshoot(idea, { door });
 }
 /** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
 function threadFor(c) {
@@ -2276,19 +2284,75 @@ async function threePortraits({ door = "chat" } = {}) {
     balanceSoon();
   }
 }
-/** one of the three, kept as their portrait (the look it was drawn from goes on their card if it had none) */
-async function useAsPortrait(c, m) {
+/**
+ * A photoshoot: a few photos of them from the pictures on their card. One call writes the shots (the single photo's
+ * rules, several at once), the photo model makes each from the same pictures, and they land in their chat. The words
+ * after /photoshoot: a count (1 to 6, else 3), then what the shoot is about. Costs that many photos, asked first.
+ */
+let shooting = false;
+async function photoshoot(arg, { door = "chat" } = {}) {
+  const c = card();
+  if (!c || c.plain) { err("/photoshoot needs a character: pick one in the harbor first."); return; }
+  if (!refsOf(c).length) { err(`${c.name} has no picture yet, and a shoot is made from their pictures: /portraits first, or add one on their card.`); return; }
+  if (shooting) { toast("A shoot is already under way."); return; }
+  const { count, brief } = W.parseShoot(arg);
+  await loadList("inpaint");
+  const t = threadFor(c), adult = adultFor(c, t, brief).ok;
+  const pm = adult ? adultPhotoModel() : photoModel();
+  if (!pm || pm.price == null) { err(S.listErr.inpaint || "Venice has no model for that right now."); return; }
+  const pics = refsOf(c).slice(0, Math.max(1, pm.maxIn)), each = A.photoPrice(pm, pics.length), price = each * count;
+  if (!confirm(`A shoot of ${count} photo${count === 1 ? "" : "s"} of ${c.name} with ${pm.name}${brief ? " (" + brief + ")" : ""}? It costs about ${A.usd(price)} on your Venice key.`)) return;
+  if (door !== "chat") { openThread(t.id); setLeft("chats"); }
+  shooting = true;
+  S.inflight++;
+  doing(t, "is planning a shoot…");
+  try {
+    const v = new Venice(S.key);
+    const lines = t.msgs.filter((m) => !m.hidden && (m.role === "user" || m.role === "assistant")).slice(-10)
+      .map((m) => `${m.role === "user" ? "Them" : c.name}: ${String(m.content || "").replace(/\s+/g, " ").trim().slice(0, 300)}`);
+    const o = await askJson(await jsonModel(c), { messages: W.shootMessages(c, adult ? A.PHOTO_SYSTEM_ADULT : A.PHOTO_SYSTEM, { count, brief, lines }), schema: W.SHOOT_SCHEMA,
+      maxTokens: 300 * count + 200, temperature: 0.9, what: "the shots" });
+    const shots = W.normalizeShots(o, count);
+    if (!shots.length) throw new Error("The model sent back no shots. Try again, or pick another model on the card.");
+    doing(t, `is shooting ${shots.length} photo${shots.length === 1 ? "" : "s"} with ${pm.name}…`);
+    const made = await Promise.allSettled(shots.map((s) => v.editImage({ model: pm.id, prompt: A.photoPrompt(c, s.shot, pics.length, pm.promptLimit, { adult }), images: pics, safe: !adult })));
+    done(t);
+    let n = 0, why = null;
+    for (let i = 0; i < shots.length; i++) {
+      const r = made[i];
+      if (r.status !== "fulfilled") { why = why || r.reason; continue; }
+      const id = await M.put(r.value.blob);
+      deliver(t, { role: "assistant", content: "", media: { kind: "photo", id, shot: shots[i].shot, model: pm.name, price: each, ...(adult ? { adult: true } : {}), ...(r.value.blurred ? { blurred: true } : {}) } });
+      n++;
+    }
+    if (!n) throw why || new Error("None of the shots came out.");
+    if (why) err(`${shots.length - n} of the shoot didn't come out: ${why.message || why}`);
+  } catch (e) {
+    done(t);
+    err(e.message || String(e));
+  } finally {
+    shooting = false;
+    S.inflight--;
+    balanceSoon();
+  }
+}
+/**
+ * A photo of them from the chat, kept on their card: as their portrait (as = "portrait"; the look it was drawn from goes
+ * on the card too if it had none), or as one of the pictures their photos and clips are made from (as = "").
+ */
+async function keepFromChat(c, m, as = "") {
   const md = m.media || {}, blob = await M.get(md.id);
   if (!blob) { toast("That picture isn't kept in this browser any more."); return; }
-  const pic = await shrinkImage(blob, 512, "image/webp", { svg: false });
   const now = S.cards.find((x) => x.id === c.id);
   if (!now) return;
-  keepPicture(now, pic, md.look || "", "portrait");
-  md.kept = true;
+  if (as !== "portrait" && now.portrait && now.look.references.length >= C.MAX_REFERENCES) { toast(`${c.name}'s card has three pictures already: remove one first (card → look).`); return; }
+  const pic = await shrinkImage(blob, as === "portrait" ? 512 : 768, "image/webp", { svg: false });
+  keepPicture(now, pic, as === "portrait" ? md.look || "" : "", as);
+  md.kept = as === "portrait" || !now.portrait ? "portrait" : "ref";
   const t = Object.values(S.threads).find((x) => x.msgs.includes(m));
   if (t) saveThread(t);
   if (t && here(t)) renderLog();
-  toast(`${c.name} has a new portrait.`);
+  toast(md.kept === "portrait" ? `${c.name} has a new portrait.` : `That picture is on ${c.name}'s card now.`);
 }
 /**
  * Someone new from an idea: one call writes the card (name, tagline, greeting, persona, examples, how they look), and

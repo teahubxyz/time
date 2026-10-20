@@ -28,6 +28,11 @@ export const WORKFLOWS = [
     about: "a new character from an idea in a line or two, written as a card of your own",
     usage: "/new <who they are, in a line>",
   },
+  {
+    id: "photoshoot", command: "photoshoot", title: "a photoshoot", takes: "card pictures", gives: "photos", doors: ["chat"],
+    about: "a few photos of them from the pictures on their card, one shoot, each a different moment (3 unless you say)",
+    usage: "/photoshoot [how many] [what the shoot is about]",
+  },
 ];
 
 export const byId = (id) => WORKFLOWS.find((w) => w.id === id) || null;
@@ -106,4 +111,48 @@ export function cardFromIdea(o, { model } = {}) {
   const base = cardFromWrite(o || {}, { model });
   const look = str(o && o.look, 2000).replace(/\s+/g, " ").trim();
   return normalizeCard({ ...base, look: { ...base.look, description: look } });
+}
+
+// ---------- photoshoot: a few photos of them, from the pictures on their card ----------
+
+export const SHOOT_MIN = 1, SHOOT_MAX = 6, SHOOT_DEFAULT = 3;
+
+/** the words after /photoshoot: a count first if there is one (1 to 6), the rest a brief for the shoot */
+export function parseShoot(arg = "") {
+  const m = /^\s*(\d{1,2})(?:\s+|$)([\s\S]*)$/.exec(str(arg, 2000));
+  const n = m ? Number(m[1]) : SHOOT_DEFAULT;
+  return { count: Math.min(SHOOT_MAX, Math.max(SHOOT_MIN, n || SHOOT_DEFAULT)), brief: (m ? m[2] : str(arg, 2000)).replace(/\s+/g, " ").trim() };
+}
+
+export const SHOOT_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["shots"],
+  properties: { shots: { type: "array", items: { type: "object", additionalProperties: false, required: ["title", "shot"],
+    properties: { title: { type: "string" }, shot: { type: "string" } } } } },
+};
+
+/**
+ * The messages for a text model to write a shoot: the photo rules the single-photo ask uses (abilities.js, safe or
+ * adult), asked for several shots at once, as JSON. brief: what the shoot is about; nothing means a set that fits them.
+ */
+export function shootMessages(card, photoSystem, { count = SHOOT_DEFAULT, brief = "", lines = [] } = {}) {
+  const n = Math.min(SHOOT_MAX, Math.max(SHOOT_MIN, count));
+  const system = str(photoSystem).replace(/\s*Reply with the shot only\.?\s*$/, "") +
+    ` Write ${n} different shots for one photoshoot: the same place or theme, a different moment, framing or mood in each. ` +
+    `Return one JSON object: shots, an array of ${n} objects with title (at most 4 words) and shot (the paragraph).`;
+  const look = card.look && card.look.description;
+  const user = [
+    `The character: ${card.name}${card.tagline ? ". " + card.tagline : ""}`,
+    look ? `How they look: ${look}` : "",
+    lines.length ? "The conversation so far, latest last:\n" + lines.join("\n") : "The conversation hasn't started yet.",
+    "The shoot: " + (str(brief, 500).trim() || "nothing in particular. Pick a place and a mood that fit them."),
+    `Write the ${n} shots.`,
+  ].filter(Boolean).join("\n\n");
+  return [{ role: "system", content: system }, { role: "user", content: user }];
+}
+
+/** the shots, cleaned: each a title and a shot; no more than n, none if the model sent none */
+export function normalizeShots(o, n = SHOOT_DEFAULT) {
+  const list = arr(o && o.shots).map((d) => ({ title: clip(str(d && d.title, 200).replace(/\s+/g, " ").trim(), 40),
+    shot: str(d && d.shot, 2000).replace(/\s+/g, " ").trim() })).filter((d) => d.shot);
+  return list.slice(0, n).map((d, i) => ({ ...d, title: d.title || `shot ${i + 1}` }));
 }
