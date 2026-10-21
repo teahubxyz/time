@@ -88,7 +88,8 @@ async function renderRunware(body, env) {
     audioSettings: { bitrate: 192, channels: 2, sampleRate: 44100 }, settings: {} };
   if (Number.isInteger(+body.seed) && +body.seed >= 0) task.seed = Math.min(2147483647, +body.seed);
   if (typeof body.reference === "string" && /^data:audio\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(body.reference)) task.inputs = { audio: body.reference };
-  if (/^(2|3|4|5|6|7)\/(4|8)$/.test(String(body.timeSignature || ""))) task.settings.timeSignature = String(body.timeSignature);
+  const beats = String(body.timeSignature || "").match(/^(\d)\/(4|8)$/);        // "3/4" → 3; Runware takes 2, 3, 4 or 6 beats to the bar
+  if (beats && [2, 3, 4, 6].includes(+beats[1])) task.settings.timeSignature = +beats[1];
   if (body.steps) task.steps = Math.min(20, Math.max(1, +body.steps | 0));
   const ly = String(body.lyrics || "").trim(); if (ly.length >= 10) task.settings.lyrics = ly.slice(0, 3000);
   const bpm = +body.bpm; if (bpm >= 30 && bpm <= 300) task.settings.bpm = Math.round(bpm);
