@@ -551,6 +551,13 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
   .lefthead [role=tab] { font-size: 19px; }
   .lefthead .sep::before { font-size: 19px; }
 }
+/* a new version is out: a bar at the top to reload (update.js) */
+#upd {
+  position: fixed; top: calc(10px + env(safe-area-inset-top)); left: 50%; transform: translateX(-50%); z-index: 30;
+  padding: 9px 16px; border: 1px solid var(--paper); border-radius: 0; background: var(--ink); color: var(--paper);
+  font: 700 13px/1 var(--mono); letter-spacing: .12em; white-space: nowrap; cursor: pointer;
+}
+#upd:hover, #upd:focus-visible { background: var(--hi); color: var(--ink); border-color: var(--ink); }
 @media (prefers-reduced-motion: reduce) {
   * { scroll-behavior: auto !important; }
 }
