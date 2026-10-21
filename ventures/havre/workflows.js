@@ -34,6 +34,11 @@ export const WORKFLOWS = [
     usage: "/photoshoot [how many] [what the shoot is about]",
   },
   {
+    id: "snap", command: "snap", title: "a picture to send", takes: "words", gives: "photo", doors: ["chat"],
+    about: "make a picture with ai and send it as yours (say what's in it: the pizza you made)",
+    usage: "/snap [what's in the picture]",
+  },
+  {
     id: "whisper", command: "whisper", title: "a whisper", takes: "card", gives: "voice note", doors: ["chat"],
     about: "a short ASMR voice note from them, whispered over soft rain (luna or eve; add what it's about)",
     usage: "/whisper [luna|eve] [what it's about]",
