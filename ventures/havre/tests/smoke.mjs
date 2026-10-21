@@ -946,14 +946,14 @@ async function main() {
     await page.click("#ref-add");
     await page.setInputFiles("#ref-file", { name: "upload.png", mimeType: "image/png", buffer: picture(200) });
     await count(page, "#refs .ref", 3);
-    await has(page, "#adult-note", /^a picture on their card wasn't made here with ai \(it was uploaded, or came from venice\)/);
+    await has(page, "#adult-note", /^a picture on their card was uploaded and hasn't been checked yet/);
     await page.click("#ref-make");
     await count(page, "#refs .ref", 4);
     assert.equal(seen.edits.at(-1).body.safe_mode, true, "a picture made from an uploaded one keeps safe mode on");
     assert.equal(seen.edits.at(-1).body.modelId || seen.edits.at(-1).body.model, "grok-imagine-edit");
     await page.getByRole("button", { name: "Remove picture 4" }).click();
     await count(page, "#refs .ref", 3);
-    await has(page, "#adult-note", /wasn't made here with ai/);
+    await has(page, "#adult-note", /was uploaded and hasn't been checked yet/);
     await page.getByRole("button", { name: "Remove picture 2" }).click();
     await count(page, "#refs .ref", 2);
     await has(page, "#adult-note", /^their photos and clips can be adult/);
