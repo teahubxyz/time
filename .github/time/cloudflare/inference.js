@@ -7,7 +7,8 @@
 //   POST /v1/chat/completions                  model in CHAT_MODELS, no streaming, max_tokens <= MAX_TOKENS
 //   POST /v1/audio/quote | queue | retrieve | complete    model in AUDIO_MODELS, duration_seconds <= AUDIO_SECONDS
 //   POST /v1/image/generate                    model in IMAGE_MODELS
-//   POST /v1/render                            one call, audio back: { prompt, lyrics?, duration?, bpm?, key?, seed?, quality? }
+//   POST /v1/render                            one call, audio back: { prompt, lyrics?, duration?, bpm?, key?, timeSignature?, seed?, quality?, reference? }
+//                                              reference: a data: URL of audio the new track should take after (Runware only; up to 8 MB)
 //                                              Runware ACE-Step when RUNWARE_API_KEY is bound (quality "xl" picks XL Turbo),
 //                                              else Venice queue+poll inside the worker; x-seed / x-cost / x-renderer headers
 //
@@ -21,6 +22,7 @@
 
 const VENICE = "https://api.venice.ai/api/v1";
 const MAX_BODY = 32768;
+const MAX_RENDER_BODY = 8 * 1024 * 1024;        // a reference track rides along as base64
 
 const json = (body, status = 200, headers = {}) =>
   new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json; charset=utf-8", ...headers } });
@@ -82,9 +84,11 @@ function cleanKey(k) {
 async function renderRunware(body, env) {
   const model = RW_MODELS[String(body.quality || "turbo").toLowerCase()] || RW_MODELS.turbo;
   const task = { taskType: "audioInference", taskUUID: crypto.randomUUID(), model, positivePrompt: String(body.prompt).slice(0, 3000),
-    duration: Math.min(num(body.duration, 60), num(env.AUDIO_SECONDS, 60)), outputType: "URL", outputFormat: "MP3", deliveryMethod: "sync", includeCost: true,
+    duration: Math.max(30, Math.min(num(body.duration, 120), num(env.AUDIO_SECONDS, 120))), outputType: "URL", outputFormat: "MP3", deliveryMethod: "sync", includeCost: true,
     audioSettings: { bitrate: 192, channels: 2, sampleRate: 44100 }, settings: {} };
   if (Number.isInteger(+body.seed) && +body.seed >= 0) task.seed = Math.min(2147483647, +body.seed);
+  if (typeof body.reference === "string" && /^data:audio\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/i.test(body.reference)) task.inputs = { audio: body.reference };
+  if (/^(2|3|4|5|6|7)\/(4|8)$/.test(String(body.timeSignature || ""))) task.settings.timeSignature = String(body.timeSignature);
   if (body.steps) task.steps = Math.min(20, Math.max(1, +body.steps | 0));
   const ly = String(body.lyrics || "").trim(); if (ly.length >= 10) task.settings.lyrics = ly.slice(0, 3000);
   const bpm = +body.bpm; if (bpm >= 30 && bpm <= 300) task.settings.bpm = Math.round(bpm);
@@ -103,7 +107,7 @@ async function renderRunware(body, env) {
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function renderVenice(body, env) {
-  const q = { model: "ace-step-15", prompt: String(body.prompt).slice(0, 512), duration_seconds: Math.min(num(body.duration, 60), num(env.AUDIO_SECONDS, 60)) };
+  const q = { model: "ace-step-15", prompt: String(body.prompt).slice(0, 512), duration_seconds: Math.max(60, Math.min(num(body.duration, 120), num(env.AUDIO_SECONDS, 120), 210)) };
   const ly = String(body.lyrics || "").trim(); if (ly) q.lyrics_prompt = ly.slice(0, 4000);
   const H = { Authorization: "Bearer " + env.VENICE_API_KEY, "Content-Type": "application/json", Accept: "*/*" };
   const qr = await fetch(VENICE + "/audio/queue", { method: "POST", headers: H, body: JSON.stringify(q) });
@@ -139,7 +143,7 @@ async function api(req, env, url, h) {
   const app = String(req.headers.get("x-app") || "").toLowerCase();
   if (!list(env.APPS).includes(app)) return json({ error: "unknown app: send an x-app header this worker knows" }, 403, h);
   const text = await req.text();
-  if (text.length > MAX_BODY) return json({ error: "too big" }, 413, h);
+  if (text.length > (path === "/v1/render" ? MAX_RENDER_BODY : MAX_BODY)) return json({ error: "too big" }, 413, h);
   let body;
   try { body = JSON.parse(text); if (!body || typeof body !== "object" || Array.isArray(body)) throw 0; } catch { return json({ error: "send a JSON object" }, 400, h); }
   const person = await who(req, app);
