@@ -84,12 +84,29 @@ const S = {
   // or clip being asked for, and a voice note being recorded
   lists: { inpaint: null, image: null, tts: null, asr: null, video: null }, listErr: {},
   ab: { photo: "", clip: {}, hear: false, hearModel: "", see: false, seeModel: "", own: true, allowance: 0.25, memory: true,
-    adult: true, adultPhoto: "", adultClip: "", awayMin: 360 }, voiceOn: {}, jobs: [], ask: null,
+    adult: true, adultPhoto: "", adultClip: "", awayMin: 360, asmr: null }, voiceOn: {}, jobs: [], ask: null,
   rec: null, moving: new Set(), inflight: 0,
 };
 // what characters do on their own (photos, voice notes) comes out of a daily allowance, counted here by local day
 const ALLOWANCES = [0.1, 0.25, 1, 5];
 /** how long you've been away before a character texts first: minutes, as the setting shows them */
+// voice notes in ASMR: whispered (W.WHISPER_PRESETS), at a pace, over soft rain; "every" is one reply in so many
+const ASMR_DEFAULT = { voice: "luna", pace: 0.77, rain: true, level: 0.09, every: 1 };
+const ASMR_PACES = [[0.65, "slowest"], [0.77, "slow"], [0.85, "easy"], [1, "as written"]];
+const ASMR_EVERY = [[1, "every reply"], [2, "every other"], [4, "now and then"]];
+const ASMR_LEVELS = [[0, "no rain"], [0.05, "faint"], [0.09, "soft"], [0.16, "steady"]];
+/** off, on or asmr: how a character's replies come (S.voiceOn keeps true for on, "asmr" for asmr) */
+const voiceMode = (c) => (!c || !S.voiceOn[c.id] ? "off" : S.voiceOn[c.id] === "asmr" ? "asmr" : "on");
+/** whether this reply comes with a voice note: always when on; in asmr, one in every so many */
+const voiceDue = (c) => { const m = voiceMode(c); return m === "on" || (m === "asmr" && Math.random() < 1 / Math.max(1, S.ab.asmr.every || 1)); };
+/** what a voice note of these words would cost: their own voice, or the whisper preset */
+function voiceCost(c, text, asmr) {
+  const words = A.speakable(text);
+  if (!asmr) { const vm = voiceModel(c); return vm ? A.voicePrice(vm, words.length) : null; }
+  const p = W.WHISPER_PRESETS[S.ab.asmr.voice] || W.WHISPER_PRESETS[W.WHISPER_DEFAULT];
+  const vm = (S.lists.tts || []).find((m) => m.id === p.model);
+  return vm ? A.voicePrice(vm, W.whisperInput(words, p).length) : null;
+}
 const AWAYS = [[1, "a minute"], [5, "5 minutes"], [15, "15 minutes"], [30, "half an hour"], [60, "an hour"], [180, "3 hours"], [360, "6 hours"], [1440, "a day"]];
 const backAfter = () => (S.ab.awayMin || 360) * 60e3;
 const localDay = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
@@ -141,6 +158,8 @@ function boot() {
   S.own = local.get(K.own, {}) || {};
   S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
   S.ab.clip = S.ab.clip && typeof S.ab.clip === "object" ? S.ab.clip : {};
+  S.ab.asmr = { ...ASMR_DEFAULT, ...(S.ab.asmr && typeof S.ab.asmr === "object" ? S.ab.asmr : {}) };
+  if (!W.WHISPER_PRESETS[S.ab.asmr.voice]) S.ab.asmr.voice = W.WHISPER_DEFAULT;
   if (!ALLOWANCES.includes(S.ab.allowance)) S.ab.allowance = 0.25;
   if (!AWAYS.some(([m]) => m === S.ab.awayMin)) S.ab.awayMin = 360;
   S.voiceOn = local.get(K.voiceOn, {}) || {};
@@ -1276,12 +1295,13 @@ async function send(text, { hidden = false, media = null, picture = "", to = nul
       const vm = voiceModel(c), price = vm ? A.voicePrice(vm, A.speakable(reply).length) : null;
       if (price != null && reserve(price)) mirror = price;
     }
-    if (!demo && !c.plain && (S.voiceOn[c.id] || mirror)) {
+    const asmrNote = !mirror && voiceMode(c) === "asmr";
+    if (!demo && !c.plain && (mirror || voiceDue(c))) {
       // a voice note first, then the words under it
       doing(t, "is recording a voice note…");
       voicing.add(msg);
       try {
-        msg.voice = await makeVoice(c, reply, ctrl.signal);
+        msg.voice = await makeVoice(c, reply, ctrl.signal, { asmr: asmrNote });
         if (mirror) msg.voice.own = true;
         saveThread(t);
       } catch (e) {
@@ -1427,26 +1447,40 @@ function voiceLine(c, m) {
 const voicing = new WeakSet();
 function offerVoice(el, c, m, t) {
   if (m.voice || m.demo || c.plain || !S.key || !t) return;
-  const b = linkish(voicing.has(m) ? "recording…" : "hear it", async () => {
-    if (b.disabled || voicing.has(m) || m.voice) return;
-    voicing.add(m);
-    b.disabled = true;
-    b.textContent = "recording…";
-    try {
-      m.voice = await makeVoice(c, m.content);
-      saveThread(t);
-      if (b.isConnected) b.replaceWith(audioEl(m.voice.id));
-      else placeVoice(t, m);
-      balanceSoon();
-    } catch (e) { b.disabled = false; b.textContent = "hear it"; toast(e.message); } finally { voicing.delete(m); }
-  }, { class: "linkish hear", "aria-label": `Hear this as a voice note from ${c.name}`, disabled: voicing.has(m) || null });
-  $(".said", el).append(" ", b);
+  const btns = [];
+  const make = (label, asmr) => {
+    const b = linkish(voicing.has(m) ? "recording…" : label, async () => {
+      if (b.disabled || voicing.has(m) || m.voice) return;
+      voicing.add(m);
+      for (const x of btns) x.disabled = true;
+      b.textContent = asmr ? "whispering…" : "recording…";
+      try {
+        m.voice = await makeVoice(c, m.content, undefined, { asmr });
+        saveThread(t);
+        if (b.isConnected) { b.replaceWith(audioEl(m.voice.id)); for (const x of btns) if (x !== b) x.remove(); }
+        else placeVoice(t, m);
+        balanceSoon();
+      } catch (e) { for (const x of btns) x.disabled = false; b.textContent = label; toast(e.message); } finally { voicing.delete(m); }
+    }, { class: "linkish hear", "aria-label": asmr ? `Hear this whispered by ${c.name}, over soft rain` : `Hear this as a voice note from ${c.name}`, disabled: voicing.has(m) || null });
+    btns.push(b);
+    return b;
+  };
+  $(".said", el).append(" ", make("hear it", false), " ", make("whisper it", true));
 }
 /** a voice note of these words, in the character's voice and mood */
-async function makeVoice(c, text, signal) {
+async function makeVoice(c, text, signal, { asmr = false } = {}) {
   S.inflight++;
   try {
     await loadList("tts");
+    if (asmr) {                                                // whispered, at the ASMR pace, over soft rain
+      const a = S.ab.asmr, p = W.WHISPER_PRESETS[a.voice] || W.WHISPER_PRESETS[W.WHISPER_DEFAULT];
+      const words = A.speakable(text);
+      if (!words) throw new Error("There are no words to whisper.");
+      const input = W.whisperInput(words, p), pm = (S.lists.tts || []).find((m) => m.id === p.model);
+      let blob = await new Venice(S.key).speak({ model: p.model, voice: p.voice, input, speed: a.pace || p.speed, format: p.format, signal });
+      if (a.rain && a.level > 0) { try { blob = await overRain(blob, a.level); } catch { /* the dry take is still a whisper */ } }
+      return { id: await M.put(blob), model: pm ? pm.name : p.model, voice: p.voice, price: pm ? A.voicePrice(pm, input.length) : null, whisper: true };
+    }
     const vm = voiceModel(c);
     if (!vm) throw new Error(S.listErr.tts || "Venice has no voice models right now.");
     const voice = voiceOf(c, vm), words = A.speakable(text);
@@ -1468,7 +1502,13 @@ function deliver(t, msg) {
   saveThread(t);
   if (here(t)) {
     for (const el of $$("#log .suggest, #log .note")) el.remove();
-    put(mediaLine(c, msg));
+    if (msg.media) put(mediaLine(c, msg));
+    else {                                                      // a voice note and its words (a /whisper)
+      if (msg.voice) put(voiceLine(c, msg));
+      let last = null;
+      for (const b of bubblesOf(c, msg.content || "")) { last = put(line(b, "them")); last.dataset.msg = msg.id; }
+      if (last) msgTools(last, t, msg);
+    }
     renderJobs();
     scrollLog();
   }
@@ -1758,9 +1798,10 @@ function renderTools() {
     const pm = adultFor(c, thread()).ok ? adultPhotoModel() : photoModel();
     const pp = pm ? A.photoPrice(pm, Math.min(Math.max(1, refsOf(c).length), Math.max(1, pm.maxIn || 1))) : null;
     items.push(linkish(`ask for a photo${pp != null ? " · " + A.usd(pp) : ""}`, () => askFor("photo")), linkish("ask for a clip", () => askFor("clip")));
-    const on = !!S.voiceOn[c.id];
-    items.push(linkish(`voice notes: ${on ? "on" : "off"}`, () => setVoiceNotes(c, !on),
-      { "aria-pressed": on ? "true" : "false", title: on ? `${c.name} replies with voice notes` : `${c.name} replies in text; "hear it" reads one out` }));
+    const mode = voiceMode(c), next = { off: "on", on: "asmr", asmr: "off" }[mode];
+    items.push(linkish(`voice notes: ${mode}`, () => setVoiceNotes(c, next),
+      { "aria-pressed": mode === "off" ? "false" : "true", title: mode === "on" ? `${c.name} replies with voice notes. Click for ASMR.`
+        : mode === "asmr" ? `${c.name} whispers replies over soft rain (abilities → asmr). Click to turn off.` : `${c.name} replies in text; "hear it" or "whisper it" reads one out. Click to turn on.` }));
     const left = Math.max(0, S.ab.allowance - spentToday());
     items.push(linkish(`on their own: ${S.ab.own ? "on" : "off"}`, () => setOwn(!S.ab.own), { "aria-pressed": S.ab.own ? "true" : "false",
       title: S.ab.own ? `Characters text first and send photos and voice notes when they like: ${A.usd(left)} of today's ${A.usd(S.ab.allowance)} left` : "Characters only do what you ask" }));
@@ -1818,9 +1859,17 @@ function renderAbilities() {
       adultChanged();
     }), ["photos: ", change("adultPhoto", apm), " · clips: ", change("adultClip", acm), ` · portraits: ${aim ? aim.name : "…"}`,
       " · without safe mode, only from pictures made here with ai, with the 18+ rule first in every prompt; never anyone under 18, never a real person"]),
-    row("VOICE NOTES", real ? tick(`${c.name} replies with voice notes`, !!S.voiceOn[c.id], (on) => setVoiceNotes(c, on))
-      : "pick a character: their voice and mood are on their card.",
+    row("VOICE NOTES", real ? (() => {
+      const s = h("select", { "aria-label": `How ${c.name}'s replies come` }, [["off", "off: text"], ["on", "on: their voice"], ["asmr", "asmr: whispered"]].map(([v, t]) => h("option", { value: v, text: t })));
+      s.value = voiceMode(c);
+      s.addEventListener("change", () => setVoiceNotes(c, s.value));
+      return h("label", { class: "check" }, `${c.name}'s replies: `, s);
+    })() : "pick a character: their voice and mood are on their card.",
     real ? ["voice: ", change("voice", vm), ` (${vm ? voiceOf(c, vm) : c.speech.voice || A.DEFAULT_VOICE})`, vm && vm.perMChars != null ? ` · about ${A.usd(A.voicePrice(vm, 200))} a reply` : ""] : ""),
+    row("ASMR", asmrControls(), (() => {
+      const p = W.WHISPER_PRESETS[S.ab.asmr.voice], vm = (S.lists.tts || []).find((m) => m.id === p.model);
+      return `whispered by ${p.voice} on ${vm ? vm.name : p.model}${vm && vm.perMChars != null ? ` · about ${A.usd(A.voicePrice(vm, 200))} a reply` : ""} · for voice notes set to asmr, "whisper it" under a message, and /whisper`;
+    })()),
     row("HEARING", tick("let them hear my voice notes", S.ab.hear, (on, i) => {
       if (on && !(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && typeof MediaRecorder !== "undefined")) {
         i.checked = false;
@@ -2416,7 +2465,7 @@ async function whisper(arg) {
   if (!c || c.plain) { err("/whisper needs a character: pick one in the harbor first."); return; }
   if (whispering) { toast("A whisper is already on its way."); return; }
   const { preset: named, brief } = W.parseWhisper(arg);
-  const key = named || (c.whisper && W.WHISPER_PRESETS[c.whisper] ? c.whisper : W.WHISPER_DEFAULT), p = W.WHISPER_PRESETS[key];
+  const key = named || (W.WHISPER_PRESETS[S.ab.asmr.voice] ? S.ab.asmr.voice : W.WHISPER_DEFAULT), p = W.WHISPER_PRESETS[key];
   await loadList("tts");
   const vm = (S.lists.tts || []).find((m) => m.id === p.model);
   const guess = vm ? A.voicePrice(vm, 600) : null;
@@ -2433,13 +2482,12 @@ async function whisper(arg) {
     if (!script) throw new Error("The model sent back nothing to whisper. Try again, or pick another model on the card.");
     doing(t, "is whispering…");
     const input = W.whisperInput(script, p);
-    const voice = await new Venice(S.key).speak({ model: p.model, voice: p.voice, input, speed: p.speed, format: p.format });
+    const voice = await new Venice(S.key).speak({ model: p.model, voice: p.voice, input, speed: S.ab.asmr.pace || p.speed, format: p.format });
     let blob = voice;
-    try { blob = await overRain(voice); } catch { /* the dry take is still a whisper */ }
+    if (S.ab.asmr.rain && S.ab.asmr.level > 0) { try { blob = await overRain(voice, S.ab.asmr.level); } catch { /* the dry take is still a whisper */ } }
     const price = vm ? A.voicePrice(vm, input.length) : null;
     done(t);
     deliver(t, { role: "assistant", content: script, voice: { id: await M.put(blob), model: vm ? vm.name : p.model, voice: p.voice, price, whisper: true } });
-    if (named) { const now = S.cards.find((x) => x.id === c.id); if (now && now.whisper !== named) replaceCard({ ...now, whisper: named }); }
   } catch (e) {
     done(t);
     err(e.message || String(e));
@@ -2450,7 +2498,7 @@ async function whisper(arg) {
   }
 }
 /** the voice, close-mic'd (a little low end, gentle compression), over soft rain made here; a wav back */
-async function overRain(blob) {
+async function overRain(blob, level = 0.09) {
   const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
   const probe = new (window.AudioContext || window.webkitAudioContext)();
   const v = await probe.decodeAudioData(await blob.arrayBuffer());
@@ -2472,7 +2520,7 @@ async function overRain(blob) {
   const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120;
   const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6500;
   const rg = ctx.createGain(); const end = len / rate;
-  rg.gain.setValueAtTime(0, 0); rg.gain.linearRampToValueAtTime(0.09, 1.2); rg.gain.setValueAtTime(0.09, end - 1.2); rg.gain.linearRampToValueAtTime(0, end);
+  rg.gain.setValueAtTime(0, 0); rg.gain.linearRampToValueAtTime(level, 1.2); rg.gain.setValueAtTime(level, end - 1.2); rg.gain.linearRampToValueAtTime(0, end);
   rain.connect(hp); hp.connect(lp); lp.connect(rg); rg.connect(ctx.destination);
   const src = ctx.createBufferSource(); src.buffer = v;
   const lo = ctx.createBiquadFilter(); lo.type = "lowshelf"; lo.frequency.value = 180; lo.gain.value = 4;
@@ -2734,12 +2782,12 @@ async function ownVoice(t) {
   const c = cardOf(t), msg = [...t.msgs].reverse().find((m) => m.role === "assistant" && !m.media && !m.demo);
   if (!c || !msg || msg.voice || voicing.has(msg)) return;
   await loadList("tts");
-  const vm = voiceModel(c), price = vm ? A.voicePrice(vm, A.speakable(msg.content).length) : null;
+  const asmr = voiceMode(c) === "asmr", price = voiceCost(c, msg.content, asmr);
   if (msg.voice || voicing.has(msg) || !reserve(price)) return;
   voicing.add(msg);
-  doing(t, "is recording a voice note…");
+  doing(t, asmr ? "is whispering…" : "is recording a voice note…");
   try {
-    const v = { ...(await makeVoice(c, msg.content)), own: true };
+    const v = { ...(await makeVoice(c, msg.content, undefined, { asmr })), own: true };
     if (msg.voice) { refund(price); return; }                   // "hear it" got there first
     msg.voice = v;
     saveThread(t);
@@ -3163,8 +3211,23 @@ function setOwn(on) {
   if ($("#abilitydlg").open) renderAbilities();
   toast(on ? `Characters act on their own now, within ${A.usd(S.ab.allowance)} a day.` : "Characters only do what you ask now.");
 }
+/** the ASMR settings: voice, pace, rain, how often */
+function asmrControls() {
+  const a = S.ab.asmr, set = (k, v) => { S.ab.asmr = { ...S.ab.asmr, [k]: v }; saveAb(); renderAbilities(); };
+  const pick = (label, opts, key, num = true) => {
+    const s = h("select", { "aria-label": label }, opts.map(([v, t]) => h("option", { value: String(v), text: t })));
+    s.value = String(key === "level" && !a.rain ? 0 : a[key]);
+    s.addEventListener("change", () => { const v = num ? Number(s.value) : s.value; if (key === "level") { S.ab.asmr = { ...S.ab.asmr, rain: v > 0, level: v || a.level }; saveAb(); renderAbilities(); } else set(key, v); });
+    return s;
+  };
+  const voices = Object.keys(W.WHISPER_PRESETS).map((k) => [k, W.WHISPER_PRESETS[k].voice]);
+  return h("span", {}, "voice: ", pick("Whisper voice", voices, "voice", false), " · pace: ", pick("Whisper pace", ASMR_PACES, "pace"),
+    " · rain: ", pick("Rain under the whisper", ASMR_LEVELS, "level"), " · how often: ", pick("How often replies are whispered in asmr", ASMR_EVERY, "every"));
+}
 function setVoiceNotes(c, on) {
-  if (on) S.voiceOn[c.id] = true; else delete S.voiceOn[c.id];
+  const mode = on === true ? "on" : on === false ? "off" : on;
+  if (mode === "on") S.voiceOn[c.id] = true; else if (mode === "asmr") S.voiceOn[c.id] = "asmr"; else delete S.voiceOn[c.id];
+  if (mode !== "off" && mode !== "on" && mode !== "asmr") delete S.voiceOn[c.id];
   local.set(K.voiceOn, S.voiceOn);
   renderTools();
   if ($("#speech-on")) $("#speech-on").checked = !!S.voiceOn[(card() || {}).id];
