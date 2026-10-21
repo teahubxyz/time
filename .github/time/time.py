@@ -574,15 +574,35 @@ def andon(reason: str) -> None:
               f"{flipped}\n\nClose this once it's handled.", ["andon"])
 
 
-def think(seat: str, model: str | None, effort: str | None, system: str, user: str) -> str:
-    body = {"model": model or SEATS[seat]["default"], "temperature": 0.4, "max_tokens": 4000,
+CUT_OFF = ("length", "max_tokens")  # the stop reason of a reply that ran into max_tokens instead of finishing
+
+
+class Reply(str):
+    """A seat's reply text, carrying the API's stop reason in `stop`: `length` in the engine's OpenAI shape, `max_tokens`
+    from the Messages API, when the model was cut off mid-reply rather than finishing. Callers that don't care about that
+    use it as the string it is."""
+
+    def __new__(cls, text: str, stop: str = ""):
+        out = super().__new__(cls, text)
+        out.stop = stop
+        return out
+
+
+def cut_off(text: str) -> bool:
+    """Whether a reply from think() was cut off by the token limit. A plain string (anything but a Reply) is not."""
+    return getattr(text, "stop", "") in CUT_OFF
+
+
+def think(seat: str, model: str | None, effort: str | None, system: str, user: str, max_tokens: int = 4000) -> Reply:
+    body = {"model": model or SEATS[seat]["default"], "temperature": 0.4, "max_tokens": max_tokens,
             "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
             "venice_parameters": {"include_venice_system_prompt": False}}
     if effort:
         body["reasoning_effort"] = effort
-    out = chat(body, timeout=240)
-    text = out["choices"][0]["message"]["content"] or ""
-    return re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip() or "(empty reply)"
+    choice = chat(body, timeout=240)["choices"][0]
+    text = choice["message"]["content"] or ""
+    return Reply(re.sub(r"<think>.*?</think>", "", text, flags=re.S).strip() or "(empty reply)",
+                 choice.get("finish_reason") or "")
 
 
 RULES = """You were @mentioned in an issue or PR thread of a small agent factory. Reply as yourself, in the thread.
@@ -663,7 +683,9 @@ How to finish:
 
 REVIEW_PROMPT = """Review pull request #{pr} in {repo} for card #{n} ("{title}"). Do NOT push commits.
 Check the diff against the card and its finish line (DONE: {done}): correctness, tests, scope, anything risky.
-Leave one PR comment that starts with **Approve** or **Object**, then your reasons as a short list with file:line."""
+Leave one PR comment that starts with **Approve** or **Object** on its own first line — the verdict comes first — then
+at most five points, the most important first, each a line or two with file:line. Stop there: a review that runs long
+is cut off by the output limit mid-word, and a cut-off review casts no vote."""
 
 
 def cursor_launch(prompt: str, *, model: str | None, pr_url: str | None = None, create_pr: bool = True) -> dict:
@@ -1481,14 +1503,15 @@ def seat_token(seat: str) -> str | None:
     return os.environ.get(f"TIME_SEAT_{seat.upper()}") or None
 
 
-def post_review(pr_number: int, seat: str, model: str | None, text: str) -> str:
+def post_review(pr_number: int, seat: str, model: str | None, text: str, cut: bool = False) -> str:
     """Post a reviewer's verdict. With the seat's token it is a real review by the seat's own user (Approve ->
     APPROVED, Object -> REQUEST_CHANGES, else COMMENT); without one, or if Gitea refuses (a seat on its own PR),
-    it is Time's comment as before. Returns "seat" or "time"."""
+    it is Time's comment as before. A review `cut` off by the token limit is always a COMMENT: Time does not cast a
+    verdict the seat never finished stating. Returns "seat" or "time"."""
     body = f"{text}\n\n<sub>review by {seat} · {model or SEATS[seat]['default']} · via Time</sub>"
     token = seat_token(seat)
     if token:
-        m = VERDICT.match(text or "")
+        m = None if cut else VERDICT.match(text or "")
         event = {"approve": "APPROVED", "object": "REQUEST_CHANGES"}.get(m.group(1).lower() if m else "", "COMMENT")
         try:
             http("POST", f"{GH}/repos/{REPO}/pulls/{pr_number}/reviews", token, {"body": body, "event": event})
@@ -1519,8 +1542,34 @@ def review_note(rv: dict) -> str:
         return "No reviewer is set (`TIME_REVIEW`)."
     seats = rv.get("seats") or ([rv["seat"]] if rv.get("seat") else [])
     parts = (["A Cursor agent is reviewing it."] if rv["review"] == "cursor" else []) + \
-            ([", ".join(f"`{x}`" for x in seats) + " reviewed it on the PR."] if seats else [])
+            ([", ".join(f"`{x}`" for x in seats) + " reviewed it on the PR."] if seats else []) + \
+            (["A review ran into the output limit and casts no vote."] if rv.get("cut_off") else [])
     return " ".join(parts) or rv["review"]
+
+
+def review_max_tokens() -> int:
+    """TIME_REVIEW_MAX_TOKENS: the limit a cut-off review is asked again with (default 8000)."""
+    try:
+        return max(1, int(os.environ.get("TIME_REVIEW_MAX_TOKENS") or 8000))
+    except ValueError:
+        return 8000
+
+
+CUT_NOTE = ("⏱️ Time: this review ran into the model's output limit and is cut off below, so it casts no vote — its last "
+            "point is unfinished and a truncated review is never an objection on its own. Over to the rest of the "
+            "council, or to a human.")
+
+
+def review_reply(seat: str, model: str | None, effort: str | None, system: str, user: str) -> tuple[str, bool]:
+    """The seat's review, and whether it is still cut off. `max_tokens` ends a long review mid-word, and the half of it
+    that survives is not the verdict the seat meant: haiku's Object on PR #199 stopped mid-sentence and sent the card to
+    a human (#202). So a cut-off review is asked once more with a higher limit (TIME_REVIEW_MAX_TOKENS), and one cut off
+    again is posted with CUT_NOTE first — the note keeps VERDICT from matching it, so it casts no vote and the council
+    waits or the tie-break seat votes."""
+    text = think(seat, model, effort, system, user)
+    if cut_off(text):
+        text = think(seat, model, effort, system, user, max_tokens=review_max_tokens())
+    return (f"{CUT_NOTE}\n\n{text}", True) if cut_off(text) else (str(text), False)
 
 
 def review(card: dict, pr: dict, done: str) -> dict:
@@ -1564,9 +1613,9 @@ def review_one(card: dict, pr: dict, done: str, spec: str) -> dict:
                   + "\nThe checks listed under # Checks are the head commit's real statuses: evidence you can rely on "
                     "(a success there means that context reported success). A pending check is not yet evidence either way.")
         with finishing():  # the PR is open and paid for: its review runs past the daily cap too, within the slack
-            text = think(seat, model, effort, system, user)
-        who = post_review(pr["number"], seat, model, text)
-        return {"review": "venice", "seat": seat, "as": who}
+            text, cut = review_reply(seat, model, effort, system, user)
+        who = post_review(pr["number"], seat, model, text, cut)
+        return {"review": "venice", "seat": seat, "as": who, **({"cut_off": True} if cut else {})}
     return {"review": f"unknown spec {spec!r}"}
 
 
@@ -1763,6 +1812,7 @@ def cmd_doctor() -> int:
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default); a comma-separated list of seats, each votes")
     row("TIME_REVIEW_TIEBREAK", True, os.environ.get("TIME_REVIEW_TIEBREAK") or "none (default); a seat called only when the standing seats split")
     row("TIME_REVIEW_QUORUM", True, os.environ.get("TIME_REVIEW_QUORUM") or "1 (default); approvals needed, net of objections")
+    row("TIME_REVIEW_MAX_TOKENS", True, os.environ.get("TIME_REVIEW_MAX_TOKENS") or "8000 (default); a review cut off at 4000 is asked again with this")
     today, day_cap, month, month_cap = budget()
     row("TIME_DAILY_USD", True, os.environ.get("TIME_DAILY_USD") or "5 (default)")
     row("TIME_CAP_SLACK", True, os.environ.get("TIME_CAP_SLACK") or "1.5 (default)")

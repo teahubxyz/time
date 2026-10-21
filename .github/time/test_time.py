@@ -252,6 +252,55 @@ assert "evidence you can rely on" in seen["system"] and "pending check is not ye
 assert "lazy senior developer" not in seen["system"], "a reviewer never gets Ponytail: it reviews, it does not write the diff"
 run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [prh]), {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"})
 assert "# Checks\n(checks unavailable)\n\n# Diff" in seen["user"], seen["user"]
+# the prompt asks for the verdict first and at most five points, so a review fits the limit (#202)
+assert "on its own first line" in seen["system"] and "at most five points" in seen["system"] and "cut off by the output limit" in seen["system"]
+
+# 9c a review the model cut off is asked again with a higher limit; cut off twice it is posted as no vote (#202)
+real_chat = tm.chat
+def scripted_chat(*reps):
+    """The model's replies in the engine's OpenAI shape, one (text, finish_reason) each; `asked` collects every max_tokens."""
+    it, asked = iter(reps), []
+    def chat(body, timeout=0):
+        asked.append(body["max_tokens"]); text, fin = next(it)
+        return {"choices": [{"message": {"role": "assistant", "content": text}, "finish_reason": fin}], "usage": {}}
+    return chat, asked
+def review_run(*reps, token="kimi-tok"):
+    tm.think = real_think
+    tm.chat, asked = scripted_chat(*reps)
+    tm.pr_diff = lambda n, limit=0: "diff --git a b"
+    if token: os.environ["TIME_SEAT_KIMI"] = token
+    try: return run(World([card(1, D)], {1: [beat("dispatched", launched=True)]}, [pr]),
+                    {"TIME_MODE": "live", "CURSOR_API_KEY": "ck", "TIME_REVIEW": "venice:kimi"}), asked
+    finally: os.environ.pop("TIME_SEAT_KIMI", None); tm.chat = real_chat
+CUT = "**Object** - **astra.py, `parked_c"   # haiku's review of PR #199, where it stopped
+# a complete reply: one call at the usual limit, and it votes as before
+w, asked = review_run(("**Approve** fine", "stop"))
+assert asked == [4000] and w.reviews_posted[0][2]["event"] == "APPROVED" and tm.CUT_NOTE not in w.reviews_posted[0][2]["body"]
+# cut off once -> asked again with TIME_REVIEW_MAX_TOKENS, and the complete second reply is the verdict
+w, asked = review_run((CUT, "length"), ("**Approve** complete this time", "stop"))
+assert asked == [4000, 8000], asked
+b = w.reviews_posted[0][2]
+assert b["event"] == "APPROVED" and b["body"].startswith("**Approve** complete this time") and tm.CUT_NOTE not in b["body"]
+assert "casts no vote" not in w.posted[0][1] and tm.beats_of(w.comments[1])[-1].get("cut_off") is None
+os.environ["TIME_REVIEW_MAX_TOKENS"] = "12000"
+assert review_run((CUT, "length"), ("**Approve** ok", "stop"))[1] == [4000, 12000]
+os.environ.pop("TIME_REVIEW_MAX_TOKENS")
+assert tm.review_max_tokens() == 8000
+os.environ["TIME_REVIEW_MAX_TOKENS"] = "lots"; assert tm.review_max_tokens() == 8000; os.environ.pop("TIME_REVIEW_MAX_TOKENS")
+# cut off twice (`length`, then the Messages API's `max_tokens`) -> posted with the note, and it casts no vote
+w, asked = review_run((CUT, "length"), (CUT + "ard is still", "max_tokens"))
+assert asked == [4000, 8000]
+n, tok, b = w.reviews_posted[0]
+assert (n, tok, b["event"]) == (7, "kimi-tok", "COMMENT"), "a truncated review is never an Object on its own"
+assert b["body"].startswith(tm.CUT_NOTE) and "output limit" in b["body"] and "parked_card is still" in b["body"]
+assert tm.VERDICT.match(b["body"]) is None, "the note comes first, so the half-written verdict is no vote"
+assert "casts no vote" in w.posted[0][1] and "`kimi` reviewed" in w.posted[0][1]
+assert tm.beats_of(w.comments[1])[-1]["cut_off"] is True
+# without a seat token it is Time's comment, and that comment is no vote either
+w, _ = review_run((CUT, "length"), (CUT, "length"), token=None)
+assert not getattr(w, "reviews_posted", []) and w.posted[0][0] == 7 and w.posted[0][1].startswith(tm.CUT_NOTE)
+assert not [c for c in w.comments[7] if tm.VERDICT.match(c["body"])], "no verdict comment from a cut-off review"
+tm.think = real_think
 
 # 10 doctor
 for k in ("VENICE_API_KEY", "CURSOR_API_KEY"): os.environ.pop(k, None)
@@ -698,6 +747,10 @@ rep = tm.from_messages({"content": [{"type": "thinking", "thinking": "hm", "sign
 m = rep["choices"][0]["message"]
 assert m["content"] == "Looking." and m["tool_calls"] == [{"id": "tu1", "type": "function", "function": {"name": "read_file", "arguments": '{"path": "a.py"}'}}]
 assert rep["usage"] == {"prompt_tokens": 100, "completion_tokens": 5, "cache_read": 90, "cache_write": 0} and rep["choices"][0]["finish_reason"] == "tool_use"
+# the stop reason travels: `max_tokens` from the Messages API, `length` in the OpenAI shape, and a reply carries it (#202)
+assert tm.from_messages({"content": [{"type": "text", "text": "cut"}], "stop_reason": "max_tokens"})["choices"][0]["finish_reason"] == "max_tokens"
+assert tm.Reply("hi", "length") == "hi" and tm.cut_off(tm.Reply("hi", "length")) and tm.cut_off(tm.Reply("hi", "max_tokens"))
+assert not tm.cut_off(tm.Reply("hi", "stop")) and not tm.cut_off(tm.Reply("hi")) and not tm.cut_off("a plain string")
 req = tm.to_messages({"model": "claude-sonnet-5-5", "max_tokens": 16000, "tools": oa_tools, "messages": [
     {"role": "system", "content": "rules"}, {"role": "user", "content": "Begin."},
     {"role": "assistant", "content": m["content"], "tool_calls": m["tool_calls"]},
