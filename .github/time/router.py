@@ -31,6 +31,10 @@ gathered or how picks are queued.
 Outcomes (#172): a bandit learns from rewards, so every live pick's outcome is recorded once the card settles — one
 line in `time/ledger/router-outcomes.jsonl`, written by the daily housekeeping sweep, and one summary line per kind
 over Astra's table. Nothing here reads them back into a pick yet; `score` is still the whole policy.
+
+The same work twice (#198): `repeat_of` is the rule for two cards being the same work (Astra checks a title it is about
+to write against the board; housekeeping checks every open card against the cards closed lately, and `superseded`
+lists the ones another card looks to have finished). Both are hints for a reader, never an action.
 """
 from __future__ import annotations
 
@@ -333,3 +337,56 @@ def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cl
     more = f"\n\n_{len(ranked) - limit} more ranked below these._" if len(ranked) > limit else ""
     return ("| # | card | kind | value | size | waiting | restless | score | why | status |\n|---|---|---|---|---|---|---|---|---|---|\n"
             + "\n".join(rows) + more)
+
+
+# ---------- the same work twice: repeats and superseded cards (#198) ----------
+# Nobody here closes or drops a card: these two functions say "these look like the same work", and a reader decides.
+# Astra asks before writing a card; housekeeping's sweep asks of every open card, so a card whose work landed under
+# another number doesn't sit on the board being ranked and queued again.
+
+# `Port: #139`, `Port of #139`, `Follows #48`, `Follows on from #48`, `Follow-up to #48`: the card this one carries
+# over from or continues, the way `Depends on #N` names what it waits on.
+REF = re.compile(r"\b(?:Port(?:s|ed|ing)?|Follow-up|Follows?)\b(?:[\s:]*(?:of|from|on|to|up))*[\s:]*#(\d+)", re.I)
+
+
+def _norm(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+
+
+def repeat_of(title: str, known: list[dict]) -> int | None:
+    """The card a title repeats, if any: the same words, or the whole of one title (four words or more) inside the
+    other. Not a similarity score: sibling cards share most of their words ("Tool: havre_check", "Tool: havre_new") and
+    are not repeats. Paraphrases are the reader's to spot."""
+    t = _norm(title)
+    for i in known:
+        k = _norm(i.get("title", ""))
+        short, long_ = sorted((t, k), key=len)
+        if t and k and (t == k or (len(short.split()) >= 4 and short in long_)):
+            return i.get("number")
+    return None
+
+
+def refs(body: str | None) -> set[int]:
+    """The cards a body ports or follows (`REF`)."""
+    return {int(n) for n in REF.findall(body or "")}
+
+
+def superseded(open_cards: list[dict], closed: list[dict]) -> list[dict]:
+    """Open cards whose work a closed card looks to have already done: `{"n", "title", "by", "why"}`, by card number.
+    Three signals, in order of how much they say, and the first that hits is the one reported:
+      - the closed card's title repeats the open one's (`repeat_of`),
+      - the closed card ports or follows the open card itself (`Port of #48` on the card that landed),
+      - both cards port or follow the same card (two goes at carrying the same work over).
+    A hint, never a verdict: a reader decides what to close, so the lists stay small and the rule stays checkable."""
+    done = [(c, refs(c.get("body"))) for c in closed if isinstance(c.get("number"), int)]
+    out = []
+    for i in open_cards:
+        n, title = i.get("number"), i.get("title") or ""
+        mine = refs(i.get("body"))
+        others = [(c, r) for c, r in done if c["number"] != n]
+        hit = next(((c, "the same title") for c, _ in others if repeat_of(title, [c])), None) \
+            or next(((c, f"#{c['number']} follows it") for c, r in others if n in r), None) \
+            or next(((c, "both carry over " + ", ".join(f"#{k}" for k in sorted(mine & r))) for c, r in others if mine & r), None)
+        if hit:
+            out.append({"n": n, "title": _txt(title, 120), "by": hit[0]["number"], "why": hit[1]})
+    return out

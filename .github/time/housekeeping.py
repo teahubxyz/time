@@ -2,7 +2,7 @@
 
     python3 .github/time/housekeeping.py      # daily (housekeeping.yml), or by hand
 
-Five steps, each idempotent (a second run finds nothing to do) and each logged:
+Six steps, each idempotent (a second run finds nothing to do) and each logged:
   1. branches   delete every branch whose PR merged into the default branch. Never the default branch, `gh-pages`, a
                 protected branch, a branch with an open PR, or a branch that has commits newer than its merge.
   2. signals    close `signal` issues whose venture's measuring window (TIME_VENTURE_MEASURE_DAYS, default 7) has passed
@@ -13,6 +13,9 @@ Five steps, each idempotent (a second run finds nothing to do) and each logged:
                 at day 7. A pick whose card is still open is in flight and waits for a later sweep.
   5. stale      list, never act: `needs-human` untouched for 3 days, open PRs idle 7 days, cards parked after their
                 automatic retries, cards whose last beat is `error` for 2 days. One comment on the Astra log; none if empty.
+  6. superseded list, never act (#198): open cards whose work a card closed in the last 30 days looks to have done —
+                the same title, or the same `Port`/`Follows` reference. Listed under the stale list with the closing
+                card's number, for Astra and the CEO to decide; nothing is closed here.
 Then one summary line on the Astra log. Only TIME_MODE=live changes anything; anything else (the default) prints what it
 would do and writes nothing, comments included. A step that fails is logged and the others still run (exit code 1).
 """
@@ -40,6 +43,7 @@ NEVER = {"gh-pages"}          # besides the default branch and protected ones
 LOG_TITLE = "Astra log"
 LOG_FALLBACK = 57             # the Astra log's number here, if it cannot be found by title
 NEEDS_HUMAN_DAYS, PR_IDLE_DAYS, ERROR_DAYS = 3, 7, 2
+SUPERSEDED_DAYS = 30          # how far back the sweep looks for the card that did an open card's work (#198)
 VENTURES = "ventures/ventures.json"   # the venture registry (venture.py writes it), on the Pages branch
 PAGES_BRANCH = "gh-pages"
 
@@ -354,10 +358,15 @@ def stale(now: dt.datetime) -> dict[str, list[tuple[int, float, str]]]:
     return out
 
 
-def stale_text(found: dict[str, list[tuple[int, float, str]]]) -> str:
+def stale_text(found: dict[str, list[tuple[int, float, str]]], supers: list[dict] = ()) -> str:
     lines = ["🧹 Housekeeping: the stale list (nothing was changed; for the steward)", ""]
     for cat, rows in found.items():
         lines.append(f"- {cat}: " + "; ".join(f"#{n} {t[:60]} ({a:.0f}d)" for n, a, t in sorted(rows)))
+    if supers:
+        lines += ([""] if found else []) + [
+            f"Likely superseded: a card closed in the last {SUPERSEDED_DAYS} days looks to have done this card's work. "
+            "Nothing was closed; Astra or the CEO decides."]
+        lines += [f"- #{s['n']} {s['title'][:60]} — done by #{s['by']} ({s['why']})" for s in supers]
     return "\n".join(lines)
 
 
@@ -368,6 +377,25 @@ def log_issue() -> int:
     return LOG_FALLBACK
 
 
+# ---------- 6. the superseded list ----------
+
+def cards(query: str) -> list[dict]:
+    """This repo's issues (never PRs, never the Astra log) matching `query`, every page of them."""
+    return [i for i in paged(f"{repo()}/issues?type=issues&{query}")
+            if not i.get("pull_request") and i.get("title") != LOG_TITLE]
+
+
+def superseded(now: dt.datetime) -> list[dict]:
+    """Open cards whose work a card closed in the last SUPERSEDED_DAYS days looks to have done (#198). Read-only: the
+    sweep lists them with the closing card's number and a reader decides. Gitea's `since` filters on the last update,
+    so a card closed longer ago than the window is dropped here. The venture loop's own issues are left out of both
+    lists: they are not cards, and two signups for one venture carry the same title by design."""
+    loop = lambda i: bool(router.labels_of(i) & router.LOOP)
+    closed = [i for i in cards(f"state=closed&since={stamp(now - dt.timedelta(days=SUPERSEDED_DAYS))}")
+              if not loop(i) and age_days(i.get("closed_at"), now) <= SUPERSEDED_DAYS]
+    return router.superseded([i for i in cards("state=open") if not loop(i)], closed)
+
+
 # ---------- the run ----------
 
 def main() -> int:
@@ -376,7 +404,6 @@ def main() -> int:
     log(f"housekeeping {now:%Y-%m-%dT%H:%MZ} mode={'live' if live else 'dry-run'}")
     failed = 0
     done = {"branches": 0, "signals": 0, "milestones": 0, "outcomes": 0}
-    found: dict = {}
     for name, step in (("branches", lambda: step_branches(live)), ("signals", lambda: step_signals(live, now)),
                        ("milestones", lambda: step_milestones(live)), ("outcomes", lambda: step_outcomes(live, now))):
         try:
@@ -384,24 +411,29 @@ def main() -> int:
         except Exception as e:  # noqa: BLE001  one step must not stop the others
             failed += 1
             log(f"{name}: failed: {type(e).__name__}: {str(e)[:200]}")
-    try:
-        found = stale(now)
-    except Exception as e:  # noqa: BLE001
-        failed += 1
-        log(f"stale: failed: {type(e).__name__}: {str(e)[:200]}")
+    read: dict = {}
+    for name, step in (("stale", lambda: stale(now)), ("superseded", lambda: superseded(now))):
+        try:                                     # the two read-only lists: one failing never hides the other
+            read[name] = step()
+        except Exception as e:  # noqa: BLE001
+            failed += 1
+            log(f"{name}: failed: {type(e).__name__}: {str(e)[:200]}")
+    found, supers = read.get("stale") or {}, read.get("superseded") or []
     count = len({r[0] for rows in found.values() for r in rows})
-    if found:
-        log(stale_text(found))
+    if found or supers:
+        log(stale_text(found, supers))
     line = (f"🧹 Housekeeping: {done['branches']} branch(es) deleted, {done['signals']} signal issue(s) closed, "
-            f"{done['milestones']} milestone(s) closed, {done['outcomes']} router pick(s) settled, {count} stale."
+            f"{done['milestones']} milestone(s) closed, {done['outcomes']} router pick(s) settled, {count} stale, "
+            f"{len(supers)} likely superseded."
             + (f" {failed} step(s) failed; see the run log." if failed else ""))
     log(line)
     if live:
         try:
             target = log_issue()
-            if found:
-                tm.comment(target, stale_text(found), {"housekeeping": "stale", "count": count})
-            tm.comment(target, line, {"housekeeping": "run", **done, "stale": count})
+            if found or supers:
+                tm.comment(target, stale_text(found, supers),
+                           {"housekeeping": "stale", "count": count, "superseded": [s["n"] for s in supers]})
+            tm.comment(target, line, {"housekeeping": "run", **done, "stale": count, "superseded": len(supers)})
         except Exception as e:  # noqa: BLE001
             failed += 1
             log(f"log: failed: {type(e).__name__}: {str(e)[:200]}")

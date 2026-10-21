@@ -1297,9 +1297,9 @@ assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2
 assert [m[0] for m in made80] == ["Write a thing"], made80
 assert "#137 A label filter is checked on every row" in asked80[-1][2] and "closed lately" in asked80[-1][1]
 assert "Not written, repeats of existing cards: A label filter is checked on every row (#137); Fix the docs! (#2)." in said80[-1][1], said80[-1][1]
-assert astra.repeat_of("Write a thing", open80 + closed80) is None and astra.repeat_of("", open80) is None
-assert astra.repeat_of("Tool: havre_new", [iss80(100, "Tool: havre_check")]) is None, "siblings are not repeats"
-assert astra.repeat_of("Anthem: SKILL.md, /llms.txt and a skills index", [iss80(112, "Glitztype: SKILL.md, /llms.txt and a skills index")]) is None
+assert rt.repeat_of("Write a thing", open80 + closed80) is None and rt.repeat_of("", open80) is None
+assert rt.repeat_of("Tool: havre_new", [iss80(100, "Tool: havre_check")]) is None, "siblings are not repeats"
+assert rt.repeat_of("Anthem: SKILL.md, /llms.txt and a skills index", [iss80(112, "Glitztype: SKILL.md, /llms.txt and a skills index")]) is None
 astra.tm.issues = lambda q: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
 assert astra.closed_lately() == [], "the closed list is context: unreadable, it is empty"
 astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent = real175[:3]
@@ -1434,6 +1434,28 @@ assert "spine issues unreadable" in out173.getvalue(), out173.getvalue()
 assert said80[-1][2]["queued"] == 2 and "teahub#" not in said80[-1][1], "the day's ranking goes up without the spine"
 astra.tm.gh, spine80[:] = real173, []
 print("ALL OK 173")
+
+# 198 the same work twice: an open card whose work a lately closed card looks to have done. The planner's repeat rule
+# and the sweep's superseded list share one copy of it in router.py; test_housekeeping.py checks the report the sweep
+# writes from this list. Nothing here closes anything: it is a hint for Astra and the CEO.
+assert rt.refs("Port of #139\nFollows on from #48") == {139, 48} and rt.refs(None) == set()
+assert rt.refs("Port: #139") == {139} and rt.refs("Follow-up to #48") == {48} and rt.refs("Ported from #90") == {90}
+assert rt.refs("Portfolio #3, and the report #4") == set(), "a reference, not any word that starts with Port"
+assert rt.refs("Depends on #7") == set(), "waiting on a card is not carrying it over"
+# a World of two open cards: #48, whose work #139 did under another number, and #60, which is live
+open198 = [iss80(48, "Sync: bring the copy's branches home", body="Port of #12\n\nDONE: x"),
+           iss80(60, "Inference: one shared worker", body="DONE: y")]
+closed198 = [iss80(139, "Sync: bring the copy's branches home again", body="Port of #12\n\nDONE: x"),
+             iss80(140, "Something else entirely", body="DONE: z")]
+got198 = rt.superseded(open198, closed198)
+assert [(s["n"], s["by"], s["why"]) for s in got198] == [(48, 139, "the same title")], got198
+assert got198[0]["title"] == "Sync: bring the copy's branches home", "the open card's own title, for the report"
+assert rt.superseded(open198, []) == [] and rt.superseded([], closed198) == [], "nothing closed lately, nothing to say"
+# the other two signals, when the titles differ: the closed card follows the open one, or both carry the same card over
+assert rt.superseded([iss80(48, "A")], [iss80(139, "B", body="Follows #48\nDONE: x")])[0]["why"] == "#139 follows it"
+assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(139, "B", body="Port of #12")])[0]["why"] == "both carry over #12"
+assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(48, "A", body="Port of #12")]) == [], "a card never supersedes itself"
+print("ALL OK 198")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib

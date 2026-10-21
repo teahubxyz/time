@@ -277,6 +277,36 @@ def test_outcomes_venture():
     assert json.loads(f.commits[0][2][hk.router.OUTCOMES])["signups"] is None
 
 
+def test_superseded():
+    """#198: a World of two open cards, one whose work a lately closed card did and one live, and a closed twin outside
+    the 30-day window. The report names the closing card; nothing is closed."""
+    twin = "Port of #12\n\nDONE: x"
+    f = Forge(issues=[ASTRA_LOG,
+                      {"number": 48, "title": "Sync: bring the copy's branches home", "body": twin},
+                      {"number": 60, "title": "Inference: one shared worker", "body": "DONE: y"},
+                      {"number": 70, "title": "Doctor: check the seats", "body": "Port of #30\n\nDONE: x"},
+                      {"number": 80, "title": "Early access: Huebrain", "labels": ["signup"], "body": "me too"},
+                      {"number": 81, "title": "Early access: Huebrain", "labels": ["signup"], "state": "closed",
+                       "closed_at": iso(2), "body": "me too"},
+                      {"number": 139, "title": "Sync: bring the copy's branches home again", "state": "closed",
+                       "closed_at": iso(2), "body": twin},
+                      {"number": 141, "title": "Doctor: check the seats twice", "state": "closed",
+                       "closed_at": iso(40), "body": "Port of #30\n\nDONE: x"}])
+    assert f.run() == 0
+    texts = [b for n, b in f.posted if n == LOG and "Likely superseded" in b]
+    assert len(texts) == 1, f.posted
+    t = texts[0]
+    assert "#48 Sync: bring the copy's branches home — done by #139 (the same title)" in t, t
+    assert "#60" not in t, "the live card is not listed"
+    assert "#70" not in t, "its twin closed 40 days ago, outside the window"
+    assert "#80" not in t, "two signups for one venture share a title: the loop's own issues are not cards"
+    assert any("1 likely superseded" in b for _, b in f.posted), f.posted
+    assert f.issues[48]["state"] == "open" and [w for w in f.writes if w[0] == "PATCH"] == [], "the sweep closes nothing"
+    # an empty board says nothing about supersession, and the one summary line still goes up
+    f = Forge(issues=[ASTRA_LOG]); f.run()
+    assert [b for _, b in f.posted if "Likely superseded" in b] == [] and "0 likely superseded" in f.posted[0][1]
+
+
 def test_dry_run():
     f = Forge(branches=["main", "time/card-53"], prs=[pr(1, "time/card-53", "closed", True)],
               issues=[ASTRA_LOG, sig(10, "spent", 8), {"number": 30, "labels": ["needs-human"], "updated_at": iso(9)},
@@ -292,7 +322,7 @@ def test_dry_run():
 
 if __name__ == "__main__":
     tests = [test_branches, test_signals, test_milestones, test_outcomes, test_outcomes_venture, test_stale,
-             test_unknown_label, test_dry_run]
+             test_unknown_label, test_superseded, test_dry_run]
     for t in tests:
         t()
         print("ok", t.__name__)

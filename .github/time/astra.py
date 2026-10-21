@@ -239,23 +239,6 @@ def closed_lately(days: int = 14) -> list[dict]:
         return []
 
 
-def _norm(title: str) -> str:
-    return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
-
-
-def repeat_of(title: str, known: list[dict]) -> int | None:
-    """The open or lately closed card a proposed title repeats, if any: the same words, or the whole of one title (four
-    words or more) inside the other. Not a similarity score: sibling cards share most of their words ("Tool: havre_check",
-    "Tool: havre_new") and are not repeats. Paraphrases are the seat's to avoid, with the closed list in front of it."""
-    t = _norm(title)
-    for i in known:
-        k = _norm(i.get("title", ""))
-        short, long_ = sorted((t, k), key=len)
-        if t and k and (t == k or (len(short.split()) >= 4 and short in long_)):
-            return i.get("number")
-    return None
-
-
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
@@ -284,7 +267,7 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     picks = router.pick([r for r in ranked if r["key"] not in sent], cfg, left, max_ready)
     new, repeats = [], []
     for c in [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]:
-        n = repeat_of(str(c["title"]), open_issues + closed)
+        n = router.repeat_of(str(c["title"]), open_issues + closed)   # the sweep checks the board with the same rule (#198)
         (repeats.append((c, n)) if n else new.append(c))
     new = new[:max_new]
     live, created = cfg["mode"] == "live", []
