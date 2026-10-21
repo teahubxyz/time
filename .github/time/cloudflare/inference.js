@@ -130,7 +130,8 @@ async function render(body, env, h) {
   let out, err;
   if (env.RUNWARE_API_KEY) { try { out = await renderRunware(body, env); } catch (e) { err = e; } }
   if (!out) { try { out = await renderVenice(body, env); } catch (e) { return json({ error: (err ? err.message + "; then " : "") + e.message }, e.status || 502, h); } }
-  const headers = { "content-type": out.type, "x-renderer": out.renderer, "access-control-expose-headers": "x-seed, x-cost, x-renderer", ...h };
+  const headers = { "content-type": out.type, "x-renderer": out.renderer, "access-control-expose-headers": "x-seed, x-cost, x-renderer, x-fallback", ...h };
+  if (err) headers["x-fallback"] = String(err.message).replace(/[^\x20-\x7e]/g, "?").slice(0, 160);
   if (out.seed != null) headers["x-seed"] = String(out.seed);
   if (out.cost != null) headers["x-cost"] = String(out.cost);
   return new Response(out.body, { status: 200, headers });
