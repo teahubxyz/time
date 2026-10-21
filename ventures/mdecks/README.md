@@ -10,7 +10,7 @@ People who make a quick throwaway deck every week — sprint demos, status updat
 
 ## How to use it
 
-1. Open the page and type markdown-ish text in the editor on the left. It comes preloaded with a sample deck so you can see real output immediately.
+1. Open the page and type markdown-ish text in the editor on the left. It comes preloaded with a sample deck so you can see real output immediately. Already have a `.md` file? Drop it anywhere on the page, or press **Open .md** above the editor; the file is read in the tab and replaces the text.
 2. Watch the preview on the right re-typeset live. Navigate with the arrow keys (or swipe on touch screens); a progress bar tracks your place.
 3. A slide with too much text shrinks to fit, down to 70% of the normal size. Past that it's cut into two or more slides, between lines and never right after a heading, and each new slide repeats its title with "(cont.)". A note under the preview says which slides were cut; put in a `---` yourself to choose the break. Cuts are worked out for a 1280x720 screen, so the copied deck has the same slides on any screen, and on a smaller one they shrink a little more.
 4. Press **Copy deck as HTML** to copy the whole deck as one self-contained HTML file. Open it in any browser and present with the arrow keys — offline, no dependencies.
