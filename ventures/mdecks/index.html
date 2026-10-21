@@ -87,12 +87,34 @@
     flex-direction: column;
     min-height: 0;
   }
+  .editor-pane .label-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
   .editor-pane label {
     font-size: 0.78rem;
     text-transform: uppercase;
     letter-spacing: 0.08em;
     color: var(--ink-dim);
-    margin-bottom: 6px;
+  }
+  .editor-pane .open { padding: 4px 10px; font-size: 0.78rem; }
+  #file { display: none; }
+  body.dropping textarea { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(110,168,254,0.25); }
+  body.dropping::after {
+    content: "Drop your .md file to open it";
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15,17,21,0.75);
+    color: var(--ink);
+    font-size: 1.3rem;
+    pointer-events: none;
+    z-index: 10;
   }
   textarea {
     flex: 1;
@@ -402,12 +424,16 @@
 </header>
 <main id="try">
   <section class="editor-pane">
-    <label for="src">Slides</label>
+    <div class="label-row">
+      <label for="src">Slides</label>
+      <button id="open" class="open" type="button">Open .md</button>
+      <input id="file" type="file" accept=".md,.markdown,.txt,text/markdown,text/plain">
+    </div>
     <textarea id="src" spellcheck="false"></textarea>
     <p class="hint">
       <code># Title</code> heading · <code>## Subtitle</code> · <code>- bullet</code> point ·
       <code>---</code> on its own line starts a new slide · inline <code>**bold**</code>, <code>*italic*</code>, <code>`code`</code>.
-      Plain lines become paragraphs.
+      Plain lines become paragraphs. Or drop a <code>.md</code> file anywhere on the page.
     </p>
   </section>
   <section class="stage">
@@ -429,7 +455,7 @@
   <div class="steps">
     <div class="step">
       <h3>Type your slides</h3>
-      <p>Markdown-ish text in the editor: headings, bullets, paragraphs, <code>---</code> between slides. The syntax is the stuff you already type.</p>
+      <p>Markdown-ish text in the editor: headings, bullets, paragraphs, <code>---</code> between slides. The syntax is the stuff you already type. Already have a <code>.md</code> file? Drop it on the page.</p>
     </div>
     <div class="step">
       <h3>Watch it set live</h3>
@@ -475,7 +501,7 @@
       <div class="price">$0</div>
       <p>For anyone who needs a quick deck right now.</p>
       <ul>
-        <li>Full plain-text editor</li>
+        <li>Full plain-text editor; drop in a <code>.md</code> file to start from one</li>
         <li>Live navigable preview with arrow keys and progress bar</li>
         <li>One-click copy of the deck as self-contained HTML</li>
         <li>Links with the deck inside them, nothing stored</li>
