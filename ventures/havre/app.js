@@ -54,7 +54,7 @@ const K = { cards: "havre.cards.v1", sel: "havre.selected", key: "havre.key", mo
   memory: "havre.memory.v1",
   // the pictures this browser made with AI (their fingerprints): an adult character's photos and clips can be adult
   // only when every picture on their card is one of these
-  made: "havre.pictures.made.v1",
+  made: "havre.pictures.made.v1", art: "havre.pictures.art.v1", artOk: "havre.pictures.art-ok",
   // the pages of Venice's characters this tab saw lately (in sessionStorage, so they last as long as the tab)
   pages: "havre.venice.pages",
   // your chats: the list of threads, each thread's messages under its own key, the threads deleted (so another tab
@@ -1816,7 +1816,11 @@ function renderTools() {
     }
   }
   if (S.ab.hear) items.push(linkish("record a voice note", startRecording));
-  if (S.ab.see) items.push(linkish("send a photo", () => $("#photo-in").click()));
+  if (S.photoPick) {                                             // send a photo: one of yours, or one made with ai
+    items.push(linkish("upload a photo", () => { S.photoPick = false; renderTools(); $("#photo-in").click(); }),
+      linkish("make one with ai", () => { S.photoPick = false; renderTools(); snap($("#say").value.trim()); }),
+      linkish("cancel", () => { S.photoPick = false; renderTools(); }));
+  } else if (S.ab.see) items.push(linkish("send a photo", () => { S.photoPick = true; renderTools(); }));
   items.push(linkish("abilities", openAbilities));
   p.append(...slashed(items));
 }
@@ -2224,13 +2228,57 @@ function adultFor(c, t = null, shot = "", { drawn = false } = {}) {
   const said = t ? t.msgs.filter((m) => m && !m.demo).slice(-12).flatMap((m) => [typeof m.content === "string" ? m.content : "", m.media && m.media.shot]) : [];
   return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)) || OUTERFACE.test(p || ""), shot, said, drawn });
 }
+/** uploaded pictures that passed the check: art you have the rights to, everyone in it grown up (clearArt) */
+const artKeys = () => new Set(local.get(K.art, []) || []);
+const artFlags = new Map();                                     // this session's "why not" per picture key
+/**
+ * Uploaded pictures on an adult character's card, checked: you confirm once that they're art you have the rights to
+ * and that everyone in them is an adult; then a private model that can see looks at each one (A.ART_PROMPT). Art that
+ * looks grown up joins the cleared list (and counts as made here); a photo of a real person never does: it stays
+ * fine for safe-for-work pictures, and "make one with ai" redraws the character from words if it was flagged wrongly.
+ */
+async function clearArt(c) {
+  if (!c || c.plain || !S.key) return;
+  const made = madeKeys(), art = artKeys();
+  const pics = [c.portrait, ...((c.look && c.look.references) || [])].filter(Boolean)
+    .filter((p) => !made.has(keyOf(p)) && !art.has(keyOf(p)) && !OUTERFACE.test(p));
+  if (!pics.length) { adultChanged(); return; }
+  if (!local.get(K.artOk, false)) {
+    if (!confirm("Check these pictures for adult photos and clips?\n\nBy going on you confirm that each one is art of a fictional character (drawn, painted, rendered or made with AI), that you own it or have permission to use it, and that everyone in it is an adult, 18 or older.\n\nA private Venice model looks at each one. A photograph of a real person is never used for adult pictures.")) return;
+    local.set(K.artOk, true);
+  }
+  await loadModels();
+  const sm = seeModel();
+  if (!sm) { toast("No Venice model can see pictures right now."); return; }
+  toast(`${sm.name} is checking ${pics.length === 1 ? "the picture" : pics.length + " pictures"}…`);
+  let ok = 0, photo = 0, young = 0, unsure = 0;
+  for (const p of pics) {
+    try {
+      const url = p.startsWith("data:") ? await shrinkImage(dataBlob(p), 768, "image/jpeg", { svg: false }) : p;
+      const r = await new Venice(S.key).chat({ model: sm.id, maxTokens: 60, temperature: 0,
+        messages: [{ role: "user", content: [{ type: "text", text: A.ART_PROMPT }, { type: "image_url", image_url: { url } }] }] });
+      const a = A.parseArt(r.text), key = keyOf(p);
+      if (!a.answered) { unsure++; continue; }
+      if (!a.art) { photo++; artFlags.set(key, "photo"); continue; }
+      if (!a.adult) { young++; artFlags.set(key, "young"); continue; }
+      local.set(K.art, [...(local.get(K.art, []) || []).filter((k) => k !== key), key].slice(-400));
+      artFlags.delete(key);
+      ok++;
+    } catch { unsure++; }
+  }
+  const bits = [ok && `${ok} cleared`, photo && `${photo} looked like a photo of a real person (if it's AI art, card → look: make one with ai redraws them from words)`,
+    young && `${young} didn't clearly show an adult`, unsure && `${unsure} couldn't be checked; try again`].filter(Boolean);
+  toast(bits.join("; ") + ".");
+  adultChanged();
+}
 /** under the adult box on their card: whether their photos and clips can be adult, and if not, why */
 function renderAdultNote(c) {
   const p = $("#adult-note");
   const ad = c && !c.plain && c.adult ? adultFor(c) : null;
   p.hidden = !ad;
-  if (ad) p.textContent = ad.ok ? "their photos and clips can be adult: every picture on their card was made here with ai. never anyone under 18, never a real person."
+  if (ad) p.textContent = ad.ok ? "their photos and clips can be adult: every picture on their card was made here with ai or checked as art. never anyone under 18, never a real person."
     : ad.why;
+  if (ad && !ad.ok && ad.uploaded && S.key) p.append(" ", linkish("check them", () => clearArt(card())));
 }
 /** the adult switch, or what you've said about your age, changed: what shows it catches up */
 function adultChanged() {
@@ -2345,6 +2393,7 @@ function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
   if (id === "photoshoot") return photoshoot(idea, { door });
   if (id === "recall") return recall(idea);
   if (id === "whisper") return whisper(idea);
+  if (id === "snap") return snap(idea);
 }
 /** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
 function threadFor(c) {
@@ -3002,6 +3051,39 @@ async function hearVoice(blob, to) {
 }
 
 // ---------- abilities: your photos ----------
+/**
+ * /snap (or send a photo → make one with ai): a picture you describe, made with the portrait model (safe mode on),
+ * sent as yours. They're told what's in it in words, and it's marked as made with ai.
+ */
+let snapping = false;
+async function snap(words = "") {
+  const c = card();
+  if (!c) return;
+  if (!S.key) return needKey("pictures need your venice key.");
+  if (snapping) { toast("A picture is already being made."); return; }
+  let what = String(words || "").trim();
+  if (!what) what = (prompt("What's in the picture? (the pizza you made, the view from your window…)") || "").trim();
+  if (!what) return;
+  await loadList("image");
+  const pm = portraitModel();
+  if (!pm) { err("No Venice image model is available right now."); return; }
+  if (!confirm(`Make a picture of “${what.slice(0, 120)}” with ${pm.name} and send it as yours? About ${pm.price != null ? A.usd(pm.price) : "a few cents"} on your Venice key.`)) return;
+  const to = { card: S.sel, thread: S.open, at: Date.now() };
+  snapping = true;
+  S.inflight++;
+  const note = put(line(`making your picture with ${pm.name}…`, "havre", "typing"));
+  scrollLog(true);
+  try {
+    const { blob, blurred } = await new Venice(S.key).generateImage({ model: pm.id, prompt: what.slice(0, pm.promptLimit || 1500), safe: true });
+    note.remove();
+    if (blurred) { err("Venice's safe mode blurred that picture, so it wasn't sent. Try describing it differently."); return; }
+    const id = await M.put(blob);
+    if ($("#say").value.trim() === what) { $("#say").value = ""; growSay(); }
+    await idle();
+    if (stillWith(to, "photo")) await send("", { media: { kind: "photo-in", id, saw: what, seer: "made with ai", made: true, model: pm.name, price: pm.price } });
+    balanceSoon();
+  } catch (e) { note.remove(); err(e.message || String(e)); } finally { snapping = false; S.inflight--; }
+}
 async function sendPhoto(file) {
   S.inflight++;
   try { await showPhoto(file); } finally { S.inflight--; }
