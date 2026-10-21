@@ -29,6 +29,7 @@ DEFAULTS = {
     "CHAT_MODELS": "claude-haiku-5-5,google-gemma-4-26b-a4b-it,mistral-small-3-2-24b-instruct,deepseek-v4-flash,qwen3-235b-a22b-instruct-2507",
     "AUDIO_MODELS": "ace-step-15",
     "IMAGE_MODELS": "z-image-turbo",
+    "TTS_MODELS": "tts-kokoro,tts-orpheus,tts-qwen3-1-7b,tts-elevenlabs-turbo-v2-5,tts-chatterbox-hd,tts-inworld-1-5-max,tts-gemini-3-1-flash,tts-minimax-speech-02-hd,tts-xai-v1",
     "AUDIO_SECONDS": "60",
     "MAX_TOKENS": "2000",
     "CHAT_DAILY": "60", "CHAT_TOTAL": "2000",
