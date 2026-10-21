@@ -34,6 +34,11 @@ export const WORKFLOWS = [
     usage: "/photoshoot [how many] [what the shoot is about]",
   },
   {
+    id: "whisper", command: "whisper", title: "a whisper", takes: "card", gives: "voice note", doors: ["chat"],
+    about: "a short ASMR voice note from them, whispered over soft rain (luna or eve; add what it's about)",
+    usage: "/whisper [luna|eve] [what it's about]",
+  },
+  {
     id: "recall", command: "recall", title: "recall", takes: "words", gives: "memory", doors: ["chat"],
     about: "what they remember about something (their notes, then the chats themselves), brought to mind for a while",
     usage: "/recall <what to look for>",
@@ -127,6 +132,51 @@ export function cardFromIdea(o, { model } = {}) {
   const look = str(o && o.look, 2000).replace(/\s+/g, " ").trim();
   return normalizeCard({ ...base, look: { ...base.look, description: look } });
 }
+
+// ---------- whisper: a short ASMR voice note, over soft rain ----------
+
+// The voices that whisper well and cheaply (picked in the asmr.gandora.lol bake-off): Venice model, voice, how the
+// words are wrapped so the model whispers, and the pace (0.9 of their usual reading speed sounded best).
+export const WHISPER_PRESETS = {
+  luna: { model: "tts-inworld-1-5-max", voice: "Luna", lead: "[whispering] ", tail: "", speed: 0.77, format: "wav" },
+  eve: { model: "tts-xai-v1", voice: "eve", lead: "<whisper>", tail: "</whisper>", speed: 0.77, format: "mp3" },
+};
+export const WHISPER_DEFAULT = "luna";
+
+/** the words after /whisper: a preset name first if there is one, the rest what it's about */
+export function parseWhisper(arg = "") {
+  const m = /^\s*(\w+)(?:\s+|$)([\s\S]*)$/.exec(str(arg, 2000));
+  const first = m ? m[1].toLowerCase() : "";
+  if (WHISPER_PRESETS[first]) return { preset: first, brief: m[2].replace(/\s+/g, " ").trim() };
+  return { preset: "", brief: str(arg, 2000).replace(/\s+/g, " ").trim() };
+}
+
+export const WHISPER_SCHEMA = {
+  type: "object", additionalProperties: false, required: ["script"],
+  properties: { script: { type: "string" } },
+};
+
+export function whisperMessages(card, { brief = "", lines = [] } = {}) {
+  const system = `You are ${card.name}. Write a short ASMR voice note you whisper to the person you're talking with: ` +
+    "60 to 110 words, in your own voice and manner, intimate and calming, present tense, short phrases with pauses " +
+    "written as \"...\". Gentle sensory detail (breath, rain, a soft sound nearby) is welcome. No stage directions, no " +
+    "emoji, no markup, nothing in brackets: only the words to be whispered. Return one JSON object: script.";
+  const persona = card.persona ? clip(card.persona.replace(/\s+/g, " "), 900) : "";
+  const user = [
+    persona ? `Who you are: ${persona}` : "",
+    lines.length ? "The conversation so far, latest last:\n" + lines.join("\n") : "You haven't talked yet.",
+    "What it's about: " + (str(brief, 500).trim() || "winding down together; help them relax."),
+  ].filter(Boolean).join("\n\n");
+  return [{ role: "system", content: system }, { role: "user", content: user }];
+}
+
+/** the script, cleaned of anything the model shouldn't have added (brackets, asterisks, emoji-ish markup) */
+export function cleanWhisper(o) {
+  return str(o && o.script, 1500).replace(/\[[^\]]*\]|\([^)]*\)|<[^>]*>|\*[^*]*\*/g, "").replace(/\s+/g, " ").trim();
+}
+
+/** what the voice model is sent: the script inside the preset's whisper markup */
+export const whisperInput = (script, preset) => (preset.lead || "") + script + (preset.tail || "");
 
 // ---------- photoshoot: a few photos of them, from the pictures on their card ----------
 

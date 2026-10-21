@@ -2291,6 +2291,7 @@ function runWorkflow(id, { door = "chat", idea = "", name = "" } = {}) {
   if (id === "new") return writeFromIdea(idea, { door, name });
   if (id === "photoshoot") return photoshoot(idea, { door });
   if (id === "recall") return recall(idea);
+  if (id === "whisper") return whisper(idea);
 }
 /** the chat a workflow's result lands in: the one of theirs on screen, else their latest, else a new one */
 function threadFor(c) {
@@ -2403,6 +2404,96 @@ async function photoshoot(arg, { door = "chat" } = {}) {
     S.inflight--;
     balanceSoon();
   }
+}
+/**
+ * /whisper: a short ASMR voice note. One call writes the script in their voice from the chat (and what it's about,
+ * if given); a whisper preset speaks it (W.WHISPER_PRESETS: luna on Inworld, eve on Grok, picked from the
+ * asmr.gandora.lol bake-off); it's mixed over soft rain made here, and lands in their chat as a voice note.
+ */
+let whispering = false;
+async function whisper(arg) {
+  const c = card();
+  if (!c || c.plain) { err("/whisper needs a character: pick one in the harbor first."); return; }
+  if (whispering) { toast("A whisper is already on its way."); return; }
+  const { preset: named, brief } = W.parseWhisper(arg);
+  const key = named || (c.whisper && W.WHISPER_PRESETS[c.whisper] ? c.whisper : W.WHISPER_DEFAULT), p = W.WHISPER_PRESETS[key];
+  await loadList("tts");
+  const vm = (S.lists.tts || []).find((m) => m.id === p.model);
+  const guess = vm ? A.voicePrice(vm, 600) : null;
+  if (!confirm(`A whispered voice note from ${c.name} (${p.voice})${brief ? " about " + brief : ""}? About ${guess != null ? A.usd(guess) : "a cent"} on your Venice key, plus the words.`)) return;
+  const t = threadFor(c);
+  whispering = true;
+  S.inflight++;
+  doing(t, "is writing something to whisper…");
+  try {
+    const lines = t.msgs.filter((m) => !m.hidden && (m.role === "user" || m.role === "assistant")).slice(-10)
+      .map((m) => `${m.role === "user" ? "Them" : c.name}: ${String(m.content || "").replace(/\s+/g, " ").trim().slice(0, 300)}`);
+    const o = await askJson(await jsonModel(c), { messages: W.whisperMessages(c, { brief, lines }), schema: W.WHISPER_SCHEMA, maxTokens: 400, temperature: 0.9, what: "the whisper" });
+    const script = W.cleanWhisper(o);
+    if (!script) throw new Error("The model sent back nothing to whisper. Try again, or pick another model on the card.");
+    doing(t, "is whispering…");
+    const input = W.whisperInput(script, p);
+    const voice = await new Venice(S.key).speak({ model: p.model, voice: p.voice, input, speed: p.speed, format: p.format });
+    let blob = voice;
+    try { blob = await overRain(voice); } catch { /* the dry take is still a whisper */ }
+    const price = vm ? A.voicePrice(vm, input.length) : null;
+    done(t);
+    deliver(t, { role: "assistant", content: script, voice: { id: await M.put(blob), model: vm ? vm.name : p.model, voice: p.voice, price, whisper: true } });
+    if (named) { const now = S.cards.find((x) => x.id === c.id); if (now && now.whisper !== named) replaceCard({ ...now, whisper: named }); }
+  } catch (e) {
+    done(t);
+    err(e.message || String(e));
+  } finally {
+    whispering = false;
+    S.inflight--;
+    balanceSoon();
+  }
+}
+/** the voice, close-mic'd (a little low end, gentle compression), over soft rain made here; a wav back */
+async function overRain(blob) {
+  const AC = window.OfflineAudioContext || window.webkitOfflineAudioContext;
+  const probe = new (window.AudioContext || window.webkitAudioContext)();
+  const v = await probe.decodeAudioData(await blob.arrayBuffer());
+  probe.close && probe.close();
+  const rate = 44100, pad = 1.5, len = Math.ceil((v.duration + pad * 2) * rate);
+  const ctx = new AC(2, len, rate);
+  // rain: pink-ish hiss with a slow flutter, over a low brown rumble
+  const noise = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = noise.getChannelData(ch); let b0 = 0, b1 = 0, b2 = 0, br = 0;
+    for (let i = 0; i < len; i++) {
+      const w = Math.random() * 2 - 1;
+      b0 = 0.997 * b0 + 0.029 * w; b1 = 0.985 * b1 + 0.032 * w; b2 = 0.95 * b2 + 0.048 * w;
+      br = (br + 0.02 * w) / 1.02;
+      d[i] = (b0 + b1 + b2 + w * 0.05) * 0.6 + br * 2.5;
+    }
+  }
+  const rain = ctx.createBufferSource(); rain.buffer = noise;
+  const hp = ctx.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 120;
+  const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6500;
+  const rg = ctx.createGain(); const end = len / rate;
+  rg.gain.setValueAtTime(0, 0); rg.gain.linearRampToValueAtTime(0.09, 1.2); rg.gain.setValueAtTime(0.09, end - 1.2); rg.gain.linearRampToValueAtTime(0, end);
+  rain.connect(hp); hp.connect(lp); lp.connect(rg); rg.connect(ctx.destination);
+  const src = ctx.createBufferSource(); src.buffer = v;
+  const lo = ctx.createBiquadFilter(); lo.type = "lowshelf"; lo.frequency.value = 180; lo.gain.value = 4;
+  const cmp = ctx.createDynamicsCompressor(); cmp.threshold.value = -30; cmp.ratio.value = 4; cmp.attack.value = 0.01; cmp.release.value = 0.25;
+  const vg = ctx.createGain(); vg.gain.value = 1.6;
+  src.connect(lo); lo.connect(cmp); cmp.connect(vg); vg.connect(ctx.destination);
+  rain.start(0); src.start(pad);
+  return wavBlob(await ctx.startRendering());
+}
+/** an AudioBuffer as a 16-bit wav */
+function wavBlob(buf) {
+  const n = buf.numberOfChannels, len = buf.length, out = new DataView(new ArrayBuffer(44 + len * n * 2));
+  const s = (o, t) => { for (let i = 0; i < t.length; i++) out.setUint8(o + i, t.charCodeAt(i)); };
+  s(0, "RIFF"); out.setUint32(4, 36 + len * n * 2, true); s(8, "WAVE"); s(12, "fmt "); out.setUint32(16, 16, true);
+  out.setUint16(20, 1, true); out.setUint16(22, n, true); out.setUint32(24, buf.sampleRate, true);
+  out.setUint32(28, buf.sampleRate * n * 2, true); out.setUint16(32, n * 2, true); out.setUint16(34, 16, true);
+  s(36, "data"); out.setUint32(40, len * n * 2, true);
+  const chans = []; for (let c = 0; c < n; c++) chans.push(buf.getChannelData(c));
+  let o = 44;
+  for (let i = 0; i < len; i++) for (let c = 0; c < n; c++) { const x = Math.max(-1, Math.min(1, chans[c][i])); out.setInt16(o, x < 0 ? x * 0x8000 : x * 0x7fff, true); o += 2; }
+  return new Blob([out], { type: "audio/wav" });
 }
 /**
  * A photo of them from the chat, kept on their card: as their portrait (as = "portrait"; the look it was drawn from goes

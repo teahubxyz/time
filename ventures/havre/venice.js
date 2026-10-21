@@ -141,8 +141,9 @@ export class Venice {
   }
 
   /** a voice note: words read out by a voice model. mood goes to models that take a style prompt; the rest ignore it. */
-  async speak({ model, voice, input, mood = "", speed = 1, signal } = {}) {
+  async speak({ model, voice, input, mood = "", speed = 1, format = "", signal } = {}) {
     const body = { input: String(input || "").slice(0, 4096), model, speed };
+    if (format) body.response_format = format;
     if (voice) body.voice = voice;
     if (mood) body.prompt = String(mood).slice(0, 500);
     const res = await this.raw("/audio/speech", { body, signal });
