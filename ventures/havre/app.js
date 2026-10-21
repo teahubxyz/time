@@ -91,7 +91,7 @@ const S = {
 const ALLOWANCES = [0.1, 0.25, 1, 5];
 /** how long you've been away before a character texts first: minutes, as the setting shows them */
 // voice notes in ASMR: whispered (W.WHISPER_PRESETS), at a pace, over soft rain; "every" is one reply in so many
-const ASMR_DEFAULT = { voice: "luna", pace: 0.77, rain: true, level: 0.09, every: 1 };
+const ASMR_DEFAULT = { voice: "luna", pace: 0.77, rain: false, level: 0.09, every: 1, v: 2 };
 const ASMR_PACES = [[0.65, "slowest"], [0.77, "slow"], [0.85, "easy"], [1, "as written"]];
 const ASMR_EVERY = [[1, "every reply"], [2, "every other"], [4, "now and then"]];
 const ASMR_LEVELS = [[0, "no rain"], [0.05, "faint"], [0.09, "soft"], [0.16, "steady"]];
@@ -158,8 +158,10 @@ function boot() {
   S.own = local.get(K.own, {}) || {};
   S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
   S.ab.clip = S.ab.clip && typeof S.ab.clip === "object" ? S.ab.clip : {};
-  S.ab.asmr = { ...ASMR_DEFAULT, ...(S.ab.asmr && typeof S.ab.asmr === "object" ? S.ab.asmr : {}) };
+  const savedAsmr = S.ab.asmr && typeof S.ab.asmr === "object" ? S.ab.asmr : null;
+  S.ab.asmr = { ...ASMR_DEFAULT, ...(savedAsmr || {}) };
   if (!W.WHISPER_PRESETS[S.ab.asmr.voice]) S.ab.asmr.voice = W.WHISPER_DEFAULT;
+  if (savedAsmr && (savedAsmr.v || 1) < 2) S.ab.asmr = { ...S.ab.asmr, rain: false, v: 2 };     // rain went off by default: once, for settings saved before
   if (!ALLOWANCES.includes(S.ab.allowance)) S.ab.allowance = 0.25;
   if (!AWAYS.some(([m]) => m === S.ab.awayMin)) S.ab.awayMin = 360;
   S.voiceOn = local.get(K.voiceOn, {}) || {};
@@ -1028,11 +1030,13 @@ function jumpTo(t, m) {
 }
 
 // ---------- editing and deleting messages ----------
-function msgTools(el, t, m) {
+function msgTools(el, t, m, voice = []) {
   if (!t || !m || !m.id) return;
   el.dataset.msg = m.id;
+  for (const old of $$(".msgtools", el)) old.remove();
   const c = cardOf(t), words = !!String(m.content || "").trim() && c && !c.plain && S.ab.memory;
   el.append(h("span", { class: "msgtools" }, ...slashed([
+    ...voice,
     m.role === "user" && !m.media ? linkish("edit", () => editMsg(t, m), { "aria-label": "Edit this message" }) : null,
     words ? linkish("remember", () => rememberMsg(t, m), { "aria-label": "Add this to what they remember", title: "into their memory, in these words" }) : null,
     words ? linkish("remind", () => remindMsg(t, m), { "aria-label": "Remind them of this at a time", title: "back to mind at a time you pick" }) : null,
@@ -1122,7 +1126,7 @@ function renderLog() {
       if (m.voice) put(voiceLine(c, m));
       let last = null;
       for (const b of bubblesOf(c, m.content)) { last = put(line(b, "them")); if (m.id) last.dataset.msg = m.id; }
-      if (last) { offerVoice(last, c, m, t); msgTools(last, t, m); }
+      if (last) msgTools(last, t, m, offerVoice(last, c, m, t));
     }
   }
   const ideas = hist.some((m) => m.role === "user" && !m.hidden) ? [] : C.suggestions(c);
@@ -1376,7 +1380,7 @@ async function play(t, bubbles, signal, c, msg, drawn = S.gen) {
     if (msg && msg.id) last.dataset.msg = msg.id;
     scrollLog();
   }
-  if (last && c && msg) offerVoice(last, c, msg, t);
+  if (last && c && msg) msgTools(last, t, msg, offerVoice(last, c, msg, t));
 }
 
 // ---------- photos, clips, voice notes, and yours, in the conversation ----------
@@ -1446,7 +1450,7 @@ function voiceLine(c, m) {
 /** "hear it" after a reply that came as text: its voice note, made when asked for (once, however often it's clicked) */
 const voicing = new WeakSet();
 function offerVoice(el, c, m, t) {
-  if (m.voice || m.demo || c.plain || !S.key || !t) return;
+  if (m.voice || m.demo || c.plain || !S.key || !t) return [];
   const btns = [];
   const make = (label, asmr) => {
     const b = linkish(voicing.has(m) ? "recording…" : label, async () => {
@@ -1457,15 +1461,15 @@ function offerVoice(el, c, m, t) {
       try {
         m.voice = await makeVoice(c, m.content, undefined, { asmr });
         saveThread(t);
-        if (b.isConnected) { b.replaceWith(audioEl(m.voice.id)); for (const x of btns) if (x !== b) x.remove(); }
-        else placeVoice(t, m);
+        placeVoice(t, m);                                        // the voice note goes above the words
+        if (el.isConnected) msgTools(el, t, m);                  // and the line under them loses hear / whisper
         balanceSoon();
       } catch (e) { for (const x of btns) x.disabled = false; b.textContent = label; toast(e.message); } finally { voicing.delete(m); }
     }, { class: "linkish hear", "aria-label": asmr ? `Hear this whispered by ${c.name}, over soft rain` : `Hear this as a voice note from ${c.name}`, disabled: voicing.has(m) || null });
     btns.push(b);
     return b;
   };
-  $(".said", el).append(" ", make("hear it", false), " ", make("whisper it", true));
+  return [make("hear", false), make("whisper", true)];
 }
 /** a voice note of these words, in the character's voice and mood */
 async function makeVoice(c, text, signal, { asmr = false } = {}) {
