@@ -576,6 +576,64 @@
     if (copied) done(); else failed();
   }
 
+  // Files: a .md (or any text file) dropped anywhere on the page, or picked with Open .md, becomes the
+  // deck. It is read in the tab with FileReader; nothing is uploaded.
+  var fileInput = document.getElementById("file");
+  var openBtn = document.getElementById("open");
+  var dragDepth = 0;
+
+  function hasFile(e) {
+    var t = e.dataTransfer && e.dataTransfer.types;
+    return !!t && Array.prototype.indexOf.call(t, "Files") >= 0;
+  }
+
+  function openFile(file) {
+    if (!file) return;
+    if (file.size > 2000000) {
+      say(file.name + " is over 2 MB. A deck is plain text, so something else is in that file.", true);
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function () {
+      load(String(reader.result).replace(/^﻿/, ""));
+      current = 0;
+      history.replaceState(null, "", location.href.split("#")[0]);
+      parse();
+      say("Opened " + file.name + ". Edits stay in this tab; copy a link or the HTML to keep them.");
+    };
+    reader.onerror = function () { say("Couldn't read " + file.name + ".", true); };
+    reader.readAsText(file);
+  }
+
+  openBtn.addEventListener("click", function () { fileInput.click(); });
+  fileInput.addEventListener("change", function () {
+    openFile(fileInput.files[0]);
+    fileInput.value = "";
+  });
+
+  document.addEventListener("dragenter", function (e) {
+    if (!hasFile(e)) return;
+    e.preventDefault();
+    dragDepth++;
+    document.body.classList.add("dropping");
+  });
+  document.addEventListener("dragover", function (e) {
+    if (!hasFile(e)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  });
+  document.addEventListener("dragleave", function (e) {
+    if (!hasFile(e)) return;
+    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove("dropping"); }
+  });
+  document.addEventListener("drop", function (e) {
+    if (!hasFile(e)) return;
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove("dropping");
+    openFile(e.dataTransfer.files[0]);
+  });
+
   // A deck in the address opens in place of the sample, and so does one pasted into it later.
   var linked = /(^#|&)(d|md)=/.test(location.hash);
   load(linked ? "" : SAMPLE);
