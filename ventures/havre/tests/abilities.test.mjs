@@ -245,7 +245,12 @@ test("adult characters: adult pictures only when marked adult, 18+ said, every p
   assert.match(A.adultCheck(mara, { ...ok, of18: false }).why, /until you say you're 18 or older/);
   assert.match(A.adultCheck(mara, { ...ok, on: false }).why, /switched off under abilities/);
   const uploaded = { ...mara, look: { ...mara.look, references: [...mara.look.references, "data:image/png;base64,UPLD"] } };
-  assert.match(A.adultCheck(uploaded, ok).why, /wasn't made here with ai/, "one uploaded picture keeps it safe for work");
+  assert.match(A.adultCheck(uploaded, ok).why, /was uploaded and hasn't been checked yet/, "one uploaded picture keeps it safe for work");
+  assert.equal(A.adultCheck(uploaded, ok).uploaded, true, "and says it can be checked");
+  assert.deepEqual(A.parseArt('{"kind": "art", "adult": "yes"}'), { art: true, adult: true, answered: true }, "art, grown up: cleared");
+  assert.equal(A.parseArt('{"kind": "photo", "adult": "yes"}').art, false, "a photo of a real person never is");
+  assert.equal(A.parseArt('{"kind": "art", "adult": "unsure"}').adult, false, "nor art that doesn't clearly show an adult");
+  assert.equal(A.parseArt("I can't tell").answered, false, "no answer, no verdict");
   assert.equal(A.adultCheck({ ...mara, portrait: "https://outerface.venice.ai/x.png" }, ok).ok, false, "nor is a Venice photo made here");
   assert.match(A.adultCheck({ ...mara, portrait: "", look: { references: [] } }, ok).why, /no picture made here yet/);
   assert.match(A.adultCheck({ ...mara, persona: "You are Mara, 16 years old." }, ok).why, /their card says “16 years old”/);
