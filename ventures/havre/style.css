@@ -428,6 +428,13 @@ p.note { padding: 8px 10px; border: 1px solid var(--ink); background: var(--hi);
 .verdict.too-close { background: var(--bad); border-color: var(--bad); color: var(--paper); }
 .why-list { margin: 0; padding-left: 20px; font: 13px var(--mono); }
 .draft .acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.draft .edfield { display: flex; flex-direction: column; gap: 3px; }
+.draft .edfield input, .draft .edfield textarea { width: 100%; border: 1px solid var(--ink); background: transparent; color: inherit; padding: 6px 8px; font: inherit; border-radius: 0; }
+.draft .edfield textarea { resize: vertical; font-size: 17px; line-height: 1.4; overflow: hidden; }
+.draft .edfield .ed-name { font-size: 26px; font-weight: 700; }
+.draft .edfield .ed-tagline { font-style: italic; }
+.draft .rewrite { display: flex; gap: 8px; }
+.draft .rewrite input { flex: 1; min-width: 0; border: 1px solid var(--ink); background: transparent; color: inherit; padding: 6px 8px; font: inherit; border-radius: 0; }
 
 .exports { margin: 0 0 12px; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0; }
 .exports li { margin: 0 -1px -1px 0; }

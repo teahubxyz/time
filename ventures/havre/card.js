@@ -665,6 +665,15 @@ export function writeMessages(distillate, twist = "", avoid = []) {
     { role: "user", content: "Write a new character from these ideas. Do not use anything listed under avoid.\n\n" + JSON.stringify(ask, null, 1) }];
 }
 
+/** a rewrite of a draft: the reviser sees the ideas, the draft and what to change, never the source */
+export function reviseMessages(distillate, draft, instruction = "", avoid = []) {
+  const ask = { ideas: distillate, draft: { name: draft.name, tagline: draft.tagline, greeting: draft.greeting, persona: draft.persona,
+    examples: draft.examples, tags: draft.tags }, change: str(instruction, 1000).trim() || "tighten it; keep who they are", avoid: avoid.slice(0, 20) };
+  return [{ role: "system", content: WRITE_SYSTEM + " Here you are revising a draft you wrote: make the change asked for, keep " +
+    "everything else as it is unless the change needs it to move, and return the whole character again." },
+    { role: "user", content: "Revise this character. Do not use anything listed under avoid.\n\n" + JSON.stringify(ask, null, 1) }];
+}
+
 export function normalizeDistillate(o = {}) {
   const out = {};
   for (const k of DISTILL_KEYS) {

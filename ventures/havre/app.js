@@ -3662,12 +3662,34 @@ async function writeFresh(avoid = []) {
     rxStatus(avoid.length ? `Rewriting with ${modelName(writer)}, steering clear of what was shared…` : `Writing someone new with ${modelName(writer)}…`);
     const o = await askJson(writer, { messages: C.writeMessages(S.rx.ideas, $("#rx-twist").value, avoid), schema: C.WRITE_SCHEMA,
       maxTokens: 2000, temperature: 0.95, what: "a character" });
-    const first = C.cardFromWrite(o, { model });
-    const src = S.rx.source;
-    const check = C.similarity(C.cardText(first), src.text, { names: [src.name].filter(Boolean), newName: first.name });
-    // someone new from an adult character is adult too: a rewrite doesn't change who it's for
-    S.rx.draft = C.cardFromWrite(o, { source: src.name || src.ref ? src : null, check, model, adult: !!src.adult });
-    S.rx.check = check;
+    buildDraft(o, model);
+    renderDraft();
+    reveal($("#rx-draft"));
+    rxStatus("");
+  } catch (e) { rxStatus(e.message, true); } finally { rxBusy(false); }
+}
+/** the draft from the writer's words (S.rx.raw, which you can edit), checked against the source here in the browser */
+function buildDraft(o, model) {
+  const src = S.rx.source;
+  S.rx.raw = { ...o };
+  S.rx.model = model;
+  const first = C.cardFromWrite(o, { model });
+  const check = C.similarity(C.cardText(first), src.text, { names: [src.name].filter(Boolean), newName: first.name });
+  // someone new from an adult character is adult too: a rewrite doesn't change who it's for
+  S.rx.draft = C.cardFromWrite(o, { source: src.name || src.ref ? src : null, check, model, adult: !!src.adult });
+  S.rx.check = check;
+}
+/** "rewrite": the writer revises the draft as it stands (your edits included) with your instruction */
+async function reviseDraft(instruction, avoid = []) {
+  const c = card();
+  if (!c || !S.rx.raw || S.rx.busy) return;
+  rxBusy(true);
+  try {
+    const writer = await jsonModel(c);
+    rxStatus(`Rewriting with ${modelName(writer)}…`);
+    const o = await askJson(writer, { messages: C.reviseMessages(S.rx.ideas, S.rx.raw, instruction, avoid), schema: C.WRITE_SCHEMA,
+      maxTokens: 2000, temperature: 0.8, what: "a character" });
+    buildDraft(o, S.rx.model || c.model || S.model);
     renderDraft();
     reveal($("#rx-draft"));
     rxStatus("");
@@ -3678,21 +3700,44 @@ function renderDraft() {
   const d = S.rx.draft, chk = S.rx.check, box = $("#rx-draft");
   box.textContent = "";
   box.hidden = false;
-  const pct = Math.round(chk.share * 1000) / 10;
-  box.append(h("h4", { text: d.name }), h("p", { class: "tagline", text: d.tagline }),
-    h("p", { class: "persona", text: d.persona }),
-    h("span", { class: `verdict ${chk.verdict}`, text: VERDICT[chk.verdict] }),
-    h("p", { class: "mono", text: `${pct}% of its five-word phrases appear in the source; the longest shared run is ${chk.run.len} words.` }));
-  if (chk.reasons.length) box.append(h("ul", { class: "why-list" }, chk.reasons.map((r) => h("li", { text: r }))));
+  const raw = S.rx.raw || {};
+  // the write-up, editable: every change re-runs the check, here in the browser
+  const field = (key, label, tag, attrs = {}) => {
+    const el = h(tag, { "aria-label": label, class: `ed-${key}`, ...attrs });
+    el.value = Array.isArray(raw[key]) ? raw[key].join("\n\n") : String(raw[key] || "");
+    el.addEventListener("input", () => { S.rx.raw[key] = el.value; recheck(); });
+    if (tag === "textarea") { const fit = () => { el.style.height = "auto"; el.style.height = el.scrollHeight + 2 + "px"; }; el.addEventListener("input", fit); requestAnimationFrame(fit); }
+    return h("label", { class: "edfield" }, h("span", { class: "mono", text: label }), el);
+  };
+  const verdict = h("span"), stat = h("p", { class: "mono" }), why = h("ul", { class: "why-list" });
+  const keep = h("button", { type: "button", class: "btn solid small", text: "KEEP IN HARBOR", onclick: () => {
+    buildDraft(S.rx.raw, S.rx.model);                        // the last keystroke counts, even inside the recheck's pause
+    if (S.rx.check.verdict === "too-close") { paint(); return; }
+    keepDraft();
+  } });
+  const avoidBtn = h("button", { type: "button", class: "btn small", text: "REWRITE, AVOIDING THESE",
+    onclick: () => reviseDraft("change whatever is listed under avoid, in your own words", C.avoidList(S.rx.check, [S.rx.source.name])) });
+  const paint = () => {
+    const k = S.rx.check, pct = Math.round(k.share * 1000) / 10;
+    verdict.className = `verdict ${k.verdict}`; verdict.textContent = VERDICT[k.verdict];
+    stat.textContent = `${pct}% of its five-word phrases appear in the source; the longest shared run is ${k.run.len} words.`;
+    why.textContent = ""; for (const r of k.reasons) why.append(h("li", { text: r })); why.hidden = !k.reasons.length;
+    keep.disabled = k.verdict === "too-close"; avoidBtn.hidden = k.verdict === "fresh";
+  };
+  let timer = 0;
+  const recheck = () => { clearTimeout(timer); timer = setTimeout(() => { buildDraft(S.rx.raw, S.rx.model); paint(); }, 250); };
+  box.append(field("name", "NAME", "input", { maxlength: 80, class: "ed-name" }), field("tagline", "TAGLINE", "input", { maxlength: 120 }),
+    field("greeting", "GREETING", "textarea", { rows: 3 }), field("persona", "PERSONA", "textarea", { rows: 8 }),
+    verdict, stat, why);
+  paint();
   if (d.lineage[0]) box.append(h("p", { class: "mono", text: "lineage: " + C.creditLine(d.lineage[0]) + "." }));
   if (d.adult) box.append(h("p", { class: "mono", text: "adult (18+), like the character they came from." }));
+  const ask = h("input", { "aria-label": "How to rewrite it", placeholder: "rewrite: e.g. older, drier humour, a lighthouse keeper", maxlength: 400 });
+  const go = () => { const v = ask.value.trim(); if (v) reviseDraft(v); };
+  ask.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } });
+  box.append(h("div", { class: "rewrite" }, ask, h("button", { type: "button", class: "btn small", text: "REWRITE", onclick: go })));
   const row = h("div", { class: "acts" });
-  const keep = h("button", { type: "button", class: "btn solid small", text: "KEEP IN HARBOR", onclick: keepDraft });
-  if (chk.verdict === "too-close") keep.disabled = true;
-  row.append(keep);
-  if (chk.verdict !== "fresh") row.append(h("button", { type: "button", class: "btn small", text: "REWRITE, AVOIDING THESE",
-    onclick: () => writeFresh(C.avoidList(chk, [S.rx.source.name])) }));
-  row.append(h("button", { type: "button", class: "btn small", text: "WRITE ANOTHER", onclick: () => writeFresh() }));
+  row.append(keep, avoidBtn, h("button", { type: "button", class: "btn small", text: "WRITE ANOTHER", onclick: () => writeFresh() }));
   box.append(row);
 }
 /** a remix kept: they join the harbor, and their chat opens, with their greeting, for you to say hello */
