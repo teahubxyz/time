@@ -962,3 +962,12 @@
 {"at":"2026-10-20T13:14:17Z","model":"claude-opus-5-5","pool":"anthropic","in":21462,"out":4000,"usd":0.187306,"cached":0,"written":21458}
 {"at":"2026-10-20T15:08:04Z","model":"claude-haiku-5-5","pool":"anthropic","in":44282,"out":4000,"usd":0.007535,"cached":0,"written":44278}
 {"at":"2026-10-20T17:08:00Z","model":"claude-haiku-5-5","pool":"anthropic","in":42945,"out":4000,"usd":0.007368,"cached":0,"written":42941}
+{"at":"2026-10-21T02:07:56Z","model":"claude-haiku-5-5","pool":"anthropic","in":11275,"out":2618,"usd":0.002718,"cached":0,"written":11271}
+{"at":"2026-10-21T02:07:59Z","model":"claude-sonnet-5-5","pool":"anthropic","in":2648,"out":100,"usd":0.007618,"cached":0,"written":2644}
+{"at":"2026-10-21T02:08:02Z","model":"claude-sonnet-5-5","pool":"anthropic","in":3728,"out":158,"usd":0.004818,"cached":2644,"written":1082}
+{"at":"2026-10-21T02:08:04Z","model":"claude-sonnet-5-5","pool":"anthropic","in":15972,"out":196,"usd":0.033319,"cached":3726,"written":12244}
+{"at":"2026-10-21T02:08:07Z","model":"claude-sonnet-5-5","pool":"anthropic","in":19056,"out":271,"usd":0.013618,"cached":15970,"written":3084}
+{"at":"2026-10-21T02:08:09Z","model":"claude-sonnet-5-5","pool":"anthropic","in":21136,"out":118,"usd":0.010195,"cached":19054,"written":2080}
+{"at":"2026-10-21T02:08:23Z","model":"claude-sonnet-5-5","pool":"anthropic","in":21393,"out":2215,"usd":0.027023,"cached":21134,"written":257}
+{"at":"2026-10-21T02:08:33Z","model":"claude-sonnet-5-5","pool":"anthropic","in":24034,"out":563,"usd":0.016515,"cached":21391,"written":2641}
+{"at":"2026-10-21T02:08:44Z","model":"claude-sonnet-5-5","pool":"anthropic","in":24803,"out":514,"usd":0.011873,"cached":24032,"written":769}
