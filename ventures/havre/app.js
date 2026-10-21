@@ -1423,6 +1423,7 @@ function mediaLine(c, m) {
         disabled: md.kept === "ref" || full || null, title: "one of the pictures their photos and clips are made from", onclick: () => keepFromChat(c, m, "") }));
       said.append(row);
     }
+    else if (md.saw && md.made) said.append(h("span", { class: "cap", text: `made with ai${md.model ? " (" + md.model + (md.price != null ? ", " + A.usd(md.price) : "") + ")" : ""}: ${md.saw}` }));
     else if (md.saw) said.append(h("span", { class: "cap", text: `${md.seer || "a model"} told them: ${md.saw}` }));
   } else if (md.kind === "clip" && !md.id) {
     // a clip this browser couldn't download: it plays from Venice's link until the link lapses
@@ -2226,7 +2227,8 @@ function noteMade(pic, from = []) {
 function adultFor(c, t = null, shot = "", { drawn = false } = {}) {
   const made = madeKeys();
   const said = t ? t.msgs.filter((m) => m && !m.demo).slice(-12).flatMap((m) => [typeof m.content === "string" ? m.content : "", m.media && m.media.shot]) : [];
-  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)) || OUTERFACE.test(p || ""), shot, said, drawn });
+  const art = artKeys();
+  return A.adultCheck(c, { of18: of18(), on: S.ab.adult !== false, made: (p) => made.has(keyOf(p)) || art.has(keyOf(p)) || OUTERFACE.test(p || ""), shot, said, drawn });
 }
 /** uploaded pictures that passed the check: art you have the rights to, everyone in it grown up (clearArt) */
 const artKeys = () => new Set(local.get(K.art, []) || []);
@@ -4229,7 +4231,7 @@ function bind() {
     else if (e.key === K.jobs || e.key === K.jobsDone) syncJobs();
     else if (e.key === K.spent) { renderTools(); if ($("#abilitydlg").open) renderAbilities(); }
     else if (e.key === K.memory) { const c = card(); if (c && !c.plain) renderMemory(c); }
-    else if (e.key === K.made || e.key === K.adult18) adultChanged();
+    else if (e.key === K.made || e.key === K.art || e.key === K.adult18) adultChanged();
     else if (e.key === K.ab) {
       S.ab = { ...S.ab, ...(local.get(K.ab, {}) || {}) };
       renderTools();
