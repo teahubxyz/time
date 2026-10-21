@@ -7,7 +7,7 @@
 //   POST /v1/chat/completions                  model in CHAT_MODELS, no streaming, max_tokens <= MAX_TOKENS
 //   POST /v1/audio/quote | queue | retrieve | complete    model in AUDIO_MODELS, duration_seconds <= AUDIO_SECONDS
 //   POST /v1/image/generate                    model in IMAGE_MODELS
-//   POST /v1/speech                            Venice TTS: { input, model?, voice?, speed?, response_format? }, model in TTS_MODELS
+//   POST /v1/speech                            Venice TTS: { input, model?, voice?, speed?, response_format?, prompt?, temperature? }, model in TTS_MODELS
 //   POST /v1/render                            one call, audio back: { prompt, lyrics?, duration?, bpm?, key?, timeSignature?, seed?, quality?, reference? }
 //                                              reference: a data: URL of audio the new track should take after (Runware only; up to 8 MB)
 //                                              Runware ACE-Step when RUNWARE_API_KEY is bound (quality "xl" picks XL Turbo),
@@ -179,10 +179,12 @@ async function api(req, env, url, h) {
   }
   if (path === "/v1/speech") {
     const m = model || "tts-kokoro";
-    if (!list(env.TTS_MODELS || "tts-kokoro,tts-orpheus,tts-qwen3-1-7b").includes(m)) return json({ error: `model not allowed here: ${m.slice(0, 40)}` }, 403, h);
+    if (!list(env.TTS_MODELS || "tts-kokoro,tts-orpheus,tts-qwen3-1-7b,tts-elevenlabs-turbo-v2-5,tts-chatterbox-hd").includes(m)) return json({ error: `model not allowed here: ${m.slice(0, 40)}` }, 403, h);
     if (!body.input || String(body.input).length < 2) return json({ error: "input is empty" }, 400, h);
     const q = { model: m, input: String(body.input).slice(0, 4096), voice: String(body.voice || "af_sky").slice(0, 64), response_format: /^(mp3|wav|flac|opus|aac)$/.test(body.response_format) ? body.response_format : "mp3",
       speed: Math.max(0.5, Math.min(1.5, +body.speed || 1)) };
+    if (typeof body.prompt === "string" && body.prompt.trim()) q.prompt = body.prompt.trim().slice(0, 500);       // style: Qwen3 only, ignored elsewhere
+    if (Number.isFinite(+body.temperature) && body.temperature !== undefined) q.temperature = Math.max(0, Math.min(2, +body.temperature));
     const no = await spend(env, app, "render", person, num(env.RENDER_DAILY, 20), num(env.RENDER_TOTAL, 400));
     if (no) return json({ error: no }, 429, h);
     return withCors(await forward("/audio/speech", q, env), h);
