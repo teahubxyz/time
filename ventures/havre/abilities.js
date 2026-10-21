@@ -460,12 +460,28 @@ export function adultCheck(card, { of18 = false, on = true, made = () => false, 
   if (!of18) return { ok: false, why: "adult photos and clips wait until you say you're 18 or older, under abilities." };
   const pics = drawn ? [] : [card.portrait, ...((card.look && card.look.references) || [])].filter(Boolean);
   if (!drawn && !pics.length) return { ok: false, why: `${card.name} has no picture made here yet (card → look: make one with ai), ${sfw}` };
-  if (!pics.every((p) => made(p))) return { ok: false, why: `a picture on their card wasn't made here with ai (it was uploaded, or came from venice), ${sfw}` };
+  if (!pics.every((p) => made(p))) return { ok: false, uploaded: true, why: `a picture on their card was uploaded and hasn't been checked yet, ${sfw} If it's art you have the rights to, check it below.` };
   const onCard = underage(cardWords(card), UNDERAGE_CARD);
   if (onCard) return { ok: false, why: `their card says “${onCard}”, which sounds like someone under 18, ${sfw}` };
   const now = underage([shot, said]);
   if (now) return { ok: false, why: `the shot or the chat says “${now}”, which sounds like someone under 18, so this one stays safe for work.` };
   return { ok: true, why: "" };
+}
+
+/**
+ * Checking an uploaded picture for an adult character: is it art (drawn, painted, rendered, AI-made) or a photograph
+ * of a real person, and does everyone in it look grown up? A real person's photo never becomes the reference for an
+ * adult picture: that's how a deepfake of someone who never agreed is made. Art you have the rights to can.
+ */
+export const ART_PROMPT = "Look at this picture and answer with one JSON object, nothing else: " +
+  "{\"kind\": \"art\" or \"photo\", \"adult\": \"yes\", \"no\" or \"unsure\"}. kind is \"art\" for a drawing, painting, " +
+  "illustration, anime, 3D render, or an obviously AI-generated or stylised image, and \"photo\" for what looks like a real " +
+  "photograph of a real person. adult is \"yes\" only if everyone shown clearly looks 18 or older.";
+/** the checker's answer: { art, adult }, false for anything it didn't clearly say */
+export function parseArt(text) {
+  const t = str(text, 2000).toLowerCase();
+  const kind = /"kind"\s*:\s*"(art|photo)"/.exec(t), adult = /"adult"\s*:\s*"(yes|no|unsure)"/.exec(t);
+  return { art: !!kind && kind[1] === "art", adult: !!adult && adult[1] === "yes", answered: !!kind && !!adult };
 }
 
 /**
