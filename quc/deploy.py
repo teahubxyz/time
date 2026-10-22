@@ -1,8 +1,9 @@
 """Deploy quc to quc.<TIME_VENTURE_DOMAIN> (default yolopreneur.lol) as the Worker `time-quc`, then wait for /api/health.
 
-    CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... python3 quc/deploy.py
+    CLOUDFLARE_API_TOKEN=... CLOUDFLARE_ACCOUNT_ID=... VENICE_API_KEY=... python3 quc/deploy.py
 
-Reuses .github/time/cloudflare.py. Idempotent: the script is replaced in place, the custom domain re-attached.
+Reuses .github/time/cloudflare.py. Idempotent: the KV namespace `time-quc` is created once and reused, the script is replaced
+in place, the custom domain re-attached. VENICE_API_KEY is bound as a Worker secret (without it the agent answers offline).
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ sys.path.insert(0, str(HERE.parent / ".github" / "time"))
 import cloudflare as cf  # noqa: E402
 
 NAME = "time-quc"
-SRC = HERE / "src" / "worker.js"
+MODULES = ["worker.js", "page.js", "runs.js", "engine.js", "agent.js", "diff.js", "validate.js"]
 
 
 def healthy(url: str, tries: int = 18) -> bool:
@@ -34,16 +35,31 @@ def healthy(url: str, tries: int = 18) -> bool:
     return False
 
 
+def kv_namespace(title: str) -> str:
+    for ns in cf.cf("GET", f"{cf.account()}/storage/kv/namespaces?per_page=100") or []:
+        if ns.get("title") == title:
+            return ns["id"]
+    return cf.cf("POST", f"{cf.account()}/storage/kv/namespaces", {"title": title})["id"]
+
+
 def deploy() -> dict:
     if not cf.enabled():
         sys.exit("CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID are needed")
     os.environ.setdefault("TIME_VENTURE_DOMAIN", "yolopreneur.lol")
-    code = SRC.read_bytes()
-    rev = hashlib.sha256(code).hexdigest()[:12]
-    meta = {"main_module": "worker.js", "compatibility_date": cf.COMPAT,
-            "bindings": [{"type": "plain_text", "name": "REV", "text": rev}]}
-    data, ctype = cf.multipart([("metadata", "application/json", json.dumps(meta).encode()),
-                                ("worker.js", "application/javascript+module", code)])
+    code = {m: (HERE / "src" / m).read_bytes() for m in MODULES}
+    rev = hashlib.sha256(b"".join(code[m] for m in MODULES)).hexdigest()[:12]
+    bindings = [{"type": "kv_namespace", "name": "KV", "namespace_id": kv_namespace(NAME)},
+                {"type": "plain_text", "name": "REV", "text": rev}]
+    for k in ("CODER_MODEL", "PERSONA_MODEL", "RUNS_PER_DAY", "RUNS_PER_DAY_ALL"):
+        if os.environ.get(k):
+            bindings.append({"type": "plain_text", "name": k, "text": os.environ[k]})
+    if os.environ.get("VENICE_API_KEY"):
+        bindings.append({"type": "secret_text", "name": "VENICE_API_KEY", "text": os.environ["VENICE_API_KEY"]})
+    else:
+        print("warning: no VENICE_API_KEY, so the agent gives offline answers", file=sys.stderr)
+    meta = {"main_module": "worker.js", "compatibility_date": cf.COMPAT, "bindings": bindings}
+    data, ctype = cf.multipart([("metadata", "application/json", json.dumps(meta).encode())]
+                               + [(m, "application/javascript+module", code[m]) for m in MODULES])
     cf.cf("PUT", f"{cf.account()}/workers/scripts/{NAME}", data=data, ctype=ctype)
     return {"url": cf.attach(NAME, cf.host("quc")), "worker": NAME, "rev": rev}
 

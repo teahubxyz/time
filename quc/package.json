@@ -1,9 +1,9 @@
 {
   "name": "quc",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "quc.yolopreneur.lol: app shell + API in one Cloudflare Worker. No dependencies, no build step.",
+  "description": "quc.yolopreneur.lol: hand an agent your repo, sit in the chair, watch. One Cloudflare Worker, no dependencies, no build step.",
   "scripts": {
     "start": "node dev.mjs",
     "test": "node --test",

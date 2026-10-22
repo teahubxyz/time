@@ -1,0 +1,31 @@
+name: quc
+# Test and deploy quc (quc/, live at quc.<venture domain>) when it changes on main. Skips the deploy until the Cloudflare
+# token is staged as a repo secret (see .github/time/SECRETS.md); deploys from hb-5 work meanwhile.
+on:
+  push:
+    branches: [main]
+    paths: ["quc/**"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'dac3b11890319628eb5cd761445b63ee' }}
+      VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+      TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN || 'yolopreneur.lol' }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test --prefix quc
+      - name: deploy
+        if: env.CLOUDFLARE_API_TOKEN != ''
+        run: python3 quc/deploy.py
+      - name: no token yet
+        if: env.CLOUDFLARE_API_TOKEN == ''
+        run: echo "CLOUDFLARE_API_TOKEN is not staged; tests passed, deploy skipped" >> "$GITHUB_STEP_SUMMARY"

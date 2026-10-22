@@ -20,3 +20,4 @@ jobs:
       - run: python3 .github/time/test_time.py
       - run: python3 .github/time/test_seed.py
       - run: python3 .github/time/test_housekeeping.py
+      - run: npm test --prefix quc
