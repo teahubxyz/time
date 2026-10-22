@@ -25,3 +25,25 @@ test("motif is an svg, unknown paths 404, writes are refused", async () => {
   assert.equal((await get("/nope")).status, 404);
   assert.equal((await get("/api/health", {}, "POST")).status, 405);
 });
+
+test("validate accepts a repo + task and rejects bad shapes", async () => {
+  const { validate } = await import("../src/worker.js");
+  const task = "Fix the flaky date test";
+  assert.deepEqual(validate("https://github.com/a/b", task), {});
+  assert.deepEqual(validate("https://github.com/a/b.git/", task), {});
+  for (const bad of ["", "github.com/a/b", "http://github.com/a/b", "https://gitlab.com/a/b", "https://github.com/a", "https://github.com/a/b/tree/x"])
+    assert.ok(validate(bad, task).repo, bad);
+  assert.ok(validate("https://github.com/a/b", "short").task);
+  assert.ok(validate("https://github.com/a/b", "x".repeat(201)).task);
+});
+
+test("start form, public-replay notice and run page are served; the inlined validator parses", async () => {
+  const html = await (await get("/")).text();
+  assert.match(html, /<form id="form"/);
+  assert.match(html, /Replays are public/);
+  const run = await get("/run/abc123");
+  assert.equal(run.status, 200);
+  assert.match(await run.text(), /id="run-id"/);
+  assert.equal((await get("/run/a/b")).status, 404);
+  new Function(html.match(/<script>([\s\S]*)<\/script>/)[1]); // syntax check of the shipped script
+});
