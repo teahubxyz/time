@@ -1,0 +1,12 @@
+{
+  "name": "quc",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "quc.yolopreneur.lol: app shell + API in one Cloudflare Worker. No dependencies, no build step.",
+  "scripts": {
+    "start": "node dev.mjs",
+    "test": "node --test",
+    "deploy": "python3 deploy.py"
+  }
+}
