@@ -780,6 +780,14 @@ def moving(card: dict) -> bool:
     return not real or real[-1]["beat"] not in WAITING
 
 
+def parallel() -> int:
+    """TIME_PARALLEL: cards in flight at once (default 3); anything but a positive integer falls back to 3."""
+    try:
+        return max(0, int(os.environ.get("TIME_PARALLEL") or 3)) or 3
+    except ValueError:
+        return 3
+
+
 def promote_next() -> int | None:
     """Label the best `queued` card whose dependencies are closed `ready`: the router's live ranking first (Astra's
     latest), then the oldest; at most TIME_PARALLEL cards in flight. A `ready` card waiting on a person (an objection,
@@ -788,7 +796,7 @@ def promote_next() -> int | None:
     ready = issues("state=open&labels=ready")
     busy = [c for c in ready if moving(c)]
     print(f"promote: ready={len(ready)} moving={len(busy)}")
-    if len(busy) >= int(os.environ.get("TIME_PARALLEL") or 1):
+    if len(busy) >= parallel():
         return None
     queued = issues("state=open&labels=queued")
     pos = {n: k for k, n in enumerate(rank_order())}
@@ -1811,6 +1819,7 @@ def cmd_doctor() -> int:
     row("TIME_WORKER", True, os.environ.get("TIME_WORKER") or "cursor (default); or claude:<seat> / venice:<seat> for a seat with hands")
     row("TIME_REVIEW", True, os.environ.get("TIME_REVIEW") or "off (default); a comma-separated list of seats, each votes")
     row("TIME_REVIEW_TIEBREAK", True, os.environ.get("TIME_REVIEW_TIEBREAK") or "none (default); a seat called only when the standing seats split")
+    row("TIME_PARALLEL", True, os.environ.get("TIME_PARALLEL") or "3 (default); cards in flight at once")
     row("TIME_REVIEW_QUORUM", True, os.environ.get("TIME_REVIEW_QUORUM") or "1 (default); approvals needed, net of objections")
     row("TIME_REVIEW_MAX_TOKENS", True, os.environ.get("TIME_REVIEW_MAX_TOKENS") or "8000 (default); a review cut off at 4000 is asked again with this")
     today, day_cap, month, month_cap = budget()

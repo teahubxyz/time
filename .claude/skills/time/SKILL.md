@@ -89,7 +89,7 @@ Not a Time seat: `@cursor`. If Cursor's GitHub app is installed, `@cursor` in a 
 4. Human gate: PRs touching `TIME_PROTECTED` paths (default `.github/,deploy,infra/,.env,secret`) are never merged by
    Time; they get `needs-human`. So are PRs the reviewer objects to.
 5. Specs: write an issue, label it `spec`. One card per line, `- title — DONE: what finished means`, or `### title`
-   sections that contain a `DONE:` line. Time creates `queued` cards that run one at a time (`TIME_PARALLEL`, default 1).
+   sections that contain a `DONE:` line. Time creates `queued` cards that run one at a time (`TIME_PARALLEL`, default 3).
    A spec that isn't card-shaped is split by a seat when `VENICE_API_KEY` is set (`TIME_PLANNER`, default kimi).
 
 ## Updating Time

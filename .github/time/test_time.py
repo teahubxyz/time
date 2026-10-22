@@ -1393,6 +1393,13 @@ assert not tm.moving(iss80(22, "parked again"))
 if par135 is None: os.environ.pop("TIME_PARALLEL")
 else: os.environ["TIME_PARALLEL"] = par135
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
+_pp = os.environ.pop("TIME_PARALLEL", None)
+assert tm.parallel() == 3, "default"
+for v, want in [("5", 5), ("1", 1), ("0", 3), ("-2", 3), ("abc", 3), ("2.5", 3), ("", 3)]:
+    os.environ["TIME_PARALLEL"] = v
+    assert tm.parallel() == want, (v, tm.parallel())
+os.environ.pop("TIME_PARALLEL")
+if _pp is not None: os.environ["TIME_PARALLEL"] = _pp
 print("ALL OK 80")
 
 # 172 the router's outcomes: a live pick settles into one line (housekeeping writes it; test_housekeeping.py checks the
