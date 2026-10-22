@@ -1,0 +1,54 @@
+name: gandora-mcp
+# Deploy the gandora MCP spike (gandora/site › dev › mcp/worker.js) as Worker `gandora-mcp` at gandora-mcp.yolopreneur.lol.
+# Dispatch only. No bindings, no secrets in the worker: it serves public test clips. See gandora/site mcp/README.md.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: gandora/site ref to deploy
+        default: dev
+permissions:
+  contents: read
+concurrency:
+  group: gandora-mcp
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - name: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'dac3b11890319628eb5cd761445b63ee' }}
+          SRC_REF: ${{ inputs.ref || 'dev' }}
+        run: |
+          set -eu
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "::error::CLOUDFLARE_API_TOKEN missing"; exit 1; }
+          curl -fsSL "https://teahub.xyz/gandora/site/raw/branch/${SRC_REF}/mcp/worker.js" -o /tmp/worker.js
+          wc -c /tmp/worker.js
+          cd .github/time
+          python3 - <<'PY'
+          import json, cloudflare as c
+          from pathlib import Path
+          name = "gandora-mcp"
+          meta = {"main_module": "worker.js", "compatibility_date": c.COMPAT, "bindings": []}
+          data, ctype = c.multipart([("metadata", "application/json", json.dumps(meta).encode()),
+                                     ("worker.js", "application/javascript+module", Path("/tmp/worker.js").read_bytes())])
+          c.cf("PUT", f"{c.account()}/workers/scripts/{name}", data=data, ctype=ctype)
+          print("uploaded", name)
+          print("domain", c.attach(name, "gandora-mcp.yolopreneur.lol"))
+          PY
+      - name: check
+        run: |
+          for i in 1 2 3 4 5 6 7 8; do
+            if curl -fsS https://gandora-mcp.yolopreneur.lol/health; then
+              echo
+              curl -fsS -X POST https://gandora-mcp.yolopreneur.lol/mcp -H 'content-type: application/json' \
+                -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | head -c 600; echo
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::gandora-mcp did not answer /health"; exit 1
