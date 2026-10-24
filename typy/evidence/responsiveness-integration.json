@@ -1,0 +1,28 @@
+{
+  "checkedAt": "2026-10-24T23:25:17.465Z",
+  "base": "http://127.0.0.1:8790",
+  "health": {
+    "ok": true,
+    "rev": "local",
+    "source_sha": "local",
+    "storage": "ready",
+    "quotas": "ready",
+    "topics": false
+  },
+  "score": "317",
+  "resultUrl": "http://127.0.0.1:8790/r/a433e1dab5e143e3aa76bf1c",
+  "storedWords": 13,
+  "storedEvents": 46,
+  "replayWord": "river",
+  "raceUrl": "http://127.0.0.1:8790/race/a433e1dab5e143e3aa76bf1c",
+  "ghostVisible": true,
+  "og": {
+    "status": 200,
+    "bytes": 3962,
+    "width": 1200,
+    "height": 630
+  },
+  "dailySame": true,
+  "dailyWords": 300,
+  "errors": []
+}

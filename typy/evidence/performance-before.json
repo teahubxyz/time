@@ -1,0 +1,358 @@
+{
+  "url": "https://typy.yolopreneur.lol/",
+  "sourceHash": "0d508e9af9db923759286aefcbf7a2bd0c7ddf583a75488317c15685e3ba2128",
+  "viewport": {
+    "width": 1440,
+    "height": 1000
+  },
+  "motion": "no-preference",
+  "phases": [
+    {
+      "phase": "ready-idle",
+      "durationMs": 1505.8000000002794,
+      "textWrites": 630,
+      "unchangedTextWrites": 630,
+      "innerWrites": 0,
+      "layoutReads": 0,
+      "layoutReadMs": 0,
+      "styleReads": 0,
+      "animations": 0,
+      "keyCount": 0,
+      "keyHandlerMedianMs": 0,
+      "keyHandlerP95Ms": 0,
+      "keyHandlerMaxMs": 0,
+      "keyToRafP95Ms": 0,
+      "frameCount": 90,
+      "framesOver25ms": 0,
+      "framesOver50ms": 0,
+      "firstKeyOpacity": [],
+      "byId": {
+        "live-wpm": 90,
+        "live-accuracy": 90,
+        "run-status": 90,
+        "SPAN": 90,
+        "time-label": 90,
+        "live-time": 90,
+        "time-unit": 90
+      },
+      "cdp": {
+        "LayoutCount": 90,
+        "LayoutDuration": 0.016385,
+        "RecalcStyleCount": 90,
+        "RecalcStyleDuration": 0.002776,
+        "ScriptDuration": 0.009908,
+        "TaskDuration": 0.066637
+      }
+    },
+    {
+      "phase": "native-typing",
+      "targetWpm": 100,
+      "displayWpm": "98",
+      "durationMs": 17134.299999999814,
+      "textWrites": 8477,
+      "unchangedTextWrites": 7943,
+      "innerWrites": 140,
+      "layoutReads": 280,
+      "layoutReadMs": 33.799999991897494,
+      "styleReads": 28,
+      "animations": 56,
+      "keyCount": 140,
+      "keyHandlerMedianMs": 0.5,
+      "keyHandlerP95Ms": 0.8000000002793968,
+      "keyHandlerMaxMs": 1.2999999998137355,
+      "keyToRafP95Ms": 15.800000000279397,
+      "frameCount": 1027,
+      "framesOver25ms": 1,
+      "framesOver50ms": 0,
+      "firstKeyOpacity": [
+        {
+          "word": "a",
+          "opacity": 0.999415
+        },
+        {
+          "word": "calm",
+          "opacity": 0.819535
+        },
+        {
+          "word": "river",
+          "opacity": 0.819348
+        },
+        {
+          "word": "moves",
+          "opacity": 0.81933
+        },
+        {
+          "word": "through",
+          "opacity": 0.819312
+        },
+        {
+          "word": "the",
+          "opacity": 0.819339
+        },
+        {
+          "word": "city",
+          "opacity": 0.739275
+        },
+        {
+          "word": "and",
+          "opacity": 0.739571
+        },
+        {
+          "word": "a",
+          "opacity": 0.7395
+        },
+        {
+          "word": "small",
+          "opacity": 0.739039
+        },
+        {
+          "word": "bird",
+          "opacity": 0.73953
+        },
+        {
+          "word": "follows",
+          "opacity": 0.819312
+        },
+        {
+          "word": "the",
+          "opacity": 0.739172
+        },
+        {
+          "word": "wind",
+          "opacity": 0.819276
+        },
+        {
+          "word": "a",
+          "opacity": 0.738886
+        },
+        {
+          "word": "calm",
+          "opacity": 0.739449
+        },
+        {
+          "word": "river",
+          "opacity": 0.81924
+        },
+        {
+          "word": "moves",
+          "opacity": 0.819222
+        },
+        {
+          "word": "through",
+          "opacity": 0.819205
+        },
+        {
+          "word": "the",
+          "opacity": 0.73905
+        },
+        {
+          "word": "city",
+          "opacity": 0.819169
+        },
+        {
+          "word": "and",
+          "opacity": 0.739275
+        },
+        {
+          "word": "a",
+          "opacity": 0.819366
+        },
+        {
+          "word": "small",
+          "opacity": 0.739254
+        },
+        {
+          "word": "bird",
+          "opacity": 0.739234
+        },
+        {
+          "word": "follows",
+          "opacity": 0.739019
+        },
+        {
+          "word": "the",
+          "opacity": 0.819079
+        },
+        {
+          "word": "wind",
+          "opacity": 0.738978
+        }
+      ],
+      "byId": {
+        "word-number": 140,
+        "next-word": 140,
+        "live-wpm": 1167,
+        "live-accuracy": 1167,
+        "run-status": 1167,
+        "SPAN": 1167,
+        "time-label": 1167,
+        "live-time": 1167,
+        "time-unit": 1167,
+        "previous-word": 28
+      },
+      "cdp": {
+        "LayoutCount": 1307,
+        "LayoutDuration": 0.238114,
+        "RecalcStyleCount": 1363,
+        "RecalcStyleDuration": 0.064145,
+        "ScriptDuration": 0.172095,
+        "TaskDuration": 1.126886
+      }
+    },
+    {
+      "phase": "native-typing",
+      "targetWpm": 160,
+      "displayWpm": "155",
+      "durationMs": 10818.69999999972,
+      "textWrites": 5831,
+      "unchangedTextWrites": 5286,
+      "innerWrites": 140,
+      "layoutReads": 280,
+      "layoutReadMs": 35.599999997299165,
+      "styleReads": 28,
+      "animations": 56,
+      "keyCount": 140,
+      "keyHandlerMedianMs": 0.5,
+      "keyHandlerP95Ms": 0.8000000002793968,
+      "keyHandlerMaxMs": 2.2999999998137355,
+      "keyToRafP95Ms": 15.799999999813735,
+      "frameCount": 649,
+      "framesOver25ms": 0,
+      "framesOver50ms": 0,
+      "firstKeyOpacity": [
+        {
+          "word": "a",
+          "opacity": 0.999416
+        },
+        {
+          "word": "calm",
+          "opacity": 0.549729
+        },
+        {
+          "word": "river",
+          "opacity": 0.549617
+        },
+        {
+          "word": "moves",
+          "opacity": 0.54994
+        },
+        {
+          "word": "through",
+          "opacity": 0.549642
+        },
+        {
+          "word": "the",
+          "opacity": 0.550002
+        },
+        {
+          "word": "city",
+          "opacity": 0.549667
+        },
+        {
+          "word": "and",
+          "opacity": 0.549555
+        },
+        {
+          "word": "a",
+          "opacity": 0.441878
+        },
+        {
+          "word": "small",
+          "opacity": 0.549878
+        },
+        {
+          "word": "bird",
+          "opacity": 0.54958
+        },
+        {
+          "word": "follows",
+          "opacity": 0.549468
+        },
+        {
+          "word": "the",
+          "opacity": 0.549828
+        },
+        {
+          "word": "wind",
+          "opacity": 0.442174
+        },
+        {
+          "word": "a",
+          "opacity": 0.442053
+        },
+        {
+          "word": "calm",
+          "opacity": 0.550039
+        },
+        {
+          "word": "river",
+          "opacity": 0.549928
+        },
+        {
+          "word": "moves",
+          "opacity": 0.550251
+        },
+        {
+          "word": "through",
+          "opacity": 0.441999
+        },
+        {
+          "word": "the",
+          "opacity": 0.441717
+        },
+        {
+          "word": "city",
+          "opacity": 0.550387
+        },
+        {
+          "word": "and",
+          "opacity": 0.549654
+        },
+        {
+          "word": "a",
+          "opacity": 0.441986
+        },
+        {
+          "word": "small",
+          "opacity": 0.549977
+        },
+        {
+          "word": "bird",
+          "opacity": 0.549679
+        },
+        {
+          "word": "follows",
+          "opacity": 0.549567
+        },
+        {
+          "word": "the",
+          "opacity": 0.549928
+        },
+        {
+          "word": "wind",
+          "opacity": 0.442281
+        }
+      ],
+      "byId": {
+        "word-number": 140,
+        "next-word": 140,
+        "live-wpm": 789,
+        "live-accuracy": 789,
+        "run-status": 789,
+        "SPAN": 789,
+        "time-label": 789,
+        "live-time": 789,
+        "time-unit": 789,
+        "previous-word": 28
+      },
+      "cdp": {
+        "LayoutCount": 929,
+        "LayoutDuration": 0.166715,
+        "RecalcStyleCount": 983,
+        "RecalcStyleDuration": 0.05587,
+        "ScriptDuration": 0.094722,
+        "TaskDuration": 0.8065720000000001
+      }
+    }
+  ]
+}

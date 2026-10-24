@@ -112,6 +112,7 @@ export class TypingGame {
     this.bestStreak = 0;
     this.misses = 0;
     this.waitingForBeat = false;
+    this.allowOptionalSeparator = false;
     this.beatDeadline = null;
     this.beatDurationMs = null;
     this.finishedReason = null;
@@ -192,6 +193,7 @@ export class TypingGame {
     this.wordErrors = 0;
     this.typedEnd = null;
     this.waitingForBeat = false;
+    this.allowOptionalSeparator = completed && !isBeat && this.advance === 'letter';
     this.wordStartedAt = now;
     if (this.mode === '50' && this.completedWords >= 50) {
       this._finish(now, 'words', false);
@@ -245,6 +247,14 @@ export class TypingGame {
       this._start(now);
     }
     if (this.waitingForBeat) return this._snapshot(now);
+    // Automatic advancement already earned one normalized separator. Let a
+    // typist press that space out of habit without corrupting the next word.
+    // Only the very next printable key gets this allowance; extra or mid-word
+    // spaces still need correction, and an ignored separator earns no output.
+    if (this.allowOptionalSeparator) {
+      this.allowOptionalSeparator = false;
+      if (key === ' ') return this._snapshot(now);
+    }
     if (key === ' ' && this.buffer.join('') === this.word) {
       if (this.mode === 'tempo') {
         this.waitingForBeat = true;

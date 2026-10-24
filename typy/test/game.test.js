@@ -62,6 +62,79 @@ test('last-letter mode advances immediately with the same word output scoring', 
   assert.equal(letter.result(1100).stats.bestStreak, 1);
 });
 
+test('last-letter mode accepts one habitual separator without an extra attempt or output', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless', advance: 'letter' });
+  type(game, 'cat', 0);
+  const before = game.result(300);
+  const state = game.press(' ', 400);
+  const after = game.result(400);
+  assert.equal(state.word, 'dog');
+  assert.equal(state.buffer, '');
+  assert.equal(state.errorIndex, -1);
+  assert.equal(state.correctChars, 4);
+  assert.equal(state.keystrokes, 3);
+  assert.equal(state.errors, 0);
+  assert.deepEqual(after.events, before.events);
+  type(game, 'dog ', 400);
+  game.finish(1100);
+  const result = game.result(1100);
+  assert.equal(result.stats.completedWords, 2);
+  assert.equal(result.stats.correctChars, 8);
+  assert.equal(result.stats.keystrokes, 6);
+  assert.equal(result.stats.accuracy, 100);
+  assert.equal(result.stats.bestStreak, 2);
+  assert.deepEqual(summarizeRun(result), result.stats);
+});
+
+test('last-letter separator tolerance does not hide extra or mid-word spaces', () => {
+  for (const nextKeys of ['  ', 'd ']) {
+    const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless', advance: 'letter' });
+    type(game, 'cat', 0);
+    type(game, nextKeys, 300);
+    const state = game.snapshot(500);
+    assert.equal(state.wordIndex, 1);
+    assert.equal(state.buffer, nextKeys === '  ' ? ' ' : 'd ');
+    assert.equal(state.errors, 1);
+    assert.equal(state.errorIndex, nextKeys === '  ' ? 0 : 1);
+    game.press('Backspace', 600);
+    type(game, nextKeys === '  ' ? 'dog' : 'og', 600);
+    game.finish(1500);
+    const result = game.result(1500);
+    assert.equal(result.stats.completedWords, 2);
+    assert.equal(result.stats.correctChars, 8);
+    assert.equal(result.stats.errors, 1);
+    assert.equal(result.stats.accuracy, 85.7);
+    assert.equal(result.stats.bestStreak, 1);
+    assert.deepEqual(summarizeRun(result), result.stats);
+  }
+});
+
+for (const advance of ['space', 'letter']) {
+  for (const targetWpm of [100, 160]) {
+    test(`${advance} advancement scores steady ${targetWpm} WPM spaced typing accurately`, () => {
+      for (const mode of ['30', '60']) {
+        const game = new TypingGame({ words: ['test'], mode, advance });
+        const durationMs = Number(mode) * 1000;
+        const intervalMs = 12000 / targetWpm;
+        const outputChars = durationMs / intervalMs;
+        const input = 'test '.repeat(outputChars / 5);
+        for (let i = 0; i < input.length; i++) game.press(input[i], i * intervalMs);
+        const result = game.result(durationMs);
+        assert.equal(result.durationMs, durationMs);
+        assert.equal(result.finishedReason, 'time');
+        assert.equal(result.stats.wpm, targetWpm);
+        assert.equal(result.stats.correctChars, outputChars);
+        assert.equal(result.stats.completedWords, outputChars / 5);
+        assert.equal(result.stats.keystrokes, outputChars * 4 / 5);
+        assert.equal(result.stats.accuracy, 100);
+        assert.equal(result.stats.errors, 0);
+        assert.equal(game.snapshot(durationMs).wpm, targetWpm);
+        assert.deepEqual(summarizeRun(result), result.stats);
+      }
+    });
+  }
+}
+
 test('WPM measures net output and accuracy measures attempts, without deletion farming', () => {
   const game = new TypingGame({ words: ['cat'], mode: 'endless' });
   game.press('c', 0);

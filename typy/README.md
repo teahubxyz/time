@@ -8,7 +8,8 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 ## Play
 
 - 30 seconds, 60 seconds, 50 words, endless, and tempo.
-- The first typed character starts the run. Backspace fixes mistakes. Space advances; settings can advance on the last correct letter instead.
+- The first typed character starts the run. Backspace fixes mistakes. Space advances; settings can advance on the last correct letter instead. Automatic advancement tolerates one habitual Space immediately afterward without adding an error or extra output.
+- Word changes are immediate and stationary. Letter feedback reuses the rendered glyphs; word fitting runs only when the word or viewport changes. Idle stages do no repeated DOM work, and the optional next-word preview sits close to the current target.
 - Tempo waits for each word's beat, accelerates by 3.5% on success, and ends after three missed beats. Its starting pace comes from the device's last measured average.
 - Common words are weighted by frequency. The words menu also accepts a topic or a pasted passage, capped at 300 words.
 - Topic paths such as **/react-hooks** generate a short Venice passage and cache it for 30 days.
@@ -36,8 +37,11 @@ Optional browser acceptance uses Playwright and a Chromium executable:
 
     CHROME=/path/to/chrome node test/browser-smoke.mjs
     CHROME=/path/to/chrome node test/integration.mjs
+    CHROME=/path/to/chrome node test/responsiveness.mjs
 
 The integration script uses the actual local backend, creates a test result, reloads its public link, checks the preview PNG, replays it, and opens the ghost race. Set TYPY_BASE_URL to test a deployment; it creates one clearly named test replay and does not submit a synthetic daily-board score.
+
+The responsiveness script keeps normal motion enabled and checks immediate readable word transitions, idle rendering, fast spaced input in both advancement modes, and phone long-word layout. Engine tests also verify exact 100/160 WPM input streams in 30/60-second runs without changing the scoring formula.
 
 The build bundles the HTML and static source into Worker ES modules. Commit both the authored files and generated **src/page.js** and **src/assets.js**. Deployment refuses mismatched generated files.
 

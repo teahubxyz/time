@@ -25,12 +25,26 @@ let currentPath = '/';
 let routeSerial = 0;
 let lastWordKey = '';
 let lastWordIndex = -1;
-let previousWord = '';
+let renderedWord = '';
+let wordSpans = [];
+let overflowSpan = null;
+let wordLayoutDirty = true;
+let errorAnimation = null;
+let lastClockPaint = 0;
 let lastErrorCount = 0;
 let replay = {playing:false,position:0,anchor:0,anchorPosition:0};
 let toastTimer;
 let transitioning = false;
 let isComposing = false;
+
+function setText(id, value) {
+  const node = $(id), text = String(value);
+  if (node.textContent !== text) node.textContent = text;
+}
+
+function setClass(node, name, enabled) {
+  if (node.classList.contains(name) !== enabled) node.classList.toggle(name, enabled);
+}
 
 function toast(message) {
   clearTimeout(toastTimer);
@@ -101,7 +115,8 @@ function beginRun({freshWords = false, focus = false} = {}) {
   replay.playing = false;
   lastWordKey = '';
   lastWordIndex = -1;
-  previousWord = '';
+  renderedWord = '';
+  wordLayoutDirty = true;
   lastErrorCount = 0;
   $('load-panel').hidden = true;
   $('play-panel').hidden = false;
@@ -120,86 +135,103 @@ function beginRun({freshWords = false, focus = false} = {}) {
 }
 
 function drawWord(word, buffer, index, nextWord, flags = null) {
-  const chars = Array.from(word || '');
-  const typed = Array.from(buffer || '');
   const key = word + '|' + buffer + '|' + index + '|' + (flags?.join('') || '');
-  if (key === lastWordKey) return;
-  const wordChanged = index !== lastWordIndex;
-  if (wordChanged && lastWordIndex >= 0 && !reducedMotion) {
-    $('previous-word').textContent = previousWord;
-    $('previous-word').style.fontSize = getComputedStyle($('word')).fontSize;
-    $('previous-word').classList.toggle('long', previousWord.length > 12);
-    $('previous-word').getAnimations().forEach(animation => animation.cancel());
-    $('previous-word').animate([{opacity:.18,transform:'translateX(0)'},{opacity:0,transform:'translateX(-35px)'}], {duration:180,easing:'ease-out'});
+  if (key === lastWordKey && !wordLayoutDirty) return;
+  const node = $('word');
+  const typed = Array.from(buffer || '');
+  const wordChanged = index !== lastWordIndex || word !== renderedWord;
+  if (wordChanged) {
+    // The next target is readable immediately. Animation must never consume
+    // part of the interval in which the player is already typing this word.
+    errorAnimation?.cancel();
+    const chars = Array.from(word || '');
+    node.classList.toggle('long', chars.length > 12);
+    node.classList.toggle('very-long', chars.length > 22);
+    wordSpans = chars.map(char => {
+      const span = document.createElement('span');
+      span.textContent = char;
+      return span;
+    });
+    overflowSpan = document.createElement('span');
+    overflowSpan.className = 'overflow';
+    overflowSpan.setAttribute('aria-hidden', 'true');
+    overflowSpan.hidden = true;
+    node.replaceChildren(...wordSpans, overflowSpan);
+    node.setAttribute('aria-label', 'Word to type: ' + word);
+    node.dataset.word = word;
+    $('typing-input').setAttribute('aria-label', 'Type the word: ' + word);
+    setText('word-number', String(index + 1).padStart(3, '0'));
+    setText('next-word', nextWord || '');
+    wordLayoutDirty = true;
   }
-  $('word').classList.toggle('long', chars.length > 12);
-  $('word').classList.toggle('very-long', chars.length > 22);
-  $('word').innerHTML = chars.map((char, i) => {
+  wordSpans.forEach((span, i) => {
     let state = '';
-    if (i < typed.length) state = (flags ? flags[i] : typed[i] === char) ? 'correct' : 'incorrect';
+    if (i < typed.length) state = (flags ? flags[i] : typed[i] === span.textContent) ? 'correct' : 'incorrect';
     if (i === typed.length) state += ' cursor';
-    return '<span class="' + state + '">' + escapeHTML(char) + '</span>';
-  }).join('') + (typed.length > chars.length ? '<span class="overflow" aria-hidden="true">+' + (typed.length - chars.length) + '</span>' : '');
-  $('word').setAttribute('aria-label', 'Word to type: ' + word);
-  $('word').dataset.word = word;
-  $('typing-input').setAttribute('aria-label', 'Type the word: ' + word);
-  // A pasted token may be much longer than a normal word. Measure the actual
-  // glyphs instead of letting it enlarge a phone's layout viewport.
-  $('word').style.fontSize = '';
-  const available = Math.max(1, $('stage').clientWidth - 28);
-  if ($('word').scrollWidth > available) {
-    const natural = parseFloat(getComputedStyle($('word')).fontSize);
-    $('word').style.fontSize = Math.max(8, natural * available / $('word').scrollWidth * .96) + 'px';
-  }
-  $('word-number').textContent = String(index + 1).padStart(3, '0');
-  $('next-word').textContent = nextWord || '';
-  if (wordChanged && !reducedMotion) {
-    $('word').getAnimations().forEach(animation => animation.cancel());
-    $('word').animate([{opacity:.2,transform:'translateX(25px)'},{opacity:1,transform:'translateX(0)'}], {duration:170,easing:'ease-out'});
+    if (span.className !== state) span.className = state;
+  });
+  const overflow = Math.max(0, typed.length - wordSpans.length);
+  if (overflowSpan.hidden !== !overflow) overflowSpan.hidden = !overflow;
+  if (overflow && overflowSpan.textContent !== '+' + overflow) overflowSpan.textContent = '+' + overflow;
+  // Fit a long pasted word once, on word/viewport changes. Letter feedback does
+  // not change glyph widths and must not force a layout read on every key.
+  if (wordLayoutDirty) {
+    node.style.fontSize = '';
+    const available = Math.max(1, $('stage').clientWidth - 28);
+    const width = node.scrollWidth;
+    if (width > available) {
+      const natural = parseFloat(getComputedStyle(node).fontSize);
+      node.style.fontSize = Math.max(8, natural * available / width * .96) + 'px';
+    }
+    wordLayoutDirty = false;
   }
   lastWordKey = key;
   lastWordIndex = index;
-  previousWord = word;
+  renderedWord = word;
 }
 
 function renderGame(state) {
   drawWord(state.word, state.buffer, state.wordIndex, state.nextWord);
-  $('live-wpm').textContent = pretty(state.wpm);
-  $('live-accuracy').textContent = pretty(state.accuracy);
-  $('status-dot').classList.toggle('active', state.status === 'running');
-  if (state.status === 'ready') $('run-status').textContent = ghost ? 'your ghost is ready' : source.kind === 'daily' ? 'same words, your rhythm' : 'a fresh start';
-  else if (state.errorIndex >= 0) $('run-status').textContent = 'a little backspace, then onward';
-  else if (state.waitingForBeat) $('run-status').textContent = 'right on time · wait for the beat';
-  else $('run-status').textContent = state.streak >= 3 ? state.streak + ' clean words in a row' : 'one word, then the next';
+  setText('live-wpm', pretty(state.wpm));
+  setText('live-accuracy', pretty(state.accuracy));
+  setClass($('status-dot'), 'active', state.status === 'running');
+  if (state.status === 'ready') setText('run-status', ghost ? 'your ghost is ready' : source.kind === 'daily' ? 'same words, your rhythm' : 'a fresh start');
+  else if (state.errorIndex >= 0) setText('run-status', 'a little backspace, then onward');
+  else if (state.waitingForBeat) setText('run-status', 'right on time · wait for the beat');
+  else setText('run-status', state.streak >= 3 ? state.streak + ' clean words in a row' : 'one word, then the next');
   const hintStart = $('run-hint').querySelector('.hint-start');
-  hintStart.textContent = state.status === 'ready' ? 'type the word to begin' : state.errorIndex >= 0 ? 'backspace to correct' : state.waitingForBeat ? 'hold that rhythm' : 'keep your rhythm';
+  const hint = state.status === 'ready' ? 'type the word to begin' : state.errorIndex >= 0 ? 'backspace to correct' : state.waitingForBeat ? 'hold that rhythm' : 'keep your rhythm';
+  if (hintStart.textContent !== hint) hintStart.textContent = hint;
   if (selectedMode === '30' || selectedMode === '60') {
-    $('time-label').textContent = 'remaining'; $('live-time').textContent = Math.ceil(state.remainingMs / 1000); $('time-unit').textContent = 's';
+    setText('time-label', 'remaining'); setText('live-time', Math.ceil(state.remainingMs / 1000)); setText('time-unit', 's');
   } else if (selectedMode === '50') {
-    $('time-label').textContent = 'remaining'; $('live-time').textContent = Math.max(0, 50 - state.completedWords); $('time-unit').textContent = 'words';
+    setText('time-label', 'remaining'); setText('live-time', Math.max(0, 50 - state.completedWords)); setText('time-unit', 'words');
   } else if (selectedMode === 'tempo') {
-    $('time-label').textContent = 'beat pace'; $('live-time').textContent = pretty(state.paceWpm); $('time-unit').textContent = 'wpm';
+    setText('time-label', 'beat pace'); setText('live-time', pretty(state.paceWpm)); setText('time-unit', 'wpm');
   } else {
-    $('time-label').textContent = 'in the flow'; $('live-time').textContent = Math.floor(state.elapsedMs / 1000); $('time-unit').textContent = 's';
+    setText('time-label', 'in the flow'); setText('live-time', Math.floor(state.elapsedMs / 1000)); setText('time-unit', 's');
   }
   if (selectedMode === 'tempo') {
     const fraction = state.beatDurationMs ? Math.max(0, state.beatRemainingMs / state.beatDurationMs) : 1;
     $('tempo-progress').style.transform = 'scaleX(' + fraction + ')';
-    $('tempo-caption').textContent = state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : 'finish the word before the line runs out';
-    Array.from($('tempo-lives').children).forEach((dot, i) => dot.classList.toggle('lost', i < state.misses));
-    $('tempo-lives').setAttribute('aria-label', (3 - state.misses) + ' missed beats remaining');
+    setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : 'finish the word before the line runs out');
+    Array.from($('tempo-lives').children).forEach((dot, i) => setClass(dot, 'lost', i < state.misses));
+    const label = (3 - state.misses) + ' missed beats remaining';
+    if ($('tempo-lives').getAttribute('aria-label') !== label) $('tempo-lives').setAttribute('aria-label', label);
   }
   if (ghost) {
     const completed = ghost.wordTimings.filter(timing => timing.completed && timing.end <= state.elapsedMs).length;
-    $('race-you').textContent = state.completedWords;
-    $('race-them').textContent = completed;
+    setText('race-you', state.completedWords);
+    setText('race-them', completed);
     const difference = state.completedWords - completed;
-    $('race-delta').textContent = state.status === 'ready' ? '' : difference === 0 ? 'neck and neck' : Math.abs(difference) + (difference > 0 ? ' ahead' : ' behind');
+    setText('race-delta', state.status === 'ready' ? '' : difference === 0 ? 'neck and neck' : Math.abs(difference) + (difference > 0 ? ' ahead' : ' behind'));
   }
   if (state.errors > lastErrorCount && !reducedMotion) {
-    $('word').animate([{transform:'translateX(0)'},{transform:'translateX(-5px)'},{transform:'translateX(5px)'},{transform:'translateX(0)'}], {duration:160});
+    errorAnimation?.cancel();
+    errorAnimation = $('word').animate([{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}], {duration:90});
   }
   lastErrorCount = state.errors;
+  lastClockPaint = now();
   if (state.status === 'finished' && !transitioning) finishDisplay();
 }
 
@@ -597,10 +629,16 @@ document.addEventListener('click', event => {
   event.preventDefault(); route(url.pathname);
 });
 window.addEventListener('popstate', () => route(location.pathname,false));
-window.addEventListener('resize', () => { lastWordKey = ''; });
+window.addEventListener('resize', () => {
+  wordLayoutDirty = true;
+  if (view === 'play' && game) renderGame(game.snapshot(now()));
+  else if (view === 'replay') renderReplay(replay.position);
+});
 
 function frame(time) {
-  if (view === 'play' && game) renderGame(game.tick(time));
+  // Input renders synchronously. Only the clock needs periodic refreshes; an
+  // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
+  if (view === 'play' && game?.status === 'running' && (selectedMode === 'tempo' || time - lastClockPaint >= 100)) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
     replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
     renderReplay(replay.position);
