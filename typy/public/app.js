@@ -86,6 +86,7 @@ function updateOptions() {
   });
   $('source-label').textContent = sourceName();
   $('advance-hint').innerHTML = selectedMode === 'tempo' ? 'finish before the beat' : effectiveAdvance === 'letter' ? 'last letter → next word' : '<kbd>space</kbd> next word';
+  if ($('upcoming').hidden === settings.preview) wordLayoutDirty = true;
   $('upcoming').hidden = !settings.preview;
   $('advance-setting').value = effectiveAdvance;
   $('advance-setting').disabled = Boolean(ghost);
@@ -177,12 +178,28 @@ function drawWord(word, buffer, index, nextWord, flags = null) {
   // not change glyph widths and must not force a layout read on every key.
   if (wordLayoutDirty) {
     node.style.fontSize = '';
-    const available = Math.max(1, $('stage').clientWidth - 28);
+    const stageWidth = $('stage').clientWidth;
     const width = node.scrollWidth;
-    if (width > available) {
-      const natural = parseFloat(getComputedStyle(node).fontSize);
-      node.style.fontSize = Math.max(8, natural * available / width * .96) + 'px';
+    const style = getComputedStyle(node);
+    const natural = parseFloat(style.fontSize);
+    const tracking = parseFloat(style.letterSpacing) / natural;
+    // Keep the active target anchored independently of the preview's length.
+    // Extremely long targets get the full stage; previews use remaining room.
+    let anchor = settings.preview ? .35 : .5;
+    let available = Math.max(1, stageWidth * anchor * 2 - 28);
+    if (width > available && natural * available / width * .96 < 8) {
+      anchor = .5;
+      available = Math.max(1, stageWidth - 28);
     }
+    const size = width > available ? Math.max(8, natural * available / width * .96) : natural;
+    if (size !== natural) node.style.fontSize = size + 'px';
+    $('word-pair').style.left = anchor * 100 + '%';
+    const gap = Math.max(12, size * .45);
+    const upcoming = $('upcoming');
+    upcoming.style.fontSize = size + 'px';
+    upcoming.style.letterSpacing = (Number.isFinite(tracking) ? tracking * size : 0) + 'px';
+    upcoming.style.left = 'calc(100% + ' + gap + 'px)';
+    upcoming.style.width = Math.max(0, stageWidth * (1 - anchor) - width * size / natural / 2 - gap - 14) + 'px';
     wordLayoutDirty = false;
   }
   lastWordKey = key;
@@ -568,7 +585,11 @@ $('settings-done').addEventListener('click', () => {
   if (!ghost) settings.advance = $('advance-setting').value;
   settings.preview = $('preview-setting').checked; writeLocal('settings',settings);
   $('settings-dialog').close();
-  if (changed && view === 'play') beginRun({focus:true}); else updateOptions();
+  if (changed && view === 'play') beginRun({focus:true});
+  else {
+    updateOptions();
+    if (changed && view === 'replay') renderReplay(replay.position);
+  }
 });
 $('source-open').addEventListener('click', () => $('source-dialog').showModal());
 ['topic','paste','common'].forEach(tab => $('tab-' + tab).addEventListener('click', () => {
