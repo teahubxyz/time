@@ -1,0 +1,57 @@
+{
+  "checkedAt": "2026-10-24T23:25:22.371Z",
+  "base": "http://127.0.0.1:8790",
+  "motion": "no-preference",
+  "checks": [
+    {
+      "name": "Ready stage stays still",
+      "idleMutations": 0
+    },
+    {
+      "name": "Immediate stationary target and persistent letters",
+      "word": "river",
+      "opacity": "1",
+      "transform": "none",
+      "animations": 0
+    },
+    {
+      "name": "Normal spaced typing at 160 WPM input cadence",
+      "advance": "space",
+      "accuracy": 100
+    },
+    {
+      "name": "Normal spaced typing at 160 WPM input cadence",
+      "advance": "letter",
+      "accuracy": 100
+    },
+    {
+      "name": "Long phone word and instant transition fit",
+      "width": 390,
+      "before": {
+        "viewport": 390,
+        "document": 390
+      },
+      "after": {
+        "word": "next",
+        "viewport": 390,
+        "document": 390,
+        "opacity": "1"
+      }
+    },
+    {
+      "name": "Long phone word and instant transition fit",
+      "width": 360,
+      "before": {
+        "viewport": 360,
+        "document": 360
+      },
+      "after": {
+        "word": "next",
+        "viewport": 360,
+        "document": 360,
+        "opacity": "1"
+      }
+    }
+  ],
+  "errors": []
+}
