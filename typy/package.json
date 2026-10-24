@@ -1,0 +1,13 @@
+{
+  "name": "typy",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "One word at a time. A typing game with tempo, replay, and friendly races.",
+  "scripts": {
+    "build": "node build.mjs",
+    "start": "node build.mjs && node dev.mjs",
+    "test": "node build.mjs && node --test test/*.test.js",
+    "deploy": "node build.mjs && python3 deploy.py"
+  }
+}

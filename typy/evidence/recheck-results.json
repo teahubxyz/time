@@ -1,0 +1,74 @@
+{
+  "timestamp": "2026-10-24T23:02:52.525Z",
+  "target": "http://127.0.0.1:8788",
+  "checks": [
+    {
+      "name": "Main target contrast improved",
+      "status": "PASS",
+      "detail": {
+        "foreground": "rgb(124, 136, 117)",
+        "background": "rgb(245, 243, 236)",
+        "ratio": 3.36
+      }
+    },
+    {
+      "name": "F1: Enter activates focused Replay",
+      "status": "PASS"
+    },
+    {
+      "name": "F2: Enter opens focused settings during endless play",
+      "status": "PASS"
+    },
+    {
+      "name": "Zero-duration word omitted from per-word graph only",
+      "status": "PASS",
+      "detail": {
+        "wpm": 72,
+        "accuracy": 100,
+        "bestStreak": 3,
+        "correctChars": 6,
+        "keystrokes": 3,
+        "errors": 0,
+        "completedWords": 3,
+        "slowest": [
+          {
+            "word": "a",
+            "index": 1,
+            "ms": 500,
+            "wpm": 48
+          },
+          {
+            "word": "a",
+            "index": 2,
+            "ms": 500,
+            "wpm": 48
+          }
+        ],
+        "sparkline": [
+          48,
+          48
+        ]
+      }
+    },
+    {
+      "name": "F3: 64-character pasted word fits phone and resize",
+      "status": "PASS",
+      "detail": {
+        "initial": {
+          "width": 303,
+          "scrollWidth": 303,
+          "left": 43.5,
+          "right": 346.5,
+          "windowWidth": 390,
+          "documentWidth": 390,
+          "fontSize": "8.74088px"
+        },
+        "narrow": {
+          "w": 360,
+          "scrollWidth": 360,
+          "right": 323
+        }
+      }
+    }
+  ]
+}

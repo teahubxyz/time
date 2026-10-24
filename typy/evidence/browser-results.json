@@ -1,0 +1,89 @@
+{
+  "timestamp": "2026-10-24T23:01:12.661Z",
+  "target": "http://127.0.0.1:8788",
+  "browser": "Chrome 156 / Playwright",
+  "checks": [
+    {
+      "name": "desktop ready stage and no horizontal overflow",
+      "status": "PASS"
+    },
+    {
+      "name": "first letter starts; mistake highlights; Backspace corrects; Space advances",
+      "status": "PASS"
+    },
+    {
+      "name": "Escape resets a run and settings switch to last-letter advancement",
+      "status": "PASS"
+    },
+    {
+      "name": "custom passage completes 50-word mode with a result card",
+      "status": "PASS"
+    },
+    {
+      "name": "replay plays and scrubber moves between original words",
+      "status": "PASS"
+    },
+    {
+      "name": "keyboard Enter activates a focused result Replay button",
+      "status": "FAIL",
+      "error": "Enter on the focused Replay button restarted the run instead of replaying it.\n\nfalse !== true\n"
+    },
+    {
+      "name": "endless can end with Enter and preserves results on failed sharing",
+      "status": "PASS"
+    },
+    {
+      "name": "keyboard Enter opens a focused settings button during an endless run",
+      "status": "FAIL",
+      "error": "Enter on the focused settings button finished the endless run instead of opening settings.\n\nfalse !== true\n"
+    },
+    {
+      "name": "unavailable topic API presents a friendly error and common-word recovery",
+      "status": "PASS"
+    },
+    {
+      "name": "daily route locks to 60 seconds (mock API response)",
+      "status": "PASS"
+    },
+    {
+      "name": "pasted markup is rendered as inert text",
+      "status": "PASS"
+    },
+    {
+      "name": "phone layout fits, exposes a large input, and handles native input events",
+      "status": "PASS",
+      "detail": {
+        "width": 390,
+        "scrollWidth": 390
+      }
+    },
+    {
+      "name": "phone dialogs fit and controls remain accessible",
+      "status": "PASS"
+    },
+    {
+      "name": "phone long pasted words remain inside the viewport",
+      "status": "FAIL",
+      "error": "A legal 64-character pasted word overflows the phone stage: {\"width\":578.1875,\"scrollWidth\":590,\"left\":28.90625,\"right\":607.09375,\"windowWidth\":619,\"documentWidth\":619}\n\nfalse !== true\n"
+    },
+    {
+      "name": "no uncaught browser script errors",
+      "status": "PASS"
+    }
+  ],
+  "findings": [
+    {
+      "name": "keyboard Enter activates a focused result Replay button",
+      "message": "Enter on the focused Replay button restarted the run instead of replaying it.\n\nfalse !== true\n"
+    },
+    {
+      "name": "keyboard Enter opens a focused settings button during an endless run",
+      "message": "Enter on the focused settings button finished the endless run instead of opening settings.\n\nfalse !== true\n"
+    },
+    {
+      "name": "phone long pasted words remain inside the viewport",
+      "message": "A legal 64-character pasted word overflows the phone stage: {\"width\":578.1875,\"scrollWidth\":590,\"left\":28.90625,\"right\":607.09375,\"windowWidth\":619,\"documentWidth\":619}\n\nfalse !== true\n"
+    }
+  ],
+  "errors": []
+}

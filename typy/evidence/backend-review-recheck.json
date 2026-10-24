@@ -1,0 +1,36 @@
+{
+  "timestamp": "2026-10-24T23:08:17.481Z",
+  "scope": "source-level focused backend review recheck; no network",
+  "checks": [
+    {
+      "name": "B1 canonical passage invariant",
+      "status": "PASS",
+      "acceptedLength": 64,
+      "rejectedLengths": [
+        65,
+        72,
+        1,
+        7
+      ],
+      "normalizationVariantsRejected": true
+    },
+    {
+      "name": "B2 midnight cleanup preservation and idle expiry",
+      "status": "PASS",
+      "preserved": "2026-10-25T00:01:00.000Z",
+      "rearmed": "2026-10-26T00:01:00.000Z",
+      "currentDayRowsAfterFirstCleanup": 1,
+      "rowsAfterIdleNextDayCleanup": 0,
+      "rawIdentityPersisted": false
+    },
+    {
+      "name": "Missing result HTML recovery with JSON data errors",
+      "status": "PASS",
+      "htmlPaths": [
+        "/r/",
+        "/race/"
+      ],
+      "dataStatus": 404
+    }
+  ]
+}
