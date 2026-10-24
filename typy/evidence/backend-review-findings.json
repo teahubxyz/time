@@ -1,0 +1,21 @@
+{
+  "wordMismatch": {
+    "serverLength": 72,
+    "raceEngineLength": 64
+  },
+  "alarm": {
+    "firstStatus": 200,
+    "secondStatus": 200,
+    "scheduledBefore": "2026-10-25T00:01:00.000Z",
+    "scheduledAfter": "2026-10-26T00:01:00.000Z",
+    "visitorRows": 2
+  },
+  "missingResult": {
+    "status": 404,
+    "contentType": "application/json; charset=utf-8",
+    "body": {
+      "error": "This run could not be found. A new link can take a moment to appear.",
+      "code": "not_found"
+    }
+  }
+}

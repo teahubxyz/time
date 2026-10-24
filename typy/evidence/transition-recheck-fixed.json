@@ -1,0 +1,24 @@
+{
+  "timestamp": "2026-10-24T23:04:31.001Z",
+  "target": "http://127.0.0.1:8788",
+  "check": "F3 default-motion outgoing64-character word transition",
+  "status": "PASS",
+  "samples": [
+    {
+      "word": "next",
+      "viewport": 390,
+      "doc": 390,
+      "oldWidth": 337,
+      "oldFont": "8.74088px",
+      "stageOverflow": "clip"
+    },
+    {
+      "word": "next",
+      "viewport": 390,
+      "doc": 390,
+      "oldWidth": 337,
+      "oldFont": "8.74088px",
+      "stageOverflow": "clip"
+    }
+  ]
+}
