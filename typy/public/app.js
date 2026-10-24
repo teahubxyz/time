@@ -183,14 +183,10 @@ function drawWord(word, buffer, index, nextWord, flags = null) {
     const style = getComputedStyle(node);
     const natural = parseFloat(style.fontSize);
     const tracking = parseFloat(style.letterSpacing) / natural;
-    // Keep the active target anchored independently of the preview's length.
-    // Extremely long targets get the full stage; previews use remaining room.
-    let anchor = settings.preview ? .35 : .5;
-    let available = Math.max(1, stageWidth * anchor * 2 - 28);
-    if (width > available && natural * available / width * .96 < 8) {
-      anchor = .5;
-      available = Math.max(1, stageWidth - 28);
-    }
+    // The active word stays at the page center. Its preview only uses the
+    // remaining space to the right, without shifting or shrinking the target.
+    const anchor = .5;
+    const available = Math.max(1, stageWidth - 28);
     const size = width > available ? Math.max(8, natural * available / width * .96) : natural;
     if (size !== natural) node.style.fontSize = size + 'px';
     $('word-pair').style.left = anchor * 100 + '%';
