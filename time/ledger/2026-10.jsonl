@@ -1020,3 +1020,9 @@
 {"at":"2026-10-22T21:07:34Z","model":"claude-haiku-5-5","pool":"anthropic","in":834,"out":616,"usd":0.000412,"cached":0,"written":830}
 {"at":"2026-10-23T13:14:06Z","model":"claude-opus-5-5","pool":"anthropic","in":20617,"out":4000,"usd":0.183081,"cached":0,"written":20613}
 {"at":"2026-10-24T13:14:03Z","model":"claude-opus-5-5","pool":"anthropic","in":20617,"out":4000,"usd":0.183081,"cached":0,"written":20613}
+{"at":"2026-10-25T00:08:03Z","model":"kimi-k3","pool":"venice","in":732,"out":2540,"usd":null}
+{"at":"2026-10-25T00:12:51Z","model":"claude-sonnet-5-5","pool":"anthropic","in":2129,"out":26,"usd":0.005581,"cached":0,"written":2125}
+{"at":"2026-10-25T00:12:56Z","model":"claude-sonnet-5-5","pool":"anthropic","in":3736,"out":225,"usd":0.006701,"cached":2125,"written":1609}
+{"at":"2026-10-25T00:13:03Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10000,"out":185,"usd":0.018261,"cached":3734,"written":6264}
+{"at":"2026-10-25T00:13:13Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10553,"out":381,"usd":0.007196,"cached":9998,"written":553}
+{"at":"2026-10-25T00:13:36Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10984,"out":402,"usd":0.007212,"cached":10551,"written":431}
