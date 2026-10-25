@@ -13,7 +13,7 @@ concurrency:
 jobs:
   plan:
     if: vars.TIME_ASTRA == 'on'
-    runs-on: ubuntu-latest
+    runs-on: cron
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

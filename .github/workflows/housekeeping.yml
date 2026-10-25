@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   sweep:
-    runs-on: ubuntu-latest
+    runs-on: cron
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

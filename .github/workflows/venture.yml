@@ -27,7 +27,7 @@ concurrency:
   cancel-in-progress: false
 jobs:
   tick:
-    runs-on: ubuntu-latest
+    runs-on: cron
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
