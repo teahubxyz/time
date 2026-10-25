@@ -1026,3 +1026,5 @@
 {"at":"2026-10-25T00:13:03Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10000,"out":185,"usd":0.018261,"cached":3734,"written":6264}
 {"at":"2026-10-25T00:13:13Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10553,"out":381,"usd":0.007196,"cached":9998,"written":553}
 {"at":"2026-10-25T00:13:36Z","model":"claude-sonnet-5-5","pool":"anthropic","in":10984,"out":402,"usd":0.007212,"cached":10551,"written":431}
+{"at":"2026-10-25T00:29:25Z","model":"claude-opus-5-5","pool":"anthropic","in":8455,"out":27,"usd":0.042811,"cached":0,"written":8451}
+{"at":"2026-10-25T00:29:26Z","model":"claude-opus-5-5","pool":"anthropic","in":8455,"out":0,"usd":0.003396,"cached":8451,"written":0}
