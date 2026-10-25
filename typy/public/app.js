@@ -88,6 +88,7 @@ function updateOptions() {
   $('advance-hint').innerHTML = selectedMode === 'tempo' ? 'finish before the beat' : effectiveAdvance === 'letter' ? 'last letter → next word' : '<kbd>space</kbd> next word';
   if ($('upcoming').hidden === settings.preview) wordLayoutDirty = true;
   $('upcoming').hidden = !settings.preview;
+  $('previous-context').hidden = !settings.preview || !$('previous-word').textContent;
   $('advance-setting').value = effectiveAdvance;
   $('advance-setting').disabled = Boolean(ghost);
   $('preview-setting').checked = settings.preview;
@@ -135,7 +136,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   if (focus || innerWidth > 700) focusTyping();
 }
 
-function drawWord(word, buffer, index, nextWord, flags = null) {
+function drawWord(word, buffer, index, nextWord, flags = null, previousWord = '') {
   const key = word + '|' + buffer + '|' + index + '|' + (flags?.join('') || '');
   if (key === lastWordKey && !wordLayoutDirty) return;
   const node = $('word');
@@ -163,6 +164,8 @@ function drawWord(word, buffer, index, nextWord, flags = null) {
     $('typing-input').setAttribute('aria-label', 'Type the word: ' + word);
     setText('word-number', String(index + 1).padStart(3, '0'));
     setText('next-word', nextWord || '');
+    setText('previous-word', previousWord);
+    $('previous-context').hidden = !settings.preview || !previousWord;
     wordLayoutDirty = true;
   }
   wordSpans.forEach((span, i) => {
@@ -183,19 +186,22 @@ function drawWord(word, buffer, index, nextWord, flags = null) {
     const style = getComputedStyle(node);
     const natural = parseFloat(style.fontSize);
     const tracking = parseFloat(style.letterSpacing) / natural;
-    // The active word stays at the page center. Its preview only uses the
-    // remaining space to the right, without shifting or shrinking the target.
+    // The active word stays at the page center. Context words only use the
+    // remaining space on either side, without shifting or shrinking the target.
     const anchor = .5;
     const available = Math.max(1, stageWidth - 28);
     const size = width > available ? Math.max(8, natural * available / width * .96) : natural;
     if (size !== natural) node.style.fontSize = size + 'px';
     $('word-pair').style.left = anchor * 100 + '%';
     const gap = Math.max(12, size * .45);
-    const upcoming = $('upcoming');
-    upcoming.style.fontSize = size + 'px';
-    upcoming.style.letterSpacing = (Number.isFinite(tracking) ? tracking * size : 0) + 'px';
-    upcoming.style.left = 'calc(100% + ' + gap + 'px)';
-    upcoming.style.width = Math.max(0, stageWidth * (1 - anchor) - width * size / natural / 2 - gap - 14) + 'px';
+    const contextWidth = Math.max(0, stageWidth / 2 - width * size / natural / 2 - gap - 14) + 'px';
+    for (const id of ['previous-context', 'upcoming']) {
+      const context = $(id);
+      context.style.fontSize = size + 'px';
+      context.style.letterSpacing = (Number.isFinite(tracking) ? tracking * size : 0) + 'px';
+      context.style.width = contextWidth;
+      context.style[id === 'previous-context' ? 'right' : 'left'] = 'calc(100% + ' + gap + 'px)';
+    }
     wordLayoutDirty = false;
   }
   lastWordKey = key;
@@ -204,7 +210,8 @@ function drawWord(word, buffer, index, nextWord, flags = null) {
 }
 
 function renderGame(state) {
-  drawWord(state.word, state.buffer, state.wordIndex, state.nextWord);
+  const previous = state.wordIndex > 0 ? game.words[(state.wordIndex - 1) % game.words.length] : '';
+  drawWord(state.word, state.buffer, state.wordIndex, state.nextWord, null, previous);
   setText('live-wpm', pretty(state.wpm));
   setText('live-accuracy', pretty(state.accuracy));
   setClass($('status-dot'), 'active', state.status === 'running');
@@ -430,7 +437,8 @@ function renderReplay(position) {
   }
   const characters = Array.from(word);
   const buffer = flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
-  drawWord(word, buffer, index, run.words[(index + 1) % run.words.length], flags);
+  const previous = index > 0 ? run.words[(index - 1) % run.words.length] : '';
+  drawWord(word, buffer, index, run.words[(index + 1) % run.words.length], flags, previous);
   $('live-wpm').textContent = pretty(run.stats.wpm);
   $('live-accuracy').textContent = pretty(run.stats.accuracy);
   $('live-time').textContent = Math.floor(position / 1000);

@@ -9,7 +9,7 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 
 - 30 seconds, 60 seconds, 50 words, endless, and tempo.
 - The first typed character starts the run. Backspace fixes mistakes. Space advances; settings can advance on the last correct letter instead. Automatic advancement tolerates one habitual Space immediately afterward without adding an error or extra output.
-- Word changes are immediate and stationary. Letter feedback reuses the rendered glyphs; word fitting runs only when the word or viewport changes. Idle stages do no repeated DOM work, and the optional next-word preview sits close to the current target.
+- Word changes are immediate and stationary. Letter feedback reuses the rendered glyphs; word fitting runs only when the word or viewport changes. Idle stages do no repeated DOM work, and optional faded previous/next words sit beside the centered target.
 - Tempo waits for each word's beat, accelerates by 3.5% on success, and ends after three missed beats. Its starting pace comes from the device's last measured average.
 - Common words are weighted by frequency. The words menu also accepts a topic or a pasted passage, capped at 300 words.
 - Topic paths such as **/react-hooks** generate a short Venice passage and cache it for 30 days.
