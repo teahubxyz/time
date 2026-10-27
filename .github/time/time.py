@@ -1916,4 +1916,8 @@ def cmd_doctor() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit({"mention": cmd_mention, "heartbeat": cmd_heartbeat, "doctor": cmd_doctor}[sys.argv[1]]())
+    job = {"mention": cmd_mention, "heartbeat": cmd_heartbeat, "doctor": cmd_doctor}[sys.argv[1]]
+    if sys.argv[1] == "mention":  # runs on every comment: too chatty for the bus
+        sys.exit(job())
+    import office  # the office bus (teahubxyz/teahub AGENTS.md): best effort, never fails the job
+    sys.exit(office.around(sys.argv[1], job))

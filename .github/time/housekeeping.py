@@ -441,4 +441,5 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    import office  # the office bus (teahubxyz/teahub AGENTS.md): best effort, never fails the job
+    sys.exit(office.around("housekeeping", main, "Time: the daily sweep"))

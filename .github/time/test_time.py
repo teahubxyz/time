@@ -1290,6 +1290,17 @@ def gh80(method, path, body=None, **k):
         raise RuntimeError(f"{method} {path} -> 404: not found")
     return {"content": _b8172.b64encode("".join(json.dumps(r) + "\n" for r in settled80).encode()).decode()}
 astra.tm.gh = gh80
+import datetime as _dt80  # noqa: E402
+import types as _types80  # noqa: E402
+
+
+class _Then80(_dt80.datetime):  # pin Astra's clock: cards age by the day, so the expected ranking is a date's
+    @classmethod
+    def now(cls, tz=None):
+        return _dt80.datetime(2026, 10, 22, 12, tzinfo=tz or _dt80.timezone.utc)
+
+
+astra.dt = _types80.SimpleNamespace(datetime=_Then80, timezone=_dt80.timezone, timedelta=_dt80.timedelta, date=_dt80.date)
 reply80 = {"note": "the note", "assess": [dict(assess80[k], key=k) for k in assess80] + ["junk"],
            "new": [{"title": "Write a thing", "body": "do it"}, {"no": "title"}]}
 astra.tm.think = lambda seat, a, b, system, user: (asked80.append((seat, system, user)), "Sure:\n" + json.dumps(reply80))[1]

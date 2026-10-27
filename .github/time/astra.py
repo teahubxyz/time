@@ -373,4 +373,7 @@ def tick() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(tick() if sys.argv[1:2] == ["tick"] else __doc__)
+    if sys.argv[1:2] != ["tick"]:
+        sys.exit(__doc__)
+    import office  # the office bus (teahubxyz/teahub AGENTS.md): best effort, never fails the job
+    sys.exit(office.around("astra", tick, "Time: the daily planner"))
