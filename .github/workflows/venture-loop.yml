@@ -26,6 +26,8 @@ jobs:
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TIME_TOKEN: ${{ secrets.TIME_TOKEN }}
       TIME_RUN_IMAGE: node:22-bookworm

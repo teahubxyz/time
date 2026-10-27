@@ -35,6 +35,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}   # user-level secret on teahubxyz (docs/decisions.md on the spine)
           TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # repo secret: the `time` bot opens and merges PRs (Gitea denies that to the Actions identity)
           TIME_SEAT_CLAUDE: ${{ secrets.TIME_SEAT_CLAUDE }}   # umbrella seat, retired once the per-seat tokens below are in use (#76)

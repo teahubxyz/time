@@ -16,6 +16,8 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || 'dac3b11890319628eb5cd761445b63ee' }}
       VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+      LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+      LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
       TIME_VENTURE_DOMAIN: ${{ vars.TIME_VENTURE_DOMAIN || 'yolopreneur.lol' }}
     steps:
       - uses: actions/checkout@v5

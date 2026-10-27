@@ -31,6 +31,8 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}   # org owners etc.; collaborators are trusted without being listed
           TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}

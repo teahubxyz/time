@@ -26,6 +26,8 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # repo secret: Astra's issues and labels go out as the `time` bot
           VENICE_API_KEY: ${{ secrets.VENICE_API_KEY }}
+          LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+          LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           TIME_ASTRA_SEAT: ${{ vars.TIME_ASTRA_SEAT }}
           TIME_ASTRA_MAX_READY: ${{ vars.TIME_ASTRA_MAX_READY }}
           TIME_ASTRA_MAX_NEW: ${{ vars.TIME_ASTRA_MAX_NEW }}

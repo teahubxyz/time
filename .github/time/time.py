@@ -329,13 +329,56 @@ def anthropic_messages(body: dict, timeout: float) -> dict:
 def chat(body: dict, timeout: float) -> dict:
     """Every model call goes through here: the budget is checked first and the spend booked after."""
     budget_check(provider_of(body["model"]))
-    if provider_of(body["model"]) == "anthropic":
-        native = (os.environ.get("TIME_ANTHROPIC_API") or "messages").strip().lower() != "compat"
-        out = (anthropic_messages if native else anthropic_chat)(body, timeout)
-    else:
-        out = venice_chat(body, timeout)
+    started = dt.datetime.now(dt.timezone.utc).isoformat()
+    try:
+        if provider_of(body["model"]) == "anthropic":
+            native = (os.environ.get("TIME_ANTHROPIC_API") or "messages").strip().lower() != "compat"
+            out = (anthropic_messages if native else anthropic_chat)(body, timeout)
+        else:
+            out = venice_chat(body, timeout)
+    except Exception as e:
+        trace(body, {}, started, err=str(e))
+        raise
     book(body["model"], out.get("usage") or {})
+    trace(body, out, started)
     return out
+
+
+# ---------- tracing: every model call also lands in Langfuse (best effort, never blocks a run) ----------
+LANGFUSE = (os.environ.get("LANGFUSE_HOST") or "https://us.cloud.langfuse.com").rstrip("/")
+
+
+def trace(body: dict, out: dict, started: str, err: str | None = None) -> None:
+    """One generation per model call, grouped into one trace per Actions run. No keys -> no-op."""
+    pk, sk = os.environ.get("LANGFUSE_PUBLIC_KEY"), os.environ.get("LANGFUSE_SECRET_KEY")
+    if not (pk and sk):
+        return
+    import base64, uuid
+    run = os.environ.get("GITHUB_RUN_ID") or "local"
+    repo = os.environ.get("GITHUB_REPOSITORY") or "time"
+    wf = os.environ.get("GITHUB_WORKFLOW") or "time"
+    tid = str(uuid.uuid5(uuid.NAMESPACE_URL, f"{SERVER}/{repo}/actions/runs/{run}"))
+    now = dt.datetime.now(dt.timezone.utc).isoformat()
+    u = out.get("usage") or {}
+    msg = ((out.get("choices") or [{}])[0].get("message") or {}) if out else {}
+    gen = {"id": str(uuid.uuid4()), "traceId": tid, "name": wf, "model": body.get("model"),
+           "startTime": started, "endTime": now, "input": body.get("messages"), "output": msg or None,
+           "usage": {"input": u.get("prompt_tokens") or u.get("input_tokens"),
+                     "output": u.get("completion_tokens") or u.get("output_tokens")},
+           "metadata": {"provider": provider_of(body.get("model") or ""), "run": run},
+           **({"level": "ERROR", "statusMessage": err[:500]} if err else {})}
+    batch = [{"id": str(uuid.uuid4()), "type": "trace-create", "timestamp": now,
+              "body": {"id": tid, "name": wf, "tags": [repo.split("/")[-1], wf],
+                       "metadata": {"repo": repo, "run": run, "url": f"{SERVER}/{repo}/actions/runs/{run}"}}},
+             {"id": str(uuid.uuid4()), "type": "generation-create", "timestamp": now, "body": gen}]
+    try:
+        auth = base64.b64encode(f"{pk}:{sk}".encode()).decode()
+        req = urllib.request.Request(f"{LANGFUSE}/api/public/ingestion", method="POST",
+                                     data=json.dumps({"batch": batch}, default=str).encode(),
+                                     headers={"Authorization": f"Basic {auth}", "Content-Type": "application/json"})
+        urllib.request.urlopen(req, timeout=10).read()
+    except Exception as e:  # tracing must never break the factory
+        print(f"langfuse: skipped ({str(e)[:80]})")
 
 
 # ---------- spend: a ledger in the repo, and a governor that reads it ----------
