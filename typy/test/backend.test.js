@@ -55,6 +55,28 @@ test('result link round trip stores only explicit sharing data',async()=>{
  const read=await worker.fetch(req('/api/results/'+info.id),e);assert.equal(read.status,200);const value=await read.json();assert.equal(value.run.stats.wpm,2);assert.equal(value.name,'A friend');assert.equal(e.KV.data.size,1);
  const missing=await worker.fetch(req('/api/results/'+'a'.repeat(24)),e);assert.equal(missing.status,404);
 });
+test('a replay link holds the passage and its timings, nothing else, and opens logged out',async()=>{
+ const e=env(),data=input();data.run.typedContent='ne-ver-store-this';data.run.events[0].key='ne-ver-store-this';
+ const info=await(await worker.fetch(post(data),e)).json();
+ assert.match(info.id,/^[a-f0-9]{24}$/,'a short id');
+ assert.equal(e.KV.data.size,1);
+ const [[key,entry]]=[...e.KV.data];assert.equal(key,'result:'+info.id);
+ const stored=JSON.parse(entry.value);
+ assert.deepEqual(Object.keys(stored).sort(),['createdAt','id','name','run','source']);
+ assert.deepEqual(Object.keys(stored.run).sort(),['advance','durationMs','events','finishedReason','mode','replayTruncated','stats','version','wordTimings','words']);
+ assert.deepEqual(Object.keys(stored.run.events[0]).sort(),['index','t','type']);
+ assert.deepEqual(stored.run.words,['calm','clear']);
+ assert.ok(stored.run.events.length>=4&&stored.run.wordTimings.length>=1,'keystroke timings are recorded');
+ assert.ok(!entry.value.includes('ne-ver-store-this'),'nothing the visitor typed is stored');
+ // Logged out: no cookie is set or needed to read the page or its replay.
+ for(const path of [info.url,'/race/'+info.id,'/api/results/'+info.id]){
+  const response=await worker.fetch(req(path),e);
+  assert.equal(response.status,200,path);assert.equal(response.headers.get('Set-Cookie'),null,path);
+ }
+ const replay=await(await worker.fetch(req('/api/results/'+info.id),e)).json();
+ assert.deepEqual(replay.run.events.map(event=>event.type),stored.run.events.map(event=>event.type));
+ assert.ok(replay.run.events.every(event=>Number.isFinite(event.t)));
+});
 test('sharing rejects cross-site origins, wrong content types and invalid JSON',async()=>{
  const e=env();assert.equal((await worker.fetch(post(input(),{Origin:'https://elsewhere.example'}),e)).status,403);
  assert.equal((await worker.fetch(req('/api/results',{method:'POST',headers:{'Content-Type':'text/plain'},body:'no'}),e)).status,415);

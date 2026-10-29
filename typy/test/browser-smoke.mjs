@@ -92,6 +92,7 @@ await check('replay plays and scrubber moves between original words', async () =
   await page.locator('#replay-play').click();
   assert.equal(await page.locator('#replay-controls').isVisible(), true);
   await page.locator('#replay-scrubber').evaluate(input => { input.value = '0'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.equal(await page.locator('#word .cursor').count(), 1, 'the replay follows the original run with a ghost cursor');
   const first = Number(await page.locator('#word-number').innerText());
   await page.locator('#replay-scrubber').evaluate(input => { input.value = String(Number(input.max) * .8); input.dispatchEvent(new Event('input', { bubbles: true })); });
   const later = Number(await page.locator('#word-number').innerText());
