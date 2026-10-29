@@ -4,7 +4,9 @@
 
 ### Changed
 - `TIME_PARALLEL` defaults to 3 (was 1) and a bad value (not a positive integer) falls back to 3 (#243).
+- A card waiting on a person (`needs-human`, `error`, `stuck`) holds only the cards that wait on it, directly or through another card: it holds no slot (#135) and every other `queued` card is still promoted, with the dependency each held card waits on printed in the heartbeat log. A dependency Time can't read counts as open, as before (#247).
 ### Added
+- An andon note on the spec: when a card of a planned spec (`Part of #N`) parks for a person, Time comments once on the spec naming the card, the beat it stalled at, its PR, the cards held behind it and that everything else keeps moving. One note per stall — a card that is retried and parks again is said again (#247).
 - Claude delegation over `workflow_dispatch` (`.github/time/delegate.py`, tests in `test_delegate.py`): a bounded task for the `sonnet` or `opus` seat with an idempotency key, run through time.py's own `think`, seat routing and dollar governor. Each job has a stable correlation ID (`dlg-<20 hex>`, from caller and key) and a receipt (`queued`/`running`/`succeeded`/`failed`, source SHA, run URL, model, tokens, dollars, result and its hash) at `time/delegations/<id>.json` and on `TIME-RECEIPT` log lines. Duplicate keys replay the stored result without spending, a failed key retries (3 attempts), and the task text, secrets and key-shaped strings never reach a receipt or log. No issue comments. The workflow itself is a proposal in `time/delegate/delegate.yml`: it needs a human to review and install it under `.github/workflows/`.
 
 ### Security
