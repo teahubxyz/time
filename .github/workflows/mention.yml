@@ -34,6 +34,7 @@ jobs:
           LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
           LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TIME_TOKEN: ${{ secrets.TIME_TOKEN }}   # repo secret: the ledger flush pushes to main as the `time` bot (the Actions identity may not)
           TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}   # org owners etc.; collaborators are trusted without being listed
           TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}
           TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}
