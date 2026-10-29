@@ -1309,7 +1309,7 @@ beats80 = [{"beat": "astra", "router": "live", "at": "2026-10-17T13:13:00Z", "pi
            {"beat": "astra", "router": "live", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 5, "kind": "feature"}, "junk"]}]
 assert rt.last_picked(beats80) == {"feature": "2026-10-18"}, "live picks only"
 t80 = rt.table(r80, rt.pick(r80, live80, 10.0, 2), "dry")
-assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "not wired" in t80
+assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "router mode" in t80
 assert "**queued today**" in rt.table(r80, rt.pick(r80, live80, 10.0, 2), "live")
 # Astra's router tick: dry shows the ranking and touches nothing; live queues the picks and writes the new cards unqueued
 aspec = importlib.util.spec_from_file_location("astra80", Path(__file__).resolve().parent / "astra.py")
@@ -1412,6 +1412,93 @@ astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent = real175[:3]
 if real175[4] is None: os.environ.pop("TIME_WORKER", None)
 else: os.environ["TIME_WORKER"] = real175[4]
 assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
+# ventures through the router (#170): "start a new venture" is actionable only once the loop is in router mode, and a
+# live venture people signed up for is a "v2 of <venture>" candidate
+assert rt.new_venture("router")["actionable"] and rt.new_venture("router")["why_not"] == ""
+assert rt.new_venture(" Router ")["actionable"], "the mode is read the way a variable arrives"
+assert not rt.new_venture("on")["actionable"] and not rt.new_venture("off")["actionable"] and not rt.new_venture("")["actionable"]
+assert "TIME_VENTURE_MODE" in rt.new_venture("off")["why_not"] and rt.new_venture("router")["n"] is None
+reg170 = {"ventures": [{"slug": "loot-drop", "name": "Loot Drop", "status": "live", "signups": 3, "one_liner": "pick a drop", "version": 1},
+                       {"slug": "nobody", "name": "Nobody", "status": "live", "signups": 0},
+                       {"slug": "dead", "name": "Dead", "status": "killed", "signups": 9},
+                       {"slug": "bad", "name": "Bad", "status": "live", "signups": "many"},
+                       {"name": "No slug", "status": "live", "signups": 4}, "junk"]}
+v2s170 = rt.v2_candidates(reg170)
+assert [c["title"] for c in v2s170] == ["v2 of Loot Drop (3 signups)"], "only a live venture with signups, shown with them"
+assert v2s170[0]["kind"] == "venture" and v2s170[0]["actionable"] and v2s170[0]["n"] is None and v2s170[0]["next_v"] == 2
+assert "ventures/loot-drop/" in v2s170[0]["body"] and "pick a drop" in v2s170[0]["body"]
+assert rt.v2_candidates({}) == [] and rt.v2_candidates({"ventures": None}) == []
+assert rt.v2_candidates({"ventures": [{"slug": "v9", "name": "V9", "status": "live", "signups": 2, "version": 9}]})[0]["next_v"] == 10
+# Astra, live: a picked new venture dispatches venture.yml with start=true and is never queued as a card; a picked v2
+# posts the venture's own open card, or writes and queues one against gh-pages
+real170 = (astra.tm.gh, astra.tm.default_branch, os.environ.get("TIME_VENTURE_MODE"))
+astra.tm.issues = lambda q: closed80 if q.startswith("state=closed") else open80 + [iss80(57, "Astra log", labels=["astra"])]
+astra.tm.default_branch = lambda: "main"
+calls170 = []
+def gh170(method, path, body=None, **k):
+    """gh80, plus the registry on the Pages branch and a note of every workflow Astra dispatches."""
+    if "/actions/workflows/" in path:
+        calls170.append((method, path, body))
+        return {}
+    if "ventures/ventures.json" in path:
+        assert f"ref={astra.PAGES_BRANCH}" in path, path
+        return {"content": _b8172.b64encode(json.dumps(reg170).encode()).decode()}
+    return gh80(method, path, body, **k)
+astra.tm.gh = gh170
+live170 = rt.config('{"mode": "live"}')
+def tick170(assess, mode="router", cfg=None):
+    for lst in (said80, labelled80, made80, calls170): lst.clear()
+    if mode: os.environ["TIME_VENTURE_MODE"] = mode
+    else: os.environ.pop("TIME_VENTURE_MODE", None)
+    astra.tm.think = lambda seat, a, b, system, user: json.dumps(
+        {"note": "n", "assess": [dict(v, key=k) for k, v in assess.items()], "new": []})
+    assert astra.router_tick(cfg or live170, "opus", 57, "ctx", [], 1, 0) == 0
+new170 = {"venture:new": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(new170)
+assert calls170 == [("POST", f"/repos/{astra.tm.REPO}/actions/workflows/venture.yml/dispatches",
+                     {"ref": "main", "inputs": {"start": "true"}})], calls170
+assert not made80 and not labelled80, "a new venture is never queued as a card: there is no card"
+assert "Venture: new venture: dispatched venture.yml with start=true" in said80[-1][1], said80[-1][1]
+assert said80[-1][2]["queued"] == 0 and said80[-1][2]["picked"] == [{"n": None, "kind": "venture"}], said80[-1][2]
+tick170(new170, mode="on")
+assert not calls170 and not made80 and "router mode" in said80[-1][1], "not in router mode: not actionable, nothing dispatched"
+tick170(new170, cfg=rt.config('{"mode": "dry"}'))
+assert not calls170 and "it would queue: Start a new venture" in said80[-1][1] and said80[-1][2]["would"] == [], said80[-1][1]
+v2a170 = {"venture:new": {"kind": "venture", "value": 1, "size": "S"}, "venture:v2:loot-drop": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(v2a170)
+assert not calls170, "a v2 starts no new venture"
+assert [m[0] for m in made80] == ["Loot Drop v2: build the next version from what signups asked for"], made80
+assert "Base: gh-pages" in made80[0][1] and "DONE:" in made80[0][1] and "ventures/loot-drop/" in made80[0][1]
+assert labelled80 == [(91, "queued")] and "Loot Drop v2: no card yet, wrote and queued #91" in said80[-1][1], said80[-1][1]
+open80.append(iss80(77, "Venture 2026-10-19: Loot Drop v2", labels=["venture"]))
+tick170(v2a170)
+open80.pop()
+assert not calls170 and not made80 and "Loot Drop v2: already on #77" in said80[-1][1], said80[-1][1]
+astra.tm.gh, astra.tm.default_branch = real170[:2]
+if real170[2] is None: os.environ.pop("TIME_VENTURE_MODE", None)
+else: os.environ["TIME_VENTURE_MODE"] = real170[2]
+# the loop (#170): TIME_VENTURE=router writes no daily card and starts one only when asked; off ignores the input
+vspec170 = importlib.util.spec_from_file_location("vt170", Path(__file__).resolve().parent / "venture.py")
+vt170 = importlib.util.module_from_spec(vspec170); vspec170.loader.exec_module(vt170)
+cards170 = []
+vt170.registry = lambda: {"ventures": []}
+vt170.ack_signups = vt170.refresh_daily = vt170.refresh_backends = lambda reg: None
+vt170.venture_cards = vt170.batch_cards = lambda state="open", n=30: []
+vt170.new_card = lambda title: cards170.append(title) or {"number": len(cards170), "labels": [{"name": "venture"}]}
+vt170.is_due = lambda *a: False
+vt170.comments_of = lambda n: []
+def loop170(mode, start=""):
+    cards170.clear()
+    for k, v in (("TIME_VENTURE", mode), ("TIME_VENTURE_START", start)):
+        if v: os.environ[k] = v
+        else: os.environ.pop(k, None)
+    assert vt170.tick() == 0
+loop170("router"); assert cards170 == [], "router: no daily card on the schedule"
+loop170("router", "1"); assert cards170 == [f"Venture {vt170.today()}"], cards170
+loop170("off", "1"); assert cards170 == [], "off: the start input does nothing, as before"
+loop170("on"); assert cards170 == [f"Venture {vt170.today()}"], "on: the daily card, as before"
+os.environ.pop("TIME_VENTURE", None); os.environ.pop("TIME_VENTURE_START", None)
+print("ALL OK 170")
 # the heartbeat promotes queued cards in the live ranking's order, oldest first without one
 real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)
 moved80 = []

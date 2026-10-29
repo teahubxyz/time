@@ -40,6 +40,11 @@ Measure: after 7 days, distinct people who signed up or 👍'd the signal issue,
   lines: iterate (a v2 card), kill, or watch one more week and then park.
 Batch (TIME_VENTURE_BATCH=k, off by default): one card scouts and pitches a field, the board's top k become cards in one milestone,
   launched together after a hold, with one batch retry for a held child and a cohort retro (see "batches" below).
+TIME_VENTURE=router (a third mode beside on / off, #170): no daily card on the schedule; a card starts only when asked
+  (TIME_VENTURE_START, the dispatch input start=true), which is how Astra's router starts a venture — a new venture
+  costs what a card costs, so the router chooses it against everything else on the board instead of the clock choosing
+  for it. The 6-hour tick still advances and measures the open venture cards, as it does under off. Under off the start
+  input does nothing, as before.
 Nothing is posted outside the repo: launch posts are drafts for the chair.
 """
 from __future__ import annotations
@@ -2036,6 +2041,10 @@ def tick() -> int:
     except Exception as e:  # noqa: BLE001  chores never block the cards
         print("chores failed:", e)
     fresh, yes = [], ("1", "true", "yes")
+    if env("TIME_VENTURE", "off") == "router" and env("TIME_VENTURE_START", "").lower() in yes:
+        # router mode (#170): no daily card. Astra's pick dispatches venture.yml with start=true and that starts one;
+        # the waves below advance it, and every other venture card, exactly as they do under off.
+        fresh.append(new_card(next_title({c["title"] for c in venture_cards("all")})))
     if env("TIME_VENTURE", "off") == "on":
         asked_batch = env("TIME_VENTURE_BATCH_START", "").lower() in yes
         if batch_size() or asked_batch:  # batches replace the daily single card
