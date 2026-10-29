@@ -301,9 +301,9 @@ function displayResult(result) {
   $('race-button').disabled = !run.events?.length || run.replayTruncated;
   $('board-open').hidden = source.kind !== 'daily';
   if (run.replayTruncated) $('result-note').textContent = 'That was a long flow. Your score is complete; the replay holds the most recent portion, so this run cannot be shared.';
-  else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional.';
+  else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional, and the replay link it makes is public.';
   else if (result.ghostStats) $('result-note').textContent = 'Your ghost finished at ' + pretty(result.ghostStats.wpm) + ' wpm. Race links always use the same passage and mode.';
-  else $('result-note').textContent = result.local ? 'Your result is on this device. Share it when you’re ready.' : 'Watch the original timing, or try the same words against this ghost.';
+  else $('result-note').textContent = result.local ? 'Your result is on this device. Sharing it makes a replay link that is public: anyone who has the link can watch the run, with no account needed.' : 'This replay is public to anyone with its link. Watch the original timing, or try the same words against this ghost.';
   const slowest = stats.slowest?.slice(0, 3) || [];
   $('slow-words').innerHTML = slowest.length ? slowest.map(row => '<span class="slow-word"><span>' + escapeHTML(row.word) + '</span><small>' + round1(row.ms / 1000) + 's</small></span>').join('') : '<span>your next run starts here</span>';
   const points = stats.sparkline || [];

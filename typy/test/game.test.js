@@ -329,6 +329,45 @@ test('endless repeats the capped passage without ending or losing absolute repla
   assert.equal(result.stats.sparkline.length <= 80, true);
 });
 
+test('the result card gets ranked slow words and a drawable speed sparkline', () => {
+  // One hand-built run per word duration, so each word's speed is exact:
+  // a completed two-letter word is three characters of output, and
+  // 3 × 12000 / ms is its WPM.
+  const build = (durations, words) => {
+    const events = [], wordTimings = [];
+    let at = 0;
+    durations.forEach((ms, index) => {
+      const start = at;
+      const letters = Array.from(words[index]);
+      for (const _letter of letters) {
+        at += ms / letters.length;
+        events.push({ t: Math.round(at), type: 'hit', index });
+      }
+      wordTimings.push({ index, start: Math.round(start), end: Math.round(at), typedEnd: Math.round(at), completed: true, errors: 0 });
+    });
+    return { words, durationMs: Math.round(at), events, wordTimings };
+  };
+  const labels = ['ax', 'bx', 'cx', 'dx', 'ex', 'fx'];
+  const stats = summarizeRun(build([600, 300, 1200, 150, 2400, 900], labels));
+  assert.equal(stats.completedWords, 6);
+  assert.deepEqual(stats.sparkline, [60, 120, 30, 240, 15, 40]);
+  assert.deepEqual(stats.slowest.map(row => [row.word, row.wpm, row.ms]), [
+    ['ex', 15, 2400], ['cx', 30, 1200], ['fx', 40, 900], ['ax', 60, 600], ['bx', 120, 300]
+  ], 'slowest first, and no more than five of them');
+
+  // A word finished the instant it began has no measurable interval, so it
+  // leaves the chart rather than spiking it.
+  const instant = summarizeRun(build([0, 600, 300], labels.slice(0, 3)));
+  assert.equal(instant.sparkline.length, 2);
+  assert.equal(instant.completedWords, 3);
+
+  // Long runs keep their shape without handing the card hundreds of columns.
+  const long = summarizeRun(build(Array.from({ length: 200 }, (_, i) => 300 + i), Array(200).fill('ab')));
+  assert.equal(long.sparkline.length, 67);
+  assert.ok(long.sparkline.every(value => Number.isFinite(value)));
+  assert.equal(long.slowest.length, 5);
+});
+
 test('tempo completion waits for its beat, then accelerates and shows the next word', () => {
   const game = new TypingGame({ words: ['cat', 'dog'], mode: 'tempo', paceWpm: 40 });
   type(game, 'cat', 0);

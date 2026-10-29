@@ -83,6 +83,8 @@ await check('custom passage completes 50-word mode with a result card', async ()
   assert.equal(await page.locator('#result-accuracy').innerText(), '100%');
   assert.equal(await page.locator('#result-streak').innerText(), '50 words');
   assert.equal(await page.locator('#speed-chart path').count() >= 2, true);
+  assert.match(await page.locator('#result-note').innerText(), /public/, 'the result card must say a shared replay link is public');
+  assert.equal(await page.locator('#again-button').isVisible(), true);
   await page.screenshot({ path: path.join(evidence, 'result.png'), fullPage: true });
 });
 await check('replay plays and scrubber moves between original words', async () => {
