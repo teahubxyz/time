@@ -843,6 +843,185 @@ assert "ANTHROPIC_API_KEY" in w.posted[-1][1], "missing key -> blocked"
 tm.LEDGER.clear(); tm._ledger_files.clear()  # nothing for atexit to flush into a fake
 print("ALL OK 52")
 
+# 79 mentions are handoffs: @codex and @claude act as their own Gitea users; a reply that ends with a mention hands on
+import tempfile as _tf79, subprocess as _sp79, time as _t79  # noqa: E402
+assert tm.mentions("@claude sonnet draft it") == {"claude": ("claude-sonnet-5-5", None)} and tm.mentions("@claude") == {"claude": (None, None)}
+assert tm.mentions("@codex high fix it") == {"codex": (None, "high")} and tm.mentions("`@codex x` and\n> @claude y") == {}
+assert tm.mentions("@claude kimi-k3 hi") == {"claude": (None, None)}, "@claude takes a Claude brain, nothing else"
+chain79 = lambda t: [[(sorted(f), a) for f, a in c] for c in tm.plan(t)]
+assert chain79("@sonnet a @haiku b") == [[(["haiku", "sonnet"], "@sonnet a @haiku b")]], "several seats, no arrow: side by side"
+assert len(tm.plan("@sonnet a\n@haiku b")) == 2, "a line each: independent chains"
+assert chain79("@claude draft the spec → @codex implement it -> @haiku review") == \
+    [[(["claude"], "@claude draft the spec"), (["codex"], "@codex implement it"), (["haiku"], "@haiku review")]]
+assert tm.plan(f"x {tm.MARK}{{}} -->") == [] and tm.plan("nobody here") == []
+assert tm.handoff("done\n\n@codex now ship it", "claude")[0][0][0] == {"codex": (None, None)}
+assert tm.handoff("done\n@codex more", "codex") == [], "no one hands off to itself"
+assert tm.handoff("I'd ask @codex later. Bye", "x") == [], "a mention mid-sentence is just a mention"
+
+# codex_clone / codex_push against a real bare repo: the seat's token rides the URL and is left out of .git/config
+_b79 = _tf79.mkdtemp()
+_e79 = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+_sp79.run(["git", "init", "-q", "--bare", "-b", "main", f"{_b79}/o/r.git"], check=True)
+_sp79.run(["git", "clone", "-q", f"{_b79}/o/r.git", f"{_b79}/seed"], check=True, capture_output=True)
+Path(f"{_b79}/seed/README.md").write_text("hi\n")
+for _c79 in (["add", "."], ["commit", "-qm", "seed"], ["push", "-q", "origin", "HEAD:main"]):
+    _sp79.run(["git", *_c79], cwd=f"{_b79}/seed", check=True, env=_e79, capture_output=True)
+_srv79, tm.SERVER = tm.SERVER, f"file://{_b79}"
+assert tm._seat_url("ct") == f"file://{_b79}/o/r.git", "file:// (tests) has no credentials to carry"
+_d79 = tm.codex_clone("ct")
+assert (Path(_d79) / "README.md").read_text() == "hi\n" and "ct" not in (Path(_d79) / ".git" / "config").read_text()
+Path(_d79, "new.txt").write_text("x\n")
+_sp79.run(["git", "add", "-A"], cwd=_d79, check=True, capture_output=True)
+_sp79.run(["git", "-c", "user.name=codex", "-c", "user.email=c@c", "commit", "-qm", "codex: x"], cwd=_d79, check=True, capture_output=True)
+tm.codex_push(_d79, "ct", "codex/issue-5-x")
+assert "new.txt" in _sp79.run(["git", "--git-dir", f"{_b79}/o/r.git", "ls-tree", "-r", "--name-only", "codex/issue-5-x"],
+                              capture_output=True, text=True).stdout
+tm.SERVER = "https://forge.test"
+assert tm._seat_url("ct") == "https://x-access-token:ct@forge.test/o/r.git", "the seat's own token, so the push is its user's"
+tm.SERVER = _srv79
+
+
+class MWorld(ClaudeWorld):
+    """ClaudeWorld that keeps who posted what (comments by token, PRs by token) and answers each Claude call from `say`."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw); self.by, self.prs_made, self.say = [], [], []
+    def venice(self, body):
+        return {"choices": [{"message": {"role": "assistant", "content": self.say.pop(0)}}]}
+    def http(self, method, url, token, body=None, timeout=0, headers=None):
+        path = url.replace(tm.GH, "")
+        if method == "POST" and path.endswith("/comments"):
+            self.by.append((int(path.split("/")[-2]), token, body["body"]))
+            if getattr(self, "refuse_seat_comments", False) and token.endswith("-tok"):
+                raise RuntimeError(f"POST {path} -> 403: user is not allowed to comment")
+        if method == "POST" and path == "/repos/o/r/pulls": self.prs_made.append((token, body))
+        if method == "GET" and path.endswith("/comments?limit=30"): return self.comments.get(int(path.split("/")[-2]), [])
+        return super().http(method, url, token, body, timeout, headers)
+
+
+# a stand-in for the codex CLI: it records how it was called and plays a scripted run
+bin79, _path79 = _tf79.mkdtemp(), os.environ["PATH"]
+Path(bin79, "codex").write_text('''#!/bin/sh
+out=""; args=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output-last-message) out="$2";; esac
+  args="$args $1"; shift
+done
+echo "$args" > "$FAKE_LOG"; env > "$FAKE_LOG.env"; cat > "$FAKE_LOG.prompt"
+[ -n "$FAKE_SLEEP" ] && sleep "$FAKE_SLEEP"
+[ -n "$FAKE_WRITE" ] && echo hi > "$FAKE_WRITE"
+echo '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20}}'
+printf '%s' "$FAKE_REPLY" > "$out"
+''')
+os.chmod(bin79 + "/codex", 0o755)
+os.environ.update(PATH=bin79 + os.pathsep + _path79, FAKE_LOG=bin79 + "/log", FAKE_SLEEP="", FAKE_WRITE="", FAKE_REPLY="")
+clones79, pushed79 = [], []
+def clone79(token):
+    """codex_clone without a forge: a fresh git repo with one commit, remembering which token asked for it."""
+    d = _tf79.mkdtemp(prefix="fake-clone-"); clones79.append(token)
+    _sp79.run(["git", "init", "-q"], cwd=d, check=True, capture_output=True)
+    _sp79.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"], cwd=d, check=True, capture_output=True)
+    return d
+tm.codex_clone = clone79
+tm.codex_push = lambda d, token, branch: pushed79.append(
+    (token, branch, _sp79.run(["git", "log", "-1", "--format=%an|%s"], cwd=d, capture_output=True, text=True).stdout.strip()))
+
+def mention79(w, body, login="owner", env=None, number=5):
+    for k in [k for k in os.environ if k.startswith("TIME_")]: os.environ.pop(k)
+    os.environ.update({"ANTHROPIC_API_KEY": "ak", "TIME_SEAT_CLAUDE": "claude-tok", "TIME_SEAT_CODEX": "codex-tok", **(env or {})})
+    tm.LEDGER.clear(); tm._ledger_files.clear(); tm._trust.clear(); tm.http = w.http; tm.think = real_think
+    ev = _tf79.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump({"issue": {"number": number, "title": "T", "body": "b", "user": {"login": "owner"}},
+               "comment": {"user": {"login": login}, "body": body}}, ev); ev.close()
+    os.environ["GITHUB_EVENT_PATH"] = ev.name
+    try: tm.cmd_mention()
+    finally: os.unlink(ev.name)
+    return w
+
+# a trusted @codex runs the CLI in a checkout, as codex: pushes its commit, opens the PR, posts the result, all with codex's token
+os.environ.update(FAKE_REPLY="Added hi.txt.", FAKE_WRITE="hi.txt")
+n0 = len(sent)
+w = mention79(MWorld([]), "@codex add hi.txt please")
+assert clones79 == ["codex-tok"] and len(pushed79) == 1 and pushed79[0][0] == "codex-tok" and pushed79[0][1].startswith("codex/issue-5-"), (clones79, pushed79)
+assert pushed79[0][2].startswith("codex|codex: T"), "the work is committed as codex"
+assert len(w.prs_made) == 1 and w.prs_made[0][0] == "codex-tok" and w.prs_made[0][1]["head"] == pushed79[0][1] and w.prs_made[0][1]["base"] == "main"
+assert len(w.by) == 1 and w.by[0][:2] == (5, "codex-tok") and "Added hi.txt." in w.by[0][2] and "Opened PR #42" in w.by[0][2], w.by
+assert "<sub>codex via Time · codex</sub>" in w.by[0][2] and w.by[0][2].startswith("@owner ") and tm.MARK in w.by[0][2] and len(sent) == n0
+args79 = open(bin79 + "/log").read()
+assert "exec --sandbox workspace-write --json -C " in args79 and args79.rstrip().endswith("-") and "--output-last-message" in args79
+assert "add hi.txt please" in open(bin79 + "/log.prompt").read()
+env79 = open(bin79 + "/log.env").read()
+assert not any(x in env79 for x in ("codex-tok", "TIME_SEAT", "ANTHROPIC_API_KEY", "LANGFUSE_")), "the seat's hands never see Time's secrets"
+assert [(r["model"], r["in"], r["out"], r["usd"], r["pool"], r.get("launch")) for r in tm.LEDGER] == [("codex", 100, 20, None, "codex", 1)], tm.LEDGER
+
+# a stranger's mention does nothing: no run, no clone, no post, no spend
+clones79.clear(); pushed79.clear(); n0 = len(sent)
+w = mention79(MWorld([]), "@codex delete everything @claude too", login="stranger")
+assert w.by == [] and w.posted == [] and clones79 == [] and len(sent) == n0 and tm.LEDGER == []
+
+# a reply that ends by mentioning another seat is a handoff: codex's reply goes to claude, who answers as claude (opus by default)
+os.environ.update(FAKE_REPLY="Nothing to change.\n\n@claude summarise this for the log", FAKE_WRITE="")
+pushed79.clear(); n0 = len(sent)
+w = MWorld([]); w.say = ["The summary."]
+w = mention79(w, "@codex look at the thing")
+assert [(b[0], b[1]) for b in w.by] == [(5, "codex-tok"), (5, "claude-tok")] and pushed79 == [] and w.prs_made == [], w.by
+assert "The summary." in w.by[1][2] and "<sub>claude via Time · claude-opus-5-5</sub>" in w.by[1][2]
+assert sent[n0][2]["model"] == "claude-opus-5-5" and "Nothing to change." in json.dumps(sent[n0][2]), "claude reads codex's reply"
+assert "# README.md" in json.dumps(sent[n0][2]), "the repo context Time hands a reviewer"
+assert [r["model"] for r in tm.LEDGER] == ["codex", "claude-opus-5-5"] and tm.LEDGER[1]["usd"] == 0.044 and tm.LEDGER[0].get("launch") == 1
+
+# an arrow chain runs stage by stage with no human between: claude (sonnet) -> codex -> haiku, each reading what came before
+os.environ.update(FAKE_REPLY="Implemented the spec.")
+n0 = len(sent); w = MWorld([]); w.say = ["Spec: do X.", "Reviewed: fine."]
+w = mention79(w, "@claude sonnet draft the spec → @codex implement it → @haiku review")
+assert [b[1] for b in w.by] == ["claude-tok", "codex-tok", "gh"], [b[1] for b in w.by]  # haiku has no seat token: Time posts
+assert "Spec: do X." in w.by[0][2] and "Implemented the spec." in w.by[1][2] and "Reviewed: fine." in w.by[2][2]
+assert [s[2]["model"] for s in sent[n0:]] == ["claude-sonnet-5-5", "claude-haiku-5-5"]
+assert "Spec: do X." in open(bin79 + "/log.prompt").read() and "Implemented the spec." in json.dumps(sent[-1][2])
+assert [r["model"] for r in tm.LEDGER] == ["claude-sonnet-5-5", "codex", "claude-haiku-5-5"]
+
+# several seats on separate lines run in parallel (neither waits on the other); no arrow, no ordering promise
+n0 = len(sent); w = MWorld([]); w.say = ["from sonnet", "from haiku"]
+w = mention79(w, "@sonnet look\n@haiku look too")
+assert sorted(s[2]["model"] for s in sent[n0:]) == ["claude-haiku-5-5", "claude-sonnet-5-5"] and len(w.by) == 2
+
+# a ping-pong between two seats stops at TIME_HANDOFF_MAX runs; a seat never hands off to itself
+os.environ.update(FAKE_REPLY="again\n@claude your turn")
+w = MWorld([]); w.say = ["back\n@codex again"] * 5
+w = mention79(w, "@codex start", env={"TIME_HANDOFF_MAX": "3"})
+assert [b[1] for b in w.by] == ["codex-tok", "claude-tok", "codex-tok"], [b[1] for b in w.by]
+os.environ.update(FAKE_REPLY="ok\n@codex more")
+assert len(mention79(MWorld([]), "@codex go").by) == 1
+
+# the wall-clock cap trips cleanly: the run is killed, nothing is pushed, one launch is booked, the thread is told
+os.environ.update(FAKE_SLEEP="30", FAKE_REPLY="never", FAKE_WRITE="late.txt"); pushed79.clear()
+t079 = _t79.monotonic()
+w = mention79(MWorld([]), "@codex take your time", env={"TIME_SEAT_RUN_MINUTES": "0.03"})
+assert _t79.monotonic() - t079 < 15 and pushed79 == [] and w.prs_made == []
+assert len(w.by) == 1 and w.by[0][1] == "codex-tok" and "wall-clock cap" in w.by[0][2] and "TIME_SEAT_RUN_MINUTES" in w.by[0][2], w.by
+assert [(r["model"], r.get("launch")) for r in tm.LEDGER] == [("codex", 1)]
+os.environ.update(FAKE_SLEEP="", FAKE_WRITE="")
+os.environ.pop("TIME_SEAT_RUN_MINUTES"); assert tm.run_minutes() == 15, "the default cap"
+os.environ["TIME_SEAT_RUN_MINUTES"] = "x"; assert tm.run_minutes() == 15, "a bad value falls back to it"
+os.environ.pop("TIME_SEAT_RUN_MINUTES")
+assert tm.handoff_max() == 6
+os.environ["TIME_HANDOFF_MAX"] = "x"; assert tm.handoff_max() == 6; os.environ.pop("TIME_HANDOFF_MAX")
+
+# no token / no key / a spent budget: the seat says so instead of running
+w = mention79(MWorld([]), "@codex hi", env={"TIME_SEAT_CODEX": ""})
+assert "no TIME_SEAT_CODEX" in w.by[0][2] and w.by[0][1] == "gh" and tm.LEDGER == []
+w2 = MWorld([], ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": 6}]); clones79.clear()
+w2 = mention79(w2, "@codex hi", env={"TIME_DAILY_USD": "5"})
+assert "can't answer yet" in w2.by[0][2] and "cap" in w2.by[0][2] and clones79 == []
+# a seat whose token Gitea refuses still gets its reply out, as Time
+os.environ.update(FAKE_REPLY="fine", FAKE_WRITE="")
+w3 = MWorld([]); w3.refuse_seat_comments = True
+w3 = mention79(w3, "@codex hi")
+assert [b[1] for b in w3.by] == ["codex-tok", "gh"] and "fine" in w3.by[1][2], w3.by
+for k in [k for k in os.environ if k.startswith(("TIME_", "FAKE_"))]: os.environ.pop(k)
+os.environ["PATH"] = _path79
+tm.LEDGER.clear(); tm._ledger_files.clear()
+print("ALL OK 79 handoffs")
+
 # git_commit against a real bare repo: create a branch, write, append twice; no token in .git/config or errors
 import subprocess as _gsp, tempfile as _gtf
 _g = _gtf.mkdtemp(); _env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
