@@ -5,7 +5,7 @@ to work on next. It queues; it never spends on its own beyond its one call.
 
 Luna is Time's deterministic tick (no model); Sol is the hourly heartbeat that executes cards with a seat; Astra is the
 slow outer loop that orients them. Astra labels its picks `queued`, never `ready`: the heartbeat's promote_next moves
-one queued card at a time to `ready` (oldest first, `Depends on #N` respected), so Astra's work lines up behind
+one queued card at a time to `ready` (oldest first, `Depends on: #N` respected), so Astra's work lines up behind
 whatever is already queued instead of running beside it on the same files. Guardrails are code, not prompt: at most
 TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; an existing issue is only queued if it
 has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means Astra writes its note
@@ -82,7 +82,7 @@ For every candidate give:
 - size: S (well under one worker session), M (one session), L (more than one: it must be split first)
 - why: one short sentence
 - blocked: only when it can't move today, what it waits on (a PR that can't merge, a human, something outside the
-  repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on #N` card
+  repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on: #N` card
   is still open is already held back by code.
 A candidate keyed `{spine_key}#N` is a card of the spine, the platform's own repo: judge its value like any other (it
 tells the owner what the platform needs next), but no worker here can build it, so code never queues it.
