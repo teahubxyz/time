@@ -937,7 +937,7 @@ else:
 # from greet to coach mode. No dependencies, so this runs the suite without an install; nothing reaches Whop.
 if _sh.which("node"):
     tm_dir = str(Path(__file__).resolve().parents[2] / "taskmaster")
-    res = _sp.run(["node", "--test"], cwd=tm_dir, capture_output=True, text=True, timeout=120)
+    res = _sp.run(["node", "--test", "--test-reporter=tap"], cwd=tm_dir, capture_output=True, text=True, timeout=120)
     assert res.returncode == 0 and "# fail 0" in res.stdout, res.stdout[-3000:] + res.stderr[-2000:]
     print("ALL OK taskmaster")
 else:
