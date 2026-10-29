@@ -4,7 +4,8 @@
 
 Six steps, each idempotent (a second run finds nothing to do) and each logged:
   1. branches   delete every branch whose PR merged into the default branch. Never the default branch, `gh-pages`, a
-                protected branch, a branch with an open PR, or a branch that has commits newer than its merge.
+                protected branch, a branch with an open PR, a branch that has commits newer than its merge, or a branch
+                whose tip is not the commit its merged PR landed (work that is not in the default branch yet).
   2. signals    close `signal` issues whose venture's measuring window (TIME_VENTURE_MEASURE_DAYS, default 7) has passed
                 with no signups (no 👍 on the issue, no early-access issue for the venture), with one closing line.
   3. milestones close milestones with no open issues and at least one closed one.
@@ -121,11 +122,14 @@ def step_branches(live: bool) -> int:
     default = tm.default_branch()
     open_heads = {p["head"]["ref"] for p in paged(f"{repo()}/pulls?state=open") if same_repo(p)}
     merged: dict[str, dt.datetime | None] = {}   # head ref -> when its latest merged PR merged
+    landed: dict[str, set[str]] = {}             # head ref -> the head sha(s) its merged PR(s) landed
     for p in paged(f"{repo()}/pulls?state=closed&sort=recentupdate"):
         if (p.get("merged") or p.get("merged_at")) and (p.get("base") or {}).get("ref") == default and same_repo(p):
             at = parse(p.get("merged_at"))
             ref = p["head"]["ref"]
             merged[ref] = max([d for d in (merged.get(ref), at) if d], default=None)
+            if (sha := (p.get("head") or {}).get("sha")):
+                landed.setdefault(ref, set()).add(sha)
     deleted = 0
     for b in paged(f"{repo()}/branches"):
         name = b["name"]
@@ -137,6 +141,14 @@ def step_branches(live: bool) -> int:
         tip = parse((b.get("commit") or {}).get("timestamp"))
         if tip and merged[name] and tip > merged[name]:
             log(f"branches: keep {name} (commits after its merge)")
+            continue
+        # The tip must be the very commit a merged PR landed. A branch sitting on anything else holds work the default
+        # branch does not have, and deleting it loses that work: the open-PR list above is the first guard, this one
+        # holds even when that list comes back short or soft-empty (#277, which cost #249 and #212 their branches). An
+        # unknown tip, or an unknown merged head, is "not the same commit", so the branch stays.
+        head = (b.get("commit") or {}).get("id")
+        if not head or head not in landed.get(name, set()):
+            log(f"branches: keep {name} (tip {(head or '?')[:8]} is not the commit its merged PR landed)")
             continue
         if not live:
             log(f"branches: would delete {name}")

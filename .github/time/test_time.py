@@ -16,10 +16,15 @@ real_think = tm.think  # some checks stub it; the Claude checks need the real on
 
 
 real_git_commit = tm.git_commit
-def fake_git_commit(branch, files, message, *, base=None, append=None):
-    """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to."""
+def fake_git_commit(branch, files, message, *, base=None, append=None, create=True):
+    """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to. Every branch is
+    taken as present unless the world lists it in `gone` (a branch deleted on the forge): writing to one of those with
+    `create=False` raises, as the real push does, and `create=True` cuts it from the base again."""
     w = getattr(tm.http, "__self__", None)
     if w is None: return "sha"
+    if branch in getattr(w, "gone", ()):
+        if not create: raise tm.BranchGone(f"branch `{branch}` is not on the forge", branch)
+        w.gone = [b for b in w.gone if b != branch]
     if not files and not append:
         w.branches = getattr(w, "branches", []) + [branch]; w.bases = {**getattr(w, "bases", {}), branch: base}
     for fp, data in (files or {}).items():
@@ -323,7 +328,8 @@ spec_body = "Build orbit v0\n\n- [ ] Add login page — DONE: PR open, tests gre
 w = run(World([], issues={1: {"number": 1, "title": "spec", "body": spec_body, "state": "open", "labels": ["spec"]}}), K)
 made = [n for n in w.issues if n != 1]
 assert made == [2, 3, 4] and w.issues[1]["labels"] == ["planned"], w.issues
-assert "Depends on #2" in w.issues[3]["body"] and "DONE: README updated" in w.issues[4]["body"]
+assert "Depends on: #2" in w.issues[3]["body"] and "DONE: README updated" in w.issues[4]["body"]
+assert "Depends on: none" in w.issues[2]["body"], w.issues[2]["body"]   # every card says what it waits on (#244)
 assert w.issues[2]["labels"] == ["ready"] and w.issues[3]["labels"] == ["queued"] and len(w.launched) == 1
 assert "Add login page" in w.launched[0]["prompt"]["text"]
 # section-style spec also parses
@@ -331,6 +337,38 @@ assert [c["title"] for c in tm.parse_spec("intro\n### One\nchange a\nDONE: x\n##
 # unparseable spec without a key -> one helpful comment, spec label removed
 w = run(World([], issues={1: {"number": 1, "title": "s", "body": "make it nice", "state": "open", "labels": ["spec"]}}), K)
 assert "couldn't find cards" in w.posted[0][1] and w.issues[1]["labels"] == []
+
+# 12a the steps a card waits on: the seat's `depends_on`, the step before it when the seat said nothing (#244)
+assert tm.plan_deps({}, 1) == [] and tm.plan_deps({}, 4) == [3], "no answer: the cards come in build order"
+assert tm.plan_deps({"depends_on": []}, 4) == [] and tm.plan_deps({"depends_on": "none"}, 4) == []
+assert tm.plan_deps({"depends_on": [1, "#2", 2]}, 4) == [1, 2] and tm.plan_deps({"depends": 1}, 2) == [1]
+assert tm.plan_deps({"depends_on": [4, 5]}, 4) == [], "a card can only wait on a card already filed"
+# both forms of the line are read, so cards filed before #244 still wait
+assert tm.DEPENDS.findall("Depends on #7") == ["7"] and tm.DEPENDS.findall("Depends on: #8") == ["8"]
+
+# 12b a seat's plan: 4-6 coarse cards, each with its own `Depends on:` line, so the free ones build in parallel (#244)
+plan = [{"title": "Schema and migration", "body": "add the tables", "done": "migration runs", "depends_on": []},
+        {"title": "Invoice endpoints", "body": "port them", "done": "endpoints green", "depends_on": [1]},
+        {"title": "Refund endpoints", "body": "port them", "done": "endpoints green", "depends_on": "#1"},
+        {"title": "Admin page", "body": "one page", "done": "page renders", "depends_on": [2, 3]},
+        {"title": "Docs", "body": "write them", "done": "README updated", "depends_on": "none"}]
+asked = {}
+def fake_plan(seat, model, effort, system, user):
+    asked.update(seat=seat, system=system, user=user)
+    return "Here they are:\n" + json.dumps(plan) + "\nHope that helps."
+tm.think = fake_plan
+w = run(World([], issues={1: {"number": 1, "title": "Port billing", "body": "move billing off the old stack",
+                              "state": "open", "labels": ["spec"]}}), {**K, "VENICE_API_KEY": "vk"})
+tm.think = real_think
+assert "4 to 6" in asked["system"] and "depends_on" in asked["system"] and "Port billing" in asked["user"], asked
+assert sorted(n for n in w.issues if n != 1) == [2, 3, 4, 5, 6] and w.issues[1]["labels"] == ["planned"], w.issues
+assert "Depends on: none" in w.issues[2]["body"] and "Depends on: #2" in w.issues[3]["body"]
+assert "Depends on: #3\nDepends on: #4" in w.issues[5]["body"], w.issues[5]["body"]   # one line per card
+assert "Depends on: none" in w.issues[6]["body"] and "Part of #1 (step 5/5)" in w.issues[6]["body"]
+assert "nothing blocks #2, #6" in w.posted[0][1], w.posted
+# the two cards that wait on nothing are promoted and dispatched in the same run; the rest stay queued
+assert [n for n in (2, 3, 4, 5, 6) if w.issues[n]["labels"] == ["ready"]] == [2, 6] and len(w.launched) == 2
+assert [n for n in (3, 4, 5) if w.issues[n]["labels"] == ["queued"]] == [3, 4, 5]
 
 # 13 landing: Approve from a trusted reviewer + green checks -> squash merge, card closed, next card dispatched
 def pr_world(verdict_body="**Approve** looks right", who="gitea-actions", checks=None, files=None, extra=None):
@@ -868,6 +906,99 @@ assert real_git_commit("time/card-9", {"src/a.py": None}, "rm") and "src/a.py" n
 tm.SERVER, tm.REPO, tm.default_branch = _saved
 print("ALL OK 53")
 
+# 277 an open card PR's branch is never reset to its base: not by a retry, not by a write, not by a merge.
+# #249 and #212 lost their work that way: the branch went missing, Hands cut a new one from `main` and pushed it, so
+# the PR's head became a commit already in `main` and its diff went empty.
+_g277 = _gtf.mkdtemp()
+_gsp.run(["git", "init", "-q", "--bare", "-b", "main", f"{_g277}/o/r.git"], check=True)
+_gsp.run(["git", "clone", "-q", f"{_g277}/o/r.git", f"{_g277}/seed"], check=True, capture_output=True)
+def g277(*a, cwd=f"{_g277}/seed", check=True):
+    return _gsp.run(["git", *a], cwd=cwd, check=check, env=_env, capture_output=True, text=True).stdout.strip()
+def write277(path, text, message):
+    Path(f"{_g277}/seed/{path}").write_text(text); g277("add", "-A"); g277("commit", "-qm", message)
+bare277 = f"{_g277}/o/r.git"
+tip277 = lambda ref: g277("rev-parse", "--verify", "--quiet", ref, cwd=bare277, check=False)   # "" when there is no such branch
+write277("README.md", "hi\n", "seed"); g277("push", "-q", "origin", "HEAD:main")
+g277("checkout", "-qb", "time/card-1"); write277("work.txt", "the card's work\n", "card #1: work")
+g277("push", "-q", "origin", "time/card-1")
+work277 = tip277("time/card-1")
+g277("checkout", "-q", "main"); write277("squash.txt", "someone else's card\n", "squash of #248")
+g277("push", "-q", "origin", "main")
+_saved = tm.SERVER, tm.REPO, tm.default_branch
+tm.SERVER, tm.REPO, tm.default_branch, tm.git_commit = f"file://{_g277}", "o/r", lambda: "main", real_git_commit
+tm.http = World([], prs=[{"number": 9, "state": "open", "head": {"ref": "time/card-1"}}]).http
+try:
+    # the branch is still there: resuming it leaves its tip exactly where the worker left it
+    tm.Hands(1, "time/card-1")
+    assert tip277("time/card-1") == work277, "a resume moves nothing"
+    assert "squash.txt" not in g277("ls-tree", "--name-only", "time/card-1", cwd=bare277), "the base was not merged in"
+    # the branch is gone while the PR is open: the card is parked, nothing is pushed, the PR keeps its diff
+    g277("push", "-q", "origin", "--delete", "time/card-1")
+    try:
+        tm.Hands(1, "time/card-1"); raise AssertionError("a gone branch under an open PR must not be recreated")
+    except tm.BranchGone as e:
+        assert e.pr == 9 and e.branch == "time/card-1" and "PR #9" in str(e), (e.pr, str(e))
+    assert tip277("time/card-1") == "", "nothing was pushed"
+    # a write mid-run cannot recreate it either
+    g277("push", "-q", "origin", f"{work277}:refs/heads/time/card-1")
+    h277 = tm.Hands(1, "time/card-1")
+    g277("push", "-q", "origin", "--delete", "time/card-1")
+    try:
+        h277.call("write_file", {"path": "app.py", "content": "x = 2\n"}); raise AssertionError("a write recreated the branch")
+    except tm.BranchGone:
+        pass
+    assert tip277("time/card-1") == "", "nothing was pushed"
+    # update_branch says the same: no branch, no merge of the base into it
+    try:
+        tm.update_branch("time/card-1", "main", "card #1: merge main"); raise AssertionError("update_branch recreated the branch")
+    except tm.BranchGone as e:
+        assert e.branch == "time/card-1" and "nothing to merge" in str(e), str(e)
+    assert tip277("time/card-1") == ""
+    # a card's first run has no PR to protect, so the branch is cut from the base as before
+    tm.http = World([]).http
+    tm.Hands(2, "time/card-2")
+    assert tip277("time/card-2") == tip277("main") and tip277("time/card-1") == ""
+    # the branch comes back while Time is cutting a new one from the base (a racing worker, sync bringing it home):
+    # the push is rejected and Time says so, instead of replaying the base over work it has never seen
+    race277 = []
+    def racing_base():   # called when git_commit reaches for the base, just before it clones it
+        if not race277:
+            race277.append(g277("push", "-q", "origin", f"{work277}:refs/heads/time/card-3"))
+        return "main"
+    tm.default_branch = racing_base
+    try:
+        real_git_commit("time/card-3", {"app.py": b"x = 9\n"}, "card #3: a")
+        raise AssertionError("a base-only tip landed on a branch that had come back")
+    except RuntimeError as e:
+        assert "appeared on the forge" in str(e), str(e)
+    assert tip277("time/card-3") == work277, "the branch kept the work it came back with"
+    tm.default_branch = lambda: "main"
+    # a forge Time cannot reach is an error, never a branch cut from a base it could not read either
+    tm.SERVER = f"file://{_g277}/nowhere"
+    for kw in ({}, {"create": False}):
+        try:
+            real_git_commit("time/card-1", {}, "branch", **kw); raise AssertionError("an unreachable forge passed")
+        except tm.BranchGone:
+            raise AssertionError("an unreachable forge is not a missing branch")
+        except RuntimeError as e:
+            assert "clone of branch time/card-1 failed" in str(e), str(e)
+finally:
+    tm.SERVER, tm.REPO, tm.default_branch = _saved
+    tm.git_commit = fake_git_commit
+# the same gone branch through a whole beat: the card is parked with the reason, the cord is pulled, no worker runs
+w = objected_world(); w.gone = ["time/card-1"]; w.label_ids.update(parked=98, andon=99)
+w = run(w, KV)
+b277 = tm.beats_of(w.comments[1])[-1]
+assert b277["beat"] == "parked" and b277["pr"] == 7 and b277["branch"] == "time/card-1", b277
+assert "#277" in w.posted[-1][1] and "`/time retry`" in w.posted[-1][1], w.posted[-1][1]
+assert "parked" in w.issues[1]["labels"] and w.turn == 0 and w.opened == [], (w.issues[1]["labels"], w.turn)
+andons277 = [i for i in w.issues.values() if "andon" in i["labels"]]
+assert len(andons277) == 1 and andons277[0]["title"] == "Card #1: its branch `time/card-1` is gone", andons277
+w.posted.clear()
+run(w, KV)   # a parked card waits for a human: nothing is said twice and no retry is launched
+assert w.posted == [] and len([i for i in w.issues.values() if "andon" in i["labels"]]) == 1, w.posted
+print("ALL OK 277")
+
 # writes go out as Time's own user, except comments and statuses (Gitea refuses the Actions identity the rest)
 _seen, _real_http, _gt = [], tm.http, os.environ.get("GITHUB_TOKEN")
 tm.http = lambda method, url, token, body=None, timeout=0: _seen.append(token) or {}
@@ -937,7 +1068,7 @@ else:
 # from greet to coach mode. No dependencies, so this runs the suite without an install; nothing reaches Whop.
 if _sh.which("node"):
     tm_dir = str(Path(__file__).resolve().parents[2] / "taskmaster")
-    res = _sp.run(["node", "--test"], cwd=tm_dir, capture_output=True, text=True, timeout=120)
+    res = _sp.run(["node", "--test", "--test-reporter=tap"], cwd=tm_dir, capture_output=True, text=True, timeout=120)
     assert res.returncode == 0 and "# fail 0" in res.stdout, res.stdout[-3000:] + res.stderr[-2000:]
     print("ALL OK taskmaster")
 else:
@@ -1294,6 +1425,10 @@ assert "**to the cloud today**" in rt.table(r80c, [], "live", cloud=rt.pick_clou
 assert "cloud lane" in rt.table(rt.rank(rt.candidates([iss80(11, "In the lane", labels=["cloud"])]), {}, cl80, {}, today80), [], "live")
 assert "lined up; waits on #1" in rt.table(rt.rank(rt.candidates(open80[:1] + [iss80(9, "q", body="Depends on #1\nDONE: q", labels=["queued"])]),
                                                   {}, live80, {}, today80), [], "live")
+# the planner's line, one per card waited on, and the older form without the colon (#244)
+w244 = rt.candidates(open80[:2] + [iss80(9, "q", body="Depends on: #1\nDepends on #2\nDONE: q")])
+assert [c["why_not"] for c in w244 if c["n"] == 9] == ["waits on #1, #2"] and not [c for c in w244 if c["n"] == 9][0]["actionable"]
+assert [c["unblocks"] for c in w244 if c["n"] == 1] == [1], "a card waited on unblocks one"
 # a kind picked yesterday is less restless; the owner's weight lifts a kind
 r80b = rt.rank(cands80, assess80, rt.config('{"weights": {"optimization": 4}}'), {"refinement": "2026-10-18"}, today80)
 assert {r["key"]: r for r in r80b}["#2"]["restless"] == 1.05 and r80b[0]["key"] == "#5", [(r["key"], r["score"]) for r in r80b]
@@ -1446,12 +1581,16 @@ def gh170(method, path, body=None, **k):
     return gh80(method, path, body, **k)
 astra.tm.gh = gh170
 live170 = rt.config('{"mode": "live"}')
+# the board's own cards, judged at what the unjudged default would have scored them anyway: a venture is picked from a
+# ranking, so the reply has to judge enough of the board to be one (#211's floor), and this leaves the ranking itself
+# exactly as it is — each case below judges the venture candidates it is about.
+floor170 = {k: {"kind": "feature", "value": 3, "size": "M"} for k in ("#1", "#2", "#5", "#7", "#9")}
 def tick170(assess, mode="router", cfg=None):
     for lst in (said80, labelled80, made80, calls170): lst.clear()
     if mode: os.environ["TIME_VENTURE_MODE"] = mode
     else: os.environ.pop("TIME_VENTURE_MODE", None)
     astra.tm.think = lambda seat, a, b, system, user: json.dumps(
-        {"note": "n", "assess": [dict(v, key=k) for k, v in assess.items()], "new": []})
+        {"note": "n", "assess": [dict(v, key=k) for k, v in (floor170 | assess).items()], "new": []})
     assert astra.router_tick(cfg or live170, "opus", 57, "ctx", [], 1, 0) == 0
 new170 = {"venture:new": {"kind": "venture", "value": 5, "size": "S"}}
 tick170(new170)
@@ -1462,6 +1601,7 @@ assert "Venture: new venture: dispatched venture.yml with start=true" in said80[
 assert said80[-1][2]["queued"] == 0 and said80[-1][2]["picked"] == [{"n": None, "kind": "venture"}], said80[-1][2]
 tick170(new170, mode="on")
 assert not calls170 and not made80 and "router mode" in said80[-1][1], "not in router mode: not actionable, nothing dispatched"
+assert labelled80 == [(7, "queued")], "and the day's pick goes to the best card on the board instead"
 tick170(new170, cfg=rt.config('{"mode": "dry"}'))
 assert not calls170 and "it would queue: Start a new venture" in said80[-1][1] and said80[-1][2]["would"] == [], said80[-1][1]
 v2a170 = {"venture:new": {"kind": "venture", "value": 1, "size": "S"}, "venture:v2:loot-drop": {"kind": "venture", "value": 5, "size": "S"}}
@@ -1656,6 +1796,41 @@ assert rt.superseded([iss80(48, "A")], [iss80(139, "B", body="Follows #48\nDONE:
 assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(139, "B", body="Port of #12")])[0]["why"] == "both carry over #12"
 assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(48, "A", body="Port of #12")]) == [], "a card never supersedes itself"
 print("ALL OK 198")
+
+# 211 a judge that returns nothing is a loud no-op, never a flat ranking. On 2026-10-20 (log #57) the seat answered with
+# no usable JSON: 37 of 37 candidates unjudged, every score 1.911, and the router still queued from that flat table, sent
+# three cards to the cloud lane and promoted "start a new venture" to #1. Below a quarter of the board judged, the day's
+# comment says what came back and nothing is queued, sent or created; the raw reply's size and stop reason go to the run
+# log, so a reply cut off by the output limit is visible as the cause.
+assert not astra.judged_enough(0, 37) and not astra.judged_enough(9, 37) and astra.judged_enough(10, 37), "a quarter"
+assert astra.judged_enough(30, 37) and astra.judged_enough(1, 1) and not astra.judged_enough(0, 0)
+cut211 = 'Here you go, but I ran out of room: {"note": "n"}'
+astra.tm.think = lambda seat, a, b, system, user: astra.tm.Reply(cut211, "length")
+labelled80.clear(); made80.clear()
+out211 = io.StringIO()
+with contextlib.redirect_stdout(out211):
+    assert astra.router_tick(rt.config('{"mode": "live", "cloud": {"per_day": 1}}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert not labelled80 and not made80, "nothing queued, nothing sent to the cloud lane, nothing created"
+assert said80[-1][1] == f"🔭 Astra: the judge returned no assessments ({cut211}); nothing queued or sent today.", said80[-1][1]
+assert said80[-1][2] == {"beat": "astra", "router": "live", "queued": 0, "unjudged": True}, said80[-1][2]
+assert f"reply {len(cut211)} chars, stop length, judged 0 of 6" in out211.getvalue(), out211.getvalue()
+assert "| 1 |" not in said80[-1][1] and "venture:new" not in said80[-1][1], "no table: nothing was judged"
+# a key that matches no candidate judged nothing either, and one card of six is still under the quarter
+for reply, said in [({"note": "n", "assess": [{"key": "#404", "value": 5}]}, "returned no assessments"),
+                    ({"note": "n", "assess": [dict(assess80["#1"], key="#1")]}, "judged 1 of 6")]:
+    astra.tm.think = lambda seat, a, b, system, user, r=reply: json.dumps(r)
+    labelled80.clear()
+    assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+    assert not labelled80 and said80[-1][2]["unjudged"] and f"the judge {said} (" in said80[-1][1], said80[-1][1]
+# partial judging over the floor keeps today's behaviour: the unjudged rows score at value 3 / size M and the note says how many
+astra.tm.think = lambda seat, a, b, system, user: json.dumps(
+    {"note": "two of six", "assess": [dict(assess80[k], key=k) for k in ("#1", "#5")], "new": []})
+labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert labelled80 and said80[-1][2]["queued"] == len(labelled80) and "unjudged" not in said80[-1][2], said80[-1][2]
+assert "4 candidate(s) the seat didn't judge are scored at value 3, size M." in said80[-1][1], said80[-1][1]
+assert "| 1 |" in said80[-1][1] and "two of six" in said80[-1][1], "a ranking, as before"
+print("ALL OK 211")
 
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib
@@ -2199,7 +2374,7 @@ class Worker:
         return {"pr": -1, "steps": 7, "seat": "qwen", "model": "qwen3-coder"}
 
 
-def vgit(branch, files, message, *, base=None, append=None):
+def vgit(branch, files, message, *, base=None, append=None, create=True):
     """The Pages branch takes pushes (the Actions token's contents writes are refused); they land in W.files."""
     assert branch == "gh-pages", branch
     for fp, data in (files or {}).items():
@@ -2987,3 +3162,8 @@ assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].st
 _dj = importlib.util.spec_from_file_location("dojo_run", Path(__file__).resolve().parents[2] / "dojo" / "run.py")
 dojo = importlib.util.module_from_spec(_dj); _dj.loader.exec_module(dojo)
 assert dojo.selftest(tm) == 11
+
+# the steward's own suite, last: it loads its own copy of time.py and clears TIME_* on the way in, so the one CI
+# command covers it without any check above seeing its environment
+_sw = importlib.util.spec_from_file_location("test_steward", Path(__file__).resolve().parent / "test_steward.py")
+steward_suite = importlib.util.module_from_spec(_sw); _sw.loader.exec_module(steward_suite)

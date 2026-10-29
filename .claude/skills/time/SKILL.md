@@ -11,8 +11,8 @@ You (Claude Code, Cursor, or any agent with `gh`) are the hands for setup and th
 ## You are here
 
 ```
- chat ─writes─▶ spec issue ─label `spec`─▶ planner ─▶ cards (`queued`, one PR each, in order)
-                                                      │ first unblocked card gets `ready`
+ chat ─writes─▶ spec issue ─label `spec`─▶ planner ─▶ cards (`queued`, one PR each, `Depends on:` lines)
+                                                      │ the unblocked cards get `ready`
  chat ─writes─▶ card = issue (spec + DONE:) ─label `ready`─▶ heartbeat (on label + hourly)
                                                               │
    dry-run ◀─────────── TIME_MODE ───────────▶ live           ▼
@@ -89,8 +89,10 @@ Not a Time seat: `@cursor`. If Cursor's GitHub app is installed, `@cursor` in a 
 4. Human gate: PRs touching `TIME_PROTECTED` paths (default `.github/,deploy,infra/,.env,secret`) are never merged by
    Time; they get `needs-human`. So are PRs the reviewer objects to.
 5. Specs: write an issue, label it `spec`. One card per line, `- title — DONE: what finished means`, or `### title`
-   sections that contain a `DONE:` line. Time creates `queued` cards that run one at a time (`TIME_PARALLEL`, default 3).
-   A spec that isn't card-shaped is split by a seat when `VENICE_API_KEY` is set (`TIME_PLANNER`, default kimi).
+   sections that contain a `DONE:` line. Time files `queued` cards, each with a `Depends on: #N` line per card it waits
+   on (or `Depends on: none`); the ones that wait on nothing are built in parallel (`TIME_PARALLEL`, default 3).
+   A spec that isn't card-shaped is split by a seat when `VENICE_API_KEY` is set (`TIME_PLANNER`, default kimi): 4 to 6
+   coarse cards, one pull request each, waiting only on what they really need.
 
 ## Updating Time
 

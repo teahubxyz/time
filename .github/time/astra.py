@@ -5,7 +5,7 @@ to work on next. It queues; it never spends on its own beyond its one call.
 
 Luna is Time's deterministic tick (no model); Sol is the hourly heartbeat that executes cards with a seat; Astra is the
 slow outer loop that orients them. Astra labels its picks `queued`, never `ready`: the heartbeat's promote_next moves
-one queued card at a time to `ready` (oldest first, `Depends on #N` respected), so Astra's work lines up behind
+one queued card at a time to `ready` (oldest first, `Depends on: #N` respected), so Astra's work lines up behind
 whatever is already queued instead of running beside it on the same files. Guardrails are code, not prompt: at most
 TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; an existing issue is only queued if it
 has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means Astra writes its note
@@ -27,6 +27,9 @@ new venture" is actionable and ranked at the seat's size and cost like any card,
 a "v2 of <venture>" candidate. A picked new venture dispatches `venture.yml` with `start=true` (the same Actions call
 the heartbeat makes to run CI) and is never queued as a card; a picked v2 posts the venture's own open v2 card, or
 writes one (Base: gh-pages) and queues it. The log line says which.
+A reply that judges nothing, or next to nothing, is a loud no-op rather than a flat ranking (#211): the day's comment
+says what came back and the router queues nothing, sends nothing to the cloud lane and writes no cards — so no venture
+is dispatched or written on the strength of a reply that ranked nothing either.
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
@@ -89,7 +92,7 @@ For every candidate give:
 - size: S (well under one worker session), M (one session), L (more than one: it must be split first)
 - why: one short sentence
 - blocked: only when it can't move today, what it waits on (a PR that can't merge, a human, something outside the
-  repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on #N` card
+  repo); leave it out otherwise. A blocked card is never queued, however it scores. A card whose `Depends on: #N` card
   is still open is already held back by code.
 A candidate keyed `{spine_key}#N` is a card of the spine, the platform's own repo: judge its value like any other (it
 tells the owner what the platform needs next), but no worker here can build it, so code never queues it.
@@ -286,6 +289,16 @@ def start_venture(r: dict, open_issues: list[dict]) -> str:
     return f"{r['name']} {v}: no card yet, wrote and queued #{n}"
 
 
+JUDGED_SHARE = 0.25   # below this share of the candidates judged, the reply is not a ranking at all (#211)
+
+
+def judged_enough(judged: int, total: int) -> bool:
+    """Whether the seat's reply judged enough of the board to rank it. A reply with no `assess` scores every candidate at
+    the unjudged default (value 3, size M), which is a flat table, not a ranking: on 2026-10-20 (log #57) 37 of 37 came
+    back unjudged, every score 1.911, and the router still queued from the top and sent three cards to the cloud lane."""
+    return judged > 0 and judged >= total * JUDGED_SHARE
+
+
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
@@ -304,11 +317,21 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
             f"\n\nCards closed in the last 14 days (done or dropped; don't write these again):\n{done}"
             f"\n\nCandidates ({len(cands)}):\n\n{listing}")
     try:
-        out = parse(tm.think(seat, None, None, ROUTER.format(max_new=max_new, spine_key=SPINE_KEY), user))
+        raw = tm.think(seat, None, None, ROUTER.format(max_new=max_new, spine_key=SPINE_KEY), user)
     except tm.Budget as e:
         tm.comment(log, f"🔭 Astra: {e}. No ranking today.", {"beat": "astra", "router": cfg["mode"], "queued": 0, "capped": True})
         return 0
+    out = parse(raw)
     assess = {str(a.get("key") or "").strip(): a for a in out.get("assess") or [] if isinstance(a, dict)}
+    judged = sum(1 for c in cands if c["key"] in assess)   # a key that matches no candidate judged nothing
+    # the raw reply's size and stop reason, so a reply cut off by the output limit is visible as the cause (#211)
+    print(f"astra router {cfg['mode']}: reply {len(raw)} chars, stop {getattr(raw, 'stop', '') or '-'}, "
+          f"judged {judged} of {len(cands)}")
+    if not judged_enough(judged, len(cands)):
+        said = f"judged {judged} of {len(cands)}" if judged else "returned no assessments"
+        tm.comment(log, f"🔭 Astra: the judge {said} ({router._txt(raw, 200) or 'empty'}); nothing queued or sent today.",
+                   {"beat": "astra", "router": cfg["mode"], "queued": 0, "unjudged": True})
+        return 0
     ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), dt.datetime.now(dt.timezone.utc).date())
     in_lane = sum(1 for i in open_issues if router.CLOUD in router.labels_of(i))
     to_cloud = router.pick_cloud(ranked, cfg, in_lane)   # the cloud lane takes its cards first: its credit is separate
