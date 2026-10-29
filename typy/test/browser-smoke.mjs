@@ -130,6 +130,22 @@ await check('keyboard Enter opens a focused settings button during an endless ru
   assert.equal(open, true, 'Enter on the focused settings button finished the endless run instead of opening settings.');
   await page.keyboard.press('Escape');
 });
+await check('ramp mode shows its target pace and dims the word when it gets ahead', async () => {
+  await home();
+  await page.evaluate(() => localStorage.setItem('typy.lastAverage', '30'));
+  await home();
+  await page.locator('[data-mode=tempo]').click();
+  await paste('elephant giraffe');
+  assert.equal(await page.locator('#tempo-track').isVisible(), true);
+  await page.keyboard.type('e');
+  assert.equal(await page.locator('#time-label').innerText(), 'beat pace');
+  assert.equal(Number(await page.locator('#live-time').innerText()) > 0, true);
+  await page.locator('#word.behind').waitFor({ timeout: 8000 });
+  assert.match(await page.locator('#tempo-caption').innerText(), /pace is ahead/);
+  await page.keyboard.type('lephant');
+  assert.equal(await page.locator('#word.behind').count(), 0, 'catching the pace lifts the dimming');
+  await page.evaluate(() => localStorage.removeItem('typy.lastAverage'));
+});
 await check('unavailable topic API presents a friendly error and common-word recovery', async () => {
   await page.goto(base + '/react-hooks');
   await page.locator('#load-actions').waitFor({ state: 'visible' });

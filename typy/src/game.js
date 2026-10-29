@@ -169,6 +169,17 @@ export class TypingGame {
 
   _prefix() { return Math.min(lengthOf(this.word), prefixLength(this._flags())); }
 
+  /**
+   * Where the pace ghost has reached in the current word, in characters, or
+   * null outside a running beat. The beat is one word plus its separator, so
+   * the ghost moves at a steady paceWpm through those characters.
+   */
+  _pacePosition(now) {
+    if (this.mode !== 'tempo' || this.status !== 'running' || this.beatDeadline === null) return null;
+    const elapsed = this.beatDurationMs - (this.beatDeadline - now);
+    return clamp(elapsed / this.beatDurationMs, 0, 1) * (lengthOf(this.word) + 1);
+  }
+
   _setBeat(now) {
     this.beatDurationMs = clamp((lengthOf(this.word) + 1) * 12000 / this.paceWpm, 350, 15000);
     this.beatDeadline = now + this.beatDurationMs;
@@ -323,6 +334,10 @@ export class TypingGame {
     const correctPrefix = this._prefix();
     const seconds = timedSeconds(this.mode);
     const remainingMs = seconds === null ? null : Math.max(0, seconds * 1000 - elapsedMs);
+    const pacePosition = this._pacePosition(now);
+    // One character of slack, so the word only dims once the ghost is clearly
+    // past the typist rather than flickering on every keystroke gap.
+    const behindPace = pacePosition !== null && !this.waitingForBeat && correctPrefix + 1 < pacePosition;
     return {
       status: this.status, mode: this.mode, advance: this.advance,
       wordIndex: this.wordIndex, word: this.word,
@@ -335,7 +350,7 @@ export class TypingGame {
       paceWpm: rounded(this.paceWpm),
       beatRemainingMs: this.beatDeadline === null ? null : Math.max(0, this.beatDeadline - now),
       beatDurationMs: this.beatDurationMs,
-      waitingForBeat: this.waitingForBeat,
+      waitingForBeat: this.waitingForBeat, pacePosition, behindPace,
       completedWords: this.completedWords, finishedReason: this.finishedReason,
       correctChars: this.completedChars + correctPrefix,
       keystrokes: this.hits + this.errors, errors: this.errors,

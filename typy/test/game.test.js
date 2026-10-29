@@ -385,6 +385,39 @@ test('tempo completion waits for its beat, then accelerates and shows the next w
   assert.equal(game.result(1300).wordTimings[0].typedEnd, 200);
 });
 
+test('the ramp ghost keeps a target pace, rises with it, and marks falling behind', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'tempo', paceWpm: 40 });
+  assert.equal(game.snapshot(0).behindPace, false, 'nothing is behind before a run starts');
+  assert.equal(game.snapshot(0).pacePosition, null);
+  game.press('c', 0);
+  // 'cat' plus its separator is four characters, so at 40 wpm the ghost
+  // crosses them in 1200ms: one character every 300ms.
+  assert.equal(game.snapshot(0).beatDurationMs, 1200);
+  assert.equal(game.snapshot(300).pacePosition, 1);
+  assert.equal(game.snapshot(300).behindPace, false, 'a character of slack before dimming');
+  assert.equal(game.snapshot(900).pacePosition, 3);
+  assert.equal(game.snapshot(900).behindPace, true, 'one letter typed, three characters gone');
+  // Catching up clears it again.
+  game.press('a', 950);
+  game.press('t', 960);
+  const caught = game.snapshot(1000);
+  assert.equal(caught.behindPace, false);
+  assert.equal(caught.waitingForBeat, true, 'the ghost is never behind while waiting for the beat');
+
+  // Keeping up raises the target, and the next beat is shorter for it.
+  const next = game.tick(1300);
+  assert.equal(next.paceWpm, 41.4);
+  assert.ok(next.beatDurationMs < 1200);
+  assert.equal(next.behindPace, false);
+  assert.equal(Math.round(next.pacePosition * 100) / 100, 0.35, 'the ghost restarts with the new word');
+
+  // Only ramp mode has a pace to fall behind.
+  const timed = new TypingGame({ words: ['cat'], mode: '30' });
+  timed.press('c', 0);
+  assert.equal(timed.snapshot(20000).pacePosition, null);
+  assert.equal(timed.snapshot(20000).behindPace, false);
+});
+
 test('tempo ends on the third missed beat; partial expired words earn no output', () => {
   const game = new TypingGame({ words: ['cat'], mode: 'tempo', paceWpm: 40 });
   game.press('c', 0);

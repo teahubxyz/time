@@ -231,10 +231,11 @@ function renderGame(state) {
   } else {
     setText('time-label', 'in the flow'); setText('live-time', Math.floor(state.elapsedMs / 1000)); setText('time-unit', 's');
   }
+  setClass($('word'), 'behind', Boolean(state.behindPace));
   if (selectedMode === 'tempo') {
     const fraction = state.beatDurationMs ? Math.max(0, state.beatRemainingMs / state.beatDurationMs) : 1;
     $('tempo-progress').style.transform = 'scaleX(' + fraction + ')';
-    setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : 'finish the word before the line runs out');
+    setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : state.behindPace ? 'the pace is ahead of you — keep going' : 'finish the word before the line runs out');
     Array.from($('tempo-lives').children).forEach((dot, i) => setClass(dot, 'lost', i < state.misses));
     const label = (3 - state.misses) + ' missed beats remaining';
     if ($('tempo-lives').getAttribute('aria-label') !== label) $('tempo-lives').setAttribute('aria-label', label);
