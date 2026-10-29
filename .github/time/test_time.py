@@ -933,6 +933,16 @@ if _sh.which("npm"):
 else:
     print("skipped the havre test: no npm")
 
+# Taskmaster on Whop (taskmaster/): the deal desk's rules, the sealed quote card, the signed webhook, and the flow
+# from greet to coach mode. No dependencies, so this runs the suite without an install; nothing reaches Whop.
+if _sh.which("node"):
+    tm_dir = str(Path(__file__).resolve().parents[2] / "taskmaster")
+    res = _sp.run(["node", "--test"], cwd=tm_dir, capture_output=True, text=True, timeout=120)
+    assert res.returncode == 0 and "# fail 0" in res.stdout, res.stdout[-3000:] + res.stderr[-2000:]
+    print("ALL OK taskmaster")
+else:
+    print("skipped the taskmaster test: no node")
+
 # 78 Time retries its own parked cards (error / stuck), within TIME_AUTO_RETRY; a human only hears once it has given up
 K78 = {**K, "TIME_WORKER": "cursor"}
 meta78 = lambda w: [json.loads(re.search(r"<!-- time (.*) -->", t).group(1)) for _, t in w.posted]

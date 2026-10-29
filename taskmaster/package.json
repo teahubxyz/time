@@ -1,0 +1,10 @@
+{
+  "name": "taskmaster",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Taskmaster on Whop: haggle for your price, pay through a real Whop checkout, then get coached. No dependencies.",
+  "scripts": {
+    "test": "node --test"
+  }
+}
