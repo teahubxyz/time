@@ -1759,6 +1759,49 @@ comments83[7] = []; notes83.clear()
 commit83(cw83, "g.txt", "More before any review"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
 assert sync83().get("revised", []) == [] and not notes83, "a PR nobody has reviewed yet needs no revised beat"
 assert sy.revised("o/r", "claude/card-7-cloud", None) == [] and sy.revised("x/y", "claude/card-7-cloud", "abc") == []
+# Time merges main into the imported branch at home (an approved PR that fell behind): the merge goes back to the copy
+# fast-forward, nothing is imported over it and no revision is announced; the copy's next session builds on it
+wb83 = os.path.join(root83, "wb"); g83("clone", "-q", "-b", "claude/card-7-cloud", home83, wb83)
+def time_merge83(n):   # what update_branch does: main has moved on, and Time merges it into the branch at the home
+    g83("fetch", "-q", "origin", "main", cwd=wk83); g83("reset", "-q", "--hard", "FETCH_HEAD", cwd=wk83)
+    commit83(wk83, f"main{n}.txt", f"Main moves on {n}"); g83("push", "-q", "origin", "HEAD:main", cwd=wk83)
+    g83("fetch", "-q", "origin", "claude/card-7-cloud", cwd=wb83); g83("checkout", "-q", "-B", "claude/card-7-cloud", "FETCH_HEAD", cwd=wb83)
+    g83("fetch", "-q", "origin", "main", cwd=wb83)
+    _sp83.run(["git", "-c", f"user.name={sy.tm.TIME_GIT_NAME}", "-c", "user.email=time@t", "merge", "-q", "--no-ff", "-m",
+               "card #7: merge main", "FETCH_HEAD"], cwd=wb83, check=True, capture_output=True)
+    g83("push", "-q", "origin", "claude/card-7-cloud", cwd=wb83)
+time_merge83(1)
+comments83[7] = [beat83("pr")]; notes83.clear()
+c83 = sync83()
+assert c83.get("back") == ["claude/card-7-cloud"] and c83["imported"] == [] and not c83.get("revised") and not notes83, c83
+assert g83("rev-parse", "claude/card-7-cloud", cwd=copy83) == g83("rev-parse", "claude/card-7-cloud", cwd=home83)
+assert not sync83().get("back"), "in step: nothing to send back"
+g83("fetch", "-q", "origin", "claude/card-7-cloud", cwd=cw83); g83("merge", "-q", "--ff-only", "FETCH_HEAD", cwd=cw83)
+commit83(cw83, "g.txt", "On top of Time's merge"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+c83 = sync83()
+assert c83["imported"] == ["claude/card-7-cloud"] and c83["revised"] == [7] and not c83.get("back"), c83
+assert g83("rev-parse", "claude/card-7-cloud", cwd=home83) == g83("rev-parse", "claude/card-7-cloud", cwd=copy83)
+# both sides wrote: the copy, the branch's one writer, wins (Time merges main again on a later beat)
+time_merge83(2)
+commit83(cw83, "g.txt", "The copy's own"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+c83 = sync83()
+assert c83["imported"] == ["claude/card-7-cloud"] and not c83.get("back"), c83
+assert g83("rev-parse", "claude/card-7-cloud", cwd=home83) == g83("rev-parse", "claude/card-7-cloud", cwd=copy83)
+# ahead at the home by anything but Time's merges: never sent out, the copy's tip wins. A push at the home (a human's,
+# a worker's), and the copy rewinding its own branch (its withdrawn commit is still on the home)
+g83("fetch", "-q", "origin", "claude/card-7-cloud", cwd=wb83); g83("checkout", "-q", "-B", "claude/card-7-cloud", "FETCH_HEAD", cwd=wb83)
+commit83(wb83, "w.txt", "Pushed at the home"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=wb83)
+copy_tip83 = g83("rev-parse", "claude/card-7-cloud", cwd=copy83)
+c83 = sync83()
+assert not c83.get("back") and c83["imported"] == ["claude/card-7-cloud"], c83
+assert g83("rev-parse", "claude/card-7-cloud", cwd=home83) == g83("rev-parse", "claude/card-7-cloud", cwd=copy83) == copy_tip83
+commit83(cw83, "g.txt", "A second thought"); g83("push", "-q", "origin", "claude/card-7-cloud", cwd=cw83)
+assert sync83()["imported"] == ["claude/card-7-cloud"]
+g83("reset", "-q", "--hard", "HEAD~1", cwd=cw83); g83("push", "-q", "--force", "origin", "claude/card-7-cloud", cwd=cw83)
+c83 = sync83()
+assert not c83.get("back") and c83["imported"] == ["claude/card-7-cloud"], c83
+assert g83("rev-parse", "claude/card-7-cloud", cwd=home83) == g83("rev-parse", "claude/card-7-cloud", cwd=copy83) == copy_tip83, "the rewind stands"
+assert sy.tm.IMPORTED in made83[0]["body"], "time.py knows a PR sync.py opened by its body"
 sy.tm.gh = real_gh83
 # a copy whose token isn't set is skipped; tokens go in the URL and never into anything printed
 c83 = sy.sync_repo({"repo": "o/r", "copies": [{"name": "gh", "url": "https://github.com/o/r.git", "token": "NO_SUCH_TOKEN_83"}]},
@@ -1829,6 +1872,10 @@ b = tm.beats_of(w.comments[1])[-1]
 assert b["beat"] == "needs-human" and b["conflict"] is True and "x = 3" in w.posted[0][1] and "needs-human" in w.issues[7]["labels"], w.posted
 assert "<<<<<<< HEAD" in w.comments[7][-1]["body"] and not merged(w)
 run(w, E123); assert len(ub_calls) == 1 and len(w.posted) == 2, "the next beat does not merge or post again (one on the PR, one on the card)"
+assert "/time retry" in w.posted[0][1]
+# a branch sync.py brought in is the copy's to write: the hunks go to its session or a human, not to `/time retry`
+wi123 = run(stale123(body=f"From github: `claude/card-1-x` (git@github.com:o/r.git), {tm.IMPORTED}."), E123)
+assert "copy's to write" in wi123.posted[0][1] and "/time retry" not in wi123.posted[0][1], wi123.posted
 # /time retry sends the worker back to the branch with the hunks as the reviewer's text
 w.comments[1].append({"created_at": iso(-1), "user": {"login": "owner"}, "body": "/time retry"})
 w.issues[7]["labels"] = ["needs-human"]
@@ -1860,6 +1907,16 @@ try:
     sha, hunks = tm.update_branch("time/card-1", "main", "m")
     assert sha is None and "`app.py`" in hunks and "<<<<<<<" in hunks and "x = 2" in hunks and "x = 3" in hunks, hunks
     assert g83("rev-parse", "time/card-1", cwd=bare123) == before, "the branch is as it was"
+    # two PRs that each add a CHANGELOG line at the same spot: both lines are kept, and no human is asked
+    g83("checkout", "-q", "main", cwd=wk123); commit83(wk123, "CHANGELOG.md", "# Changelog\n\n### Added\n- one\n")
+    g83("push", "-q", "origin", "main", cwd=wk123)
+    g83("checkout", "-qb", "time/card-2", cwd=wk123); commit83(wk123, "CHANGELOG.md", "# Changelog\n\n### Added\n- two, from the PR\n- one\n")
+    g83("push", "-q", "origin", "time/card-2", cwd=wk123)
+    g83("checkout", "-q", "main", cwd=wk123); commit83(wk123, "CHANGELOG.md", "# Changelog\n\n### Added\n- three, from main\n- one\n")
+    g83("push", "-q", "origin", "main", cwd=wk123)
+    sha, hunks = tm.update_branch("time/card-2", "main", "card #2: merge main")
+    cl123 = g83("show", f"{sha}:CHANGELOG.md", cwd=bare123) if sha else ""
+    assert sha and not hunks and "- two, from the PR" in cl123 and "- three, from main" in cl123 and "<<<<<<<" not in cl123, (hunks, cl123)
 finally:
     tm.SERVER = old_server
 print("ALL OK 123")

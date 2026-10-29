@@ -13,6 +13,11 @@ cloud session's branch on the copy), and a pull mirror makes the receiving repo 
   write. They are pushed to the home under the same name and get a PR there, which Time's council reviews and lands
   like any other; the landed work then flows back out with main. A branch already in main, or one whose PR was closed
   at the same commit, is left alone.
+- Back: Time itself commits to an imported branch in one case, merging the base into an approved PR that fell behind.
+  When the home's branch is ahead of the copy's by Time's merges and nothing else, they go back to the copy
+  fast-forward (and only if the copy's branch hasn't moved since it was read), so the copy's next session builds on
+  them instead of overwriting them. Anything else ahead on the home (the copy rewound its own branch, or someone pushed
+  to it at the home) is not sent out: the copy, the writer, wins, and Time merges the base again on a later beat.
 
 time/sync.json:
     {"repos": [{"repo": "teahubxyz/time", "out": ["main"],
@@ -134,6 +139,16 @@ def landed(work: str, ref: str, base: str) -> bool:
     return git("merge-base", "--is-ancestor", ref, base, cwd=work, check=False).returncode == 0
 
 
+def times_merges(work: str, copy_ref: str, home_ref: str) -> bool:
+    """The home's branch is ahead of the copy's by update_branch's merges alone: every first-parent commit between them
+    is a two-parent merge authored by Time. The copy rewinding its own branch leaves the home ahead too, by the
+    copy's own withdrawn commits, and those must not go back; nor must a human's or a worker's push at the home."""
+    if not landed(work, copy_ref, home_ref):
+        return False
+    rows = git("log", "--first-parent", "--format=%an%x09%P", f"{copy_ref}..{home_ref}", cwd=work).stdout.splitlines()
+    return bool(rows) and all(r.split("\t")[0] == tm.TIME_GIT_NAME and len(r.split("\t")[1].split()) == 2 for r in rows)
+
+
 CARD_BRANCH = re.compile(r"^claude/card-(\d+)(?:\b|-)")   # a cloud session building card N (router.py's cloud lane)
 
 
@@ -204,7 +219,7 @@ def ensure_pr(repo: str, work: str, branch: str, base: str, copy: str, where: st
     title = (log.splitlines() or [branch])[0][:200]
     card = card_of(branch)
     closes = f"Closes #{card}\n\n" if card and not re.search(rf"\b(close[sd]?|fix(e[sd])?|resolve[sd]?)\s+#{card}\b", log, re.I) else ""
-    body = (f"{closes}From {copy}: `{branch}` ({where}), brought in by sync.py. Time's council reviews it like any PR.\n\n"
+    body = (f"{closes}From {copy}: `{branch}` ({where}), {tm.IMPORTED}. Time's council reviews it like any PR.\n\n"
             f"Commits:\n\n{log[:6000]}\n\n<sub>sync.py: edit this branch on {copy}; it is the copy's to write, and the "
             f"next sync brings the change here.</sub>")
     n = tm.gh("POST", f"/repos/{repo}/pulls", {"head": branch, "base": base, "title": title, "body": body})["number"]
@@ -257,6 +272,17 @@ def sync_repo(entry: dict, home_url: str, force: bool = False) -> dict:
                     continue
                 git("fetch", "-q", url, f"+refs/heads/{branch}:refs/copy/{branch}", cwd=work)
                 moved = mine.get(branch) != sha
+                if moved and mine.get(branch):   # the home's branch may be ahead by Time's merge of the base
+                    got = git("fetch", "-q", home_url, f"+refs/heads/{branch}:refs/back/{branch}", cwd=work, check=False)
+                    if got.returncode == 0 and times_merges(work, f"refs/copy/{branch}", f"refs/back/{branch}"):
+                        read = git("rev-parse", f"refs/copy/{branch}", cwd=work).stdout.strip()
+                        p = git("push", "-q", f"--force-with-lease=refs/heads/{branch}:{read}", url,
+                                f"refs/back/{branch}:refs/heads/{branch}", cwd=work, check=False)
+                        if p.returncode == 0:
+                            r.setdefault("back", []).append(branch)
+                        else:   # the copy moved meanwhile: the next run sorts it out
+                            print(f"back {branch}: {scrub((p.stderr or '').strip())[-200:]}")
+                        continue
                 if moved:   # the copy writes this branch: the home takes it as it is
                     git("push", "-q", "--force", home_url, f"refs/copy/{branch}:refs/heads/{branch}", cwd=work)
                     r["imported"].append(branch)
@@ -296,7 +322,7 @@ def main() -> int:
         rep = sync_repo(e, authed(f"{tm.SERVER}/{repo}.git", token), force)
         for c in rep["copies"]:
             print(f"sync {repo} -> {c['copy']}: out {c['out']} imported {c['imported']} prs {c['prs']} "
-                  f"revised {c.get('revised', [])} {c['note']}".rstrip())
+                  f"revised {c.get('revised', [])} back {c.get('back', [])} {c['note']}".rstrip())
             for b, state in c["out"].items():
                 if state == "diverged" and repo == tm.REPO:
                     flag(repo, c["copy"], b)

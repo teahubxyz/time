@@ -979,6 +979,9 @@ def dispatch_ci(pr: dict) -> bool:
     return True
 
 
+IMPORTED = "brought in by sync.py"   # sync.py's words in the body of a PR it opened for a copy's branch
+
+
 def update_branch_of(card: dict, pr: dict, last: dict) -> None:
     """An approved PR that no longer merges: merge its base into it (one commit by Time; CI runs on the new head and landing
     follows on a later beat). A conflict is posted with its hunks on the card and the PR, labelled `needs-human`, and the
@@ -988,9 +991,13 @@ def update_branch_of(card: dict, pr: dict, last: dict) -> None:
     n, base, branch = card["number"], (pr.get("base") or {}).get("ref") or default_branch(), pr["head"]["ref"]
     sha, hunks = update_branch(branch, base, f"card #{n}: merge {base}")
     if sha is None:
+        # a branch sync.py brought in is the copy's to write: a worker's commits here would be overwritten by the next sync
+        then = ("The branch is the copy's to write (sync.py brought it in), so the fix goes there: for a card the cloud "
+                "lane built, its launcher on hb-5 sends a session back with these hunks; otherwise a human merges on the "
+                "copy." if IMPORTED in (pr.get("body") or "")
+                else "Comment `/time retry` to send the worker back to the branch with these hunks.")
         text = (f"⏱️ Time: PR #{pr['number']} is approved but conflicts with `{base}`, and I don't guess at conflicts: "
-                f"I left `{branch}` as it was. Merge `origin/{base}` into it and resolve:\n\n{hunks}\n\n"
-                "Comment `/time retry` to send the worker back to the branch with these hunks.")
+                f"I left `{branch}` as it was. Merge `origin/{base}` into it and resolve:\n\n{hunks}\n\n{then}")
         gh("POST", f"/repos/{REPO}/issues/{pr['number']}/comments", {"body": text})  # reviewer_feedback reads the PR's comments
         label(pr["number"], "needs-human")
         comment(n, text, {"beat": "needs-human", "pr": pr["number"], "conflict": True})
@@ -1235,6 +1242,10 @@ def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, bas
         shutil.rmtree(d, ignore_errors=True)
 
 
+UNION_MERGE = ("/CHANGELOG.md",)   # files whose conflicts update_branch settles by keeping both sides' lines
+TIME_GIT_NAME = "Time"   # the author of update_branch's merges; sync.py sends those, and only those, back to a copy
+
+
 def update_branch(branch: str, base: str, message: str) -> tuple[str | None, str]:
     """Merge origin/<base> into <branch> as Time and push: (new sha, "") or, on conflicts, (None, the `<<<<<<<` blocks,
     trimmed) with the merge aborted and the branch untouched. ("", "") when there was nothing to merge.
@@ -1244,7 +1255,7 @@ def update_branch(branch: str, base: str, message: str) -> tuple[str | None, str
     host = re.sub(r"^\w+://", "", SERVER).split("/")[0] or "localhost"
 
     def git(*args, check=True):
-        p = subprocess.run(["git", "-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", *args],
+        p = subprocess.run(["git", "-c", f"user.name={TIME_GIT_NAME}", "-c", f"user.email=time@users.noreply.{host}", *args],
                            cwd=d, capture_output=True, text=True)
         if check and p.returncode:
             err = (p.stderr or p.stdout)[-400:]
@@ -1253,6 +1264,12 @@ def update_branch(branch: str, base: str, message: str) -> tuple[str | None, str
     try:
         git("clone", "-q", "--branch", branch, url, ".")
         git("remote", "set-url", "origin", _git_url(False))  # the token must not stay in .git/config
+        # two PRs that each add a CHANGELOG line at the same spot conflict, and keeping both sides' lines is the answer:
+        # git's union driver does that (the repo's .gitattributes says the same, but an old branch may lack it). Its
+        # cost: a bullet one side reworded or deleted next to the other side's new one comes back beside it, unflagged
+        os.makedirs(os.path.join(d, ".git", "info"), exist_ok=True)
+        with open(os.path.join(d, ".git", "info", "attributes"), "a") as f:
+            f.write("".join(f"{x} merge=union\n" for x in UNION_MERGE))
         before = git("rev-parse", "HEAD").stdout.strip()
         git("fetch", "-q", url, base)
         if git("merge", "--no-ff", "-q", "-m", message, "FETCH_HEAD", check=False).returncode:
