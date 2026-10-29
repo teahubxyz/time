@@ -13,7 +13,7 @@ Read the card's labels and Time's beats (the `<!-- time {...} -->` comments), th
 
 | state | evidence | who may act |
 |---|---|---|
-| `parked` | beat `needs-done` (no DONE line), `blocked`, `capped`, or label `parked` | `manager`: fix the card (a DONE line, a split) or park it with a reason |
+| `parked` | beat `parked`, `needs-done` (no DONE line), `blocked`, `capped`, or label `parked` | `manager`: fix what the beat names (a DONE line, a split, a branch pushed back), then `/time retry`, or park it with a reason |
 | `dispatched` | beat `dispatched`, less than `TIME_STUCK_HOURS` (6) old, no PR | `worker`: nobody else touches it |
 | `reviewed` | beat `pr`, PR open and approved | `time`: the heartbeat lands it (or you merge it, see §7) |
 | `stale` | beat `dispatched` older than 6h, no PR | `manager`: retry it |
