@@ -34,6 +34,15 @@ A reply that judges nothing, or next to nothing, is a loud no-op rather than a f
 says what came back and the router queues nothing, sends nothing to the cloud lane and writes no cards — so no venture
 is dispatched or written on the strength of a reply that ranked nothing either.
 `off`, or no router.json, is the planner as before.
+
+The board (#279: TIME_ASTRA_PITCH, seats that each propose a slate; TIME_ASTRA_BOARD, seats that rank it, default the
+same): the day is the venture loop's ceremony turned inward, so the factory's own work is deliberated the way a venture
+is instead of chosen by one seat alone. Every planning seat proposes up to a few cards, the slates merge into one field
+(the same issue, or the same new title, from two seats is one card with both proposers), the board ranks the field
+(Borda 3/2/1 with a quorum of two, the venture board's own tally and `top`), and only the top picks are queued or
+created: a card wanted by one seat alone is never opened. The same guards and caps apply to every pick. The board is
+the explicit variable, so it decides the day whatever router.json says; unset, Astra is the router or the single
+planner above, unchanged.
 """
 from __future__ import annotations
 
@@ -54,6 +63,10 @@ _spec.loader.exec_module(tm)
 _rspec = importlib.util.spec_from_file_location("router", HERE / "router.py")
 router = importlib.util.module_from_spec(_rspec)
 _rspec.loader.exec_module(router)
+_vspec = importlib.util.spec_from_file_location("vt", HERE / "venture.py")
+vt = importlib.util.module_from_spec(_vspec)
+_vspec.loader.exec_module(vt)   # the venture board's machinery: each(), ask_json(), top(), seat_list()
+vt.tm = tm   # its seats spend through this run's governor and ledger, not a second copy of them
 ROUTER_FILE = "time/router.json"
 PAGES_BRANCH = "gh-pages"              # where ventures/ventures.json lives: the live ventures and their signups (#170)
 VENTURE_WORKFLOW = "venture.yml"       # dispatched with start=true when the router picks a new venture (#170)
@@ -82,6 +95,37 @@ Answer with JSON only, no prose around it:
 {{"note": "<3-6 sentences: what the factory did yesterday, what matters today, and why you chose these>",
   "queue": [<existing open issue numbers to queue now; they must already have a DONE: line>],
   "new": [{{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>", "queue": true}}]}}"""
+
+
+SLATE = """You are `{seat}`, one of the planners of a small, fully AI-run software factory (Teahub). Once a day each planner
+proposes a slate of work; the board ranks every slate together, and only cards that two seats want get queued. You do
+not do the work: a worker seat builds queued cards one at a time.
+
+Propose up to {n} cards. A card is either an existing open issue to queue now (it must already have a `DONE:` line and
+carry none of the labels queued/ready/needs-human/andon, nor be one of the venture loop's own, which it runs itself) or
+a new card: a clear list of changes ending in one `DONE:` line, small enough for one PR and one worker session.
+
+Rules:
+- Prefer finishing over starting. Unblock open PRs and half-done cards before opening new work.
+- Never touch workflows, secrets, variables, or anything under docs/decisions.md; those are a human's. Never propose
+  anything that posts outside the repo.
+- If nothing is worth doing, propose nothing; an empty slate is fine.
+
+Answer with JSON only, no prose around it:
+{{"note": "<2-4 sentences: what matters today and why these>",
+  "cards": [{{"issue": <existing open issue number>, "why": "<one line>"}},
+            {{"title": "<card title>", "body": "<what to change, as a list, ending with a DONE: line>", "why": "<one line>"}}]}}"""
+
+
+RANK = """You are `{seat}` on the board of a small, fully AI-run software factory (Teahub), ranking the cards the planners
+proposed today:
+
+{cards}
+
+Rank up to three by: does it finish or unblock something already in flight, is it small enough for one worker session
+and one PR, is its DONE line checkable, does it stay inside the repo and away from workflows, secrets, variables and
+docs/decisions.md, and is it worth part of a small daily budget. If nothing is, rank nothing.
+Reply with ONLY JSON: {{"ranking": ["<card id>", "<card id>"], "reason": "one sentence"}} (ranking may be [])."""
 
 
 ROUTER = """You are Astra, the daily planner of a small, fully AI-run software factory (Teahub). Today you judge the
@@ -172,9 +216,13 @@ def log_issue() -> int:
                         "queued, and why. Object in a reply; Astra reads this thread too.", ["astra"])["number"]
 
 
+def context_for(state: dict, context: str) -> str:
+    return f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nBoard:\n{json.dumps(state, indent=1)}"
+
+
 def decide(state: dict, context: str, seat: str) -> dict:
-    user = f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nBoard:\n{json.dumps(state, indent=1)}"
-    raw = tm.think(seat, None, None, RULES.format(max_ready=env_int("TIME_ASTRA_MAX_READY", 2), max_new=env_int("TIME_ASTRA_MAX_NEW", 2)), user)
+    raw = tm.think(seat, None, None, RULES.format(max_ready=env_int("TIME_ASTRA_MAX_READY", 2), max_new=env_int("TIME_ASTRA_MAX_NEW", 2)),
+                   context_for(state, context))
     m = re.search(r"\{.*\}", raw, re.S)
     try:
         out = json.loads(m.group(0)) if m else {}
@@ -183,6 +231,103 @@ def decide(state: dict, context: str, seat: str) -> dict:
     picks = out.get("queue") if out.get("queue") is not None else out.get("ready")   # older answers said "ready"
     return {"note": str(out.get("note") or raw[:800]), "queue": [int(n) for n in picks or [] if str(n).isdigit()],
             "new": [c for c in out.get("new") or [] if isinstance(c, dict) and c.get("title")]}
+
+
+# ---------- the board for internal work (#279): slates, a ranking, the quorum ----------
+
+def slate(state: dict, context: str, seats: list[str], n: int) -> tuple[list[dict], dict[str, str]]:
+    """Every planning seat proposes up to n cards at once; the slates merge into one field. An existing issue passes
+    the single planner's guards or is dropped; the same issue (or the same new title) from two seats is one card
+    with both proposers. Returns the field and each seat's note."""
+    by_n = {i["n"]: i for i in state["issues"]}
+    user = context_for(state, context)
+    answers = vt.each(seats, lambda s: vt.ask_json(s, SLATE.format(seat=s, n=n), user))
+    field: list[dict] = []
+    notes: dict[str, str] = {}
+    for s, out in zip(seats, answers):
+        if not out:
+            continue
+        notes[s] = str(out.get("note") or "")[:400]
+        for c in (out.get("cards") or [])[:n]:
+            if not isinstance(c, dict):
+                continue
+            why = str(c.get("why") or "")[:200]
+            if str(c.get("issue") or "").isdigit():
+                num = int(c["issue"])
+                i = by_n.get(num)
+                if not i or not i["has_done"] or SKIP & set(i["labels"]):
+                    continue
+                same = next((d for d in field if d.get("issue") == num), None)
+                cand = {"slug": f"#{num}", "issue": num, "title": i["title"], "body": i["body"], "by": s, "why": why}
+            elif c.get("title"):
+                cand = {"slug": f"new-{len(field) + 1}", "title": str(c["title"])[:200], "body": str(c.get("body") or ""),
+                        "by": s, "why": why}
+                same = next((d for d in field if "issue" not in d and vt._forms(d["title"]) & vt._forms(cand["title"])), None)
+            else:
+                continue
+            if same:
+                if s not in same["by"].split(", "):
+                    same["by"] += f", {s}"
+                continue
+            field.append(cand)
+    return field, notes
+
+
+def rank(field: list[dict], seats: list[str]) -> dict:
+    """The board ranks the field: every seat up to three cards at once, Borda 3/2/1, as on the venture board.
+    Returns {"votes", "score", "backers"}, the shape venture.top reads."""
+    text = "\n\n".join(f"### {c['slug']} (proposed by {c['by']})\n{c['title']}\n{c['body'][:600]}\nWhy: {c['why']}" for c in field)
+    score = {c["slug"]: 0 for c in field}
+    backers = {c["slug"]: 0 for c in field}
+    votes: dict[str, dict] = {}
+    results = vt.each(seats, lambda s: vt.ask_json(s, f"You are `{s}`.", RANK.format(seat=s, cards=text)))
+    for s, v in zip(seats, results):
+        if not v:
+            continue
+        seen: list[str] = []
+        for slug in v.get("ranking") or []:   # a seat listing the same card thrice gets one vote for it
+            slug = str(slug).strip()
+            if slug in score and slug not in seen:
+                seen.append(slug)
+        v["ranking"] = seen
+        votes[s] = v
+        for pts, slug in zip((3, 2, 1), seen):
+            score[slug] += pts
+            backers[slug] += 1
+    return {"votes": votes, "score": score, "backers": backers}
+
+
+def deliberate(state: dict, context: str, pitchers: list[str], judges: list[str], max_ready: int, max_new: int) -> tuple[dict, list[str]]:
+    """The venture ceremony turned inward: slates, a ranking, and the top picks wanted by two seats become the plan,
+    at most max_ready in all and max_new of them new. Returns the plan (as decide() shapes it) and the minutes."""
+    field, notes = slate(state, context, pitchers, max_ready + max_new)
+    minutes = [f"Slates from {', '.join(pitchers)}; the board is {', '.join(judges)}."]
+    minutes += [f"- `{s}`: {note}" for s, note in notes.items() if note]
+    if not field:
+        minutes.append("No cards were proposed.")
+        return {"note": "The planners proposed nothing today.", "queue": [], "new": []}, minutes
+    meta = rank(field, judges)
+    by_slug = {c["slug"]: c for c in field}
+    picks: list[str] = []
+    fresh = 0
+    for slug in vt.top(field, meta, len(field)):   # ranked by Borda, each wanted by two seats
+        if "issue" not in by_slug[slug]:
+            if fresh >= max_new:
+                continue
+            fresh += 1
+        picks.append(slug)
+        if len(picks) >= max_ready:
+            break
+    minutes += ["", "| card | proposed by | score | backers | |", "|---|---|---|---|---|"]
+    for c in field:
+        minutes.append(f"| {c['slug']} {c['title'][:60]} | {c['by']} | {meta['score'][c['slug']]} | {meta['backers'][c['slug']]} | "
+                       f"{'picked' if c['slug'] in picks else ''} |")
+    minutes += [f"- `{s}` ranked {', '.join(v['ranking']) or 'nothing'}: {str(v.get('reason') or '')[:200]}" for s, v in meta["votes"].items()]
+    chosen = [by_slug[s] for s in picks]
+    note = ("The board picked " + ", ".join(f"{c['slug']} ({c['title'][:40]})" for c in chosen) + ".") if chosen else \
+        "No card was wanted by two seats; nothing queued."
+    return {"note": note, "queue": [c["issue"] for c in chosen if "issue" in c],
+            "new": [{"title": c["title"], "body": c["body"], "queue": True} for c in chosen if "issue" not in c]}, minutes
 
 
 def router_config() -> dict:
@@ -469,6 +614,8 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
 def tick() -> int:
     seat = (os.environ.get("TIME_ASTRA_SEAT") or "opus").strip()
     max_ready, max_new = env_int("TIME_ASTRA_MAX_READY", 2), env_int("TIME_ASTRA_MAX_NEW", 2)
+    pitchers = vt.seat_list("TIME_ASTRA_PITCH", "")          # the board: set, it deliberates instead of the router or one seat
+    judges = vt.seat_list("TIME_ASTRA_BOARD", "") or pitchers
     state = board()
     log = log_issue()
     if state["andons"]:
@@ -481,11 +628,16 @@ def tick() -> int:
     human = [c["body"][:500] for c in thread if not tm.is_time(c)][-5:]
     if human:
         context += "\n\nRecent human replies on the Astra log (follow these):\n- " + "\n- ".join(human)
-    cfg = router_config()
-    if cfg["mode"] != "off":
-        return router_tick(cfg, seat, log, context, thread, max_ready, max_new)
+    if not pitchers:
+        cfg = router_config()
+        if cfg["mode"] != "off":
+            return router_tick(cfg, seat, log, context, thread, max_ready, max_new)
+    minutes: list[str] = []
     try:
-        plan = decide(state, context, seat)
+        if pitchers:
+            plan, minutes = deliberate(state, context, pitchers, judges, max_ready, max_new)
+        else:
+            plan = decide(state, context, seat)
     except tm.Budget as e:
         tm.comment(log, f"🔭 Astra: {e}. No plan today.", {"beat": "astra", "queued": 0, "capped": True})
         return 0
@@ -508,7 +660,10 @@ def tick() -> int:
             tm.label(issue["number"], "queued")   # the heartbeat promotes it when nothing else is in flight
     per = ", ".join(f"{k} ${v['spent']:.2f} of ${v['allowance']:.2f}" for k, v in state["spend"]["pools"].items()) \
         or f"${state['spend']['today']:.2f} of ${state['spend']['daily_cap']:.2f}"
-    lines = [f"🔭 Astra ({seat}), spend today, {per}:", "", plan["note"], ""]
+    who = f"board of {', '.join(judges)}" if pitchers else seat
+    lines = [f"🔭 Astra ({who}), spend today, {per}:", "", plan["note"], ""]
+    if minutes:
+        lines += minutes + [""]
     if queued:
         lines.append("Queued: " + ", ".join(f"#{n}" for n in queued))
     if created:
@@ -517,7 +672,8 @@ def tick() -> int:
         lines.append("Skipped (no DONE line, already moving, or a human's): " + ", ".join(f"#{n}" for n in skipped))
     if not (queued or created):
         lines.append("Queued nothing today.")
-    tm.comment(log, "\n".join(lines), {"beat": "astra", "queued": len(queued) + len(created), "queue": queued, "new": created})
+    tm.comment(log, "\n".join(lines), {"beat": "astra", "queued": len(queued) + len(created), "queue": queued, "new": created,
+                                       "board": judges if pitchers else []})
     print(f"astra: queued={queued} new={created} skipped={skipped}")
     return 0
 
