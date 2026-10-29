@@ -1,4 +1,4 @@
-import { summarizeRun, MODES } from './game.js';
+import { summarizeRun, MODES, timedSeconds } from './game.js';
 import { dailyPassage, normalizeTopic } from './passages.js';
 import { MAX_WORD_LENGTH, normalizePassage } from './words.js';
 
@@ -145,7 +145,8 @@ export function validateResult(input) {
     return clean;
   });
   if (wordTimings[0].start !== 0 || Math.abs(end - raw.durationMs) > 1 || events.some(event => !wordTimings[event.index] || event.t < wordTimings[event.index].start || event.t > wordTimings[event.index].end + 1)) throw new ApiError(400, 'Replay does not match its duration.', 'invalid_run');
-  if (['30','60'].includes(raw.mode) && raw.durationMs > Number(raw.mode) * 1000 + 1) throw new ApiError(400, 'Timed runs cannot exceed their limit.', 'invalid_run');
+  const timed = timedSeconds(raw.mode);
+  if (timed !== null && raw.durationMs > timed * 1000 + 1) throw new ApiError(400, 'Timed runs cannot exceed their limit.', 'invalid_run');
   const run = { version: 1, mode: raw.mode, advance: raw.advance, words: raw.words.slice(), durationMs: raw.durationMs, finishedReason: ['time','words','misses','manual','stopped'].includes(raw.finishedReason) ? raw.finishedReason : 'manual', events, wordTimings, replayTruncated: false };
   run.stats = summarizeRun(run);
   if (!run.stats.keystrokes || run.stats.wpm > 1000) throw new ApiError(400, 'This replay cannot be scored.', 'invalid_run');

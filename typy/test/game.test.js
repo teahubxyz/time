@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TypingGame, letterStates, summarizeRun } from '../src/game.js';
+import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds } from '../src/game.js';
 import { generateWords, normalizePassage } from '../src/words.js';
 
 function type(game, word, at, spacing = 100) {
@@ -211,7 +211,7 @@ test('last-letter separator tolerance does not hide extra or mid-word spaces', (
 for (const advance of ['space', 'letter']) {
   for (const targetWpm of [100, 160]) {
     test(`${advance} advancement scores steady ${targetWpm} WPM spaced typing accurately`, () => {
-      for (const mode of ['30', '60']) {
+      for (const mode of ['30', '60', '120']) {
         const game = new TypingGame({ words: ['test'], mode, advance });
         const durationMs = Number(mode) * 1000;
         const intervalMs = 12000 / targetWpm;
@@ -254,7 +254,7 @@ test('WPM measures net output and accuracy measures attempts, without deletion f
 });
 
 test('timed runs stop at the exact deadline, including when a background tab wakes late', () => {
-  for (const mode of ['30', '60']) {
+  for (const mode of TIMED_MODES) {
     const game = new TypingGame({ words: ['cat'], mode });
     game.press('c', 500);
     game.press('a', 1000);
@@ -264,6 +264,43 @@ test('timed runs stop at the exact deadline, including when a background tab wak
     assert.equal(result.stats.correctChars, 2);
     assert.equal(result.events.length, 2);
     assert.equal(game.snapshot(100000).finishedReason, 'time');
+  }
+});
+
+test('each selectable run mode ends on its own terms and leaves live stats to read', () => {
+  assert.deepEqual(TIMED_MODES, ['30', '60', '120']);
+  assert.ok(['30', '60', '120', '50'].every(mode => MODES.includes(mode)));
+  assert.equal(timedSeconds('120'), 120);
+  assert.equal(timedSeconds('50'), null);
+  assert.equal(timedSeconds('endless'), null);
+  for (const mode of ['30', '60', '120', '50']) {
+    const game = new TypingGame({ words: ['cat', 'dog'], mode });
+    let at = 0;
+    for (let word = 0; word < 60; word++) {
+      at = type(game, game.snapshot(at).word, at, 100);
+      game.press(' ', at += 100);
+      if (game.snapshot(at).status === 'finished') break;
+    }
+    const seconds = timedSeconds(mode);
+    const state = game.snapshot(200000);
+    assert.equal(state.status, 'finished', mode);
+    assert.equal(state.finishedReason, seconds === null ? 'words' : 'time', mode);
+    // Live figures stay readable the whole way through, then stop at the end.
+    assert.equal(state.remainingMs, seconds === null ? null : 0, mode);
+    assert.ok(state.wpm > 0 && state.accuracy === 100, mode);
+    const result = game.result(200000);
+    assert.equal(result.durationMs, seconds === null ? result.durationMs : seconds * 1000, mode);
+    assert.equal(result.stats.completedWords, seconds === null ? 50 : result.stats.completedWords, mode);
+    assert.deepEqual(summarizeRun(result), result.stats, mode);
+    // Run end detection resets cleanly: the next run starts from nothing.
+    const next = new TypingGame({ words: ['cat', 'dog'], mode });
+    const fresh = next.snapshot(0);
+    assert.equal(fresh.status, 'ready', mode);
+    assert.equal(fresh.wordIndex, 0);
+    assert.equal(fresh.buffer, '');
+    assert.equal(fresh.wpm, 0);
+    assert.equal(fresh.accuracy, 100);
+    assert.equal(fresh.remainingMs, seconds === null ? null : seconds * 1000, mode);
   }
 });
 

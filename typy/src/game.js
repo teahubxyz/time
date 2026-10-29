@@ -1,6 +1,9 @@
 import { generateWords, normalizePassage } from './words.js';
 
-export const MODES = ['30', '60', '50', 'endless', 'tempo'];
+export const MODES = ['30', '60', '120', '50', 'endless', 'tempo'];
+/** Modes that end on a clock. Their name is the number of seconds they run. */
+export const TIMED_MODES = ['30', '60', '120'];
+export const timedSeconds = mode => TIMED_MODES.includes(String(mode)) ? Number(mode) : null;
 export const MAX_REPLAY_EVENTS = 30000;
 export const MAX_REPLAY_WORDS = 6000;
 
@@ -235,8 +238,9 @@ export class TypingGame {
   tick(nowMs) {
     const now = this._now(nowMs);
     if (this.status === 'running') {
-      if (this.mode === '30' || this.mode === '60') {
-        const deadline = this.startedAt + Number(this.mode) * 1000;
+      const seconds = timedSeconds(this.mode);
+      if (seconds !== null) {
+        const deadline = this.startedAt + seconds * 1000;
         if (now >= deadline) this._finish(deadline, 'time');
       } else if (this.mode === 'tempo') {
         // Catch up from a suspended tab. No human gains extra time by hiding it.
@@ -317,8 +321,8 @@ export class TypingGame {
     const letters = letterStates(this.word, this.buffer.join(''));
     const errorIndex = letters.findIndex(letter => letter.state === 'incorrect' || letter.state === 'extra');
     const correctPrefix = this._prefix();
-    const remainingMs = this.mode === '30' || this.mode === '60'
-      ? Math.max(0, Number(this.mode) * 1000 - elapsedMs) : null;
+    const seconds = timedSeconds(this.mode);
+    const remainingMs = seconds === null ? null : Math.max(0, seconds * 1000 - elapsedMs);
     return {
       status: this.status, mode: this.mode, advance: this.advance,
       wordIndex: this.wordIndex, word: this.word,

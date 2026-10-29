@@ -1,4 +1,4 @@
-import { TypingGame } from '/game.js';
+import { TypingGame, timedSeconds } from '/game.js';
 import { generateWords, normalizePassage } from '/words.js';
 
 const $ = id => document.getElementById(id);
@@ -6,7 +6,7 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&
 const now = () => performance.now();
 const pretty = value => Number.isFinite(Number(value)) ? String(Math.round(Number(value))) : '0';
 const round1 = value => Number.isFinite(Number(value)) ? String(Math.round(Number(value) * 10) / 10) : '0';
-const modeNames = {'30':'30 seconds','60':'60 seconds','50':'50 words','endless':'endless','tempo':'tempo'};
+const modeNames = {'30':'30 seconds','60':'60 seconds','120':'120 seconds','50':'50 words','endless':'endless','tempo':'tempo'};
 const readLocal = (key, fallback) => { try { return JSON.parse(localStorage.getItem('typy.' + key)) ?? fallback; } catch { return fallback; } };
 const writeLocal = (key, value) => { try { localStorage.setItem('typy.' + key, JSON.stringify(value)); } catch {} };
 const settings = {...{advance:'space',preview:true}, ...readLocal('settings', {})};
@@ -222,7 +222,7 @@ function renderGame(state) {
   const hintStart = $('run-hint').querySelector('.hint-start');
   const hint = state.status === 'ready' ? 'type the word to begin' : state.errorIndex >= 0 ? 'backspace to correct' : state.waitingForBeat ? 'hold that rhythm' : 'keep your rhythm';
   if (hintStart.textContent !== hint) hintStart.textContent = hint;
-  if (selectedMode === '30' || selectedMode === '60') {
+  if (timedSeconds(selectedMode) !== null) {
     setText('time-label', 'remaining'); setText('live-time', Math.ceil(state.remainingMs / 1000)); setText('time-unit', 's');
   } else if (selectedMode === '50') {
     setText('time-label', 'remaining'); setText('live-time', Math.max(0, 50 - state.completedWords)); setText('time-unit', 'words');
@@ -286,7 +286,7 @@ function displayResult(result) {
   source = result.source || {kind:'common'};
   passage = [...run.words];
   $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false;
-  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && ['30','60','50'].includes(run.mode) ? ' · finished early' : ', well spent');
+  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
   $('result-title').textContent = result.ghostStats ? (stats.wpm > result.ghostStats.wpm ? 'a little ahead of the ghost.' : 'a good race. another round?') : 'there’s your rhythm.';
   $('result-wpm').textContent = pretty(stats.wpm);
   $('result-accuracy').textContent = round1(stats.accuracy) + '%';

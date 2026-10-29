@@ -42,6 +42,14 @@ test('rejects malformed timing, oversized passages and truncated history',()=>{
  const truncated=input();truncated.run.replayTruncated=true;assert.throws(()=>validateResult(truncated),/too long/);
  const drift=input();drift.run.wordTimings[1].start+=10;assert.throws(()=>validateResult(drift),/consecutive/);
 });
+test('a 120-second run is a shareable mode and still cannot outlast its clock',async()=>{
+ const e=env(),run=makeRun({mode:'120',duration:120000});
+ assert.equal(run.durationMs,120000);assert.equal(run.finishedReason,'time');
+ const saved=await worker.fetch(post({run,source:{kind:'common'}}),e);assert.equal(saved.status,201);
+ const read=await worker.fetch(req('/api/results/'+(await saved.json()).id),e);assert.equal((await read.json()).run.mode,'120');
+ const over=structuredClone(run);over.durationMs=130000;over.wordTimings.at(-1).end=130000;
+ assert.throws(()=>validateResult({run:over,source:{kind:'common'}}),/exceed their limit/);
+});
 test('result link round trip stores only explicit sharing data',async()=>{
  const e=env(),saved=await worker.fetch(post(input()),e);assert.equal(saved.status,201);const info=await saved.json();assert.match(info.url,/^\/r\/[a-f0-9]{24}$/);
  const read=await worker.fetch(req('/api/results/'+info.id),e);assert.equal(read.status,200);const value=await read.json();assert.equal(value.run.stats.wpm,2);assert.equal(value.name,'A friend');assert.equal(e.KV.data.size,1);
