@@ -60,6 +60,8 @@ Deploy with the existing operator credentials: CLOUDFLARE_API_TOKEN, CLOUDFLARE_
 
 The deploy script reuses **.github/time/cloudflare.py**, uploads the committed ES modules, reuses a KV namespace named **time-typy**, and attaches **typy.yolopreneur.lol**. Its first upload creates the SQLite Durable Object class **QuotaGate** with migration **typy-v1**. Later uploads retain the same store and quota namespace. The operator machine needs Python and git; committed generated assets make Node unnecessary there.
 
+Deploys are manual: no workflow deploys main or runs `npm test --prefix typy` yet. Adding one means editing `.github/workflows`, which needs a human.
+
 The Worker returns its code revision through **/api/health**. The deployment receipt also records the exact source commit. Verify the custom domain and asset responses separately from the upload.
 
 ## Storage, privacy, and limits
