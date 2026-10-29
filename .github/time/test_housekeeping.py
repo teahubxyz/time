@@ -24,8 +24,11 @@ LOG = 57
 
 
 class Forge:
-    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None, repo_labels=None, files=None):
-        self.branches = [{"name": b} if isinstance(b, str) else b for b in branches]
+    def __init__(self, branches=(), prs=(), issues=(), milestones=(), reactions=None, comments=None, repo_labels=None,
+                 files=None, soft_open=False):
+        self.soft_open = soft_open       # Gitea answers `pulls?state=open` with null, as it does other empty lists
+        # a branch the forge lists carries its tip: `sha-<name>`, the sha a PR from that head merges, unless given
+        self.branches = [{"name": b, "commit": {"id": f"sha-{b}"}} if isinstance(b, str) else b for b in branches]
         self.prs = list(prs)
         self.issues = {i["number"]: {"state": "open", "labels": [], "created_at": iso(0), "updated_at": iso(0), "body": "", **i} for i in issues}
         self.milestones = [dict(m) for m in milestones]
@@ -59,6 +62,8 @@ class Forge:
             return {}
         if route == "/repos/o/r/pulls":
             want = q.get("state", ["open"])[0]
+            if want == "open" and self.soft_open:
+                return None
             return self.page([p for p in self.prs if p["state"] == want], path)
         if route == "/repos/o/r/milestones" and method == "GET":
             return self.page([m for m in self.milestones if m.get("state", "open") == "open"], path)
@@ -112,9 +117,10 @@ class Forge:
         return hk.main()
 
 
-def pr(n, head, state="open", merged=False, base="main", idle=0, merged_days=1):
+def pr(n, head, state="open", merged=False, base="main", idle=0, merged_days=1, sha=None):
     return {"number": n, "title": f"pr {n}", "state": state, "merged": merged, "merged_at": iso(merged_days) if merged else None,
-            "base": {"ref": base}, "head": {"ref": head, "repo": {"full_name": "o/r"}}, "created_at": iso(idle), "updated_at": iso(idle)}
+            "base": {"ref": base}, "head": {"ref": head, "sha": sha or f"sha-{head}", "repo": {"full_name": "o/r"}},
+            "created_at": iso(idle), "updated_at": iso(idle)}
 
 
 deleted = lambda f: [urllib.parse.unquote(w[1].split("/branches/")[1]) for w in f.writes if w[0] == "DELETE"]
@@ -138,6 +144,22 @@ def test_branches():
     # a branch with commits after its merge is kept
     f = Forge(branches=[{"name": "time/card-9", "commit": {"timestamp": iso(0)}}], prs=[pr(9, "time/card-9", "closed", True, merged_days=2)])
     f.run(); assert deleted(f) == []
+
+
+def test_branches_keeps_work_the_default_branch_lacks():
+    """#277: the open-PR list is not the only guard. Gitea can answer `pulls?state=open` with null (it does that for
+    other empty lists), and a card branch that also had an earlier merged PR from the same head was deleted; the next
+    retry cut it again from `main`, so the open PR's diff went empty. A tip that is not the commit its merged PR landed
+    is kept whatever that list says."""
+    f = Forge(branches=[{"name": "time/card-244", "commit": {"id": "sha-the-new-round"}}],
+              prs=[pr(248, "time/card-244", "closed", True), pr(249, "time/card-244", "open")], soft_open=True)
+    assert f.run() == 0
+    assert deleted(f) == [] and [b["name"] for b in f.branches] == ["time/card-244"], deleted(f)
+    assert any("0 branch(es) deleted" in b for _, b in f.posted), f.posted
+    # the guard is that precise: a branch still sitting on the commit its PR merged holds nothing `main` lacks, so a
+    # soft-empty page does not keep it from being swept
+    f = Forge(branches=["time/card-53"], prs=[pr(1, "time/card-53", "closed", True)], soft_open=True)
+    f.run(); assert deleted(f) == ["time/card-53"]
 
 
 def sig(n, venture, age):
@@ -321,7 +343,8 @@ def test_dry_run():
 
 
 if __name__ == "__main__":
-    tests = [test_branches, test_signals, test_milestones, test_outcomes, test_outcomes_venture, test_stale,
+    tests = [test_branches, test_branches_keeps_work_the_default_branch_lacks, test_signals, test_milestones,
+             test_outcomes, test_outcomes_venture, test_stale,
              test_unknown_label, test_superseded, test_dry_run]
     for t in tests:
         t()

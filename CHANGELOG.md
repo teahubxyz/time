@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- A card branch is never rewound to its base, so an open card PR cannot lose its work (#277, which cost #249 and #212 theirs: both heads became commits already in `main` and both diffs went empty). Writing to a branch that is missing from the forge used to cut a new one from the base and push it; now `git_commit` only makes a branch that `ls-remote` says is not there, and only when the caller allows it (`create=True`). The worker's hands never allow it after the first commit: a branch gone while its pull request is open parks the card (the `parked` label, a beat the daily sweep lists, and one `andon` issue) with what to do — push the branch back from the PR's own history, then `/time retry` — instead of resetting the PR to the base. A branch that is on the forge and still will not clone is a transient error to raise and retry, not an excuse for base-only history, and `update_branch` says the same when the branch it should merge into has gone. The daily sweep stops before it can delete the branch in the first place: besides the open-PR list (which Gitea can answer with `null`, as it does other empty lists) it now deletes a branch only when its tip is the very commit its merged PR landed, so a branch carrying anything `main` does not have is kept whatever that list says.
+
 ### Changed
 - `TIME_PARALLEL` defaults to 3 (was 1) and a bad value (not a positive integer) falls back to 3 (#243).
 ### Added

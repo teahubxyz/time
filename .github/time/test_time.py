@@ -16,10 +16,15 @@ real_think = tm.think  # some checks stub it; the Claude checks need the real on
 
 
 real_git_commit = tm.git_commit
-def fake_git_commit(branch, files, message, *, base=None, append=None):
-    """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to."""
+def fake_git_commit(branch, files, message, *, base=None, append=None, create=True):
+    """Pushes land in whichever fake world tm.http is bound to, as the contents API's writes used to. Every branch is
+    taken as present unless the world lists it in `gone` (a branch deleted on the forge): writing to one of those with
+    `create=False` raises, as the real push does, and `create=True` cuts it from the base again."""
     w = getattr(tm.http, "__self__", None)
     if w is None: return "sha"
+    if branch in getattr(w, "gone", ()):
+        if not create: raise tm.BranchGone(f"branch `{branch}` is not on the forge", branch)
+        w.gone = [b for b in w.gone if b != branch]
     if not files and not append:
         w.branches = getattr(w, "branches", []) + [branch]; w.bases = {**getattr(w, "bases", {}), branch: base}
     for fp, data in (files or {}).items():
@@ -867,6 +872,99 @@ assert real_git_commit("time/card-9", {"src/a.py": None}, "rm") and "src/a.py" n
     ["git", "--git-dir", f"{_g}/o/r.git", "ls-tree", "-r", "--name-only", "time/card-9"], capture_output=True, text=True).stdout
 tm.SERVER, tm.REPO, tm.default_branch = _saved
 print("ALL OK 53")
+
+# 277 an open card PR's branch is never reset to its base: not by a retry, not by a write, not by a merge.
+# #249 and #212 lost their work that way: the branch went missing, Hands cut a new one from `main` and pushed it, so
+# the PR's head became a commit already in `main` and its diff went empty.
+_g277 = _gtf.mkdtemp()
+_gsp.run(["git", "init", "-q", "--bare", "-b", "main", f"{_g277}/o/r.git"], check=True)
+_gsp.run(["git", "clone", "-q", f"{_g277}/o/r.git", f"{_g277}/seed"], check=True, capture_output=True)
+def g277(*a, cwd=f"{_g277}/seed", check=True):
+    return _gsp.run(["git", *a], cwd=cwd, check=check, env=_env, capture_output=True, text=True).stdout.strip()
+def write277(path, text, message):
+    Path(f"{_g277}/seed/{path}").write_text(text); g277("add", "-A"); g277("commit", "-qm", message)
+bare277 = f"{_g277}/o/r.git"
+tip277 = lambda ref: g277("rev-parse", "--verify", "--quiet", ref, cwd=bare277, check=False)   # "" when there is no such branch
+write277("README.md", "hi\n", "seed"); g277("push", "-q", "origin", "HEAD:main")
+g277("checkout", "-qb", "time/card-1"); write277("work.txt", "the card's work\n", "card #1: work")
+g277("push", "-q", "origin", "time/card-1")
+work277 = tip277("time/card-1")
+g277("checkout", "-q", "main"); write277("squash.txt", "someone else's card\n", "squash of #248")
+g277("push", "-q", "origin", "main")
+_saved = tm.SERVER, tm.REPO, tm.default_branch
+tm.SERVER, tm.REPO, tm.default_branch, tm.git_commit = f"file://{_g277}", "o/r", lambda: "main", real_git_commit
+tm.http = World([], prs=[{"number": 9, "state": "open", "head": {"ref": "time/card-1"}}]).http
+try:
+    # the branch is still there: resuming it leaves its tip exactly where the worker left it
+    tm.Hands(1, "time/card-1")
+    assert tip277("time/card-1") == work277, "a resume moves nothing"
+    assert "squash.txt" not in g277("ls-tree", "--name-only", "time/card-1", cwd=bare277), "the base was not merged in"
+    # the branch is gone while the PR is open: the card is parked, nothing is pushed, the PR keeps its diff
+    g277("push", "-q", "origin", "--delete", "time/card-1")
+    try:
+        tm.Hands(1, "time/card-1"); raise AssertionError("a gone branch under an open PR must not be recreated")
+    except tm.BranchGone as e:
+        assert e.pr == 9 and e.branch == "time/card-1" and "PR #9" in str(e), (e.pr, str(e))
+    assert tip277("time/card-1") == "", "nothing was pushed"
+    # a write mid-run cannot recreate it either
+    g277("push", "-q", "origin", f"{work277}:refs/heads/time/card-1")
+    h277 = tm.Hands(1, "time/card-1")
+    g277("push", "-q", "origin", "--delete", "time/card-1")
+    try:
+        h277.call("write_file", {"path": "app.py", "content": "x = 2\n"}); raise AssertionError("a write recreated the branch")
+    except tm.BranchGone:
+        pass
+    assert tip277("time/card-1") == "", "nothing was pushed"
+    # update_branch says the same: no branch, no merge of the base into it
+    try:
+        tm.update_branch("time/card-1", "main", "card #1: merge main"); raise AssertionError("update_branch recreated the branch")
+    except tm.BranchGone as e:
+        assert e.branch == "time/card-1" and "nothing to merge" in str(e), str(e)
+    assert tip277("time/card-1") == ""
+    # a card's first run has no PR to protect, so the branch is cut from the base as before
+    tm.http = World([]).http
+    tm.Hands(2, "time/card-2")
+    assert tip277("time/card-2") == tip277("main") and tip277("time/card-1") == ""
+    # the branch comes back while Time is cutting a new one from the base (a racing worker, sync bringing it home):
+    # the push is rejected and Time says so, instead of replaying the base over work it has never seen
+    race277 = []
+    def racing_base():   # called when git_commit reaches for the base, just before it clones it
+        if not race277:
+            race277.append(g277("push", "-q", "origin", f"{work277}:refs/heads/time/card-3"))
+        return "main"
+    tm.default_branch = racing_base
+    try:
+        real_git_commit("time/card-3", {"app.py": b"x = 9\n"}, "card #3: a")
+        raise AssertionError("a base-only tip landed on a branch that had come back")
+    except RuntimeError as e:
+        assert "appeared on the forge" in str(e), str(e)
+    assert tip277("time/card-3") == work277, "the branch kept the work it came back with"
+    tm.default_branch = lambda: "main"
+    # a forge Time cannot reach is an error, never a branch cut from a base it could not read either
+    tm.SERVER = f"file://{_g277}/nowhere"
+    for kw in ({}, {"create": False}):
+        try:
+            real_git_commit("time/card-1", {}, "branch", **kw); raise AssertionError("an unreachable forge passed")
+        except tm.BranchGone:
+            raise AssertionError("an unreachable forge is not a missing branch")
+        except RuntimeError as e:
+            assert "clone of branch time/card-1 failed" in str(e), str(e)
+finally:
+    tm.SERVER, tm.REPO, tm.default_branch = _saved
+    tm.git_commit = fake_git_commit
+# the same gone branch through a whole beat: the card is parked with the reason, the cord is pulled, no worker runs
+w = objected_world(); w.gone = ["time/card-1"]; w.label_ids.update(parked=98, andon=99)
+w = run(w, KV)
+b277 = tm.beats_of(w.comments[1])[-1]
+assert b277["beat"] == "parked" and b277["pr"] == 7 and b277["branch"] == "time/card-1", b277
+assert "#277" in w.posted[-1][1] and "`/time retry`" in w.posted[-1][1], w.posted[-1][1]
+assert "parked" in w.issues[1]["labels"] and w.turn == 0 and w.opened == [], (w.issues[1]["labels"], w.turn)
+andons277 = [i for i in w.issues.values() if "andon" in i["labels"]]
+assert len(andons277) == 1 and andons277[0]["title"] == "Card #1: its branch `time/card-1` is gone", andons277
+w.posted.clear()
+run(w, KV)   # a parked card waits for a human: nothing is said twice and no retry is launched
+assert w.posted == [] and len([i for i in w.issues.values() if "andon" in i["labels"]]) == 1, w.posted
+print("ALL OK 277")
 
 # writes go out as Time's own user, except comments and statuses (Gitea refuses the Actions identity the rest)
 _seen, _real_http, _gt = [], tm.http, os.environ.get("GITHUB_TOKEN")
@@ -2112,7 +2210,7 @@ class Worker:
         return {"pr": -1, "steps": 7, "seat": "qwen", "model": "qwen3-coder"}
 
 
-def vgit(branch, files, message, *, base=None, append=None):
+def vgit(branch, files, message, *, base=None, append=None, create=True):
     """The Pages branch takes pushes (the Actions token's contents writes are refused); they land in W.files."""
     assert branch == "gh-pages", branch
     for fp, data in (files or {}).items():

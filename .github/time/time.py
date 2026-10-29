@@ -591,6 +591,24 @@ def budget_check(route: str | None = None, now: dt.datetime | None = None) -> No
         raise Budget(f"today's spend is ${today:.2f} of the ${day_cap:.2f} cap{more}; carrying on tomorrow")
 
 
+def pull_cord(title: str, body: str, prefix: str | None = None) -> None:
+    """Pull the cord: one open `andon` issue per breach, so a human sees it once however many beats hit it. Two breaches
+    are the same one when their titles start with `prefix` (the whole title by default)."""
+    if any((i.get("title") or "").startswith(prefix or title) for i in issues("state=open&labels=andon")):
+        return
+    new_issue(title, body, ["andon"])
+
+
+def park(n: int, text: str, meta: dict) -> None:
+    """Stop a card for a human: the `parked` label and a `parked` beat, both of which the daily sweep lists. Time's
+    automatic retries answer `error` and `stuck` only, so a parked card waits until someone comments `/time retry`."""
+    try:
+        label(n, "parked")
+    except RuntimeError as e:   # the label is the sweep's; the beat is what stops the card
+        print(f"#{n}: parked label not added: {str(e)[:120]}")
+    comment(n, text, {"beat": "parked", **meta})
+
+
 def andon(reason: str) -> None:
     """Pull the cord once: one open `andon` issue per breach. A monthly breach also flips TIME_MODE to dry-run; a daily
     one heals itself at midnight UTC, so the mode stays."""
@@ -611,10 +629,10 @@ def andon(reason: str) -> None:
                 flipped = "\n\nThe monthly cap tripped, so I created the Actions variable `TIME_MODE=dry-run`. Raise the cap, then set it back to `live`."
             except RuntimeError as e2:
                 flipped = f"\n\nThe monthly cap tripped, but I couldn't set `TIME_MODE=dry-run`: `{str(e2)[:200]}`. Please do it by hand."
-    new_issue(f"Spend cap reached: ${today:.2f} today / ${month:.2f} out of pocket this month",
+    pull_cord(f"Spend cap reached: ${today:.2f} today / ${month:.2f} out of pocket this month",
               f"⏱️ Time stopped calling models: {reason}.\n\n- Daily cap (`TIME_DAILY_USD`): ${day_cap:.2f}\n"
               f"- Monthly cap (`TIME_MONTHLY_USD`): ${month_cap:.2f}\n- Ledger: `time/ledger/<YYYY-MM>.jsonl`"
-              f"{flipped}\n\nClose this once it's handled.", ["andon"])
+              f"{flipped}\n\nClose this once it's handled.", "Spend cap")
 
 
 CUT_OFF = ("length", "max_tokens")  # the stop reason of a reply that ran into max_tokens instead of finishing
@@ -1194,12 +1212,24 @@ def _git_url(token: bool) -> str:
     return f"{SERVER}/{REPO}.git"
 
 
+class BranchGone(RuntimeError):
+    """A branch Time was told to write to is not on the forge, and Time will not make it from the base. The work a card
+    branch holds lives only there, so recreating it from the base would rewind an open pull request to an empty diff
+    (#277): the card is parked for a human instead. `branch` and `pr` say which, when the raiser knows."""
+
+    def __init__(self, message: str, branch: str = "", pr: int | None = None):
+        super().__init__(message)
+        self.branch, self.pr = branch, pr
+
+
 def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, base: str | None = None,
-               append: dict[str, bytes] | None = None) -> str:
+               append: dict[str, bytes] | None = None, create: bool = True) -> str:
     """Commit files (None deletes; `append` adds bytes to the end) to branch and push; returns the new sha.
     Gitea 1.24 refuses the Actions token's API writes in the pre-receive hook (no GITEA_ACTION_PERM on the internal
     push), but git over HTTP with the same token has write. So every write Time makes is a push. A missing branch is
-    made from `base` (default branch); no files and a missing branch just creates it."""
+    made from `base` (default branch); no files and a missing branch just creates it. `create=False` means the branch
+    must be there already: a branch an open pull request points at is never remade from the base (#277), and a clone
+    that failed for any other reason is raised rather than answered with base-only history."""
     token = os.environ.get("GITHUB_TOKEN") or ""
     url = _git_url(True)
     d = tempfile.mkdtemp(prefix="time-git-")
@@ -1210,10 +1240,24 @@ def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, bas
             err = (p.stderr or p.stdout)[-400:]
             raise RuntimeError(f"git {args[0]} failed: {err.replace(token, '***') if token else err}")
         return p
+    fresh = False
     try:
-        if git("clone", "-q", "--depth", "1", "--branch", branch, url, ".", check=False).returncode:
+        if (c := git("clone", "-q", "--depth", "1", "--branch", branch, url, ".", check=False)).returncode:
+            # Only a branch that is not on the forge at all is cut from the base, and only when the caller allows it.
+            # A branch that is there and still would not clone is a transient failure, and ls-remote failing says
+            # nothing either way: both are raised, because base-only history pushed over a card branch rewinds it (#277).
+            ls = git("ls-remote", "--exit-code", "--heads", url, f"refs/heads/{branch}", check=False)
+            if ls.returncode != 2:   # 0: it is on the forge and the clone still failed; anything else: ls-remote failed
+                err = f"{c.stderr or c.stdout}{ls.stderr or ''}"[-400:]
+                raise RuntimeError(f"git clone of branch {branch} failed"
+                                   + (" while the branch is on the forge" if not ls.returncode else "")
+                                   + f": {err.replace(token, '***') if token else err}")
+            if not create:
+                raise BranchGone(f"branch `{branch}` is not on the forge, and Time does not remake it from "
+                                 f"`{base or default_branch()}`", branch)
             git("clone", "-q", "--depth", "1", "--branch", base or default_branch(), url, ".")
             git("checkout", "-q", "-b", branch)
+            fresh = True
         git("remote", "set-url", "origin", _git_url(False))  # the token must not stay in .git/config
         paths = []
         for rel, data in list((files or {}).items()) + [(k, ("+", v)) for k, v in (append or {}).items()]:
@@ -1235,6 +1279,12 @@ def git_commit(branch: str, files: dict[str, bytes | None], message: str, *, bas
             p = git("push", "-q", url, f"HEAD:refs/heads/{branch}", check=attempt == 1)
             if not p.returncode:
                 break
+            if fresh:
+                # The branch appeared while Time was cutting a new one from the base. Ours is that branch's history,
+                # not its own, so rebasing onto it would replay the base over someone's work: raise and let the next
+                # beat resume the branch that is there now.
+                raise RuntimeError(f"branch {branch} appeared on the forge while Time was creating it from "
+                                   f"{base or default_branch()}; nothing was pushed")
             # someone pushed first: replay ours on theirs once (appends to the ledger rebase cleanly)
             git("-c", "user.name=Time", "-c", f"user.email=time@users.noreply.{host}", "pull", "-q", "--rebase", url, branch)
         return git("rev-parse", "HEAD").stdout.strip()
@@ -1262,7 +1312,12 @@ def update_branch(branch: str, base: str, message: str) -> tuple[str | None, str
             raise RuntimeError(f"git {args[0]} failed: {err.replace(token, '***') if token else err}")
         return p
     try:
-        git("clone", "-q", "--branch", branch, url, ".")
+        if git("clone", "-q", "--branch", branch, url, ".", check=False).returncode:
+            # Never a fallback to the base here either (#277): a merge needs the branch's own history, and a branch
+            # that has gone missing under an open PR is a human's to restore.
+            if git("ls-remote", "--exit-code", "--heads", url, f"refs/heads/{branch}", check=False).returncode == 2:
+                raise BranchGone(f"branch `{branch}` is not on the forge, so there is nothing to merge `{base}` into", branch)
+            git("clone", "-q", "--branch", branch, url, ".")   # not a missing branch: raise with git's own words
         git("remote", "set-url", "origin", _git_url(False))  # the token must not stay in .git/config
         # two PRs that each add a CHANGELOG line at the same spot conflict, and keeping both sides' lines is the answer:
         # git's union driver does that (the repo's .gitattributes says the same, but an old branch may lack it). Its
@@ -1313,8 +1368,22 @@ class Hands:
     def __init__(self, n: int, branch: str, base: str | None = None):
         self.n, self.branch, self.base, self.pr, self.steps = n, branch, base, None, 0
         self.label = "a seat"  # venice_work names the seat for the PR footer
-        git_commit(branch, {}, f"card #{n}: branch", base=base)  # already there: resume on it (nothing to commit, push is a no-op)
+        try:
+            git_commit(branch, {}, f"card #{n}: branch", base=base, create=False)  # already there: resume on it (nothing to commit, push is a no-op)
+        except BranchGone:
+            # The branch is not on the forge. If a pull request still points at it, that PR's work lived there and
+            # only there: cutting a fresh branch from the base would reset the PR to an empty diff (#277), which is
+            # how #249 and #212 lost theirs. Park the card instead; a branch with no open PR is a card's first run.
+            if (pr := open_pr_for(branch)):
+                raise BranchGone(f"branch `{branch}` is gone from the forge while PR #{pr['number']} is open, so the "
+                                 f"work it held is not there to resume", branch, pr["number"]) from None
+            git_commit(branch, {}, f"card #{n}: branch", base=base)
         self.checkout = None
+
+    def _commit(self, files: dict[str, bytes | None], message: str) -> str:
+        """A write on the card's branch. The branch exists by now (__init__ saw to it), so a write never makes it: one
+        deleted under a running card is parked, not answered with a branch cut from the base (#277)."""
+        return git_commit(self.branch, files, message, create=False)
 
     def _checkout(self) -> str:
         d = tempfile.mkdtemp(prefix="time-worker-")
@@ -1348,7 +1417,7 @@ class Hands:
                         "app.js) and write each in its own call.")
             if a["path"].startswith((".github/workflows", ".gitea/workflows")):
                 return "refused: workflow files are a human's to change"
-            git_commit(self.branch, {a["path"]: a["content"].encode()}, a.get("message") or f"card #{self.n}: update {a['path']}")
+            self._commit({a["path"]: a["content"].encode()}, a.get("message") or f"card #{self.n}: update {a['path']}")
             self.checkout = None
             return f"wrote {a['path']}"
         if name == "run":
@@ -1383,7 +1452,7 @@ class Hands:
                 keep[rel] = data
                 kept.append(f"{rel}: kept")
             if keep:  # one commit for the lot
-                git_commit(self.branch, keep, f"card #{self.n}: kept {', '.join(keep)} (generated)")
+                self._commit(keep, f"card #{self.n}: kept {', '.join(keep)} (generated)")
             sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=self.checkout, capture_output=True, text=True).stdout.strip()
             # the worker's own test run is recorded as a commit status; land() sees it but never merges on it alone.
             gh("POST", f"/repos/{REPO}/statuses/{sha}", {"state": "success" if p.returncode == 0 else "failure",
@@ -1851,6 +1920,18 @@ def tick() -> None:
         except LookupError as e:  # a key is missing: say so once, plainly
             if not blocked:
                 comment(n, f"⏱️ Time: can't go further on this card: {e}. I'll carry on once it's added.", {"beat": "blocked"})
+        except BranchGone as e:  # the branch holding this card's work is gone: park it, never rebuild it from the base
+            print(f"#{n}: {e}")
+            where = f" PR #{e.pr}" if e.pr else " its pull request"
+            text = (f"⏱️ Time: {e}. I did not remake it from `{card_base(card) or default_branch()}`: that would "
+                    f"reset{where} to the base and the work on it would be gone (#277). So this card is parked.\n\n"
+                    f"- Push `{e.branch}` back (its commits are still in the pull request's own history on the forge), "
+                    "then comment `/time retry`\n- Or close the pull request and retry to start the card over")
+            park(n, text, {"pr": e.pr, "branch": e.branch})
+            pull_cord(f"Card #{n}: its branch `{e.branch}` is gone",
+                      f"⏱️ Time parked card #{n}: {e}.\n\nNothing was pushed and the pull request was left as it is. "
+                      "Restore the branch (the commits are in the pull request's history), then comment `/time retry` "
+                      f"on #{n}.\n\nClose this once it's handled.", f"Card #{n}: its branch")
         except Exception as e:  # noqa: BLE001  one card must not stop the others
             print(f"#{n}: {type(e).__name__}: {e}")
             again = mode == "live" and auto_used.get(n, 0) + (1 if auto else 0) < auto_max
