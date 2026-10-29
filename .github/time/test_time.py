@@ -1415,6 +1415,7 @@ assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
 # the heartbeat promotes queued cards in the live ranking's order, oldest first without one
 real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)
 moved80 = []
+par80 = os.environ.get("TIME_PARALLEL"); os.environ["TIME_PARALLEL"] = "3"   # three slots, so the order shows
 q80 = [iss80(10, "a", labels=["queued"]), iss80(11, "b", labels=["queued"]), iss80(12, "c", body="Depends on #99\nDONE: x", labels=["queued"])]
 beat80 = {"user": {"login": tm.TIME_BOT}, "created_at": "2026-10-19T13:13:00Z",
           "body": "x\n<!-- time " + json.dumps({"beat": "astra", "router": "live", "order": [12, 11, 10]}) + " -->"}
@@ -1422,9 +1423,11 @@ tm.issues = lambda q: {"state=open&labels=ready": [], "state=open&labels=queued"
                        "state=open&labels=astra": [iss80(57, "Astra log", labels=["astra"])]}[q]
 tm.gh = lambda method, path, body=None, **k: [beat80] if "/comments" in path else {"state": "open" if path.endswith("/issues/99") else "closed"}
 tm.label = lambda n, name: moved80.append((n, name)); tm.unlabel = lambda n, name: None
-assert tm.rank_order() == [12, 11, 10] and tm.promote_next() == 11 and moved80[-1] == (11, "ready"), "the best whose dependencies are closed"
+assert tm.rank_order() == [12, 11, 10] and tm.promote_next() == [11, 10] and moved80 == [(11, "ready"), (10, "ready")], \
+    "the slots fill in the ranking's order; #12, whose dependency is open, is left queued"
 beat80["body"] = beat80["body"].replace('"live"', '"dry"')
-assert tm.rank_order() == [] and tm.promote_next() == 10, "a dry ranking moves nothing: oldest first"
+moved80.clear()
+assert tm.rank_order() == [] and tm.promote_next() == [10, 11], "a dry ranking moves nothing: oldest first"
 tm.gh = lambda *a, **k: (_ for _ in ()).throw(RuntimeError("GET x -> 500"))
 assert tm.rank_order() == [], "the ranking is a preference: an unreadable log never stops promotion"
 # a ready card waiting on a person holds no slot (#135): only moving cards count toward TIME_PARALLEL
@@ -1433,18 +1436,28 @@ ready135 = {20: [beat135("dispatched"), beat135("needs-human")], 21: [beat135("e
 tm.issues = lambda q: {"state=open&labels=ready": [iss80(n, f"r{n}", labels=["ready"]) for n in ready135],
                        "state=open&labels=queued": q80, "state=open&labels=astra": []}[q]
 tm.gh = lambda method, path, body=None, **k: ready135.get(int(path.split("/issues/")[1].split("/")[0]), []) if "/comments" in path else {"state": "closed"}
-par135 = os.environ.get("TIME_PARALLEL"); os.environ["TIME_PARALLEL"] = "3"
 moved80.clear()
-assert tm.promote_next() == 10 and moved80 == [(10, "ready")], "three ready cards, all waiting on a person: the oldest queued moves"
+assert tm.promote_next() == [10, 11, 12] and moved80 == [(10, "ready"), (11, "ready"), (12, "ready")], \
+    "three ready cards, all waiting on a person: every slot is free and the queue fills it"
 ready135 = {20: [beat135("dispatched")], 21: [], 22: [beat135("needs-human")]}
-assert tm.promote_next() == 10, "two moving (one with no beat yet) and one parked: a slot is free"
+assert tm.promote_next() == [10], "two moving (one with no beat yet) and one parked: one slot, one card"
 ready135[22].append(beat135("dispatched"))
-assert tm.promote_next() is None, "a card sent back to the worker is moving again: three moving, no slot"
+assert tm.promote_next() == [], "a card sent back to the worker is moving again: three moving, no slot"
 assert tm.moving(iss80(22, "retried")) and tm.moving(iss80(99, "no comments yet"))
 ready135[22].append(beat135("needs-human"))
 assert not tm.moving(iss80(22, "parked again"))
-if par135 is None: os.environ.pop("TIME_PARALLEL")
-else: os.environ["TIME_PARALLEL"] = par135
+# 245 the cap is a cap: never more cards in flight than TIME_PARALLEL, whatever is queued and ready to go
+ready135 = {20: [beat135("dispatched")], 21: [beat135("dispatched")], 22: [beat135("dispatched")]}
+for cap, want in [("1", []), ("2", []), ("4", [10]), ("5", [10, 11])]:
+    os.environ["TIME_PARALLEL"] = cap
+    assert tm.promote_next() == want, (cap, tm.promote_next())
+os.environ["TIME_PARALLEL"] = "1"
+ready135 = {20: [beat135("needs-human")]}   # serial: the one ready card waits on a person, so its slot is free
+assert tm.promote_next() == [10], "TIME_PARALLEL=1 is one card at a time"
+ready135 = {20: [beat135("dispatched")]}
+assert tm.promote_next() == [], "TIME_PARALLEL=1: the card in flight holds the only slot"
+if par80 is None: os.environ.pop("TIME_PARALLEL")
+else: os.environ["TIME_PARALLEL"] = par80
 tm.issues, tm.gh, tm.label, tm.unlabel = real80
 _pp = os.environ.pop("TIME_PARALLEL", None)
 assert tm.parallel() == 3, "default"
@@ -1454,6 +1467,31 @@ for v, want in [("5", 5), ("1", 1), ("0", 3), ("-2", 3), ("abc", 3), ("2.5", 3),
 os.environ.pop("TIME_PARALLEL")
 if _pp is not None: os.environ["TIME_PARALLEL"] = _pp
 print("ALL OK 80")
+
+# 245 dependency-ready cards start side by side: a whole heartbeat builds more than one card at once, up to
+# TIME_PARALLEL, and a card whose `Depends on #N` is still open starts nothing however free the slots are
+def w245(flight=(), dep="open"):
+    """#1 and #2 wait on nothing, #3 waits on #9; each `flight` card is already `ready` and dispatched."""
+    iss = {n: {"number": n, "title": f"c{n}", "body": D, "state": "open",
+               "labels": ["ready"] if n in flight else ["queued"]} for n in (1, 2, 3)}
+    iss[3]["body"] = f"Depends on #9\n\n{D}"
+    iss[9] = {"number": 9, "title": "what #3 waits on", "body": D, "state": dep, "labels": []}
+    return World([], {n: [beat("dispatched")] for n in flight}, [], iss)
+
+w = run(w245(), {**K, "TIME_PARALLEL": "2"})
+assert sorted(i["number"] for i in w.labelled("ready")) == [1, 2] and len(w.launched) == 2, "two slots: two cards in flight after one beat"
+assert w.issues[3]["labels"] == ["queued"], "a card whose dependency is still open is not started"
+w = run(w245(), {**K, "TIME_PARALLEL": "1"})
+assert [i["number"] for i in w.labelled("ready")] == [1] and len(w.launched) == 1, "TIME_PARALLEL=1 is the old one-at-a-time chain"
+w = run(w245(dep="closed"), {**K, "TIME_PARALLEL": "3"})
+assert sorted(i["number"] for i in w.labelled("ready")) == [1, 2, 3] and len(w.launched) == 3, "the dependency merged: all three start"
+# the cards already in flight hold their slots: two of a cap of 3 leaves one, and a full cap starts nothing
+w = run(w245(flight=(1, 2), dep="closed"), {**K, "TIME_PARALLEL": "3"})
+assert w.issues[3]["labels"] == ["ready"] and len(w.launched) == 1, "two in flight, cap 3: the free slot takes #3"
+w = run(w245(flight=(1, 2), dep="closed"), {**K, "TIME_PARALLEL": "2"})
+assert w.issues[3]["labels"] == ["queued"] and w.launched == [], "the cap is full: #3 stays queued"
+os.environ.pop("TIME_PARALLEL")
+print("ALL OK 245")
 
 # 172 the router's outcomes: a live pick settles into one line (housekeeping writes it; test_housekeeping.py checks the
 # sweep), and Astra's log summarises what each kind has returned over the table

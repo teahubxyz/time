@@ -5,12 +5,12 @@ to work on next. It queues; it never spends on its own beyond its one call.
 
 Luna is Time's deterministic tick (no model); Sol is the hourly heartbeat that executes cards with a seat; Astra is the
 slow outer loop that orients them. Astra labels its picks `queued`, never `ready`: the heartbeat's promote_next moves
-one queued card at a time to `ready` (oldest first, `Depends on #N` respected), so Astra's work lines up behind
-whatever is already queued instead of running beside it on the same files. Guardrails are code, not prompt: at most
-TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; an existing issue is only queued if it
-has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means Astra writes its note
-and queues nothing; the spend cap is checked by the engine like any other call. Everything Astra does is a comment on
-one issue, "Astra log", so a human can read the day's reasoning in one place and object there.
+queued cards to `ready` (the live ranking's order, else oldest first, `Depends on #N` respected) up to TIME_PARALLEL in
+flight at once, so Astra's work waits for a free slot instead of starting on the day it was queued. Guardrails are code,
+not prompt: at most TIME_ASTRA_MAX_READY cards queued and TIME_ASTRA_MAX_NEW cards created per run; an existing issue is
+only queued if it has a `DONE:` line and none of `queued`/`ready`/`needs-human`/`andon`; an open `andon` issue means
+Astra writes its note and queues nothing; the spend cap is checked by the engine like any other call. Everything Astra
+does is a comment on one issue, "Astra log", so a human can read the day's reasoning in one place and object there.
 
 The router (time/router.json, `mode`: off | dry | live; router.py): instead of picking cards in prose, the seat judges
 every candidate (its kind, its value 1-5, its size) and code ranks them with the owner's weights per kind, a restless
