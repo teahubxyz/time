@@ -90,6 +90,52 @@ test('the last correct letter advances and the next word starts unmarked', () =>
   assert.equal(state.buffer, '');
 });
 
+test('the built-in common-words list fills the stage at / with plain typeable words', () => {
+  const words = generateWords(300, 'typy-262');
+  assert.equal(words.length, 300);
+  assert.ok(words.every(word => /^[a-z]+$/.test(word)), 'every word is plain lowercase letters');
+  assert.ok(words.every(word => word.length <= 12), 'no word is too wide for the centred stage');
+  // A small vocabulary drawn with frequency weighting, not a thousand strangers.
+  assert.ok(new Set(words).size < 260, 'the list reuses its vocabulary');
+  const commonest = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'it',
+    'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this'];
+  assert.ok(words.filter(word => commonest.includes(word)).length >= 15,
+    'the commonest twenty words appear far more often than an even draw would give');
+});
+
+test('the next word snaps in on advance, including around the end of the passage', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless' });
+  const first = game.snapshot(0);
+  assert.equal(first.word, 'cat');
+  assert.equal(first.nextWord, 'dog');
+  type(game, 'cat', 0);
+  // The advancing key itself produces the next word: no blank frame in between.
+  const advanced = game.press(' ', 400);
+  assert.equal(advanced.word, 'dog');
+  assert.equal(advanced.nextWord, 'cat');
+  assert.equal(advanced.buffer, '');
+  assert.equal(advanced.wordIndex, 1);
+  assert.deepEqual(states(advanced.letters), ['pending', 'pending', 'pending']);
+  assert.equal(game.snapshot(400).word, 'dog');
+  type(game, 'dog', 400);
+  assert.equal(game.press(' ', 800).word, 'cat', 'a short passage wraps back to its first word');
+});
+
+test('desktop navigation and modifier keys never type a letter or cost accuracy', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless' });
+  type(game, 'ca', 0);
+  for (const key of ['Enter', 'Tab', 'ArrowLeft', 'Home', 'F5', 'Shift', 'Control', 'Dead', '\n', '\t']) {
+    game.press(key, 300);
+  }
+  const state = game.snapshot(300);
+  assert.equal(state.buffer, 'ca');
+  assert.equal(state.keystrokes, 2);
+  assert.equal(state.accuracy, 100);
+  assert.equal(state.wordIndex, 0);
+  game.press('t', 400);
+  assert.equal(game.press(' ', 500).word, 'dog');
+});
+
 test('letter state is a pure function of the word and the keys typed into it', () => {
   assert.deepEqual(states(letterStates('cat', '')), ['pending', 'pending', 'pending']);
   assert.deepEqual(states(letterStates('cat', 'cx')), ['correct', 'incorrect', 'pending']);
