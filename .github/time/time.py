@@ -872,30 +872,51 @@ def parallel() -> int:
         return 3
 
 
-def promote_next() -> int | None:
-    """Label the best `queued` card whose dependencies are closed `ready`: the router's live ranking first (Astra's
-    latest), then the oldest; at most TIME_PARALLEL cards in flight. A `ready` card waiting on a person (an objection,
-    an error or a stall Time won't retry again) keeps its label, so `/time retry` still finds it, but holds no slot:
+def deps_met(card: dict, closed: dict[int, bool] | None = None) -> bool:
+    """True when every card this one says it `Depends on: #N` is closed, which on Time means its PR merged: a card
+    never starts ahead of the work it builds on. The line is read with `DEPENDS`, so the planner's `Depends on: #N`
+    lines (#244) and a hand-written `Depends on #N` both gate. `closed` memoises the lookups across one promotion
+    pass, where the cards of a spec often name the same dependency."""
+    seen = {} if closed is None else closed
+    for d in {int(d) for d in DEPENDS.findall(card.get("body") or "")}:
+        if d not in seen:
+            seen[d] = gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed"
+        if not seen[d]:
+            return False
+    return True
+
+
+def promote_next() -> list[int]:
+    """Label the best dependency-ready `queued` cards `ready`, in the router's live ranking first (Astra's latest),
+    then oldest first. One pass fills every free slot — TIME_PARALLEL cards in flight at once — so the cards of a spec
+    that wait on nothing start side by side instead of each one waiting for the one before it to merge (#245); with
+    TIME_PARALLEL=1 that is the old chain, one card at a time. A `ready` card waiting on a person (an objection, an
+    error or a stall Time won't retry again) keeps its label, so `/time retry` still finds it, but holds no slot:
     three of them once stalled the queue for eight hours while a dozen cards sat `queued`."""
     ready = issues("state=open&labels=ready")
     busy = [c for c in ready if moving(c)]
-    print(f"promote: ready={len(ready)} moving={len(busy)}")
-    if len(busy) >= parallel():
-        return None
+    free = parallel() - len(busy)
+    print(f"promote: ready={len(ready)} moving={len(busy)} free={max(free, 0)}")
+    if free <= 0:
+        return []
     queued = issues("state=open&labels=queued")
     pos = {n: k for k, n in enumerate(rank_order())}
+    closed: dict[int, bool] = {}
+    started: list[int] = []
     for card in sorted(queued, key=lambda i: (pos.get(i["number"], len(pos)), i["number"])):
-        deps = [int(d) for d in DEPENDS.findall(card.get("body") or "")]
-        if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
-            try:
-                unlabel(card["number"], "queued")
-            except RuntimeError as e:
-                if "404" in str(e):  # another beat promoted it first
-                    continue
-                raise
-            label(card["number"], "ready")
-            return card["number"]
-    return None
+        if not deps_met(card, closed):
+            continue
+        try:
+            unlabel(card["number"], "queued")
+        except RuntimeError as e:
+            if "404" in str(e):  # another beat promoted it first
+                continue
+            raise
+        label(card["number"], "ready")
+        started.append(card["number"])
+        if len(started) >= free:
+            break
+    return started
 
 
 # ---------- landing: verdict -> merge (TIME_AUTOMERGE=on) ----------
@@ -1785,9 +1806,9 @@ def cmd_heartbeat() -> int:
             plan_spec(spec)
         except Exception as e:  # noqa: BLE001
             print(f"spec #{spec['number']}: {type(e).__name__}: {e}")
-    for _ in range(3):  # a merge can free the slot for the next card; dispatch it in the same run
+    for _ in range(3):  # a merge can free slots for the cards behind it; dispatch them in the same run
         tick()
-        if promote_next() is None:
+        if not promote_next():
             break
     return 0
 
