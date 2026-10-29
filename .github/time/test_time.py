@@ -1668,6 +1668,41 @@ assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(139, "B", body
 assert rt.superseded([iss80(48, "A", body="Port of #12")], [iss80(48, "A", body="Port of #12")]) == [], "a card never supersedes itself"
 print("ALL OK 198")
 
+# 211 a judge that returns nothing is a loud no-op, never a flat ranking. On 2026-10-20 (log #57) the seat answered with
+# no usable JSON: 37 of 37 candidates unjudged, every score 1.911, and the router still queued from that flat table, sent
+# three cards to the cloud lane and promoted "start a new venture" to #1. Below a quarter of the board judged, the day's
+# comment says what came back and nothing is queued, sent or created; the raw reply's size and stop reason go to the run
+# log, so a reply cut off by the output limit is visible as the cause.
+assert not astra.judged_enough(0, 37) and not astra.judged_enough(9, 37) and astra.judged_enough(10, 37), "a quarter"
+assert astra.judged_enough(30, 37) and astra.judged_enough(1, 1) and not astra.judged_enough(0, 0)
+cut211 = 'Here you go, but I ran out of room: {"note": "n"}'
+astra.tm.think = lambda seat, a, b, system, user: astra.tm.Reply(cut211, "length")
+labelled80.clear(); made80.clear()
+out211 = io.StringIO()
+with contextlib.redirect_stdout(out211):
+    assert astra.router_tick(rt.config('{"mode": "live", "cloud": {"per_day": 1}}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert not labelled80 and not made80, "nothing queued, nothing sent to the cloud lane, nothing created"
+assert said80[-1][1] == f"🔭 Astra: the judge returned no assessments ({cut211}); nothing queued or sent today.", said80[-1][1]
+assert said80[-1][2] == {"beat": "astra", "router": "live", "queued": 0, "unjudged": True}, said80[-1][2]
+assert f"reply {len(cut211)} chars, stop length, judged 0 of 6" in out211.getvalue(), out211.getvalue()
+assert "| 1 |" not in said80[-1][1] and "venture:new" not in said80[-1][1], "no table: nothing was judged"
+# a key that matches no candidate judged nothing either, and one card of six is still under the quarter
+for reply, said in [({"note": "n", "assess": [{"key": "#404", "value": 5}]}, "returned no assessments"),
+                    ({"note": "n", "assess": [dict(assess80["#1"], key="#1")]}, "judged 1 of 6")]:
+    astra.tm.think = lambda seat, a, b, system, user, r=reply: json.dumps(r)
+    labelled80.clear()
+    assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+    assert not labelled80 and said80[-1][2]["unjudged"] and f"the judge {said} (" in said80[-1][1], said80[-1][1]
+# partial judging over the floor keeps today's behaviour: the unjudged rows score at value 3 / size M and the note says how many
+astra.tm.think = lambda seat, a, b, system, user: json.dumps(
+    {"note": "two of six", "assess": [dict(assess80[k], key=k) for k in ("#1", "#5")], "new": []})
+labelled80.clear(); made80.clear()
+assert astra.router_tick(rt.config('{"mode": "live"}'), "opus", 57, "ctx", [], 2, 2) == 0
+assert labelled80 and said80[-1][2]["queued"] == len(labelled80) and "unjudged" not in said80[-1][2], said80[-1][2]
+assert "4 candidate(s) the seat didn't judge are scored at value 3, size M." in said80[-1][1], said80[-1][1]
+assert "| 1 |" in said80[-1][1] and "two of six" in said80[-1][1], "a ranking, as before"
+print("ALL OK 211")
+
 # 82 adaptive budget: each route is paced to its capacity pool; no pool, no change
 import io, contextlib
 real_pools = tm.pools
