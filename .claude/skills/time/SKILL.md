@@ -28,6 +28,8 @@ You (Claude Code, Cursor, or any agent with `gh`) are the hands for setup and th
 
 Card states (Time's comments on the issue): `would-dispatch` → `dispatched` → `pr` → `merged` · landing states `needs-human`, `no-checks`, `checks-failed` · side states `needs-done`, `stuck`, `blocked` (a key is missing; resumes by itself once added), `error` (comment `/time retry`).
 
+A card parked at `needs-human`, `error`, `stuck` or `parked` holds no slot and holds only the cards whose `Depends on:` lines reach it, directly or through another card; every other `queued` card is still promoted. Its spec (`Part of #N`) gets one comment per stall naming the card, its beat, the PR and the cards held behind it.
+
 Files: `.github/workflows/{heartbeat,mention,doctor,update}.yml`, `.github/time/time.py` (stdlib), `.github/time/seats.json`, `.github/time/test_time.py` (offline tests).
 
 ## Setup (idempotent; do only what's missing)

@@ -1589,6 +1589,11 @@ assert tm.promote_next() == [], "a card sent back to the worker is moving again:
 assert tm.moving(iss80(22, "retried")) and tm.moving(iss80(99, "no comments yet"))
 ready135[22].append(beat135("needs-human"))
 assert not tm.moving(iss80(22, "parked again"))
+# a `parked` beat (#277: the branch is gone from under an open PR) is a wait on a person too, so it holds no slot
+ready135[22].append(beat135("parked"))
+assert tm.stall_of(iss80(22, "its branch is gone"))["beat"] == "parked" and not tm.moving(iss80(22, "x"))
+moved80.clear()
+assert tm.promote_next() == [10] and moved80 == [(10, "ready")], "a card waiting for its branch back frees its slot"
 # 245 the cap is a cap: never more cards in flight than TIME_PARALLEL, whatever is queued and ready to go
 ready135 = {20: [beat135("dispatched")], 21: [beat135("dispatched")], 22: [beat135("dispatched")]}
 for cap, want in [("1", []), ("2", []), ("4", [10]), ("5", [10, 11])]:
@@ -1635,6 +1640,66 @@ w = run(w245(flight=(1, 2), dep="closed"), {**K, "TIME_PARALLEL": "2"})
 assert w.issues[3]["labels"] == ["queued"] and w.launched == [], "the cap is full: #3 stays queued"
 os.environ.pop("TIME_PARALLEL")
 print("ALL OK 245")
+
+# 247 a card waiting on a person holds only the cards that (transitively) wait on it: every other card still starts,
+# and the spec hears once what Time is waiting on
+real247 = (tm.issues, tm.gh, tm.label, tm.unlabel)
+iss247 = lambda n, title, body="DONE: x", labels=(), state="open": {
+    "number": n, "title": title, "body": body, "state": state, "labels": [{"name": l} for l in labels]}
+beat247 = lambda b, at="2026-10-28T09:00:00Z", **kw: {
+    "user": {"login": tm.TIME_BOT}, "created_at": at, "body": "x\n" + tm.MARK + json.dumps({"beat": b, **kw}) + " -->"}
+# #244 is parked at needs-human; #245 waits on it and #246 waits on #245; #250 waits on nobody
+ready247 = [iss247(244, "Step one", body="Part of #242 (step 1/3).\n\nDONE: a", labels=["ready"])]
+queued247 = [iss247(245, "Step two", body="Part of #242 (step 2/3). Depends on #244.\n\nDONE: b", labels=["queued"]),
+             iss247(246, "Step three", body="Part of #242 (step 3/3). Depends on #245.\n\nDONE: c", labels=["queued"]),
+             iss247(250, "Something else", labels=["queued"])]
+cs247 = {244: [beat247("dispatched"), beat247("needs-human", pr=301)]}
+moved247, got247 = [], []
+
+
+def gh247(method, path, body=None, **k):
+    if "/comments" in path:
+        n = int(path.split("/issues/")[1].split("/")[0])
+        if method != "POST":
+            return cs247.get(n, [])
+        got247.append((n, body["body"]))
+        cs247.setdefault(n, []).append({"user": {"login": tm.TIME_BOT}, "created_at": "2026-10-28T10:00:00Z", "body": body["body"]})
+        return {}
+    n = int(path.rsplit("/issues/", 1)[1])
+    return next((c for c in ready247 + queued247 if c["number"] == n), {"number": n, "state": "closed"})
+
+
+tm.issues = lambda q: {"state=open&labels=ready": ready247, "state=open&labels=queued": queued247,
+                       "state=open&labels=astra": []}[q]
+tm.gh, tm.label, tm.unlabel = gh247, lambda n, name: moved247.append((n, name)), lambda n, name: None
+assert tm.deps_of(queued247[1]) == [245] and tm.deps_of(queued247[2]) == [], "Depends on #N, without repeats"
+assert tm.dependents(244, queued247) == [245, 246], "#246 waits on #244 through #245"
+assert tm.dependents(250, queued247) == [] and tm.dependents(244, []) == []
+assert tm.waits_on(queued247[0], {c["number"]: c for c in ready247}) == [244], "an open dependency is waited on"
+assert tm.promote_next() == [250] and moved247 == [(250, "ready")], "the parked card holds #245 and #246, not #250"
+assert len(got247) == 1 and got247[0][0] == 242, got247
+assert "waiting on a person for #244 (Step one)" in got247[0][1] and "`needs-human`" in got247[0][1] and "PR #301" in got247[0][1]
+assert "Held behind it: #245, #246" in got247[0][1] and "doesn't depend on #244 keeps moving" in got247[0][1]
+assert tm.beats_of(cs247[242])[-1] == {"beat": "andon", "card": 244, "since": "2026-10-28T09:00:00Z",
+                                       "behind": [245, 246], "at": "2026-10-28T10:00:00Z"}
+# the next beat says it no more than once, and the cards behind the stall stay queued
+ready247.append(queued247.pop())      # #250 is moving now
+cs247[250] = [beat247("dispatched")]
+moved247.clear()
+assert tm.promote_next() == [] and moved247 == [] and len(got247) == 1, "one note per stall, #245 and #246 still held"
+# the same card parked again (a retry that stalled too) is said again
+cs247[244] += [beat247("dispatched", at="2026-10-28T11:00:00Z"), beat247("needs-human", at="2026-10-28T12:00:00Z", pr=301)]
+assert tm.promote_next() == [] and len(got247) == 2 and "#244" in got247[1][1], got247
+assert tm.beats_of(cs247[242])[-1]["since"] == "2026-10-28T12:00:00Z"
+# a card that recovers frees the cards behind it: #244 closed, #245 starts; a parked card with no spec gets no note
+cs247[244].append(beat247("merged", at="2026-10-28T13:00:00Z"))
+ready247[:] = [iss247(244, "Step one", body="Part of #242.\n\nDONE: a", state="closed"),
+               iss247(260, "A loose card", labels=["ready"])]
+cs247[260] = [beat247("error", at="2026-10-28T12:30:00Z")]
+moved247.clear()
+assert tm.promote_next() == [245] and moved247 == [(245, "ready")] and len(got247) == 2, "no spec, no note"
+tm.issues, tm.gh, tm.label, tm.unlabel = real247
+print("ALL OK 247")
 
 # 172 the router's outcomes: a live pick settles into one line (housekeeping writes it; test_housekeeping.py checks the
 # sweep), and Astra's log summarises what each kind has returned over the table

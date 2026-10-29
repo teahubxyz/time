@@ -853,15 +853,87 @@ def rank_order() -> list[int]:
         return []
 
 
-WAITING = ("needs-human", "error", "stuck")   # a card whose last real beat is one of these waits on a person (#135)
+# A card whose last real beat is one of these waits on a person (#135). `parked` joined them with #277: a card whose
+# branch is gone under an open pull request waits for someone to push it back, which is as human a wait as an objection.
+WAITING = ("needs-human", "error", "stuck", "parked")
+PART_OF = re.compile(r"Part of #(\d+)")       # the spec a card belongs to; DEPENDS (the planner's lines) is above
+
+
+def stall_of(card: dict) -> dict | None:
+    """The beat a `ready` card is parked at when it waits on a person: an objection or a protected path
+    (`needs-human`), a failed call (`error`), a stall Time won't retry again (`stuck`) or a branch that is gone from
+    under an open pull request (`parked`, #277); None while it is moving.
+    `blocked` (a key is missing) and `capped` (out of budget) are neither progress nor a stall, so they don't count."""
+    real = [b for b in beats_of(gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?limit=100") or [])
+            if b["beat"] not in ("blocked", "capped")]
+    return real[-1] if real and real[-1]["beat"] in WAITING else None
 
 
 def moving(card: dict) -> bool:
     """A `ready` card that holds a slot: its last real beat isn't one that waits on a person. promote_next runs after
     tick(), so a card Time has just retried, or one a human sent back with `/time retry`, is moving again by then."""
-    real = [b for b in beats_of(gh("GET", f"/repos/{REPO}/issues/{card['number']}/comments?limit=100") or [])
-            if b["beat"] not in ("blocked", "capped")]
-    return not real or real[-1]["beat"] not in WAITING
+    return stall_of(card) is None
+
+
+def deps_of(card: dict) -> list[int]:
+    """The cards a card waits on: every `Depends on #N` in its body, one line per card since #244 (`Depends on: #N`,
+    and `Depends on: none` for a card that waits on nothing), without repeats."""
+    return sorted({int(d) for d in DEPENDS.findall(card.get("body") or "")})
+
+
+def waits_on(card: dict, known: dict[int, dict] | None = None) -> list[int]:
+    """The cards a `queued` card still waits on: its dependencies that are not closed. That is the whole of what a
+    stall holds (#247): a card that waits on a parked card waits with it, and a card that waits on nothing starts,
+    however many cards are parked elsewhere. A dependency Time can't read counts as open, since promoting over an
+    unknown is the worse mistake. `known` caches rows already in hand (the open `ready` and `queued` cards)."""
+    known = {} if known is None else known
+    out = []
+    for d in deps_of(card):
+        dep = known.get(d)
+        if dep is None:
+            try:
+                dep = gh("GET", f"/repos/{REPO}/issues/{d}")
+            except RuntimeError as e:
+                print(f"#{card['number']}: dependency #{d} unreadable: {str(e)[:100]}")
+                dep = {"number": d, "state": "open"}
+            known[d] = dep
+        if dep.get("state") != "closed":   # open, or a row with no state at all: not done
+            out.append(d)
+    return out
+
+
+def dependents(n: int, cards: list[dict]) -> list[int]:
+    """The cards among `cards` that wait on #n, through one another too: #n's dependents, their dependents, and so on."""
+    out: set[int] = set()
+    front = {n}
+    while front:
+        front = {c["number"] for c in cards
+                 if c["number"] != n and c["number"] not in out and set(deps_of(c)) & front}
+        out |= front
+    return sorted(out)
+
+
+def andon_note(card: dict, beat: dict, queued: list[dict]) -> bool:
+    """Pull the cord on the spec: say which card Time is waiting on a person for, and which cards wait behind it
+    (#247). One note per stall — the spec carries an `andon` beat naming the card and the beat it stalled at, so the
+    hourly heartbeat doesn't repeat itself and a card that stalls again is said again. A card with no `Part of #N`
+    spec gets no note: its own beat already says it, and there is nowhere else to say it."""
+    spec = next((int(m) for m in PART_OF.findall(card.get("body") or "")), None)
+    if not spec:
+        return False
+    since = beat.get("at") or ""
+    said = beats_of(gh("GET", f"/repos/{REPO}/issues/{spec}/comments?limit=100") or [])
+    if any(b.get("beat") == "andon" and b.get("card") == card["number"] and b.get("since") == since for b in said):
+        return False
+    behind = dependents(card["number"], queued)
+    pr = beat.get("pr")
+    comment(spec, f"⏱️ Time: I'm waiting on a person for #{card['number']} ({card.get('title') or 'no title'}): its "
+            f"last beat is `{beat['beat']}`" + (f", on PR #{pr}" if pr else "") + ".\n\n- Held behind it: "
+            + (", ".join(f"#{b}" for b in behind) if behind else "nothing")
+            + f"\n- Everything that doesn't depend on #{card['number']} keeps moving\n"
+            f"- Comment `/time retry` on #{card['number']} once it's handled, and the cards behind it follow",
+            {"beat": "andon", "card": card["number"], "since": since, "behind": behind})
+    return True
 
 
 def parallel() -> int:
@@ -891,20 +963,30 @@ def promote_next() -> list[int]:
     then oldest first. One pass fills every free slot — TIME_PARALLEL cards in flight at once — so the cards of a spec
     that wait on nothing start side by side instead of each one waiting for the one before it to merge (#245); with
     TIME_PARALLEL=1 that is the old chain, one card at a time. A `ready` card waiting on a person (an objection, an
-    error or a stall Time won't retry again) keeps its label, so `/time retry` still finds it, but holds no slot:
-    three of them once stalled the queue for eight hours while a dozen cards sat `queued`."""
+    error, a stall Time won't retry again, or a branch gone from under its pull request) keeps its label, so
+    `/time retry` still finds it, but holds no slot: three of them once stalled the queue for eight hours while a
+    dozen cards sat `queued`. A stall reaches no further than that (#247): it holds the cards that wait on it, every
+    other card is promoted as usual, and the spec hears once what Time is waiting on."""
     ready = issues("state=open&labels=ready")
-    busy = [c for c in ready if moving(c)]
+    stalls = {c["number"]: b for c in ready if (b := stall_of(c))}
+    busy = [c for c in ready if c["number"] not in stalls]
     free = parallel() - len(busy)
-    print(f"promote: ready={len(ready)} moving={len(busy)} free={max(free, 0)}")
+    print(f"promote: ready={len(ready)} moving={len(busy)} stalled={len(stalls)} free={max(free, 0)}")
+    queued = issues("state=open&labels=queued")
+    for card in ready:  # said whether or not a slot is free: a full factory can still be waiting on a person
+        if stall := stalls.get(card["number"]):
+            try:
+                andon_note(card, stall, queued)
+            except Exception as e:  # noqa: BLE001  the note is not the promotion; one unposted note stops nothing
+                print(f"#{card['number']}: andon note not posted: {str(e)[:120]}")
     if free <= 0:
         return []
-    queued = issues("state=open&labels=queued")
     pos = {n: k for k, n in enumerate(rank_order())}
-    closed: dict[int, bool] = {}
+    known = {c["number"]: c for c in ready + queued}   # open rows already in hand
     started: list[int] = []
     for card in sorted(queued, key=lambda i: (pos.get(i["number"], len(pos)), i["number"])):
-        if not deps_met(card, closed):
+        if open_deps := waits_on(card, known):   # waits_on reads the planner's `Depends on:` lines through DEPENDS
+            print(f"promote: #{card['number']} waits on " + ", ".join(f"#{d}" for d in open_deps))
             continue
         try:
             unlabel(card["number"], "queued")
