@@ -19,7 +19,8 @@ Deterministic: `.github/time/housekeeping.py` decides, never a model. Every step
 
 1. **Branches.** Deletes every branch whose PR merged into the default branch (`time/card-*`, `ceo/*`, `labs/*`, anything
    with a merged PR; merges made through the MCP keep their head branch, Time's own merges delete it). Never the default
-   branch, `gh-pages`, a protected branch, a branch with an open PR, or a branch that has commits after its merge.
+   branch, `gh-pages`, a protected branch, a branch with an open PR, a branch that has commits after its merge, or a
+   branch whose tip is not the commit its merged PR landed (it carries work the default branch does not have).
 2. **Signal issues.** Closes `signal` issues ("want the next version?") older than `TIME_VENTURE_MEASURE_DAYS` (default 7)
    whose venture has no signups: no 👍 from a person and no early-access issue for its slug. One closing line names the count.
    Issues with signups are left to the venture loop.
