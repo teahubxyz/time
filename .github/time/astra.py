@@ -22,8 +22,14 @@ card), and the heartbeat promotes queued cards in the ranked order. Over the tab
 picks returned (picks, merged share, median days, median $), from the outcomes housekeeping records (#172). The spine's
 own open cards (`TIME_SPINE`, `teahubxyz/teahub`) are ranked beside Time's, keyed `teahub#N` and marked "spine: not
 queued": a worker here builds in this repo only, so their value only tells the owner what the platform needs next (#173).
+Ventures (#170): told the loop is in router mode (`TIME_VENTURE_MODE=router`, the loop's own `TIME_VENTURE`), "start a
+new venture" is actionable and ranked at the seat's size and cost like any card, and every live venture with signups is
+a "v2 of <venture>" candidate. A picked new venture dispatches `venture.yml` with `start=true` (the same Actions call
+the heartbeat makes to run CI) and is never queued as a card; a picked v2 posts the venture's own open v2 card, or
+writes one (Base: gh-pages) and queues it. The log line says which.
 A reply that judges nothing, or next to nothing, is a loud no-op rather than a flat ranking (#211): the day's comment
-says what came back and the router queues nothing, sends nothing to the cloud lane and writes no cards.
+says what came back and the router queues nothing, sends nothing to the cloud lane and writes no cards — so no venture
+is dispatched or written on the strength of a reply that ranked nothing either.
 `off`, or no router.json, is the planner as before.
 """
 from __future__ import annotations
@@ -46,6 +52,8 @@ _rspec = importlib.util.spec_from_file_location("router", HERE / "router.py")
 router = importlib.util.module_from_spec(_rspec)
 _rspec.loader.exec_module(router)
 ROUTER_FILE = "time/router.json"
+PAGES_BRANCH = "gh-pages"              # where ventures/ventures.json lives: the live ventures and their signups (#170)
+VENTURE_WORKFLOW = "venture.yml"       # dispatched with start=true when the router picks a new venture (#170)
 
 SPINE = os.environ.get("TIME_SPINE") or "teahubxyz/teahub"   # where AGENTS.md and docs/decisions.md live
 SPINE_KEY = SPINE.split("/")[-1] or "spine"                  # the prefix of a spine card's key in the table: teahub#N
@@ -241,6 +249,46 @@ def closed_lately(days: int = 14) -> list[dict]:
         return []
 
 
+def venture_registry() -> dict:
+    """`ventures/ventures.json` on the Pages branch: the live ventures and their signups, for the v2 candidates (#170).
+    Context, not a dependency: unreadable, there are no ventures to iterate on and the day's ranking goes up without
+    them."""
+    try:
+        f = tm.gh("GET", f"/repos/{tm.REPO}/contents/ventures/ventures.json?ref={PAGES_BRANCH}")
+        reg = json.loads(base64.b64decode(f.get("content") or "").decode(errors="replace"))
+        return reg if isinstance(reg, dict) else {}
+    except Exception as e:  # noqa: BLE001
+        if "-> 404" not in str(e):   # no ventures.json on the Pages branch yet: nothing to iterate on, nothing to say
+            print(f"venture registry unreadable: {str(e)[:120]}")
+        return {}
+
+
+def start_venture(r: dict, open_issues: list[dict]) -> str:
+    """A picked venture candidate (#170). A new venture: `venture.yml` is dispatched with `start=true`, and the loop in
+    router mode starts one card there; nothing is queued here, since there is no card to queue. A v2: the venture's own
+    open v2 card if the loop already wrote one, else a new card on the Pages branch — never a dispatch, which would
+    start a different, brand-new venture. Returns what happened, for the log."""
+    if r["key"] == router.NEW_VENTURE["key"]:
+        try:
+            tm.gh("POST", f"/repos/{tm.REPO}/actions/workflows/{VENTURE_WORKFLOW}/dispatches",
+                  {"ref": tm.default_branch(), "inputs": {"start": "true"}})
+        except RuntimeError as e:
+            return f"new venture: dispatching {VENTURE_WORKFLOW} failed ({str(e)[:100]})"
+        return f"new venture: dispatched {VENTURE_WORKFLOW} with start=true"
+    v = f"v{r['next_v']}"
+    for i in open_issues:
+        t = (i.get("title") or "").lower()
+        if re.search(rf"\b{v}\b", t) and (r["name"].lower() in t or r["slug"] in t):
+            return f"{r['name']} {v}: already on #{i['number']}, posted that card"
+    n = tm.new_issue(f"{r['name']} {v}: build the next version from what signups asked for",
+                     f"Build {v} of **{r['name']}** in `ventures/{r['slug']}/` from what its signups asked for (its signal "
+                     f"issue and the early-access issues for it). {r['body']}\n\nBase: gh-pages\n\nRead the folder first "
+                     f"and keep what works.\n\nDONE: PR open against gh-pages with {v} of `ventures/{r['slug']}/`, checks "
+                     "green.\n\n<sub>card written by Astra</sub>", [])["number"]
+    tm.label(n, "queued")   # the heartbeat promotes it like any card
+    return f"{r['name']} {v}: no card yet, wrote and queued #{n}"
+
+
 JUDGED_SHARE = 0.25   # below this share of the candidates judged, the reply is not a ranking at all (#211)
 
 
@@ -254,7 +302,9 @@ def judged_enough(judged: int, total: int) -> bool:
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
-    cands = router.candidates(open_issues) + spine_candidates() + [dict(router.NEW_VENTURE)]
+    mode = os.environ.get("TIME_VENTURE_MODE") or ""   # the venture loop's own TIME_VENTURE, passed on by astra.yml
+    cands = router.candidates(open_issues) + spine_candidates() \
+        + [router.new_venture(mode)] + router.v2_candidates(venture_registry())
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
@@ -292,10 +342,14 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         n = router.repeat_of(str(c["title"]), open_issues + closed)   # the sweep checks the board with the same rule (#198)
         (repeats.append((c, n)) if n else new.append(c))
     new = new[:max_new]
-    live, created = cfg["mode"] == "live", []
+    live, created, started = cfg["mode"] == "live", [], []
+    queued = [r["n"] for r in picks if r["n"] is not None]   # a venture pick has no card here: Astra starts it instead
     if live:
         for r in picks:
-            tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+            if r["n"] is not None:
+                tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+            elif str(r["key"]).startswith(router.VENTURE_KEY):
+                started.append(start_venture(r, open_issues))   # a venture: dispatched or written, never queued as itself
         for r in to_cloud:
             tm.label(r["n"], router.CLOUD)   # the Mac's launcher starts a cloud session for it
         for c in new:
@@ -315,26 +369,29 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     if unjudged:
         lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
     if live:
-        lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in picks)) if picks else "Queued nothing today.")
+        lines.append(("Queued: " + ", ".join(f"#{n}" for n in queued)) if queued else "Queued nothing today.")
+        lines += [f"Venture: {x}" for x in started]
         if to_cloud:
             lines.append("To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud))
         if created:
             lines.append("New cards (candidates from tomorrow): " + ", ".join(f"#{n}" for n in created))
     else:
         lines.append("Dry run: nothing queued or created. Live, it would queue: "
-                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + "."
+                     + (", ".join(f"#{r['n']}" if r["n"] is not None else r["title"] for r in picks) or "nothing") + "."
                      + (" To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud) + "." if to_cloud else ""))
         if new:
             lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
     if repeats:
         lines.append("Not written, repeats of existing cards: "
                      + "; ".join(f"{router._txt(c['title'], 80)} (#{n})" for c, n in repeats) + ".")
-    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
+    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(queued) if live else 0,
+            "started": started, "order": router.order(ranked),
             "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
-            "would": [r["n"] for r in picks] if not live else [], "new": created,
+            "would": queued if not live else [], "new": created,
             "cloud": [r["n"] for r in to_cloud] if live else [], "would_cloud": [r["n"] for r in to_cloud] if not live else []}
     tm.comment(log, "\n".join(lines), meta)
-    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}")
+    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}"
+          + "".join(f" | {x}" for x in started))
     return 0
 
 
