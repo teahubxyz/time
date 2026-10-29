@@ -1,4 +1,4 @@
-import { TypingGame } from '/game.js';
+import { TypingGame, timedSeconds } from '/game.js';
 import { generateWords, normalizePassage } from '/words.js';
 
 const $ = id => document.getElementById(id);
@@ -6,12 +6,16 @@ const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&
 const now = () => performance.now();
 const pretty = value => Number.isFinite(Number(value)) ? String(Math.round(Number(value))) : '0';
 const round1 = value => Number.isFinite(Number(value)) ? String(Math.round(Number(value) * 10) / 10) : '0';
-const modeNames = {'30':'30 seconds','60':'60 seconds','50':'50 words','endless':'endless','tempo':'tempo'};
+const modeNames = {'30':'30 seconds','60':'60 seconds','120':'120 seconds','50':'50 words','endless':'endless','tempo':'tempo'};
 const readLocal = (key, fallback) => { try { return JSON.parse(localStorage.getItem('typy.' + key)) ?? fallback; } catch { return fallback; } };
 const writeLocal = (key, value) => { try { localStorage.setItem('typy.' + key, JSON.stringify(value)); } catch {} };
 const settings = {...{advance:'space',preview:true}, ...readLocal('settings', {})};
 const bests = readLocal('bests', {});
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Followed live: a visitor can turn the setting on mid-run, and the beat rail
+// and the error nudge are drawn by script, out of reach of the stylesheet rule.
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+let reducedMotion = motionQuery.matches;
+motionQuery.addEventListener('change', event => { reducedMotion = event.matches; });
 let selectedMode = '30';
 let source = {kind:'common'};
 let passage = [];
@@ -222,7 +226,7 @@ function renderGame(state) {
   const hintStart = $('run-hint').querySelector('.hint-start');
   const hint = state.status === 'ready' ? 'type the word to begin' : state.errorIndex >= 0 ? 'backspace to correct' : state.waitingForBeat ? 'hold that rhythm' : 'keep your rhythm';
   if (hintStart.textContent !== hint) hintStart.textContent = hint;
-  if (selectedMode === '30' || selectedMode === '60') {
+  if (timedSeconds(selectedMode) !== null) {
     setText('time-label', 'remaining'); setText('live-time', Math.ceil(state.remainingMs / 1000)); setText('time-unit', 's');
   } else if (selectedMode === '50') {
     setText('time-label', 'remaining'); setText('live-time', Math.max(0, 50 - state.completedWords)); setText('time-unit', 'words');
@@ -231,10 +235,13 @@ function renderGame(state) {
   } else {
     setText('time-label', 'in the flow'); setText('live-time', Math.floor(state.elapsedMs / 1000)); setText('time-unit', 's');
   }
+  setClass($('word'), 'behind', Boolean(state.behindPace));
   if (selectedMode === 'tempo') {
     const fraction = state.beatDurationMs ? Math.max(0, state.beatRemainingMs / state.beatDurationMs) : 1;
-    $('tempo-progress').style.transform = 'scaleX(' + fraction + ')';
-    setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : 'finish the word before the line runs out');
+    // Reduced motion gets the same information in tenths, so the rail reports
+    // the beat instead of sliding across the screen.
+    $('tempo-progress').style.transform = 'scaleX(' + (reducedMotion ? Math.ceil(fraction * 10) / 10 : fraction) + ')';
+    setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : state.behindPace ? 'the pace is ahead of you — keep going' : 'finish the word before the line runs out');
     Array.from($('tempo-lives').children).forEach((dot, i) => setClass(dot, 'lost', i < state.misses));
     const label = (3 - state.misses) + ' missed beats remaining';
     if ($('tempo-lives').getAttribute('aria-label') !== label) $('tempo-lives').setAttribute('aria-label', label);
@@ -286,7 +293,7 @@ function displayResult(result) {
   source = result.source || {kind:'common'};
   passage = [...run.words];
   $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false;
-  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && ['30','60','50'].includes(run.mode) ? ' · finished early' : ', well spent');
+  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
   $('result-title').textContent = result.ghostStats ? (stats.wpm > result.ghostStats.wpm ? 'a little ahead of the ghost.' : 'a good race. another round?') : 'there’s your rhythm.';
   $('result-wpm').textContent = pretty(stats.wpm);
   $('result-accuracy').textContent = round1(stats.accuracy) + '%';
@@ -301,9 +308,9 @@ function displayResult(result) {
   $('race-button').disabled = !run.events?.length || run.replayTruncated;
   $('board-open').hidden = source.kind !== 'daily';
   if (run.replayTruncated) $('result-note').textContent = 'That was a long flow. Your score is complete; the replay holds the most recent portion, so this run cannot be shared.';
-  else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional.';
+  else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional, and the replay link it makes is public.';
   else if (result.ghostStats) $('result-note').textContent = 'Your ghost finished at ' + pretty(result.ghostStats.wpm) + ' wpm. Race links always use the same passage and mode.';
-  else $('result-note').textContent = result.local ? 'Your result is on this device. Share it when you’re ready.' : 'Watch the original timing, or try the same words against this ghost.';
+  else $('result-note').textContent = result.local ? 'Your result is on this device. Sharing it makes a replay link that is public: anyone who has the link can watch the run, with no account needed.' : 'This replay is public to anyone with its link. Watch the original timing, or try the same words against this ghost.';
   const slowest = stats.slowest?.slice(0, 3) || [];
   $('slow-words').innerHTML = slowest.length ? slowest.map(row => '<span class="slow-word"><span>' + escapeHTML(row.word) + '</span><small>' + round1(row.ms / 1000) + 's</small></span>').join('') : '<span>your next run starts here</span>';
   const points = stats.sparkline || [];
@@ -663,7 +670,7 @@ window.addEventListener('resize', () => {
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
-  if (view === 'play' && game?.status === 'running' && (selectedMode === 'tempo' || time - lastClockPaint >= 100)) renderGame(game.tick(time));
+  if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= 100)) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
     replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
     renderReplay(replay.position);

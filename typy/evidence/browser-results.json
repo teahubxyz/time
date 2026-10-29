@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-24T23:01:12.661Z",
-  "target": "http://127.0.0.1:8788",
+  "timestamp": "2026-10-29T21:10:16.748Z",
+  "target": "http://127.0.0.1:8789",
   "browser": "Chrome 156 / Playwright",
   "checks": [
     {
@@ -25,8 +25,7 @@
     },
     {
       "name": "keyboard Enter activates a focused result Replay button",
-      "status": "FAIL",
-      "error": "Enter on the focused Replay button restarted the run instead of replaying it.\n\nfalse !== true\n"
+      "status": "PASS"
     },
     {
       "name": "endless can end with Enter and preserves results on failed sharing",
@@ -34,8 +33,11 @@
     },
     {
       "name": "keyboard Enter opens a focused settings button during an endless run",
-      "status": "FAIL",
-      "error": "Enter on the focused settings button finished the endless run instead of opening settings.\n\nfalse !== true\n"
+      "status": "PASS"
+    },
+    {
+      "name": "ramp mode shows its target pace and dims the word when it gets ahead",
+      "status": "PASS"
     },
     {
       "name": "unavailable topic API presents a friendly error and common-word recovery",
@@ -58,32 +60,30 @@
       }
     },
     {
+      "name": "every run mode stays reachable inside the phone toolbar",
+      "status": "PASS"
+    },
+    {
+      "name": "reduced motion leaves the beat rail and the word still",
+      "status": "PASS"
+    },
+    {
       "name": "phone dialogs fit and controls remain accessible",
       "status": "PASS"
     },
     {
       "name": "phone long pasted words remain inside the viewport",
-      "status": "FAIL",
-      "error": "A legal 64-character pasted word overflows the phone stage: {\"width\":578.1875,\"scrollWidth\":590,\"left\":28.90625,\"right\":607.09375,\"windowWidth\":619,\"documentWidth\":619}\n\nfalse !== true\n"
+      "status": "PASS"
+    },
+    {
+      "name": "outgoing long words do not enlarge the phone layout with normal motion",
+      "status": "PASS"
     },
     {
       "name": "no uncaught browser script errors",
       "status": "PASS"
     }
   ],
-  "findings": [
-    {
-      "name": "keyboard Enter activates a focused result Replay button",
-      "message": "Enter on the focused Replay button restarted the run instead of replaying it.\n\nfalse !== true\n"
-    },
-    {
-      "name": "keyboard Enter opens a focused settings button during an endless run",
-      "message": "Enter on the focused settings button finished the endless run instead of opening settings.\n\nfalse !== true\n"
-    },
-    {
-      "name": "phone long pasted words remain inside the viewport",
-      "message": "A legal 64-character pasted word overflows the phone stage: {\"width\":578.1875,\"scrollWidth\":590,\"left\":28.90625,\"right\":607.09375,\"windowWidth\":619,\"documentWidth\":619}\n\nfalse !== true\n"
-    }
-  ],
+  "findings": [],
   "errors": []
 }

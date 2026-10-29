@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TypingGame, letterStates, summarizeRun } from '../src/game.js';
+import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds } from '../src/game.js';
 import { generateWords, normalizePassage } from '../src/words.js';
 
 function type(game, word, at, spacing = 100) {
@@ -90,6 +90,52 @@ test('the last correct letter advances and the next word starts unmarked', () =>
   assert.equal(state.buffer, '');
 });
 
+test('the built-in common-words list fills the stage at / with plain typeable words', () => {
+  const words = generateWords(300, 'typy-262');
+  assert.equal(words.length, 300);
+  assert.ok(words.every(word => /^[a-z]+$/.test(word)), 'every word is plain lowercase letters');
+  assert.ok(words.every(word => word.length <= 12), 'no word is too wide for the centred stage');
+  // A small vocabulary drawn with frequency weighting, not a thousand strangers.
+  assert.ok(new Set(words).size < 260, 'the list reuses its vocabulary');
+  const commonest = ['the', 'be', 'to', 'of', 'and', 'a', 'in', 'that', 'have', 'it',
+    'for', 'not', 'on', 'with', 'he', 'as', 'you', 'do', 'at', 'this'];
+  assert.ok(words.filter(word => commonest.includes(word)).length >= 15,
+    'the commonest twenty words appear far more often than an even draw would give');
+});
+
+test('the next word snaps in on advance, including around the end of the passage', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless' });
+  const first = game.snapshot(0);
+  assert.equal(first.word, 'cat');
+  assert.equal(first.nextWord, 'dog');
+  type(game, 'cat', 0);
+  // The advancing key itself produces the next word: no blank frame in between.
+  const advanced = game.press(' ', 400);
+  assert.equal(advanced.word, 'dog');
+  assert.equal(advanced.nextWord, 'cat');
+  assert.equal(advanced.buffer, '');
+  assert.equal(advanced.wordIndex, 1);
+  assert.deepEqual(states(advanced.letters), ['pending', 'pending', 'pending']);
+  assert.equal(game.snapshot(400).word, 'dog');
+  type(game, 'dog', 400);
+  assert.equal(game.press(' ', 800).word, 'cat', 'a short passage wraps back to its first word');
+});
+
+test('desktop navigation and modifier keys never type a letter or cost accuracy', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless' });
+  type(game, 'ca', 0);
+  for (const key of ['Enter', 'Tab', 'ArrowLeft', 'Home', 'F5', 'Shift', 'Control', 'Dead', '\n', '\t']) {
+    game.press(key, 300);
+  }
+  const state = game.snapshot(300);
+  assert.equal(state.buffer, 'ca');
+  assert.equal(state.keystrokes, 2);
+  assert.equal(state.accuracy, 100);
+  assert.equal(state.wordIndex, 0);
+  game.press('t', 400);
+  assert.equal(game.press(' ', 500).word, 'dog');
+});
+
 test('letter state is a pure function of the word and the keys typed into it', () => {
   assert.deepEqual(states(letterStates('cat', '')), ['pending', 'pending', 'pending']);
   assert.deepEqual(states(letterStates('cat', 'cx')), ['correct', 'incorrect', 'pending']);
@@ -165,7 +211,7 @@ test('last-letter separator tolerance does not hide extra or mid-word spaces', (
 for (const advance of ['space', 'letter']) {
   for (const targetWpm of [100, 160]) {
     test(`${advance} advancement scores steady ${targetWpm} WPM spaced typing accurately`, () => {
-      for (const mode of ['30', '60']) {
+      for (const mode of ['30', '60', '120']) {
         const game = new TypingGame({ words: ['test'], mode, advance });
         const durationMs = Number(mode) * 1000;
         const intervalMs = 12000 / targetWpm;
@@ -208,7 +254,7 @@ test('WPM measures net output and accuracy measures attempts, without deletion f
 });
 
 test('timed runs stop at the exact deadline, including when a background tab wakes late', () => {
-  for (const mode of ['30', '60']) {
+  for (const mode of TIMED_MODES) {
     const game = new TypingGame({ words: ['cat'], mode });
     game.press('c', 500);
     game.press('a', 1000);
@@ -218,6 +264,43 @@ test('timed runs stop at the exact deadline, including when a background tab wak
     assert.equal(result.stats.correctChars, 2);
     assert.equal(result.events.length, 2);
     assert.equal(game.snapshot(100000).finishedReason, 'time');
+  }
+});
+
+test('each selectable run mode ends on its own terms and leaves live stats to read', () => {
+  assert.deepEqual(TIMED_MODES, ['30', '60', '120']);
+  assert.ok(['30', '60', '120', '50'].every(mode => MODES.includes(mode)));
+  assert.equal(timedSeconds('120'), 120);
+  assert.equal(timedSeconds('50'), null);
+  assert.equal(timedSeconds('endless'), null);
+  for (const mode of ['30', '60', '120', '50']) {
+    const game = new TypingGame({ words: ['cat', 'dog'], mode });
+    let at = 0;
+    for (let word = 0; word < 60; word++) {
+      at = type(game, game.snapshot(at).word, at, 100);
+      game.press(' ', at += 100);
+      if (game.snapshot(at).status === 'finished') break;
+    }
+    const seconds = timedSeconds(mode);
+    const state = game.snapshot(200000);
+    assert.equal(state.status, 'finished', mode);
+    assert.equal(state.finishedReason, seconds === null ? 'words' : 'time', mode);
+    // Live figures stay readable the whole way through, then stop at the end.
+    assert.equal(state.remainingMs, seconds === null ? null : 0, mode);
+    assert.ok(state.wpm > 0 && state.accuracy === 100, mode);
+    const result = game.result(200000);
+    assert.equal(result.durationMs, seconds === null ? result.durationMs : seconds * 1000, mode);
+    assert.equal(result.stats.completedWords, seconds === null ? 50 : result.stats.completedWords, mode);
+    assert.deepEqual(summarizeRun(result), result.stats, mode);
+    // Run end detection resets cleanly: the next run starts from nothing.
+    const next = new TypingGame({ words: ['cat', 'dog'], mode });
+    const fresh = next.snapshot(0);
+    assert.equal(fresh.status, 'ready', mode);
+    assert.equal(fresh.wordIndex, 0);
+    assert.equal(fresh.buffer, '');
+    assert.equal(fresh.wpm, 0);
+    assert.equal(fresh.accuracy, 100);
+    assert.equal(fresh.remainingMs, seconds === null ? null : seconds * 1000, mode);
   }
 });
 
@@ -246,6 +329,45 @@ test('endless repeats the capped passage without ending or losing absolute repla
   assert.equal(result.stats.sparkline.length <= 80, true);
 });
 
+test('the result card gets ranked slow words and a drawable speed sparkline', () => {
+  // One hand-built run per word duration, so each word's speed is exact:
+  // a completed two-letter word is three characters of output, and
+  // 3 × 12000 / ms is its WPM.
+  const build = (durations, words) => {
+    const events = [], wordTimings = [];
+    let at = 0;
+    durations.forEach((ms, index) => {
+      const start = at;
+      const letters = Array.from(words[index]);
+      for (const _letter of letters) {
+        at += ms / letters.length;
+        events.push({ t: Math.round(at), type: 'hit', index });
+      }
+      wordTimings.push({ index, start: Math.round(start), end: Math.round(at), typedEnd: Math.round(at), completed: true, errors: 0 });
+    });
+    return { words, durationMs: Math.round(at), events, wordTimings };
+  };
+  const labels = ['ax', 'bx', 'cx', 'dx', 'ex', 'fx'];
+  const stats = summarizeRun(build([600, 300, 1200, 150, 2400, 900], labels));
+  assert.equal(stats.completedWords, 6);
+  assert.deepEqual(stats.sparkline, [60, 120, 30, 240, 15, 40]);
+  assert.deepEqual(stats.slowest.map(row => [row.word, row.wpm, row.ms]), [
+    ['ex', 15, 2400], ['cx', 30, 1200], ['fx', 40, 900], ['ax', 60, 600], ['bx', 120, 300]
+  ], 'slowest first, and no more than five of them');
+
+  // A word finished the instant it began has no measurable interval, so it
+  // leaves the chart rather than spiking it.
+  const instant = summarizeRun(build([0, 600, 300], labels.slice(0, 3)));
+  assert.equal(instant.sparkline.length, 2);
+  assert.equal(instant.completedWords, 3);
+
+  // Long runs keep their shape without handing the card hundreds of columns.
+  const long = summarizeRun(build(Array.from({ length: 200 }, (_, i) => 300 + i), Array(200).fill('ab')));
+  assert.equal(long.sparkline.length, 67);
+  assert.ok(long.sparkline.every(value => Number.isFinite(value)));
+  assert.equal(long.slowest.length, 5);
+});
+
 test('tempo completion waits for its beat, then accelerates and shows the next word', () => {
   const game = new TypingGame({ words: ['cat', 'dog'], mode: 'tempo', paceWpm: 40 });
   type(game, 'cat', 0);
@@ -261,6 +383,39 @@ test('tempo completion waits for its beat, then accelerates and shows the next w
   assert.equal(state.paceWpm, 41.4);
   assert.equal(state.beatDurationMs < 1200, true);
   assert.equal(game.result(1300).wordTimings[0].typedEnd, 200);
+});
+
+test('the ramp ghost keeps a target pace, rises with it, and marks falling behind', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'tempo', paceWpm: 40 });
+  assert.equal(game.snapshot(0).behindPace, false, 'nothing is behind before a run starts');
+  assert.equal(game.snapshot(0).pacePosition, null);
+  game.press('c', 0);
+  // 'cat' plus its separator is four characters, so at 40 wpm the ghost
+  // crosses them in 1200ms: one character every 300ms.
+  assert.equal(game.snapshot(0).beatDurationMs, 1200);
+  assert.equal(game.snapshot(300).pacePosition, 1);
+  assert.equal(game.snapshot(300).behindPace, false, 'a character of slack before dimming');
+  assert.equal(game.snapshot(900).pacePosition, 3);
+  assert.equal(game.snapshot(900).behindPace, true, 'one letter typed, three characters gone');
+  // Catching up clears it again.
+  game.press('a', 950);
+  game.press('t', 960);
+  const caught = game.snapshot(1000);
+  assert.equal(caught.behindPace, false);
+  assert.equal(caught.waitingForBeat, true, 'the ghost is never behind while waiting for the beat');
+
+  // Keeping up raises the target, and the next beat is shorter for it.
+  const next = game.tick(1300);
+  assert.equal(next.paceWpm, 41.4);
+  assert.ok(next.beatDurationMs < 1200);
+  assert.equal(next.behindPace, false);
+  assert.equal(Math.round(next.pacePosition * 100) / 100, 0.35, 'the ghost restarts with the new word');
+
+  // Only ramp mode has a pace to fall behind.
+  const timed = new TypingGame({ words: ['cat'], mode: '30' });
+  timed.press('c', 0);
+  assert.equal(timed.snapshot(20000).pacePosition, null);
+  assert.equal(timed.snapshot(20000).behindPace, false);
 });
 
 test('tempo ends on the third missed beat; partial expired words earn no output', () => {

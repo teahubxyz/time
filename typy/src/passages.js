@@ -19,7 +19,9 @@ export function normalizeTopic(value) {
   if (UNSAFE.test(topic.replace(/-/g, ' ')) || PROMPT_ATTACK.test(topic.replace(/-/g, ' '))) throw new ApiError(422, 'Please choose a general-audience topic for this typing game.', 'topic_not_supported');
   return topic;
 }
-export function dailyPassage(day = new Date().toISOString().slice(0, 10)) {
+// Date.now is the one clock the Worker reads, so the daily and the save
+// validator in store.js can never disagree about which UTC day it is.
+export function dailyPassage(day = new Date(Date.now()).toISOString().slice(0, 10)) {
   let hash = 2166136261;
   for (const c of day) hash = Math.imul(hash ^ c.charCodeAt(0), 16777619) >>> 0;
   const chunks = [];

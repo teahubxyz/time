@@ -5,14 +5,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { chromium, devices } = require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES + '/playwright');
+const { chromium, devices } = require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
+  ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES + '/playwright' : 'playwright');
 const base = process.env.TYPY_QA_URL || 'http://127.0.0.1:8788';
 const evidence = path.resolve(import.meta.dirname, '../evidence');
 await fs.mkdir(evidence, { recursive: true });
 const findings = [];
 const checks = [];
 const errors = [];
-const browser = await chromium.launch({ headless: true, executablePath: process.env.TYPY_CHROME || '/tmp/typy-browser/chrome-linux64/chrome', args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+const browser = await chromium.launch({ headless: true, executablePath: process.env.TYPY_CHROME || chromium.executablePath(), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
 const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
 const page = await desktop.newPage();
 page.on('pageerror', error => errors.push(error.message));
@@ -83,6 +84,8 @@ await check('custom passage completes 50-word mode with a result card', async ()
   assert.equal(await page.locator('#result-accuracy').innerText(), '100%');
   assert.equal(await page.locator('#result-streak').innerText(), '50 words');
   assert.equal(await page.locator('#speed-chart path').count() >= 2, true);
+  assert.match(await page.locator('#result-note').innerText(), /public/, 'the result card must say a shared replay link is public');
+  assert.equal(await page.locator('#again-button').isVisible(), true);
   await page.screenshot({ path: path.join(evidence, 'result.png'), fullPage: true });
 });
 await check('replay plays and scrubber moves between original words', async () => {
@@ -90,6 +93,7 @@ await check('replay plays and scrubber moves between original words', async () =
   await page.locator('#replay-play').click();
   assert.equal(await page.locator('#replay-controls').isVisible(), true);
   await page.locator('#replay-scrubber').evaluate(input => { input.value = '0'; input.dispatchEvent(new Event('input', { bubbles: true })); });
+  assert.equal(await page.locator('#word .cursor').count(), 1, 'the replay follows the original run with a ghost cursor');
   const first = Number(await page.locator('#word-number').innerText());
   await page.locator('#replay-scrubber').evaluate(input => { input.value = String(Number(input.max) * .8); input.dispatchEvent(new Event('input', { bubbles: true })); });
   const later = Number(await page.locator('#word-number').innerText());
@@ -126,6 +130,22 @@ await check('keyboard Enter opens a focused settings button during an endless ru
   if (!open) await page.screenshot({ path: path.join(evidence, 'keyboard-settings-bug.png'), fullPage: true });
   assert.equal(open, true, 'Enter on the focused settings button finished the endless run instead of opening settings.');
   await page.keyboard.press('Escape');
+});
+await check('ramp mode shows its target pace and dims the word when it gets ahead', async () => {
+  await home();
+  await page.evaluate(() => localStorage.setItem('typy.lastAverage', '30'));
+  await home();
+  await page.locator('[data-mode=tempo]').click();
+  await paste('elephant giraffe');
+  assert.equal(await page.locator('#tempo-track').isVisible(), true);
+  await page.keyboard.type('e');
+  assert.equal(await page.locator('#time-label').innerText(), 'beat pace');
+  assert.equal(Number(await page.locator('#live-time').innerText()) > 0, true);
+  await page.locator('#word.behind').waitFor({ timeout: 8000 });
+  assert.match(await page.locator('#tempo-caption').innerText(), /pace is ahead/);
+  await page.keyboard.type('lephant');
+  assert.equal(await page.locator('#word.behind').count(), 0, 'catching the pace lifts the dimming');
+  await page.evaluate(() => localStorage.removeItem('typy.lastAverage'));
 });
 await check('unavailable topic API presents a friendly error and common-word recovery', async () => {
   await page.goto(base + '/react-hooks');
@@ -165,6 +185,38 @@ await check('phone layout fits, exposes a large input, and handles native input 
   assert.equal(await phone.locator('#word .correct').count(), 1);
   await phone.screenshot({ path: path.join(evidence, 'phone.png'), fullPage: true });
   return viewport;
+});
+await check('every run mode stays reachable inside the phone toolbar', async () => {
+  const modes = phone.locator('[data-mode]');
+  assert.equal(await modes.count(), 6);
+  const bounds = await phone.locator('#mode-switch').boundingBox();
+  assert.equal(bounds.x >= 0 && bounds.x + bounds.width <= 391, true, 'the mode switch must not run off the phone: ' + JSON.stringify(bounds));
+  for (let index = 0; index < 6; index++) {
+    const button = await modes.nth(index).boundingBox();
+    assert.equal(button.x >= 0 && button.x + button.width <= 391, true, 'mode ' + index + ' is off-screen');
+    assert.equal(button.height >= 28, true, 'mode ' + index + ' is too short to tap');
+  }
+  await phone.locator('[data-mode="120"]').tap();
+  assert.equal(await phone.locator('#live-time').innerText(), '120');
+  await phone.locator('[data-mode="30"]').tap();
+});
+await check('reduced motion leaves the beat rail and the word still', async () => {
+  await phone.locator('[data-mode=tempo]').tap();
+  await phone.locator('#typing-input').tap();
+  await phone.locator('#typing-input').fill('b');
+  const rail = () => phone.locator('#tempo-progress').evaluate(element => getComputedStyle(element).transform);
+  const first = await rail();
+  await phone.waitForTimeout(120);
+  // Reduced motion steps the rail in tenths, so two frames 120ms apart are
+  // either identical or a whole step apart, never a continuous slide.
+  const scale = value => Number((value.match(/matrix\(([-0-9.]+)/) || [, '1'])[1]);
+  const step = Math.abs(scale(first) - scale(await rail()));
+  assert.equal(step === 0 || Math.abs(step - 0.1) < 0.001, true, 'the rail slid instead of stepping: ' + step);
+  assert.deepEqual(await phone.locator('#word').evaluate(element => ({
+    animations: element.getAnimations().length,
+    transition: getComputedStyle(element).transitionDuration
+  })), { animations: 0, transition: '0s' });
+  await phone.locator('[data-mode="30"]').tap();
 });
 await check('phone dialogs fit and controls remain accessible', async () => {
   await phone.locator('#settings-open').tap();
