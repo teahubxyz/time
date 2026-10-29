@@ -15,6 +15,26 @@ const speed = (chars, durationMs) => durationMs > 0
   ? rounded(chars * 12000 / Math.max(1000, durationMs)) : 0;
 
 /**
+ * Per-letter state of one word against the keys typed into it so far.
+ * A letter not reached yet is 'pending', a key typed past the end of the word
+ * is an 'extra' entry, and an 'incorrect' letter stays marked where it was
+ * typed until a backspace removes it. Colouring is derived, never stored: the
+ * game keeps the typed buffer and nothing else.
+ */
+export function letterStates(word, typed) {
+  const target = Array.from(word || '');
+  const keys = Array.from(typed || '');
+  const letters = target.map((char, index) => ({
+    char,
+    state: index >= keys.length ? 'pending' : keys[index] === char ? 'correct' : 'incorrect'
+  }));
+  for (let index = target.length; index < keys.length; index++) {
+    letters.push({ char: keys[index], state: 'extra' });
+  }
+  return letters;
+}
+
+/**
  * Recompute public metrics from privacy-safe replay outcomes and word timings.
  * A hit/miss records whether a key matched, never what the visitor typed.
  * Fully complete words count one normalized separator in either advance setting.
@@ -294,8 +314,8 @@ export class TypingGame {
   _snapshot(now) {
     const stop = this.endedAt ?? now;
     const elapsedMs = this.startedAt === null ? 0 : Math.max(0, stop - this.startedAt);
-    const flags = this._flags();
-    const errorIndex = flags.indexOf(false);
+    const letters = letterStates(this.word, this.buffer.join(''));
+    const errorIndex = letters.findIndex(letter => letter.state === 'incorrect' || letter.state === 'extra');
     const correctPrefix = this._prefix();
     const remainingMs = this.mode === '30' || this.mode === '60'
       ? Math.max(0, Number(this.mode) * 1000 - elapsedMs) : null;
@@ -303,7 +323,7 @@ export class TypingGame {
       status: this.status, mode: this.mode, advance: this.advance,
       wordIndex: this.wordIndex, word: this.word,
       nextWord: this.words[(this.wordIndex + 1) % this.words.length],
-      buffer: this.buffer.join(''), correctPrefix, errorIndex,
+      buffer: this.buffer.join(''), letters, correctPrefix, errorIndex,
       startedAt: this.startedAt, elapsedMs, remainingMs,
       wpm: speed(this.completedChars + correctPrefix, elapsedMs),
       accuracy: this.hits + this.errors ? rounded(this.hits * 100 / (this.hits + this.errors)) : 100,

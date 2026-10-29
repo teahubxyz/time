@@ -5,6 +5,7 @@
 ### Changed
 - `TIME_PARALLEL` defaults to 3 (was 1) and a bad value (not a positive integer) falls back to 3 (#243).
 ### Added
+- typy's typing engine owns the per-letter colouring state (#261): `letterStates(word, typed)` in `typy/src/game.js` marks every letter `correct`, `incorrect`, `pending` or `extra` from the word and the keys typed into it, and each snapshot carries it as `letters`. The engine already advanced on space or on the last correct letter, fixed letters on backspace, and fed its word queue from a list; this card adds the pure letter state those three behaviours colour, with unit tests for advance, inline error marking, overflow keys and backspace. Nothing in the UI changed yet.
 - Claude delegation over `workflow_dispatch` (`.github/time/delegate.py`, tests in `test_delegate.py`): a bounded task for the `sonnet` or `opus` seat with an idempotency key, run through time.py's own `think`, seat routing and dollar governor. Each job has a stable correlation ID (`dlg-<20 hex>`, from caller and key) and a receipt (`queued`/`running`/`succeeded`/`failed`, source SHA, run URL, model, tokens, dollars, result and its hash) at `time/delegations/<id>.json` and on `TIME-RECEIPT` log lines. Duplicate keys replay the stored result without spending, a failed key retries (3 attempts), and the task text, secrets and key-shaped strings never reach a receipt or log. No issue comments. The workflow itself is a proposal in `time/delegate/delegate.yml`: it needs a human to review and install it under `.github/workflows/`.
 
 ### Security
