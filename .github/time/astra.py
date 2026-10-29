@@ -14,9 +14,12 @@ Astra does is a comment on one issue, "Astra log", so a human can read the day's
 
 The router (time/router.json, `mode`: off | dry | live; router.py): instead of picking cards in prose, the seat judges
 every candidate (its kind, its value 1-5, its size) and code ranks them with the owner's weights per kind, a restless
-boost for kinds not picked lately, and the card's age. The log shows the ranked table. `dry` writes it and queues
-nothing; `live` queues from the top while the day's money left covers each card's estimated cost (the allowance left
-in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
+boost for kinds not picked lately, and the card's age. The candidates include the optimizations the factory's own
+records show (#171): the ledger's spend by model and entry point, workflows whose runs keep failing, and cards parked
+with their retries spent. Those have no card yet, so a picked one is written as one (unqueued) instead of being queued,
+and a source a card already names is not proposed again, open or closed lately. The log shows the ranked table. `dry`
+writes it and queues nothing; `live` queues from the top while the day's money left covers each card's estimated cost
+(the allowance left in the pool that takes the worker's route, else the daily cap's remainder, never more than the month has left),
 creates the seat's new cards unqueued (they are candidates the next day; never a repeat of an open or lately closed
 card), and the heartbeat promotes queued cards in the ranked order. Over the table the log shows what each kind's past
 picks returned (picks, merged share, median days, median $), from the outcomes housekeeping records (#172). The spine's
@@ -88,6 +91,10 @@ For every candidate give:
   is still open is already held back by code.
 A candidate keyed `{spine_key}#N` is a card of the spine, the platform's own repo: judge its value like any other (it
 tells the owner what the platform needs next), but no worker here can build it, so code never queues it.
+A candidate whose key starts `opt:` is not a card yet: it is something the factory's own records show (a route that took
+over half the week's spend, a workflow that keeps failing, a card parked with its retries spent), with a title and body
+already drafted. Judge it like the rest; if it is picked it is written as a card for a worker to take later, never
+worked on today, so judge whether that work is worth a card at all.
 You may also write up to {max_new} new cards for work the board is missing; they are candidates from tomorrow on.
 Never write one that posts outside the repo or touches workflows, secrets or variables, and never one for work that is
 already a candidate or is in the list of cards closed lately: that work is done or under way.
@@ -241,6 +248,55 @@ def closed_lately(days: int = 14) -> list[dict]:
         return []
 
 
+def ledger_week(days: int = router.OPT_DAYS) -> list[dict]:
+    """The ledger lines the router reads (#171): this month's file, and the previous one when the window straddles it.
+    router.ledger_candidates keeps the last `days` days of them."""
+    now = dt.datetime.now(dt.timezone.utc)
+    months = sorted({now.strftime("%Y-%m"), (now - dt.timedelta(days=days)).strftime("%Y-%m")})
+    try:
+        return [r for m in months for r in tm.ledger_lines(m) if isinstance(r, dict)]
+    except Exception as e:  # noqa: BLE001  a source, not a dependency: unreadable is no candidates from it
+        print(f"ledger unreadable: {str(e)[:120]}")
+        return []
+
+
+def action_runs(limit: int = 50) -> list[dict]:
+    """The newest workflow runs, from the endpoint `tea_actions` reads (`/actions/runs`; Gitea wraps them in
+    `workflow_runs`)."""
+    try:
+        got = tm.gh("GET", f"/repos/{tm.REPO}/actions/runs?limit={limit}")
+    except Exception as e:  # noqa: BLE001
+        print(f"actions runs unreadable: {str(e)[:120]}")
+        return []
+    return got if isinstance(got, list) else (got or {}).get("workflow_runs") or []
+
+
+def parked_cards() -> list[dict]:
+    """The `ready` cards whose last real beat parked them, with what the router needs of each: the beat and when it was
+    written, whether a PR of theirs is open, and how many of #78's automatic retries are left. A card someone trusted
+    has typed `/time retry` on since that beat is left out: the next heartbeat dispatches it (it clears `last` exactly
+    as a spare automatic retry does), so proposing "retry or split" for it would be a card for work already under way."""
+    auto_max = env_int("TIME_AUTO_RETRY", 1)
+    out: list[dict] = []
+    try:
+        prs = tm.gh("GET", f"/repos/{tm.REPO}/pulls?state=open&limit=50") or []
+        for card in tm.issues("state=open&labels=ready"):
+            cs = tm.gh("GET", f"/repos/{tm.REPO}/issues/{card['number']}/comments?limit=100") or []
+            beats = [b for b in tm.beats_of(cs) if b.get("beat") not in ("blocked", "capped")]
+            if not beats or beats[-1].get("beat") not in ("error", "stuck"):
+                continue
+            if tm.retry_requested(cs, beats[-1]["at"]):
+                continue   # a person already asked for the retry: the next heartbeat runs it, so it needs no card
+            # an automatic retry is one run of consecutive `auto_retry` beats, counted as the heartbeat counts it
+            used = sum(1 for k, b in enumerate(beats) if b.get("auto_retry") and not (k and beats[k - 1].get("auto_retry")))
+            out.append({"n": card["number"], "title": card.get("title") or "", "beat": beats[-1]["beat"],
+                        "at": beats[-1]["at"], "retries_left": max(0, auto_max - used),
+                        "open_pr": any(p.get("state", "open") == "open" for p in tm.linked_prs(prs, card["number"]))})
+    except Exception as e:  # noqa: BLE001
+        print(f"parked cards unreadable: {str(e)[:120]}")
+    return out
+
+
 JUDGED_SHARE = 0.25   # below this share of the candidates judged, the reply is not a ranking at all (#211)
 
 
@@ -254,12 +310,17 @@ def judged_enough(judged: int, total: int) -> bool:
 def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict], max_ready: int, max_new: int) -> int:
     """The seat judges every candidate; router.py ranks them; live queues from the top, dry only shows the ranking."""
     open_issues = [i for i in tm.issues("state=open") if i.get("title") != LOG_TITLE]
+    closed = closed_lately()
+    today_d = dt.datetime.now(dt.timezone.utc).date()
     cands = router.candidates(open_issues) + spine_candidates() + [dict(router.NEW_VENTURE)]
+    # what no one wrote a card for (#171): the ledger, the Actions runs and the parked cards, each proposed once. The
+    # cards closed lately name their sources too: a week's spend outlives the card written about it, so keying the open
+    # ones alone would propose the same finding again the day its card closed.
+    cands += router.opt_candidates(ledger_week(), action_runs(), parked_cards(), today_d, router.named(open_issues + closed))
     listing = "\n\n".join(f"### {c['key']}: {c['title']}\nlabels: {', '.join(c['labels']) or '-'}; opened "
                           f"{c['created'][:10] or '-'}; cards waiting on it: {c['unblocks']}\n{c['body'][:400]}" for c in cands)
     today, day_cap, month, month_cap = tm.budget()
     left, source = money_left()
-    closed = closed_lately()
     done = "\n".join(f"- #{i['number']} {i['title']}" for i in closed[:50]) or "- (none)"
     user = (f"Factory context (the spine's AGENTS.md and the newest decisions):\n{context}\n\nSpend: ${today:.2f} of "
             f"${day_cap:.2f} today, ${month:.2f} of ${month_cap:.2f} this month out of pocket (credit-paid spend excluded); "
@@ -282,7 +343,7 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         tm.comment(log, f"🔭 Astra: the judge {said} ({router._txt(raw, 200) or 'empty'}); nothing queued or sent today.",
                    {"beat": "astra", "router": cfg["mode"], "queued": 0, "unjudged": True})
         return 0
-    ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), dt.datetime.now(dt.timezone.utc).date())
+    ranked = router.rank(cands, assess, cfg, router.last_picked(tm.beats_of(thread)), today_d)
     in_lane = sum(1 for i in open_issues if router.CLOUD in router.labels_of(i))
     to_cloud = router.pick_cloud(ranked, cfg, in_lane)   # the cloud lane takes its cards first: its credit is separate
     sent = {r["key"] for r in to_cloud}
@@ -292,10 +353,14 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
         n = router.repeat_of(str(c["title"]), open_issues + closed)   # the sweep checks the board with the same rule (#198)
         (repeats.append((c, n)) if n else new.append(c))
     new = new[:max_new]
+    queued, found = [r for r in picks if r["n"] is not None], [r for r in picks if r["n"] is None]
     live, created = cfg["mode"] == "live", []
     if live:
-        for r in picks:
+        for r in queued:
             tm.label(r["n"], "queued")   # the heartbeat promotes it, in ranked order
+        for r in found:
+            # a candidate with no card (an optimization the records showed): it becomes a card, never worked on in place
+            r["written"] = tm.new_issue(r["title"][:200], r["body"] + "\n\n<sub>card written by Astra</sub>", [])["number"]
         for r in to_cloud:
             tm.label(r["n"], router.CLOUD)   # the Mac's launcher starts a cloud session for it
         for c in new:
@@ -315,26 +380,32 @@ def router_tick(cfg: dict, seat: str, log: int, context: str, thread: list[dict]
     if unjudged:
         lines.append(f"_{unjudged} candidate(s) the seat didn't judge are scored at value 3, size M._")
     if live:
-        lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in picks)) if picks else "Queued nothing today.")
+        lines.append(("Queued: " + ", ".join(f"#{r['n']}" for r in queued)) if queued else "Queued nothing today.")
+        if found:
+            lines.append("Written from the factory's own records (candidates from tomorrow): "
+                         + ", ".join(f"#{r['written']} ({r['key']})" for r in found))
         if to_cloud:
             lines.append("To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud))
         if created:
             lines.append("New cards (candidates from tomorrow): " + ", ".join(f"#{n}" for n in created))
     else:
         lines.append("Dry run: nothing queued or created. Live, it would queue: "
-                     + (", ".join(f"#{r['n']}" for r in picks) or "nothing") + "."
+                     + (", ".join(f"#{r['n']}" for r in queued) or "nothing") + "."
+                     + (" And write a card for: " + ", ".join(r["key"] for r in found) + "." if found else "")
                      + (" To the cloud lane: " + ", ".join(f"#{r['n']}" for r in to_cloud) + "." if to_cloud else ""))
         if new:
             lines.append("It would write: " + "; ".join(router._txt(c["title"], 100) for c in new) + ".")
     if repeats:
         lines.append("Not written, repeats of existing cards: "
                      + "; ".join(f"{router._txt(c['title'], 80)} (#{n})" for c, n in repeats) + ".")
-    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(picks) if live else 0, "order": router.order(ranked),
-            "picked": [{"n": r["n"], "kind": r["kind"]} for r in picks] if live else [],
-            "would": [r["n"] for r in picks] if not live else [], "new": created,
+    meta = {"beat": "astra", "router": cfg["mode"], "queued": len(queued) if live else 0, "order": router.order(ranked),
+            "picked": [{"n": r.get("written", r["n"]), "kind": r["kind"]} for r in picks] if live else [],
+            "would": [r["n"] for r in queued] if not live else [], "new": created,
+            "opt": [{"key": r["key"], "card": r.get("written")} for r in found],
             "cloud": [r["n"] for r in to_cloud] if live else [], "would_cloud": [r["n"] for r in to_cloud] if not live else []}
     tm.comment(log, "\n".join(lines), meta)
-    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in picks]} new={created} ranked={len(ranked)}")
+    print(f"astra router {cfg['mode']}: picks={[r['n'] for r in queued]} opt={[r['key'] for r in found]} "
+          f"new={created} ranked={len(ranked)}")
     return 0
 
 
