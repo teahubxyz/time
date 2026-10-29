@@ -91,6 +91,26 @@ test('daily passage is canonical, changes by date, and only full daily runs can 
  const early=structuredClone(body);early.run.mode='30';early.run.durationMs=30000;assert.throws(()=>validateResult(early));
  const altered=structuredClone(body);altered.run.words[2]='tampered';assert.throws(()=>validateResult(altered),/full 60-second/);
 });
+test('/daily serves one passage per UTC day, the same one for everybody',async()=>{
+ const originalNow=Date.now;
+ try{
+  const read=async at=>{Date.now=()=>Date.parse(at);const response=await worker.fetch(req('/api/daily'),env());assert.equal(response.status,200);return response.json();};
+  const open=await read('2026-10-24T00:00:01Z'),late=await read('2026-10-24T23:59:59Z');
+  assert.deepEqual(open,late,'the passage does not move during its UTC day');
+  assert.equal(open.day,'2026-10-24');
+  assert.equal(open.words.length,300);
+  // A fresh Worker with a fresh store answers identically: every visitor,
+  // every location, the same words without waiting for a cache to replicate.
+  assert.deepEqual(await read('2026-10-24T12:00:00Z'),open);
+  const next=await read('2026-10-25T00:00:01Z');
+  assert.equal(next.day,'2026-10-25');
+  assert.notDeepEqual(next.words,open.words,'and it rotates on the UTC boundary');
+ }finally{Date.now=originalNow;}
+ const page=await worker.fetch(req('/daily'),env());
+ assert.equal(page.status,200);
+ assert.match(page.headers.get('Content-Type'),/text\/html/);
+ assert.ok((await page.text()).includes('<title>The daily passage · typy</title>'));
+});
 test('independent daily entries survive concurrent saves without shared-row overwrites',async()=>{
  const e=env(),day=new Date().toISOString().slice(0,10),words=dailyPassage(day).words;
  const run=makeRun({words,mode:'60',duration:60000});
