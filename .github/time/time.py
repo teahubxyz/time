@@ -768,8 +768,15 @@ def cursor_launch(prompt: str, *, model: str | None, pr_url: str | None = None, 
 # Cascade: parse the spec deterministically first; only ask a seat when it isn't already card-shaped.
 
 CARD_LINE = re.compile(r"^\s*[-*]\s*(?:\[ \]\s*)?(?P<title>.+?)\s+(?:—|--|-|\|)\s*DONE:\s*(?P<done>.+)$", re.I)
-PLAN_PROMPT = """Split this spec into small cards, one pull request each, in build order.
-Reply with ONLY a JSON list: [{"title": "...", "body": "what to change, as a short list", "done": "what finished means"}]"""
+DEPENDS = re.compile(r"Depends on:?[ \t]*#(\d+)", re.I)   # what a card waits on; the router reads it too (#184)
+PLAN_PROMPT = """Split this spec into 4 to 6 cards, in build order. A card is one pull request that one worker session
+finishes, so each one is shippable on its own: a module and its tests, a group of endpoints, a schema and its
+migration. Fewer, coarser cards than you think: never a checklist of one-line chores, and never more than 6.
+Reply with ONLY a JSON list, one object per card:
+[{"title": "...", "body": "what to change, as a short list", "done": "what finished means",
+  "depends_on": [positions in this list (1 = the first card) of the cards this one can't start without]}]
+Use "depends_on": [] for a card that can start at once, and name a card only when the work truly needs it: cards that
+wait on nothing are built in parallel."""
 
 
 def parse_spec(body: str) -> list[dict]:
@@ -784,6 +791,17 @@ def parse_spec(body: str) -> list[dict]:
         if m:
             cards.append({"title": title.strip(), "body": rest[:m.start()].strip(), "done": m.group(1).strip()})
     return cards
+
+
+def plan_deps(card: dict, step: int) -> list[int]:
+    """The steps of a plan that one of its cards waits on: its `depends_on` (a number, a list, `#2`, `"none"`), or the
+    step before it when the seat said nothing, since a spec's cards come in build order. A card can only wait on one
+    already filed, so a reference to itself or to a later step is dropped."""
+    raw = next((card[k] for k in ("depends_on", "depends") if k in card), None)
+    if raw is None:
+        return [step - 1] if step > 1 else []
+    items = raw if isinstance(raw, list) else [raw]
+    return sorted({int(d) for x in items for d in re.findall(r"\d+", str(x)) if 1 <= int(d) < step})
 
 
 def plan_spec(spec: dict) -> None:
@@ -802,14 +820,19 @@ def plan_spec(spec: dict) -> None:
                 {"beat": "plan-failed"})
         unlabel(n, "spec")
         return
-    made, prev = [], None
+    made, free = [], []
     for i, c in enumerate(cards, 1):
-        body = (c.get("body") or "").strip() + f"\n\nPart of #{n} (step {i}/{len(cards)})." + \
-            (f" Depends on #{prev}." if prev else "") + f"\n\nDONE: {c['done']}"
-        prev = new_issue(c["title"], body.strip(), ["queued"])["number"]
-        made.append(prev)
-    comment(n, "⏱️ Time: planned " + ", ".join(f"#{m}" for m in made) + ". They run one at a time: each starts when "
-            "the one before it merges.", {"beat": "planned", "cards": made})
+        deps = [made[s - 1] for s in plan_deps(c, i)]
+        waits = "\n".join(f"Depends on: #{d}" for d in deps) or "Depends on: none"   # one line per card it waits on
+        body = (c.get("body") or "").strip() + f"\n\nPart of #{n} (step {i}/{len(cards)}).\n{waits}\n\nDONE: {c['done']}"
+        made.append(new_issue(c["title"], body.strip(), ["queued"])["number"])
+        if not deps:
+            free.append(made[-1])
+    free_s = ", ".join(f"#{m}" for m in free)
+    start = f"nothing blocks {free_s}, so Time starts there, up to TIME_PARALLEL cards at a time." if free else \
+        "every card waits on another one, so none can start: a `Depends on:` line needs fixing."
+    comment(n, "⏱️ Time: planned " + ", ".join(f"#{m}" for m in made) + f". Each card says what it waits on: {start}",
+            {"beat": "planned", "cards": made})
     unlabel(n, "spec")
     label(n, "planned")
 
@@ -862,7 +885,7 @@ def promote_next() -> int | None:
     queued = issues("state=open&labels=queued")
     pos = {n: k for k, n in enumerate(rank_order())}
     for card in sorted(queued, key=lambda i: (pos.get(i["number"], len(pos)), i["number"])):
-        deps = [int(d) for d in re.findall(r"Depends on #(\d+)", card.get("body") or "")]
+        deps = [int(d) for d in DEPENDS.findall(card.get("body") or "")]
         if all(gh("GET", f"/repos/{REPO}/issues/{d}")["state"] == "closed" for d in deps):
             try:
                 unlabel(card["number"], "queued")

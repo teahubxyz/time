@@ -23,10 +23,10 @@ session credit pays); the session's `claude/card-N-*` branch comes home through 
 `ready`, and the heartbeat adopts and reviews it like any card PR. `per_day: 0` (the default) is no cloud lane.
 
 An L is ranked but never queued: a card is what one worker session finishes, so it is split first. Nor is a card that
-waits: on a card still open (its `Depends on #N`), or on whatever the seat says blocks it (a PR that can't merge, a
-human). Cards that can move come first in the promotion order, the ones that wait after them. The policy is
-`score`; a bandit policy (Beth, Jev, Fable's restless-bandit maths) can replace it without touching how candidates are
-gathered or how picks are queued.
+waits: on a card still open (a `Depends on: #N` line per card it waits on), or on whatever the seat says blocks it (a
+PR that can't merge, a human). Cards that can move come first in the promotion order, the ones that wait after them.
+The policy is `score`; a bandit policy (Beth, Jev, Fable's restless-bandit maths) can replace it without touching how
+candidates are gathered or how picks are queued.
 
 Outcomes (#172): a bandit learns from rewards, so every live pick's outcome is recorded once the card settles — one
 line in `time/ledger/router-outcomes.jsonl`, written by the daily housekeeping sweep, and one summary line per kind
@@ -52,6 +52,7 @@ HELD = {"needs-human", "andon", "astra", "planned"} | LOOP     # a human's, an a
 LINED_UP = {"queued", "ready", "cloud"}                        # already moving: ranked (for promotion), never queued again
 CLOUD = "cloud"                                                # a card in the cloud lane: a cloud session builds it
 DONE = re.compile(r"^\s*DONE:", re.M | re.I)
+DEPENDS = re.compile(r"Depends on:?[ \t]*#(\d+)", re.I)   # one line per card waited on; the planner writes them (#244)
 SPINE_WHY_NOT = "spine: not queued (Time builds in this repo only)"
 NEW_VENTURE = {"key": "venture:new", "n": None, "title": "Start a new venture: research, pick, build and launch one page",
                "body": "The venture loop (venture.py): one venture, researched and picked by the lead, built and judged.",
@@ -114,7 +115,7 @@ def candidates(issues: list[dict]) -> list[dict]:
     """Every open card a worker could take, lined-up ones included (ranked, so the heartbeat promotes in order)."""
     waits: dict[int, int] = {}
     for i in issues:
-        for d in set(re.findall(r"Depends on #(\d+)", i.get("body") or "")):
+        for d in set(DEPENDS.findall(i.get("body") or "")):
             waits[int(d)] = waits.get(int(d), 0) + 1
     open_n = {i.get("number") for i in issues}
     out = []
@@ -122,7 +123,7 @@ def candidates(issues: list[dict]) -> list[dict]:
         labels, body = labels_of(i), i.get("body") or ""
         if labels & HELD or not DONE.search(body):
             continue
-        deps = sorted({int(d) for d in re.findall(r"Depends on #(\d+)", body)} & open_n)   # a closed dependency is done
+        deps = sorted({int(d) for d in DEPENDS.findall(body)} & open_n)   # a closed dependency is done
         out.append({"key": f"#{i['number']}", "n": i["number"], "title": _txt(i.get("title"), 120), "body": body[:500],
                     "labels": sorted(labels), "lined_up": bool(labels & LINED_UP), "actionable": not deps,
                     "kind": guess_kind(i.get("title") or "", body, labels), "unblocks": waits.get(i["number"], 0),

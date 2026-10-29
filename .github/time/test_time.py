@@ -328,7 +328,8 @@ spec_body = "Build orbit v0\n\n- [ ] Add login page — DONE: PR open, tests gre
 w = run(World([], issues={1: {"number": 1, "title": "spec", "body": spec_body, "state": "open", "labels": ["spec"]}}), K)
 made = [n for n in w.issues if n != 1]
 assert made == [2, 3, 4] and w.issues[1]["labels"] == ["planned"], w.issues
-assert "Depends on #2" in w.issues[3]["body"] and "DONE: README updated" in w.issues[4]["body"]
+assert "Depends on: #2" in w.issues[3]["body"] and "DONE: README updated" in w.issues[4]["body"]
+assert "Depends on: none" in w.issues[2]["body"], w.issues[2]["body"]   # every card says what it waits on (#244)
 assert w.issues[2]["labels"] == ["ready"] and w.issues[3]["labels"] == ["queued"] and len(w.launched) == 1
 assert "Add login page" in w.launched[0]["prompt"]["text"]
 # section-style spec also parses
@@ -336,6 +337,38 @@ assert [c["title"] for c in tm.parse_spec("intro\n### One\nchange a\nDONE: x\n##
 # unparseable spec without a key -> one helpful comment, spec label removed
 w = run(World([], issues={1: {"number": 1, "title": "s", "body": "make it nice", "state": "open", "labels": ["spec"]}}), K)
 assert "couldn't find cards" in w.posted[0][1] and w.issues[1]["labels"] == []
+
+# 12a the steps a card waits on: the seat's `depends_on`, the step before it when the seat said nothing (#244)
+assert tm.plan_deps({}, 1) == [] and tm.plan_deps({}, 4) == [3], "no answer: the cards come in build order"
+assert tm.plan_deps({"depends_on": []}, 4) == [] and tm.plan_deps({"depends_on": "none"}, 4) == []
+assert tm.plan_deps({"depends_on": [1, "#2", 2]}, 4) == [1, 2] and tm.plan_deps({"depends": 1}, 2) == [1]
+assert tm.plan_deps({"depends_on": [4, 5]}, 4) == [], "a card can only wait on a card already filed"
+# both forms of the line are read, so cards filed before #244 still wait
+assert tm.DEPENDS.findall("Depends on #7") == ["7"] and tm.DEPENDS.findall("Depends on: #8") == ["8"]
+
+# 12b a seat's plan: 4-6 coarse cards, each with its own `Depends on:` line, so the free ones build in parallel (#244)
+plan = [{"title": "Schema and migration", "body": "add the tables", "done": "migration runs", "depends_on": []},
+        {"title": "Invoice endpoints", "body": "port them", "done": "endpoints green", "depends_on": [1]},
+        {"title": "Refund endpoints", "body": "port them", "done": "endpoints green", "depends_on": "#1"},
+        {"title": "Admin page", "body": "one page", "done": "page renders", "depends_on": [2, 3]},
+        {"title": "Docs", "body": "write them", "done": "README updated", "depends_on": "none"}]
+asked = {}
+def fake_plan(seat, model, effort, system, user):
+    asked.update(seat=seat, system=system, user=user)
+    return "Here they are:\n" + json.dumps(plan) + "\nHope that helps."
+tm.think = fake_plan
+w = run(World([], issues={1: {"number": 1, "title": "Port billing", "body": "move billing off the old stack",
+                              "state": "open", "labels": ["spec"]}}), {**K, "VENICE_API_KEY": "vk"})
+tm.think = real_think
+assert "4 to 6" in asked["system"] and "depends_on" in asked["system"] and "Port billing" in asked["user"], asked
+assert sorted(n for n in w.issues if n != 1) == [2, 3, 4, 5, 6] and w.issues[1]["labels"] == ["planned"], w.issues
+assert "Depends on: none" in w.issues[2]["body"] and "Depends on: #2" in w.issues[3]["body"]
+assert "Depends on: #3\nDepends on: #4" in w.issues[5]["body"], w.issues[5]["body"]   # one line per card
+assert "Depends on: none" in w.issues[6]["body"] and "Part of #1 (step 5/5)" in w.issues[6]["body"]
+assert "nothing blocks #2, #6" in w.posted[0][1], w.posted
+# the two cards that wait on nothing are promoted and dispatched in the same run; the rest stay queued
+assert [n for n in (2, 3, 4, 5, 6) if w.issues[n]["labels"] == ["ready"]] == [2, 6] and len(w.launched) == 2
+assert [n for n in (3, 4, 5) if w.issues[n]["labels"] == ["queued"]] == [3, 4, 5]
 
 # 13 landing: Approve from a trusted reviewer + green checks -> squash merge, card closed, next card dispatched
 def pr_world(verdict_body="**Approve** looks right", who="gitea-actions", checks=None, files=None, extra=None):
@@ -1392,6 +1425,10 @@ assert "**to the cloud today**" in rt.table(r80c, [], "live", cloud=rt.pick_clou
 assert "cloud lane" in rt.table(rt.rank(rt.candidates([iss80(11, "In the lane", labels=["cloud"])]), {}, cl80, {}, today80), [], "live")
 assert "lined up; waits on #1" in rt.table(rt.rank(rt.candidates(open80[:1] + [iss80(9, "q", body="Depends on #1\nDONE: q", labels=["queued"])]),
                                                   {}, live80, {}, today80), [], "live")
+# the planner's line, one per card waited on, and the older form without the colon (#244)
+w244 = rt.candidates(open80[:2] + [iss80(9, "q", body="Depends on: #1\nDepends on #2\nDONE: q")])
+assert [c["why_not"] for c in w244 if c["n"] == 9] == ["waits on #1, #2"] and not [c for c in w244 if c["n"] == 9][0]["actionable"]
+assert [c["unblocks"] for c in w244 if c["n"] == 1] == [1], "a card waited on unblocks one"
 # a kind picked yesterday is less restless; the owner's weight lifts a kind
 r80b = rt.rank(cands80, assess80, rt.config('{"weights": {"optimization": 4}}'), {"refinement": "2026-10-18"}, today80)
 assert {r["key"]: r for r in r80b}["#2"]["restless"] == 1.05 and r80b[0]["key"] == "#5", [(r["key"], r["score"]) for r in r80b]
