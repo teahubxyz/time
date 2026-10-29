@@ -152,6 +152,39 @@ test('quota object reserves a strict global daily ceiling concurrently and persi
  assert.deepEqual(results.map(r=>r.status).sort(),[200,200,429]);assert.equal((await storage.get('counters')).topic,2);
  const persisted=JSON.stringify([...storage.data]);assert.ok(ips.every(ip=>!persisted.includes(ip)));assert.equal((await results.find(r=>r.status===429).json()).code,'daily_global_limit');
 });
+test('each visitor gets their own daily new-topic allowance; cached topics ignore it',async()=>{
+ const originalNow=Date.now;let now=Date.parse('2026-10-24T09:00:00Z');Date.now=()=>now;
+ try{
+  const storage=new Storage(),gate=new QuotaGate({storage},{TOPICS_PER_VISITOR:'2',TOPICS_PER_DAY:'100'});
+  const take=ip=>gate.fetch(new Request('https://quota/take',{method:'POST',body:JSON.stringify({kind:'topic',ip})}));
+  assert.equal((await take('192.0.2.7')).status,200);
+  now+=8000;assert.equal((await take('192.0.2.7')).status,200);
+  now+=8000;const over=await take('192.0.2.7');
+  assert.equal(over.status,429);
+  const refusal=await over.json();
+  assert.equal(refusal.code,'daily_visitor_limit','their own allowance, not the global ceiling');
+  assert.match(refusal.error,/cached topic/,'the refusal points at what still works');
+  assert.ok(Number(over.headers.get('Retry-After'))>0&&Number(over.headers.get('Retry-After'))<=86400);
+  now+=8000;assert.equal((await take('192.0.2.8')).status,200,'one visitor cannot spend another visitor’s allowance');
+  now=Date.parse('2026-10-25T00:00:05Z');
+  assert.equal((await take('192.0.2.7')).status,200,'a new UTC day restores the allowance');
+ }finally{Date.now=originalNow;}
+
+ const e=env();e.VENICE_API_KEY='test-only';
+ await e.KV.put('topic:v1:ocean-life',JSON.stringify({kind:'topic',topic:'ocean-life',title:'ocean life',words:['one','two']}));
+ e.QUOTA.get=()=>({fetch:async()=>Response.json({error:'You’ve used today’s new-topic allowance. Try a cached topic, the daily passage, or your own text.',code:'daily_visitor_limit'},{status:429,headers:{'Retry-After':'3600'}})});
+ const original=globalThis.fetch;let calls=0;globalThis.fetch=async()=>{calls++;return Response.json({choices:[{message:{content:'nothing should ask for this'}}]});};
+ try{
+  const blocked=await worker.fetch(req('/api/passage?topic=brand-new-topic'),e);
+  assert.equal(blocked.status,429);
+  const body=await blocked.json();assert.equal(body.code,'daily_visitor_limit');assert.match(body.error,/allowance/);
+  assert.equal(blocked.headers.get('Retry-After'),'3600');
+  assert.equal(calls,0,'nothing is generated over the cap');
+  assert.equal(e.KV.data.size,1,'and nothing new is cached');
+  const cached=await worker.fetch(req('/api/passage?topic=ocean-life'),e);
+  assert.equal(cached.status,200);assert.equal((await cached.json()).cached,true,'cached topics still load over the cap');
+ }finally{globalThis.fetch=original;}
+});
 test('missing quota binding fails closed before saving',async()=>{
  const e=env();delete e.QUOTA;assert.equal((await worker.fetch(req('/api/health'),e)).status,503);
  const res=await worker.fetch(post(input()),e);assert.equal(res.status,503);assert.equal((await res.json()).code,'quota_unavailable');assert.equal(e.KV.data.size,0);
