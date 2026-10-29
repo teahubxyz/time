@@ -881,6 +881,185 @@ assert "ANTHROPIC_API_KEY" in w.posted[-1][1], "missing key -> blocked"
 tm.LEDGER.clear(); tm._ledger_files.clear()  # nothing for atexit to flush into a fake
 print("ALL OK 52")
 
+# 79 mentions are handoffs: @codex and @claude act as their own Gitea users; a reply that ends with a mention hands on
+import tempfile as _tf79, subprocess as _sp79, time as _t79  # noqa: E402
+assert tm.mentions("@claude sonnet draft it") == {"claude": ("claude-sonnet-5-5", None)} and tm.mentions("@claude") == {"claude": (None, None)}
+assert tm.mentions("@codex high fix it") == {"codex": (None, "high")} and tm.mentions("`@codex x` and\n> @claude y") == {}
+assert tm.mentions("@claude kimi-k3 hi") == {"claude": (None, None)}, "@claude takes a Claude brain, nothing else"
+chain79 = lambda t: [[(sorted(f), a) for f, a in c] for c in tm.plan(t)]
+assert chain79("@sonnet a @haiku b") == [[(["haiku", "sonnet"], "@sonnet a @haiku b")]], "several seats, no arrow: side by side"
+assert len(tm.plan("@sonnet a\n@haiku b")) == 2, "a line each: independent chains"
+assert chain79("@claude draft the spec → @codex implement it -> @haiku review") == \
+    [[(["claude"], "@claude draft the spec"), (["codex"], "@codex implement it"), (["haiku"], "@haiku review")]]
+assert tm.plan(f"x {tm.MARK}{{}} -->") == [] and tm.plan("nobody here") == []
+assert tm.handoff("done\n\n@codex now ship it", "claude")[0][0][0] == {"codex": (None, None)}
+assert tm.handoff("done\n@codex more", "codex") == [], "no one hands off to itself"
+assert tm.handoff("I'd ask @codex later. Bye", "x") == [], "a mention mid-sentence is just a mention"
+
+# codex_clone / codex_push against a real bare repo: the seat's token rides the URL and is left out of .git/config
+_b79 = _tf79.mkdtemp()
+_e79 = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
+_sp79.run(["git", "init", "-q", "--bare", "-b", "main", f"{_b79}/o/r.git"], check=True)
+_sp79.run(["git", "clone", "-q", f"{_b79}/o/r.git", f"{_b79}/seed"], check=True, capture_output=True)
+Path(f"{_b79}/seed/README.md").write_text("hi\n")
+for _c79 in (["add", "."], ["commit", "-qm", "seed"], ["push", "-q", "origin", "HEAD:main"]):
+    _sp79.run(["git", *_c79], cwd=f"{_b79}/seed", check=True, env=_e79, capture_output=True)
+_srv79, tm.SERVER = tm.SERVER, f"file://{_b79}"
+assert tm._seat_url("ct") == f"file://{_b79}/o/r.git", "file:// (tests) has no credentials to carry"
+_d79 = tm.codex_clone("ct")
+assert (Path(_d79) / "README.md").read_text() == "hi\n" and "ct" not in (Path(_d79) / ".git" / "config").read_text()
+Path(_d79, "new.txt").write_text("x\n")
+_sp79.run(["git", "add", "-A"], cwd=_d79, check=True, capture_output=True)
+_sp79.run(["git", "-c", "user.name=codex", "-c", "user.email=c@c", "commit", "-qm", "codex: x"], cwd=_d79, check=True, capture_output=True)
+tm.codex_push(_d79, "ct", "codex/issue-5-x")
+assert "new.txt" in _sp79.run(["git", "--git-dir", f"{_b79}/o/r.git", "ls-tree", "-r", "--name-only", "codex/issue-5-x"],
+                              capture_output=True, text=True).stdout
+tm.SERVER = "https://forge.test"
+assert tm._seat_url("ct") == "https://x-access-token:ct@forge.test/o/r.git", "the seat's own token, so the push is its user's"
+tm.SERVER = _srv79
+
+
+class MWorld(ClaudeWorld):
+    """ClaudeWorld that keeps who posted what (comments by token, PRs by token) and answers each Claude call from `say`."""
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw); self.by, self.prs_made, self.say = [], [], []
+    def venice(self, body):
+        return {"choices": [{"message": {"role": "assistant", "content": self.say.pop(0)}}]}
+    def http(self, method, url, token, body=None, timeout=0, headers=None):
+        path = url.replace(tm.GH, "")
+        if method == "POST" and path.endswith("/comments"):
+            self.by.append((int(path.split("/")[-2]), token, body["body"]))
+            if getattr(self, "refuse_seat_comments", False) and token.endswith("-tok"):
+                raise RuntimeError(f"POST {path} -> 403: user is not allowed to comment")
+        if method == "POST" and path == "/repos/o/r/pulls": self.prs_made.append((token, body))
+        if method == "GET" and path.endswith("/comments?limit=30"): return self.comments.get(int(path.split("/")[-2]), [])
+        return super().http(method, url, token, body, timeout, headers)
+
+
+# a stand-in for the codex CLI: it records how it was called and plays a scripted run
+bin79, _path79 = _tf79.mkdtemp(), os.environ["PATH"]
+Path(bin79, "codex").write_text('''#!/bin/sh
+out=""; args=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output-last-message) out="$2";; esac
+  args="$args $1"; shift
+done
+echo "$args" > "$FAKE_LOG"; env > "$FAKE_LOG.env"; cat > "$FAKE_LOG.prompt"
+[ -n "$FAKE_SLEEP" ] && sleep "$FAKE_SLEEP"
+[ -n "$FAKE_WRITE" ] && echo hi > "$FAKE_WRITE"
+echo '{"type":"turn.completed","usage":{"input_tokens":100,"cached_input_tokens":10,"output_tokens":20}}'
+printf '%s' "$FAKE_REPLY" > "$out"
+''')
+os.chmod(bin79 + "/codex", 0o755)
+os.environ.update(PATH=bin79 + os.pathsep + _path79, FAKE_LOG=bin79 + "/log", FAKE_SLEEP="", FAKE_WRITE="", FAKE_REPLY="")
+clones79, pushed79 = [], []
+def clone79(token):
+    """codex_clone without a forge: a fresh git repo with one commit, remembering which token asked for it."""
+    d = _tf79.mkdtemp(prefix="fake-clone-"); clones79.append(token)
+    _sp79.run(["git", "init", "-q"], cwd=d, check=True, capture_output=True)
+    _sp79.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q", "--allow-empty", "-m", "init"], cwd=d, check=True, capture_output=True)
+    return d
+tm.codex_clone = clone79
+tm.codex_push = lambda d, token, branch: pushed79.append(
+    (token, branch, _sp79.run(["git", "log", "-1", "--format=%an|%s"], cwd=d, capture_output=True, text=True).stdout.strip()))
+
+def mention79(w, body, login="owner", env=None, number=5):
+    for k in [k for k in os.environ if k.startswith("TIME_")]: os.environ.pop(k)
+    os.environ.update({"ANTHROPIC_API_KEY": "ak", "TIME_SEAT_CLAUDE": "claude-tok", "TIME_SEAT_CODEX": "codex-tok", **(env or {})})
+    tm.LEDGER.clear(); tm._ledger_files.clear(); tm._trust.clear(); tm.http = w.http; tm.think = real_think
+    ev = _tf79.NamedTemporaryFile("w", suffix=".json", delete=False)
+    json.dump({"issue": {"number": number, "title": "T", "body": "b", "user": {"login": "owner"}},
+               "comment": {"user": {"login": login}, "body": body}}, ev); ev.close()
+    os.environ["GITHUB_EVENT_PATH"] = ev.name
+    try: tm.cmd_mention()
+    finally: os.unlink(ev.name)
+    return w
+
+# a trusted @codex runs the CLI in a checkout, as codex: pushes its commit, opens the PR, posts the result, all with codex's token
+os.environ.update(FAKE_REPLY="Added hi.txt.", FAKE_WRITE="hi.txt")
+n0 = len(sent)
+w = mention79(MWorld([]), "@codex add hi.txt please")
+assert clones79 == ["codex-tok"] and len(pushed79) == 1 and pushed79[0][0] == "codex-tok" and pushed79[0][1].startswith("codex/issue-5-"), (clones79, pushed79)
+assert pushed79[0][2].startswith("codex|codex: T"), "the work is committed as codex"
+assert len(w.prs_made) == 1 and w.prs_made[0][0] == "codex-tok" and w.prs_made[0][1]["head"] == pushed79[0][1] and w.prs_made[0][1]["base"] == "main"
+assert len(w.by) == 1 and w.by[0][:2] == (5, "codex-tok") and "Added hi.txt." in w.by[0][2] and "Opened PR #42" in w.by[0][2], w.by
+assert "<sub>codex via Time · codex</sub>" in w.by[0][2] and w.by[0][2].startswith("@owner ") and tm.MARK in w.by[0][2] and len(sent) == n0
+args79 = open(bin79 + "/log").read()
+assert "exec --sandbox workspace-write --json -C " in args79 and args79.rstrip().endswith("-") and "--output-last-message" in args79
+assert "add hi.txt please" in open(bin79 + "/log.prompt").read()
+env79 = open(bin79 + "/log.env").read()
+assert not any(x in env79 for x in ("codex-tok", "TIME_SEAT", "ANTHROPIC_API_KEY", "LANGFUSE_")), "the seat's hands never see Time's secrets"
+assert [(r["model"], r["in"], r["out"], r["usd"], r["pool"], r.get("launch")) for r in tm.LEDGER] == [("codex", 100, 20, None, "codex", 1)], tm.LEDGER
+
+# a stranger's mention does nothing: no run, no clone, no post, no spend
+clones79.clear(); pushed79.clear(); n0 = len(sent)
+w = mention79(MWorld([]), "@codex delete everything @claude too", login="stranger")
+assert w.by == [] and w.posted == [] and clones79 == [] and len(sent) == n0 and tm.LEDGER == []
+
+# a reply that ends by mentioning another seat is a handoff: codex's reply goes to claude, who answers as claude (opus by default)
+os.environ.update(FAKE_REPLY="Nothing to change.\n\n@claude summarise this for the log", FAKE_WRITE="")
+pushed79.clear(); n0 = len(sent)
+w = MWorld([]); w.say = ["The summary."]
+w = mention79(w, "@codex look at the thing")
+assert [(b[0], b[1]) for b in w.by] == [(5, "codex-tok"), (5, "claude-tok")] and pushed79 == [] and w.prs_made == [], w.by
+assert "The summary." in w.by[1][2] and "<sub>claude via Time · claude-opus-5-5</sub>" in w.by[1][2]
+assert sent[n0][2]["model"] == "claude-opus-5-5" and "Nothing to change." in json.dumps(sent[n0][2]), "claude reads codex's reply"
+assert "# README.md" in json.dumps(sent[n0][2]), "the repo context Time hands a reviewer"
+assert [r["model"] for r in tm.LEDGER] == ["codex", "claude-opus-5-5"] and tm.LEDGER[1]["usd"] == 0.044 and tm.LEDGER[0].get("launch") == 1
+
+# an arrow chain runs stage by stage with no human between: claude (sonnet) -> codex -> haiku, each reading what came before
+os.environ.update(FAKE_REPLY="Implemented the spec.")
+n0 = len(sent); w = MWorld([]); w.say = ["Spec: do X.", "Reviewed: fine."]
+w = mention79(w, "@claude sonnet draft the spec → @codex implement it → @haiku review")
+assert [b[1] for b in w.by] == ["claude-tok", "codex-tok", "gh"], [b[1] for b in w.by]  # haiku has no seat token: Time posts
+assert "Spec: do X." in w.by[0][2] and "Implemented the spec." in w.by[1][2] and "Reviewed: fine." in w.by[2][2]
+assert [s[2]["model"] for s in sent[n0:]] == ["claude-sonnet-5-5", "claude-haiku-5-5"]
+assert "Spec: do X." in open(bin79 + "/log.prompt").read() and "Implemented the spec." in json.dumps(sent[-1][2])
+assert [r["model"] for r in tm.LEDGER] == ["claude-sonnet-5-5", "codex", "claude-haiku-5-5"]
+
+# several seats on separate lines run in parallel (neither waits on the other); no arrow, no ordering promise
+n0 = len(sent); w = MWorld([]); w.say = ["from sonnet", "from haiku"]
+w = mention79(w, "@sonnet look\n@haiku look too")
+assert sorted(s[2]["model"] for s in sent[n0:]) == ["claude-haiku-5-5", "claude-sonnet-5-5"] and len(w.by) == 2
+
+# a ping-pong between two seats stops at TIME_HANDOFF_MAX runs; a seat never hands off to itself
+os.environ.update(FAKE_REPLY="again\n@claude your turn")
+w = MWorld([]); w.say = ["back\n@codex again"] * 5
+w = mention79(w, "@codex start", env={"TIME_HANDOFF_MAX": "3"})
+assert [b[1] for b in w.by] == ["codex-tok", "claude-tok", "codex-tok"], [b[1] for b in w.by]
+os.environ.update(FAKE_REPLY="ok\n@codex more")
+assert len(mention79(MWorld([]), "@codex go").by) == 1
+
+# the wall-clock cap trips cleanly: the run is killed, nothing is pushed, one launch is booked, the thread is told
+os.environ.update(FAKE_SLEEP="30", FAKE_REPLY="never", FAKE_WRITE="late.txt"); pushed79.clear()
+t079 = _t79.monotonic()
+w = mention79(MWorld([]), "@codex take your time", env={"TIME_SEAT_RUN_MINUTES": "0.03"})
+assert _t79.monotonic() - t079 < 15 and pushed79 == [] and w.prs_made == []
+assert len(w.by) == 1 and w.by[0][1] == "codex-tok" and "wall-clock cap" in w.by[0][2] and "TIME_SEAT_RUN_MINUTES" in w.by[0][2], w.by
+assert [(r["model"], r.get("launch")) for r in tm.LEDGER] == [("codex", 1)]
+os.environ.update(FAKE_SLEEP="", FAKE_WRITE="")
+os.environ.pop("TIME_SEAT_RUN_MINUTES"); assert tm.run_minutes() == 15, "the default cap"
+os.environ["TIME_SEAT_RUN_MINUTES"] = "x"; assert tm.run_minutes() == 15, "a bad value falls back to it"
+os.environ.pop("TIME_SEAT_RUN_MINUTES")
+assert tm.handoff_max() == 6
+os.environ["TIME_HANDOFF_MAX"] = "x"; assert tm.handoff_max() == 6; os.environ.pop("TIME_HANDOFF_MAX")
+
+# no token / no key / a spent budget: the seat says so instead of running
+w = mention79(MWorld([]), "@codex hi", env={"TIME_SEAT_CODEX": ""})
+assert "no TIME_SEAT_CODEX" in w.by[0][2] and w.by[0][1] == "gh" and tm.LEDGER == []
+w2 = MWorld([], ledger=[{"at": iso(), "model": "claude-opus-5-5", "usd": 6}]); clones79.clear()
+w2 = mention79(w2, "@codex hi", env={"TIME_DAILY_USD": "5"})
+assert "can't answer yet" in w2.by[0][2] and "cap" in w2.by[0][2] and clones79 == []
+# a seat whose token Gitea refuses still gets its reply out, as Time
+os.environ.update(FAKE_REPLY="fine", FAKE_WRITE="")
+w3 = MWorld([]); w3.refuse_seat_comments = True
+w3 = mention79(w3, "@codex hi")
+assert [b[1] for b in w3.by] == ["codex-tok", "gh"] and "fine" in w3.by[1][2], w3.by
+for k in [k for k in os.environ if k.startswith(("TIME_", "FAKE_"))]: os.environ.pop(k)
+os.environ["PATH"] = _path79
+tm.LEDGER.clear(); tm._ledger_files.clear()
+print("ALL OK 79 handoffs")
+
 # git_commit against a real bare repo: create a branch, write, append twice; no token in .git/config or errors
 import subprocess as _gsp, tempfile as _gtf
 _g = _gtf.mkdtemp(); _env = {**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t", "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"}
@@ -1444,7 +1623,7 @@ beats80 = [{"beat": "astra", "router": "live", "at": "2026-10-17T13:13:00Z", "pi
            {"beat": "astra", "router": "live", "at": "2026-10-18T13:13:00Z", "picked": [{"n": 5, "kind": "feature"}, "junk"]}]
 assert rt.last_picked(beats80) == {"feature": "2026-10-18"}, "live picks only"
 t80 = rt.table(r80, rt.pick(r80, live80, 10.0, 2), "dry")
-assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "not wired" in t80
+assert "| 1 | #2 Fix the docs |" in t80 and "lined up" in t80 and "**would queue**" in t80 and "split" in t80 and "router mode" in t80
 assert "**queued today**" in rt.table(r80, rt.pick(r80, live80, 10.0, 2), "live")
 # Astra's router tick: dry shows the ranking and touches nothing; live queues the picks and writes the new cards unqueued
 aspec = importlib.util.spec_from_file_location("astra80", Path(__file__).resolve().parent / "astra.py")
@@ -1547,6 +1726,98 @@ astra.tm.pools, astra.tm.allowance, astra.tm.pool_spent = real175[:3]
 if real175[4] is None: os.environ.pop("TIME_WORKER", None)
 else: os.environ["TIME_WORKER"] = real175[4]
 assert astra.parse("x {bad} y {\"a\": 1}") == {"a": 1} and astra.parse("") == {}
+# ventures through the router (#170): "start a new venture" is actionable only once the loop is in router mode, and a
+# live venture people signed up for is a "v2 of <venture>" candidate
+assert rt.new_venture("router")["actionable"] and rt.new_venture("router")["why_not"] == ""
+assert rt.new_venture(" Router ")["actionable"], "the mode is read the way a variable arrives"
+assert not rt.new_venture("on")["actionable"] and not rt.new_venture("off")["actionable"] and not rt.new_venture("")["actionable"]
+assert "TIME_VENTURE_MODE" in rt.new_venture("off")["why_not"] and rt.new_venture("router")["n"] is None
+reg170 = {"ventures": [{"slug": "loot-drop", "name": "Loot Drop", "status": "live", "signups": 3, "one_liner": "pick a drop", "version": 1},
+                       {"slug": "nobody", "name": "Nobody", "status": "live", "signups": 0},
+                       {"slug": "dead", "name": "Dead", "status": "killed", "signups": 9},
+                       {"slug": "bad", "name": "Bad", "status": "live", "signups": "many"},
+                       {"name": "No slug", "status": "live", "signups": 4}, "junk"]}
+v2s170 = rt.v2_candidates(reg170)
+assert [c["title"] for c in v2s170] == ["v2 of Loot Drop (3 signups)"], "only a live venture with signups, shown with them"
+assert v2s170[0]["kind"] == "venture" and v2s170[0]["actionable"] and v2s170[0]["n"] is None and v2s170[0]["next_v"] == 2
+assert "ventures/loot-drop/" in v2s170[0]["body"] and "pick a drop" in v2s170[0]["body"]
+assert rt.v2_candidates({}) == [] and rt.v2_candidates({"ventures": None}) == []
+assert rt.v2_candidates({"ventures": [{"slug": "v9", "name": "V9", "status": "live", "signups": 2, "version": 9}]})[0]["next_v"] == 10
+# Astra, live: a picked new venture dispatches venture.yml with start=true and is never queued as a card; a picked v2
+# posts the venture's own open card, or writes and queues one against gh-pages
+real170 = (astra.tm.gh, astra.tm.default_branch, os.environ.get("TIME_VENTURE_MODE"))
+astra.tm.issues = lambda q: closed80 if q.startswith("state=closed") else open80 + [iss80(57, "Astra log", labels=["astra"])]
+astra.tm.default_branch = lambda: "main"
+calls170 = []
+def gh170(method, path, body=None, **k):
+    """gh80, plus the registry on the Pages branch and a note of every workflow Astra dispatches."""
+    if "/actions/workflows/" in path:
+        calls170.append((method, path, body))
+        return {}
+    if "ventures/ventures.json" in path:
+        assert f"ref={astra.PAGES_BRANCH}" in path, path
+        return {"content": _b8172.b64encode(json.dumps(reg170).encode()).decode()}
+    return gh80(method, path, body, **k)
+astra.tm.gh = gh170
+live170 = rt.config('{"mode": "live"}')
+# the board's own cards, judged at what the unjudged default would have scored them anyway: a venture is picked from a
+# ranking, so the reply has to judge enough of the board to be one (#211's floor), and this leaves the ranking itself
+# exactly as it is — each case below judges the venture candidates it is about.
+floor170 = {k: {"kind": "feature", "value": 3, "size": "M"} for k in ("#1", "#2", "#5", "#7", "#9")}
+def tick170(assess, mode="router", cfg=None):
+    for lst in (said80, labelled80, made80, calls170): lst.clear()
+    if mode: os.environ["TIME_VENTURE_MODE"] = mode
+    else: os.environ.pop("TIME_VENTURE_MODE", None)
+    astra.tm.think = lambda seat, a, b, system, user: json.dumps(
+        {"note": "n", "assess": [dict(v, key=k) for k, v in (floor170 | assess).items()], "new": []})
+    assert astra.router_tick(cfg or live170, "opus", 57, "ctx", [], 1, 0) == 0
+new170 = {"venture:new": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(new170)
+assert calls170 == [("POST", f"/repos/{astra.tm.REPO}/actions/workflows/venture.yml/dispatches",
+                     {"ref": "main", "inputs": {"start": "true"}})], calls170
+assert not made80 and not labelled80, "a new venture is never queued as a card: there is no card"
+assert "Venture: new venture: dispatched venture.yml with start=true" in said80[-1][1], said80[-1][1]
+assert said80[-1][2]["queued"] == 0 and said80[-1][2]["picked"] == [{"n": None, "kind": "venture"}], said80[-1][2]
+tick170(new170, mode="on")
+assert not calls170 and not made80 and "router mode" in said80[-1][1], "not in router mode: not actionable, nothing dispatched"
+assert labelled80 == [(7, "queued")], "and the day's pick goes to the best card on the board instead"
+tick170(new170, cfg=rt.config('{"mode": "dry"}'))
+assert not calls170 and "it would queue: Start a new venture" in said80[-1][1] and said80[-1][2]["would"] == [], said80[-1][1]
+v2a170 = {"venture:new": {"kind": "venture", "value": 1, "size": "S"}, "venture:v2:loot-drop": {"kind": "venture", "value": 5, "size": "S"}}
+tick170(v2a170)
+assert not calls170, "a v2 starts no new venture"
+assert [m[0] for m in made80] == ["Loot Drop v2: build the next version from what signups asked for"], made80
+assert "Base: gh-pages" in made80[0][1] and "DONE:" in made80[0][1] and "ventures/loot-drop/" in made80[0][1]
+assert labelled80 == [(91, "queued")] and "Loot Drop v2: no card yet, wrote and queued #91" in said80[-1][1], said80[-1][1]
+open80.append(iss80(77, "Venture 2026-10-19: Loot Drop v2", labels=["venture"]))
+tick170(v2a170)
+open80.pop()
+assert not calls170 and not made80 and "Loot Drop v2: already on #77" in said80[-1][1], said80[-1][1]
+astra.tm.gh, astra.tm.default_branch = real170[:2]
+if real170[2] is None: os.environ.pop("TIME_VENTURE_MODE", None)
+else: os.environ["TIME_VENTURE_MODE"] = real170[2]
+# the loop (#170): TIME_VENTURE=router writes no daily card and starts one only when asked; off ignores the input
+vspec170 = importlib.util.spec_from_file_location("vt170", Path(__file__).resolve().parent / "venture.py")
+vt170 = importlib.util.module_from_spec(vspec170); vspec170.loader.exec_module(vt170)
+cards170 = []
+vt170.registry = lambda: {"ventures": []}
+vt170.ack_signups = vt170.refresh_daily = vt170.refresh_backends = lambda reg: None
+vt170.venture_cards = vt170.batch_cards = lambda state="open", n=30: []
+vt170.new_card = lambda title: cards170.append(title) or {"number": len(cards170), "labels": [{"name": "venture"}]}
+vt170.is_due = lambda *a: False
+vt170.comments_of = lambda n: []
+def loop170(mode, start=""):
+    cards170.clear()
+    for k, v in (("TIME_VENTURE", mode), ("TIME_VENTURE_START", start)):
+        if v: os.environ[k] = v
+        else: os.environ.pop(k, None)
+    assert vt170.tick() == 0
+loop170("router"); assert cards170 == [], "router: no daily card on the schedule"
+loop170("router", "1"); assert cards170 == [f"Venture {vt170.today()}"], cards170
+loop170("off", "1"); assert cards170 == [], "off: the start input does nothing, as before"
+loop170("on"); assert cards170 == [f"Venture {vt170.today()}"], "on: the daily card, as before"
+os.environ.pop("TIME_VENTURE", None); os.environ.pop("TIME_VENTURE_START", None)
+print("ALL OK 170")
 # the heartbeat promotes queued cards in the live ranking's order, oldest first without one
 real80 = (tm.issues, tm.gh, tm.label, tm.unlabel)
 moved80 = []
@@ -1589,6 +1860,11 @@ assert tm.promote_next() == [], "a card sent back to the worker is moving again:
 assert tm.moving(iss80(22, "retried")) and tm.moving(iss80(99, "no comments yet"))
 ready135[22].append(beat135("needs-human"))
 assert not tm.moving(iss80(22, "parked again"))
+# a `parked` beat (#277: the branch is gone from under an open PR) is a wait on a person too, so it holds no slot
+ready135[22].append(beat135("parked"))
+assert tm.stall_of(iss80(22, "its branch is gone"))["beat"] == "parked" and not tm.moving(iss80(22, "x"))
+moved80.clear()
+assert tm.promote_next() == [10] and moved80 == [(10, "ready")], "a card waiting for its branch back frees its slot"
 # 245 the cap is a cap: never more cards in flight than TIME_PARALLEL, whatever is queued and ready to go
 ready135 = {20: [beat135("dispatched")], 21: [beat135("dispatched")], 22: [beat135("dispatched")]}
 for cap, want in [("1", []), ("2", []), ("4", [10]), ("5", [10, 11])]:
@@ -1635,6 +1911,66 @@ w = run(w245(flight=(1, 2), dep="closed"), {**K, "TIME_PARALLEL": "2"})
 assert w.issues[3]["labels"] == ["queued"] and w.launched == [], "the cap is full: #3 stays queued"
 os.environ.pop("TIME_PARALLEL")
 print("ALL OK 245")
+
+# 247 a card waiting on a person holds only the cards that (transitively) wait on it: every other card still starts,
+# and the spec hears once what Time is waiting on
+real247 = (tm.issues, tm.gh, tm.label, tm.unlabel)
+iss247 = lambda n, title, body="DONE: x", labels=(), state="open": {
+    "number": n, "title": title, "body": body, "state": state, "labels": [{"name": l} for l in labels]}
+beat247 = lambda b, at="2026-10-28T09:00:00Z", **kw: {
+    "user": {"login": tm.TIME_BOT}, "created_at": at, "body": "x\n" + tm.MARK + json.dumps({"beat": b, **kw}) + " -->"}
+# #244 is parked at needs-human; #245 waits on it and #246 waits on #245; #250 waits on nobody
+ready247 = [iss247(244, "Step one", body="Part of #242 (step 1/3).\n\nDONE: a", labels=["ready"])]
+queued247 = [iss247(245, "Step two", body="Part of #242 (step 2/3). Depends on #244.\n\nDONE: b", labels=["queued"]),
+             iss247(246, "Step three", body="Part of #242 (step 3/3). Depends on #245.\n\nDONE: c", labels=["queued"]),
+             iss247(250, "Something else", labels=["queued"])]
+cs247 = {244: [beat247("dispatched"), beat247("needs-human", pr=301)]}
+moved247, got247 = [], []
+
+
+def gh247(method, path, body=None, **k):
+    if "/comments" in path:
+        n = int(path.split("/issues/")[1].split("/")[0])
+        if method != "POST":
+            return cs247.get(n, [])
+        got247.append((n, body["body"]))
+        cs247.setdefault(n, []).append({"user": {"login": tm.TIME_BOT}, "created_at": "2026-10-28T10:00:00Z", "body": body["body"]})
+        return {}
+    n = int(path.rsplit("/issues/", 1)[1])
+    return next((c for c in ready247 + queued247 if c["number"] == n), {"number": n, "state": "closed"})
+
+
+tm.issues = lambda q: {"state=open&labels=ready": ready247, "state=open&labels=queued": queued247,
+                       "state=open&labels=astra": []}[q]
+tm.gh, tm.label, tm.unlabel = gh247, lambda n, name: moved247.append((n, name)), lambda n, name: None
+assert tm.deps_of(queued247[1]) == [245] and tm.deps_of(queued247[2]) == [], "Depends on #N, without repeats"
+assert tm.dependents(244, queued247) == [245, 246], "#246 waits on #244 through #245"
+assert tm.dependents(250, queued247) == [] and tm.dependents(244, []) == []
+assert tm.waits_on(queued247[0], {c["number"]: c for c in ready247}) == [244], "an open dependency is waited on"
+assert tm.promote_next() == [250] and moved247 == [(250, "ready")], "the parked card holds #245 and #246, not #250"
+assert len(got247) == 1 and got247[0][0] == 242, got247
+assert "waiting on a person for #244 (Step one)" in got247[0][1] and "`needs-human`" in got247[0][1] and "PR #301" in got247[0][1]
+assert "Held behind it: #245, #246" in got247[0][1] and "doesn't depend on #244 keeps moving" in got247[0][1]
+assert tm.beats_of(cs247[242])[-1] == {"beat": "andon", "card": 244, "since": "2026-10-28T09:00:00Z",
+                                       "behind": [245, 246], "at": "2026-10-28T10:00:00Z"}
+# the next beat says it no more than once, and the cards behind the stall stay queued
+ready247.append(queued247.pop())      # #250 is moving now
+cs247[250] = [beat247("dispatched")]
+moved247.clear()
+assert tm.promote_next() == [] and moved247 == [] and len(got247) == 1, "one note per stall, #245 and #246 still held"
+# the same card parked again (a retry that stalled too) is said again
+cs247[244] += [beat247("dispatched", at="2026-10-28T11:00:00Z"), beat247("needs-human", at="2026-10-28T12:00:00Z", pr=301)]
+assert tm.promote_next() == [] and len(got247) == 2 and "#244" in got247[1][1], got247
+assert tm.beats_of(cs247[242])[-1]["since"] == "2026-10-28T12:00:00Z"
+# a card that recovers frees the cards behind it: #244 closed, #245 starts; a parked card with no spec gets no note
+cs247[244].append(beat247("merged", at="2026-10-28T13:00:00Z"))
+ready247[:] = [iss247(244, "Step one", body="Part of #242.\n\nDONE: a", state="closed"),
+               iss247(260, "A loose card", labels=["ready"])]
+cs247[260] = [beat247("error", at="2026-10-28T12:30:00Z")]
+moved247.clear()
+assert tm.promote_next() == [245] and moved247 == [(245, "ready")] and len(got247) == 2, "no spec, no note"
+tm.issues, tm.gh, tm.label, tm.unlabel = real247
+print("ALL OK 247")
 
 # 172 the router's outcomes: a live pick settles into one line (housekeeping writes it; test_housekeeping.py checks the
 # sweep), and Astra's log summarises what each kind has returned over the table

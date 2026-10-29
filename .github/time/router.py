@@ -5,10 +5,17 @@ judgments into one ranked list, in arithmetic anyone can check, and picks from t
 promotes queued cards in the same order instead of oldest first.
 
 A candidate is an open card a worker can take (a `DONE:` line; not a parent, not a human's, not the venture loop's
-own), work with no card yet that the factory could start (a new venture, or an optimization the factory's own records
-show: see below), or a card of the spine (`teahubxyz/teahub`: Tea MCP, the Pages server, the Gitea look), which is
-ranked and shown but never queued, since Time's worker builds in this repo only (#173). Each has a kind: venture,
-feature, refinement or optimization.
+own), work with no card yet that the factory could start (a new venture, a v2 of a live venture people signed up
+for, or an optimization the factory's own records show: see below), or a card of the spine (`teahubxyz/teahub`: Tea
+MCP, the Pages server, the Gitea look), which is ranked and shown but never queued, since Time's worker builds in this
+repo only (#173). Each has a kind: venture, feature, refinement or optimization.
+
+Ventures (#170): "start a new venture" is actionable only once the venture loop is in router mode (`TIME_VENTURE=router`,
+which Astra reads as `TIME_VENTURE_MODE`); under `on` or `off` the loop decides for itself, so the candidate is shown
+with what's missing instead. Every live venture in `ventures/ventures.json` with signups is also a "v2 of <venture>"
+candidate, shown with its signups. Both have no card here (`n` is None), so no pick, no cloud pick and no promotion
+order reaches one: Astra starts them itself (venture.yml dispatched with `start=true` for a new venture, the venture's
+own v2 card for a v2).
 
     score = weight[kind] x restless(kind) x age x (value + 0.5 x unblocks) / size
 
@@ -64,7 +71,9 @@ SPINE_WHY_NOT = "spine: not queued (Time builds in this repo only)"
 NEW_VENTURE = {"key": "venture:new", "n": None, "title": "Start a new venture: research, pick, build and launch one page",
                "body": "The venture loop (venture.py): one venture, researched and picked by the lead, built and judged.",
                "labels": [], "lined_up": False, "actionable": False, "kind": "venture", "unblocks": 0, "created": "",
-               "why_not": "not wired to the router yet; the venture loop is paused (TIME_VENTURE=off)"}
+               "why_not": "the venture loop isn't in router mode (TIME_VENTURE=router, which Astra reads as TIME_VENTURE_MODE)"}
+VENTURE_MODE = "router"   # the one TIME_VENTURE mode in which the router, not the schedule, starts a venture
+VENTURE_KEY = "venture:"  # the key of a candidate with no card here that Astra starts itself (venture:new, venture:v2:<slug>)
 
 
 def _num(v, default: float, lo: float = 0.0, hi: float = 100.0) -> float:
@@ -154,6 +163,37 @@ def spine(issues: list[dict], prefix: str = "teahub") -> list[dict]:
                     "kind": guess_kind(i.get("title") or "", body, labels), "unblocks": 0,
                     "created": str(i.get("created_at") or ""), "why_not": SPINE_WHY_NOT})
     return out
+
+
+def new_venture(mode: str) -> dict:
+    """"Start a new venture": actionable only when Astra is told the loop is in router mode, since only then does the
+    loop wait to be asked. Its size and cost come from the seat, like any card's."""
+    hot = str(mode or "").strip().lower() == VENTURE_MODE
+    return {**NEW_VENTURE, "actionable": True, "why_not": ""} if hot else dict(NEW_VENTURE)
+
+
+def v2_candidates(reg: dict) -> list[dict]:
+    """A "v2 of <venture>" for every live venture people signed up for, from `ventures/ventures.json` on the Pages
+    branch: the studio's next version of something that already got a signal. No signups, no candidate — a v2 of a page
+    nobody asked for is work the factory has no reason to do. Like a new venture it has no card here (`n` is None)."""
+    out = []
+    for v in reg.get("ventures") or []:
+        if not isinstance(v, dict) or v.get("status") != "live" or not v.get("slug"):
+            continue
+        try:
+            signups = int(v.get("signups") or 0)
+        except (TypeError, ValueError):
+            continue
+        if signups <= 0:
+            continue
+        name = _txt(v.get("name") or v["slug"], 60)
+        out.append({**NEW_VENTURE, "key": f"venture:v2:{v['slug']}", "title": f"v2 of {name} ({signups} signups)",
+                    "body": _txt(f"{v.get('one_liner', '')} Build the next version of ventures/{v['slug']}/ from what its "
+                                 f"{signups} signup(s) asked for.", 400),
+                    "actionable": True, "why_not": "", "slug": v["slug"], "name": name, "signups": signups,
+                    "next_v": int(_num(v.get("version"), 1.0, 1.0, 99.0)) + 1})
+    return out
+
 
 
 # ---------- optimization candidates from the factory's own records (#171) ----------
@@ -492,7 +532,7 @@ def table(ranked: list[dict], picked: list[dict], mode: str, limit: int = 15, cl
         lane = "cloud lane" if CLOUD in r.get("labels", ()) else "lined up" if r["lined_up"] else ""
         if r["key"] in chosen:   # a candidate with no card (an `opt:` finding) is written as one instead of being queued
             note = f"**written as #{r['written']}**" if r.get("written") else \
-                f"**{mark}**" if r["n"] is not None else "**would be written as a card**"
+                "**would be written as a card**" if r["n"] is None and r["key"].startswith(OPT) else f"**{mark}**"
         elif r["key"] in sent:
             note = "**to the cloud today**" if mode == "live" else "**would go to the cloud**"
         else:
