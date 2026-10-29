@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TypingGame, summarizeRun } from '../src/game.js';
+import { TypingGame, letterStates, summarizeRun } from '../src/game.js';
 import { generateWords, normalizePassage } from '../src/words.js';
 
 function type(game, word, at, spacing = 100) {
@@ -46,6 +46,59 @@ test('an early space is an error and backspace can recover from it', () => {
   const result = game.result(1000);
   assert.equal(result.stats.correctChars, 2);
   assert.equal(result.stats.accuracy, 33.3);
+});
+
+const states = letters => letters.map(letter => letter.state);
+
+test('letter state is marked in place; backspace returns a wrong letter to pending', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'] });
+  assert.deepEqual(states(game.snapshot(0).letters), ['pending', 'pending', 'pending']);
+  type(game, 'cax', 0);
+  assert.deepEqual(states(game.snapshot(310).letters), ['correct', 'correct', 'incorrect']);
+  assert.equal(game.snapshot(310).errorIndex, 2);
+  game.press('Backspace', 400);
+  assert.deepEqual(states(game.snapshot(400).letters), ['correct', 'correct', 'pending']);
+  assert.equal(game.snapshot(400).errorIndex, -1);
+  game.press('t', 500);
+  assert.deepEqual(states(game.snapshot(500).letters), ['correct', 'correct', 'correct']);
+  // Space takes the next word from the queue with its own letters untouched.
+  game.press(' ', 600);
+  assert.deepEqual(states(game.snapshot(600).letters), ['pending', 'pending', 'pending']);
+  assert.equal(game.snapshot(600).word, 'dog');
+});
+
+test('keys typed past the end of a word are extra, never a letter of the word', () => {
+  const game = new TypingGame({ words: ['go', 'on'] });
+  type(game, 'gox', 0);
+  const state = game.snapshot(310);
+  assert.deepEqual(states(state.letters), ['correct', 'correct', 'extra']);
+  assert.deepEqual(state.letters.at(-1), { char: 'x', state: 'extra' });
+  assert.equal(state.errorIndex, 2);
+  assert.equal(state.correctPrefix, 2);
+  game.press('Backspace', 400);
+  assert.deepEqual(states(game.snapshot(400).letters), ['correct', 'correct']);
+});
+
+test('the last correct letter advances and the next word starts unmarked', () => {
+  const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless', advance: 'letter' });
+  type(game, 'ca', 0);
+  assert.deepEqual(states(game.snapshot(210).letters), ['correct', 'correct', 'pending']);
+  game.press('t', 300);
+  const state = game.snapshot(300);
+  assert.equal(state.word, 'dog');
+  assert.deepEqual(states(state.letters), ['pending', 'pending', 'pending']);
+  assert.equal(state.buffer, '');
+});
+
+test('letter state is a pure function of the word and the keys typed into it', () => {
+  assert.deepEqual(states(letterStates('cat', '')), ['pending', 'pending', 'pending']);
+  assert.deepEqual(states(letterStates('cat', 'cx')), ['correct', 'incorrect', 'pending']);
+  assert.deepEqual(states(letterStates('cat', 'cat')), ['correct', 'correct', 'correct']);
+  assert.deepEqual(letterStates('hi', 'hix'), [
+    { char: 'h', state: 'correct' }, { char: 'i', state: 'correct' }, { char: 'x', state: 'extra' }
+  ]);
+  assert.deepEqual(states(letterStates('', 'a')), ['extra']);
+  assert.deepEqual(letterStates('a'), [{ char: 'a', state: 'pending' }]);
 });
 
 test('last-letter mode advances immediately with the same word output scoring', () => {
