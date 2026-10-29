@@ -2796,3 +2796,8 @@ vt2.tm.Hands, vt2.tm.venice_work = real40
 got = dict((n, (x, y)) for n, x, y in seen40)
 assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].startswith("refused") and got[2][1] == "wrote", got
 
+
+# dojo: each agent-management kata's reference move passes its grader and doing nothing fails it (no model calls)
+_dj = importlib.util.spec_from_file_location("dojo_run", Path(__file__).resolve().parents[2] / "dojo" / "run.py")
+dojo = importlib.util.module_from_spec(_dj); _dj.loader.exec_module(dojo)
+assert dojo.selftest(tm) == 11
