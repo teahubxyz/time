@@ -100,6 +100,14 @@ def site_of(slug: str) -> str:
     return f"https://{slug}.{env('TIME_VENTURE_PAGES_DOMAIN', 'yolopreneur.lol')}/"
 
 
+def home_of(w: dict, reg: dict | None = None) -> str:
+    """The folder a venture lives in under ventures/ (and the subdomain it is served at): its own `home` or its registry
+    entry's (the owner renamed it), else its slug. The slug stays the key in beats, the registry and the signup form."""
+    if w.get("home"):
+        return w["home"]
+    return next((v["home"] for v in (reg or registry())["ventures"] if v.get("slug") == w["slug"] and v.get("home")), w["slug"])
+
+
 def studio_url() -> str:
     """The studio's list of ventures. Teahub serves the Pages branch's ventures/ folder at the Pages domain's root, so
     https://yolopreneur.lol/ is ventures/index.html (and yolopreneur.lol/backlog.json is ventures/backlog.json)."""
@@ -563,7 +571,7 @@ def signal_url(w: dict) -> str:
 
 
 def blob_url(w: dict, name: str) -> str:
-    return f"{tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{w['slug']}/{name}"
+    return f"{tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{home_of(w)}/{name}"
 
 
 BUILD_BODY = """Build and launch **{name}**: {one_liner}
@@ -676,7 +684,7 @@ preloaded sample never depends on them, and nobody has to sign in to use the fre
 
 
 def backend_brief(w: dict) -> str:
-    return BACKEND.format(url=w["url"], slug=w["slug"]) if w.get("backend") else ""
+    return BACKEND.format(url=w["url"], slug=home_of(w)) if w.get("backend") else ""
 
 
 def build_body(w: dict, plan: dict) -> str:
@@ -689,7 +697,7 @@ def build_body(w: dict, plan: dict) -> str:
              f"of the product that work." + (f" {w['prior_note']}" if w.get("prior_note") else "") + "\n") if w.get("prior") else ""
     return BUILD_BODY.format(name=w["name"], one_liner=w.get("one_liner", ""), for_whom=w.get("for_whom", ""),
                              page=w.get("page", ""), next=w.get("next", ""), positioning=plan["positioning"], prior=prior,
-                             slug=w["slug"], url=w["url"], cta=plan["primary_cta"], join=w["join"], rides=rides_txt or "   (none)",
+                             slug=home_of(w), url=w["url"], cta=plan["primary_cta"], join=w["join"], rides=rides_txt or "   (none)",
                              tiers="\n".join(tiers), repo=REPO, forge=tm.SERVER, signal=signal_url(w), backend=backend_brief(w))
 
 
@@ -888,15 +896,16 @@ def index_html(reg: dict) -> str:
     rows = []
     vs = sorted(reg["ventures"], key=lambda v: (v.get("planned", ""), v.get("card", 0)), reverse=True)
     for k, v in enumerate(vs):
-        home = v["url"] if v.get("backend") else site_of(v["slug"])  # its own subdomain; its own domain once it has a backend
+        h = home_of(v, reg)
+        home = v["url"] if v.get("backend") else site_of(h)  # its own subdomain; its own domain once it has a backend
         links = [f'<a href="{e(home)}">{e(urllib.parse.urlsplit(home).netloc)}</a>' if v.get("backend") else "",
                  f'<a href="{e(v["join"])}">Join early access</a>' if v.get("join") else "",
                  f'<a href="{tm.SERVER}/{REPO}/issues/{v["signal"]}">Signal #{v["signal"]}</a>' if v.get("signal") else "",
-                 f'<a href="{tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{e(v["slug"])}/LAUNCH.md">Launch plan</a>',
+                 f'<a href="{tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{e(h)}/LAUNCH.md">Launch plan</a>',
                  f'<a href="{tm.SERVER}/{REPO}/issues/{v["card"]}">Card #{v["card"]}</a>' if v.get("card") else ""]
         status = v.get("status", "building")
         since = f"since {v['launched']}" if v.get("launched") else f"planned {v.get('planned', '')}"
-        shot = (f'<a class="shot" href="{e(home)}"><img src="{e(site_of(v["slug"]))}shots/sheet.png" alt="{e(v.get("name", v["slug"]))} '
+        shot = (f'<a class="shot" href="{e(home)}"><img src="{e(site_of(h))}shots/sheet.png" alt="{e(v.get("name", v["slug"]))} '
                 f'at phone and desktop size" loading="lazy" onerror="this.parentNode.remove()"></a>') if v.get("launched") else ""
         rows.append(f"""<article class="row sheet"><div class="no">{len(vs) - k:03d}</div>
 <div><h2><a href="{e(home)}">{e(v.get('name', v['slug']))}</a></h2><p>{e(v.get('one_liner', ''))}</p>
@@ -955,7 +964,7 @@ def external_refs(text: str) -> list[str]:
 
 
 def check_page(w: dict, plan: dict) -> list[str]:
-    slug = w["slug"]
+    slug = home_of(w)
     page = pages_file(f"ventures/{slug}/index.html")
     if page is None:
         return [f"ventures/{slug}/index.html is missing"]
@@ -1088,7 +1097,7 @@ def judge_product(w: dict) -> tuple[list[str], str]:
 def judge(w: dict) -> dict:
     """Inference after the deterministic gates: does the output depend on the input, does the code do what's claimed (both
     are problems, and fix rounds), and how good is it as a product: {problems, verdict, score (1-10 or None), better}."""
-    slug = w["slug"]
+    slug = home_of(w)
     page = pages_file(f"ventures/{slug}/index.html") or ""
     code = "\n".join(re.findall(r"<script\b[^>]*>(.*?)</script>", page, re.S | re.I))
     for a in re.findall(r"<script\b[^>]*\bsrc\s*=\s*[\"']([^\"'#?]+\.js)", page, re.I):
@@ -1458,8 +1467,8 @@ def chans_md(chans: list[dict]) -> str:
 
 def true_drafts(w: dict, plan: dict, chair: str) -> list[dict]:
     """The chair rewrites the plan's launch drafts against what was built; the plan's drafts stand if that fails."""
-    readme = (pages_file(f"ventures/{w['slug']}/README.md") or "")[:4000]
-    html = pages_file(f"ventures/{w['slug']}/index.html") or ""
+    readme = (pages_file(f"ventures/{home_of(w)}/README.md") or "")[:4000]
+    html = pages_file(f"ventures/{home_of(w)}/index.html") or ""
     text = _s(re.sub(r"<script.*?</script>|<style.*?</style>|<[^>]+>", " ", html, flags=re.S | re.I), 3000)
     drafts = "\n\n".join(f"[{c['channel']}]\n{c['draft']}" for c in plan["launch_channels"])
     try:
@@ -1491,8 +1500,8 @@ def launch_post(w: dict, plan: dict, sheet: str | None, note: str) -> str:
     pic = f"\n\n<img src=\"{sheet}\" alt=\"{htmllib.escape(w['name'])} at phone and desktop size\" width=\"820\">" if sheet else ""
     return (f"🚀 **{w['name']}** is live: {w['url']}\n\n{plan['positioning']}\n\n"
             f"**Join early access:** [issue form]({w['join']}) · **Signal:** #{w['signal']} · "
-            f"**Plan:** [LAUNCH.md]({blob_url(w, 'LAUNCH.md')}) · **Code:** [ventures/{w['slug']}]"
-            f"({tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{w['slug']})\n\n"
+            f"**Plan:** [LAUNCH.md]({blob_url(w, 'LAUNCH.md')}) · **Code:** [ventures/{home_of(w)}]"
+            f"({tm.SERVER}/{REPO}/src/branch/{PAGES_BRANCH}/ventures/{home_of(w)})\n\n"
             f"| Tier | Price | For |\n|---|---|---|\n{tiers}\n\n"
             f"**7-day lines:** success at ≥{plan['success_signups']} signups ({plan['success_metric']}); kill at "
             f"≤{plan['kill_signups']} ({plan['kill_metric']}). Decision on {decide}.\n\n"
@@ -1503,7 +1512,8 @@ def launch_post(w: dict, plan: dict, sheet: str | None, note: str) -> str:
 
 def next_version(w: dict, asks: list[str], card: int) -> int:
     """Success: a new card that plans and builds the next version on the same page, shaped by what signups asked for."""
-    v2 = {**w, "version": int(w.get("version", 1)) + 1, "prior": f"ventures/{w['slug']}/index.html", "asks": asks[:12],
+    h = home_of(w)
+    v2 = {**w, **({"home": h} if h != w["slug"] else {}), "version": int(w.get("version", 1)) + 1, "prior": f"ventures/{h}/index.html", "asks": asks[:12],
           "page": f"{w.get('page', '')} Next: {w.get('next', '')}"}
     for k in ("join", "signal", "card", "url", "batch"):  # a v2 is its own venture, not held for its first batch
         v2.pop(k, None)
@@ -1582,7 +1592,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 w["slug"] = f"{w['slug']}-{n}"  # never overwrite another venture's page
             ensure_pages()
             w["card"] = n
-            w["url"] = w["pages"] = site_of(w["slug"])
+            w["url"] = w["pages"] = site_of(home_of(w))
             backend_note = give_backend(w)
             w["design"] = w.get("design") or PRODUCT_FIRST
             w["join"] = join_url(w)
@@ -1590,7 +1600,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             paid = [t["tier"] for t in plan["pricing"][1:]]
             w["join"] = join_url(w, paid[0] if paid else None)
             w["signal"] = signal_issue(w)["number"]
-            put_pages(f"ventures/{w['slug']}/LAUNCH.md", launch_md(w, plan, plans), f"venture {w['slug']}: launch plan")
+            put_pages(f"ventures/{home_of(w)}/LAUNCH.md", launch_md(w, plan, plans), f"venture {w['slug']}: launch plan")
             version = int(w.get("version", 1))
             entry = {"slug": w["slug"], "name": w["name"], "one_liner": w["one_liner"], "for_whom": w["for_whom"], "url": w["url"],
                      "pages": w["pages"], "join": w["join"], "signal": w["signal"], "card": n, "design": w["design"], "version": version}
@@ -1604,7 +1614,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 return "wait"
             w, plan = st["winner"], st["plan"]
             r = _build_on_pages({"number": n, "title": f"Launch {w['name']}", "body": build_body(w, plan)},
-                                BUILD_DONE.format(slug=w["slug"]), worker_spec(), root=f"ventures/{w['slug']}/")
+                                BUILD_DONE.format(slug=home_of(w)), worker_spec(), root=f"ventures/{home_of(w)}/")
             say(f"🔨 `{r['seat']}` built the launch page in {r['steps']} steps ({r['model']}). Checking it next.",
                 {"beat": "built", **keep, "fixes": 0, "seat": r["seat"], "model": r["model"]})
             return "heavy"
@@ -1613,7 +1623,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
             problems, sheet, note = check_page(w, plan), None, "browser pass not run"
             fixes, polish, j = int(st.get("fixes", 0)), [], {}
             if not problems:
-                problems, sheet, note = browser_check(w["slug"])
+                problems, sheet, note = browser_check(home_of(w))
             if not problems:  # the inference tier, only once the cheap gates pass
                 j = judge(w)
                 problems, note = j["problems"], f"{note}; {j['verdict']}"
@@ -1633,9 +1643,9 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                 # cost cascade: the cheap worker gets the first round; a failed round escalates to a stronger model
                 spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", ESCALATE)
                 r = _build_on_pages({"number": n, "title": f"Fix the {w['name']} launch page",
-                                     "body": FIX_BODY.format(name=w["name"], slug=w["slug"], problems=bullets, page=w.get("page", ""),
+                                     "body": FIX_BODY.format(name=w["name"], slug=home_of(w), problems=bullets, page=w.get("page", ""),
                                                              join=w["join"], signal=signal_url(w))},
-                                    "every check above passes", spec, root=f"ventures/{w['slug']}/")
+                                    "every check above passes", spec, root=f"ventures/{home_of(w)}/")
                 say(f"🔧 `{r['seat']}` ({r['model']}) worked on the fixes in {r['steps']} steps. Re-checking.",
                     {"beat": "built", **keep, "fixes": fixes + 1})
                 return "heavy"
@@ -1648,25 +1658,25 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
                     {"beat": "built", **keep, "fixes": fixes, "problems": polish, "polish": True, "score": j["score"]})
                 spec = worker_spec() if fixes == 0 else env("TIME_VENTURE_ESCALATE", ESCALATE)
                 r = _build_on_pages({"number": n, "title": f"Polish the {w['name']} launch page",
-                                     "body": POLISH_BODY.format(name=w["name"], slug=w["slug"], score=j["score"], bar=bar(),
+                                     "body": POLISH_BODY.format(name=w["name"], slug=home_of(w), score=j["score"], bar=bar(),
                                                                 problems=bullets, page=w.get("page", ""), join=w["join"],
                                                                 signal=signal_url(w))},
-                                    "every change above is made and every check still passes", spec, root=f"ventures/{w['slug']}/")
+                                    "every change above is made and every check still passes", spec, root=f"ventures/{home_of(w)}/")
                 say(f"🎨 `{r['seat']}` ({r['model']}) polished it in {r['steps']} steps. Re-checking.",
                     {"beat": "built", **keep, "fixes": fixes + 1})
                 return "heavy"
             plan = {**plan, "launch_channels": true_drafts(w, plan, drafter)}
             keep["plan"] = plan
-            md = pages_file(f"ventures/{w['slug']}/LAUNCH.md")
+            md = pages_file(f"ventures/{home_of(w)}/LAUNCH.md")
             if md and "## Launch channels" in md:
                 md = re.sub(r"(## Launch channels \(drafts; nothing is sent\)\n\n).*?(\n\n## 7-day lines)",
                             lambda m: m.group(1) + chans_md(plan["launch_channels"]) + m.group(2), md, flags=re.S)
-                put_pages(f"ventures/{w['slug']}/LAUNCH.md", md, f"venture {w['slug']}: launch drafts checked against the build")
+                put_pages(f"ventures/{home_of(w)}/LAUNCH.md", md, f"venture {w['slug']}: launch drafts checked against the build")
             shot = None
             if sheet:
-                res = put_pages(f"ventures/{w['slug']}/shots/sheet.png", sheet, f"venture {w['slug']}: screenshots")
+                res = put_pages(f"ventures/{home_of(w)}/shots/sheet.png", sheet, f"venture {w['slug']}: screenshots")
                 ref = (res.get("commit") or {}).get("sha") or PAGES_BRANCH
-                shot = f"{tm.SERVER}/{REPO}/raw/commit/{ref}/ventures/{w['slug']}/shots/sheet.png"
+                shot = f"{tm.SERVER}/{REPO}/raw/commit/{ref}/ventures/{home_of(w)}/shots/sheet.png"
             if w.get("batch") and not batch_released(int(w["batch"])):
                 say(f"✅ Checks pass. Ready, held for batch #{w['batch']} so its ventures launch together "
                     f"(at most {batch_hold_hours():g}h after the first of them is ready).",
@@ -1705,7 +1715,7 @@ def advance(card: dict, comments: list[dict], beats: list[dict], heavy_ok: bool)
 def launch(n: int, w: dict, plan: dict, keep: dict, shot: str | None, note: str, say) -> None:
     since = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     # the portfolio (ventures/index.html) shows `shot` and links `sheet`, both relative to ventures/
-    pics = {"shot": f"{w['slug']}/shots/sheet.png", "sheet": f"{w['slug']}/shots/sheet.png"} if shot else {}
+    pics = {"shot": f"{home_of(w)}/shots/sheet.png", "sheet": f"{home_of(w)}/shots/sheet.png"} if shot else {}
     record({"slug": w["slug"], "status": "live", "launched": today(), "card": n, "source": "time", "hosting": "pages", **pics,
             "signups": count_signups(w, since if int(w.get("version", 1)) > 1 else None)[0]}, f"ventures: launch {w['slug']}")
     say(launch_post(w, plan, shot, note), {"beat": "launched", **keep, "shot": shot, "since": since})
@@ -1751,7 +1761,7 @@ def give_backend(w: dict) -> str:
         return ""
     try:
         be = cfb.deploy(w["slug"], w["pages"])
-        put_pages(f"ventures/{w['slug']}/time.js", cfb.client(be["api"]), f"venture {w['slug']}: backend client")
+        put_pages(f"ventures/{home_of(w)}/time.js", cfb.client(be["api"]), f"venture {w['slug']}: backend client")
     except Exception as e:  # noqa: BLE001
         return f"\n\n_Backend: Cloudflare didn't take it ({str(e)[:200]}); launching on Pages, and the next tick tries again._"
     w["url"], w["backend"] = be["url"], {k: be[k] for k in ("worker", "db", "rev", "api")}
@@ -1776,7 +1786,7 @@ def refresh_backends(reg: dict, limit: int = 2) -> None:
         done += 1
         try:
             be = cfb.deploy(v["slug"], pages)
-            put_pages(f"ventures/{v['slug']}/time.js", cfb.client(be["api"]), f"venture {v['slug']}: backend client")
+            put_pages(f"ventures/{home_of(v, reg)}/time.js", cfb.client(be["api"]), f"venture {v['slug']}: backend client")
         except Exception as e:  # noqa: BLE001
             print(f"backend {v['slug']} failed:", str(e)[:200])
             continue

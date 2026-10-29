@@ -1027,11 +1027,43 @@ assert rec79[-1]["shot"] == rec79[-1]["sheet"] == "star-checker/shots/sheet.png"
 gv.launch(3, {"slug": "star-checker", "name": "Star checker"}, {}, {}, None, "", lambda *a: None)
 assert "shot" not in rec79[-1], "no sheet, no picture"
 gv.record, gv.count_signups, gv.launch_post, gv.pages_file, gv.put_pages = real_rec79, real_cs79, real_lp79, real_pf79, real_pp79
+real_reg79 = gv.registry
+gv.registry = lambda: {"ventures": [{"slug": "box-art-night", "home": "cartridge"}]}
 w79 = {"slug": "star-checker", "name": "Star checker", "signal": 7, "card": 3}
 assert gv.join_url(w79, "Free").startswith("https://forge.test/o/r/issues/new?") and gv.signal_url(w79) == "https://forge.test/o/r/issues/7"
 assert gv.blob_url(w79, "LAUNCH.md") == "https://forge.test/o/r/src/branch/gh-pages/ventures/star-checker/LAUNCH.md"
 html79 = gv.index_html({"ventures": [{**w79, "url": gv.site_of("star-checker"), "join": "j", "launched": "2026-10-18", "one_liner": "o"}]})
 assert "github.com" not in html79 and 'href="https://star-checker.yolopreneur.lol/"' in html79 and "https://forge.test/o/r/issues/7" in html79
+# a renamed venture (its registry entry has `home`) lives in its home folder: links, checks and the portfolio follow it;
+# its slug stays the key. One without a home is unchanged (above)
+wh79 = {"slug": "box-art-night", "name": "Cartridge", "signal": 7, "url": "u", "join": "j"}
+assert gv.home_of(wh79) == "cartridge" and gv.home_of({**wh79, "home": "x"}) == "x" and gv.home_of(w79) == "star-checker"
+assert gv.blob_url(wh79, "LAUNCH.md").endswith("/ventures/cartridge/LAUNCH.md")
+assert "ventures/cartridge/" in gv.build_body({**wh79, "url": "u", "join": "j"}, {"pricing": [{"tier": "Free", "price": "0", "for": "f", "includes": "i"}],
+                                                                                    "positioning": "p", "primary_cta": "c"}) and "box-art-night/" not in gv.build_body(
+    {**wh79, "url": "u", "join": "j"}, {"pricing": [{"tier": "Free", "price": "0", "for": "f", "includes": "i"}], "positioning": "p", "primary_cta": "c"})
+read79 = []
+gv.pages_file = lambda path: read79.append(path)
+assert gv.check_page(wh79, {}) == ["ventures/cartridge/index.html is missing"] and gv.check_page(w79, {}) == ["ventures/star-checker/index.html is missing"]
+gv.judge(wh79); assert read79[-2:] == ["ventures/cartridge/index.html", "ventures/cartridge/README.md"], read79
+# the next version carries the home and reads the home's page as its prior; the build worker writes only inside the home
+cards79, rb79 = [], []
+real_nc79, real_cm79, real_bp79 = gv.new_card, gv.tm.comment, gv._build_on_pages
+gv.new_card = lambda title: {"number": 9}
+gv.tm.comment = lambda n, text, meta=None: cards79.append(meta)
+gv.next_version(wh79, ["a"], 3); gv.next_version(w79, ["a"], 3)
+assert cards79[0]["winner"]["home"] == "cartridge" and cards79[0]["winner"]["prior"] == "ventures/cartridge/index.html", cards79[0]
+assert "home" not in cards79[1]["winner"] and cards79[1]["winner"]["prior"] == "ventures/star-checker/index.html", cards79[1]
+gv._build_on_pages = lambda card, done, spec, root="": rb79.append((done, root)) or {"seat": "s", "steps": 1, "model": "m"}
+plan79 = {"pricing": [{"tier": "Free", "price": "0", "for": "f", "includes": "i"}], "positioning": "p", "primary_cta": "c"}
+for w_, home_ in ((wh79, "cartridge"), ({**w79, "name": "S", "url": "u", "join": "j"}, "star-checker")):
+    gv.advance({"number": 9}, [], [{"beat": "planned", "winner": w_, "plan": plan79}], True)
+    assert rb79[-1][1] == f"ventures/{home_}/" and rb79[-1][0].startswith(f"ventures/{home_}/index.html"), rb79
+gv.new_card, gv.tm.comment, gv._build_on_pages = real_nc79, real_cm79, real_bp79
+gv.pages_file = real_pf79
+hh79 = gv.index_html({"ventures": [{**wh79, "home": "cartridge", "launched": "2026-10-18", "join": "j"}]})
+assert "https://cartridge.yolopreneur.lol/shots/sheet.png" in hh79 and "ventures/cartridge/LAUNCH.md" in hh79 and "box-art-night.yolo" not in hh79
+gv.registry = real_reg79
 # the scout asks GitHub's public search with no token of ours; the forge's API is never asked for /search
 seen79 = []
 gv.github_search = lambda q, n: (seen79.append(q), {"items": [{"full_name": "a/b", "stargazers_count": 900, "description": "d",
