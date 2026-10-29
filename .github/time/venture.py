@@ -34,7 +34,7 @@ Build: the worker builds the product as the page on the Pages branch: the tool f
 Backend (optional, CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID): each venture also gets a Cloudflare Worker with its
   own D1 database and Workers AI, serving the Pages folder under <slug>.<TIME_VENTURE_DOMAIN> (cloudflare.py). The page
   reaches it through time.js; every call degrades to null, so the product works on Pages alone and in the checks.
-Signup: an issue form on Teahub (.github/ISSUE_TEMPLATE/early-access.yml) prefilled with the venture and the plan.
+Signup: an issue form on Teahub (.gitea/ISSUE_TEMPLATE/early-access.yml) prefilled with the venture and the plan.
 Pages: Teahub serves ventures/<slug>/ on the Pages branch at https://<slug>.<TIME_VENTURE_PAGES_DOMAIN>/ (yolopreneur.lol).
 Measure: after 7 days, distinct people who signed up or 👍'd the signal issue, against the plan's success and kill
   lines: iterate (a v2 card), kill, or watch one more week and then park.
