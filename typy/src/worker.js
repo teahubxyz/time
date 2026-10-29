@@ -54,7 +54,15 @@ async function route(request,env){
  }else if(path==='/'||path==='/daily'){
   if(path==='/daily')meta.title='The daily passage · typy';
  }else if(/^\/[a-z0-9][a-z0-9-]{0,63}$/.test(path)){
-  const topic=normalizeTopic(path.slice(1));meta.title=`${topic.replace(/-/g,' ')} · typy`;
+  // A topic path is a page, not an endpoint: a rejected slug still renders the
+  // app, which asks /api/passage and shows that refusal in its own words.
+  let topic;
+  try{topic=normalizeTopic(path.slice(1));}
+  catch(error){
+   if(error instanceof ApiError&&error.status<500)return response(renderPage(meta),error.status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});
+   throw error;
+  }
+  meta.title=`${topic.replace(/-/g,' ')} · typy`;
  }else throw new ApiError(404,'This page does not exist.','not_found');
  return response(renderPage(meta),200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});
 }

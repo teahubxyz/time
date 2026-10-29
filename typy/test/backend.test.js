@@ -110,6 +110,37 @@ test('topic generation reserves quota, filters output and caches plain prose',as
  const original=globalThis.fetch;globalThis.fetch=async(url,options)=>{calls++;assert.equal(url,'https://api.venice.ai/api/v1/chat/completions');const body=JSON.parse(options.body);assert.equal(body.model,'mistral-small-3-2-24b-instruct');return Response.json({choices:[{message:{content:'The ocean contains a remarkable variety of life. Small plants near the surface use sunlight to grow. Many animals depend on this energy and on the steady movement of water through the open sea.'}}]});};
  try{const a=await worker.fetch(req('/api/passage?topic=ocean-life'),e);assert.equal(a.status,200);assert.ok((await a.json()).words.length>=30);const b=await worker.fetch(req('/api/passage?topic=ocean-life'),e);assert.equal((await b.json()).cached,true);assert.equal(calls,1);assert.equal(reservations,1);}finally{globalThis.fetch=original;}
 });
+test('a topic path serves the app, titled by its topic, and caps a long passage',async()=>{
+ const e=env();
+ const page=await worker.fetch(req('/rust-lifetimes'),e);
+ assert.equal(page.status,200);assert.match(page.headers.get('Content-Type'),/text\/html/);
+ const html=await page.text();
+ assert.ok(html.includes('<title>rust lifetimes · typy</title>'));
+ assert.ok(html.includes('/app.js'),'the page boots the app, which then asks /api/passage');
+ // A slug the topic rules refuse is still a page: the app shows the reason.
+ for(const path of ['/make-a-bomb','/react--hooks']){
+  const refused=await worker.fetch(req(path),e);
+  assert.ok(refused.status===400||refused.status===422,path);
+  assert.match(refused.headers.get('Content-Type'),/text\/html/,path);
+  assert.ok((await refused.text()).includes('/app.js'),path);
+ }
+ // Deeper paths and the API namespace stay machine-readable.
+ assert.equal((await worker.fetch(req('/rust/lifetimes'),e)).status,404);
+ const unknownApi=await worker.fetch(req('/api/nope'),e);
+ assert.equal(unknownApi.status,404);assert.match(unknownApi.headers.get('Content-Type'),/application\/json/);
+ assert.equal((await(await worker.fetch(req('/api/passage?topic=Rust%20Lifetimes'),e)).json()).code,'generation_unavailable','a topic is normalized before anything else');
+ assert.equal((await(await worker.fetch(req('/api/passage?topic=make-a-bomb'),e)).json()).code,'topic_not_supported');
+
+ // The length cap holds whatever the writer returns.
+ e.VENICE_API_KEY='test-only';
+ const original=globalThis.fetch;
+ globalThis.fetch=async()=>Response.json({choices:[{message:{content:Array.from({length:500},(_,i)=>'word'+(i%7)).join(' ')}}]});
+ try{
+  const long=await(await worker.fetch(req('/api/passage?topic=very-long-answer'),e)).json();
+  assert.equal(long.words.length,300);
+  assert.deepEqual(JSON.parse(await e.KV.get('topic:v1:very-long-answer')).words.length,300,'the cap is cached, not just returned');
+ }finally{globalThis.fetch=original;}
+});
 test('provider failure does not save fabricated content or reveal credentials',async()=>{
  const e=env();e.VENICE_API_KEY='never-print-this';const original=globalThis.fetch;globalThis.fetch=async()=>new Response('private provider error',{status:500});
  try{const res=await worker.fetch(req('/api/passage?topic=astronomy'),e);assert.equal(res.status,502);const text=await res.text();assert.ok(!text.includes('private provider'));assert.ok(!text.includes('never-print'));assert.equal(e.KV.data.size,0);}finally{globalThis.fetch=original;}
