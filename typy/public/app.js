@@ -11,7 +11,11 @@ const readLocal = (key, fallback) => { try { return JSON.parse(localStorage.getI
 const writeLocal = (key, value) => { try { localStorage.setItem('typy.' + key, JSON.stringify(value)); } catch {} };
 const settings = {...{advance:'space',preview:true}, ...readLocal('settings', {})};
 const bests = readLocal('bests', {});
-const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+// Followed live: a visitor can turn the setting on mid-run, and the beat rail
+// and the error nudge are drawn by script, out of reach of the stylesheet rule.
+const motionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+let reducedMotion = motionQuery.matches;
+motionQuery.addEventListener('change', event => { reducedMotion = event.matches; });
 let selectedMode = '30';
 let source = {kind:'common'};
 let passage = [];
@@ -234,7 +238,9 @@ function renderGame(state) {
   setClass($('word'), 'behind', Boolean(state.behindPace));
   if (selectedMode === 'tempo') {
     const fraction = state.beatDurationMs ? Math.max(0, state.beatRemainingMs / state.beatDurationMs) : 1;
-    $('tempo-progress').style.transform = 'scaleX(' + fraction + ')';
+    // Reduced motion gets the same information in tenths, so the rail reports
+    // the beat instead of sliding across the screen.
+    $('tempo-progress').style.transform = 'scaleX(' + (reducedMotion ? Math.ceil(fraction * 10) / 10 : fraction) + ')';
     setText('tempo-caption', state.status === 'ready' ? 'type to catch the first beat' : state.waitingForBeat ? 'got it. the next beat is coming.' : state.behindPace ? 'the pace is ahead of you — keep going' : 'finish the word before the line runs out');
     Array.from($('tempo-lives').children).forEach((dot, i) => setClass(dot, 'lost', i < state.misses));
     const label = (3 - state.misses) + ' missed beats remaining';
@@ -664,7 +670,7 @@ window.addEventListener('resize', () => {
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
-  if (view === 'play' && game?.status === 'running' && (selectedMode === 'tempo' || time - lastClockPaint >= 100)) renderGame(game.tick(time));
+  if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= 100)) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
     replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
     renderReplay(replay.position);

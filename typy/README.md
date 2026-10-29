@@ -14,6 +14,7 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 - Common words are weighted by frequency. The words menu also accepts a topic or a pasted passage, capped at 300 words.
 - Topic paths such as **/react-hooks** generate a short Venice passage and cache it for 30 days.
 - **/daily** uses one deterministic passage per UTC day and locks the run to 60 seconds. Sharing a completed daily run adds an optional name to the daily board.
+- Reduced motion is honoured live, not only at load: the stylesheet drops animation and transitions, the error nudge does not run, and the beat rail steps in tenths rather than sliding.
 - Finished runs show WPM, accuracy, clean-word streaks, slower words, and a speed sparkline. Replay follows original key timing and supports scrubbing.
 - Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost.
 
@@ -33,11 +34,13 @@ The test files can also be run directly for individual test output:
     node test/game.test.js
     node test/backend.test.js
 
-Optional browser acceptance uses Playwright and a Chromium executable:
+Optional browser acceptance uses Playwright. Each script uses Playwright's own Chromium unless `CHROME` (`TYPY_CHROME` for the smoke script) points at another executable:
 
-    CHROME=/path/to/chrome node test/browser-smoke.mjs
-    CHROME=/path/to/chrome node test/integration.mjs
-    CHROME=/path/to/chrome node test/responsiveness.mjs
+    node test/browser-smoke.mjs      # TYPY_QA_URL, default http://127.0.0.1:8788
+    node test/integration.mjs        # TYPY_BASE_URL, default http://127.0.0.1:8787
+    node test/responsiveness.mjs     # TYPY_BASE_URL, default http://127.0.0.1:8787
+
+The smoke script expects a **static preview**: the page and its assets served without the API, so it can check the offline paths, the mocked daily and the failed share. The other two need `npm start`.
 
 The integration script uses the actual local backend, creates a test result, reloads its public link, checks the preview PNG, replays it, and opens the ghost race. Set TYPY_BASE_URL to test a deployment; it creates one clearly named test replay and does not submit a synthetic daily-board score.
 
