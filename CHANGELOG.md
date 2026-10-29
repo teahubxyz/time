@@ -4,6 +4,8 @@
 
 ### Changed
 - `TIME_PARALLEL` defaults to 3 (was 1) and a bad value (not a positive integer) falls back to 3 (#243).
+### Added
+- Claude delegation over `workflow_dispatch` (`.github/time/delegate.py`, tests in `test_delegate.py`): a bounded task for the `sonnet` or `opus` seat with an idempotency key, run through time.py's own `think`, seat routing and dollar governor. Each job has a stable correlation ID (`dlg-<20 hex>`, from caller and key) and a receipt (`queued`/`running`/`succeeded`/`failed`, source SHA, run URL, model, tokens, dollars, result and its hash) at `time/delegations/<id>.json` and on `TIME-RECEIPT` log lines. Duplicate keys replay the stored result without spending, a failed key retries (3 attempts), and the task text, secrets and key-shaped strings never reach a receipt or log. No issue comments. The workflow itself is a proposal in `time/delegate/delegate.yml`: it needs a human to review and install it under `.github/workflows/`.
 
 ### Security
 - A label filter is checked on every row. Gitea ignores `labels=<name>` for a label the repo does not have and returns every issue: housekeeping's first live run listed all 59 open issues as parked cards (there is no `parked` label), and the same answer to `labels=spec` would have had Time split every open issue as a spec. `issues()` in time.py and the sweep's queries now keep only rows that carry the labels they asked for.

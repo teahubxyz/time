@@ -1,0 +1,50 @@
+name: delegate
+# PROPOSED, NOT ACTIVE. A human installs this as .github/workflows/delegate.yml after independent review
+# (workflow files are off limits to the worker, and Time never auto-merges anything under .github/).
+#
+# Bounded Claude API delegation: workflow_dispatch in, job receipt out. No issue comments.
+#   POST /api/v1/repos/{owner}/{repo}/actions/workflows/delegate.yml/dispatches
+#       {"ref":"main","inputs":{"seat":"sonnet","key":"<8-64 chars>","task":"<prompt, <= 8000 chars>"}}
+#   correlation id:  python3 .github/time/delegate.py id <caller-login> <key>     (dlg-<20 hex>)
+#   result:          GET /repos/{owner}/{repo}/contents/time/delegations/<id>.json   (durable receipt)
+#                    or the `TIME-RECEIPT {...}` lines in the run's log (queued/running/succeeded|failed)
+#                    or: python3 .github/time/delegate.py fetch <id>
+# Inputs reach the script only through env, never through shell interpolation. Authorization is time.py's trusted()
+# on the dispatching actor (owner, TIME_TRUSTED, collaborators); the dispatch API itself already needs write access.
+on:
+  workflow_dispatch:
+    inputs:
+      seat:
+        description: "Claude seat: sonnet or opus"
+        required: true
+        default: sonnet
+      key:
+        description: "Idempotency key, 8-64 chars [A-Za-z0-9._-]. Not a secret: it shows in the run name."
+        required: true
+      task:
+        description: "The task, at most 8000 characters"
+        required: true
+run-name: delegate ${{ inputs.seat }} ${{ inputs.key }}
+# (GitHub-style `permissions:` are ignored by Gitea; the Actions token has write access to this repo)
+concurrency:
+  group: delegate-${{ github.actor }}-${{ inputs.key }}   # one live run per (caller, key): duplicates queue behind it and replay
+  cancel-in-progress: false
+jobs:
+  delegate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/time
+      - run: python3 .github/time/test_delegate.py
+      - run: python3 .github/time/delegate.py run
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TIME_TRUSTED: ${{ vars.TIME_TRUSTED }}
+          TIME_DAILY_USD: ${{ vars.TIME_DAILY_USD }}
+          TIME_MONTHLY_USD: ${{ vars.TIME_MONTHLY_USD }}
+          DELEGATE_SEAT: ${{ inputs.seat }}
+          DELEGATE_KEY: ${{ inputs.key }}
+          DELEGATE_TASK: ${{ inputs.task }}
