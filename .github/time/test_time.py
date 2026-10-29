@@ -3070,3 +3070,8 @@ assert got[1][0] == "wrote" and got[1][1].startswith("refused") and got[2][0].st
 _dj = importlib.util.spec_from_file_location("dojo_run", Path(__file__).resolve().parents[2] / "dojo" / "run.py")
 dojo = importlib.util.module_from_spec(_dj); _dj.loader.exec_module(dojo)
 assert dojo.selftest(tm) == 11
+
+# the steward's own suite, last: it loads its own copy of time.py and clears TIME_* on the way in, so the one CI
+# command covers it without any check above seeing its environment
+_sw = importlib.util.spec_from_file_location("test_steward", Path(__file__).resolve().parent / "test_steward.py")
+steward_suite = importlib.util.module_from_spec(_sw); _sw.loader.exec_module(steward_suite)
