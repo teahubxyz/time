@@ -18,6 +18,7 @@
 // (day, app, kind): CHAT_DAILY/RENDER_DAILY per person, CHAT_TOTAL/RENDER_TOTAL per app. A render is an audio queue
 // or an image generate; retrieve polls, quotes and completes are free. Over a limit answers 429 with a plain reason.
 //
+// /v1/speech also takes Runware voice models (RW_TTS) when RUNWARE_API_KEY is bound; HeyGen Turbo Free falls back to paid Turbo.
 // Bindings: QUOTA (KV). Secrets: VENICE_API_KEY, RUNWARE_API_KEY (optional). Vars: REV, APPS, ORIGINS, CHAT_MODELS, AUDIO_MODELS, IMAGE_MODELS,
 // AUDIO_SECONDS, MAX_TOKENS, CHAT_DAILY, CHAT_TOTAL, RENDER_DAILY, RENDER_TOTAL.
 
@@ -107,6 +108,37 @@ async function renderRunware(body, env) {
   if (!audio.ok) throw Object.assign(new Error("runware audio fetch " + audio.status), { status: 502 });
   return { body: audio.body, type: audio.headers.get("content-type") || "audio/mpeg", seed: out.seed, cost: out.cost, renderer: model };
 }
+// Runware voices behind /v1/speech. HeyGen Turbo Free runs on shared capacity with no guarantee, so it falls back to paid Turbo.
+const RW_TTS = { "heygen:voice@1.0-turbo-free": "heygen:voice@1.0-turbo", "heygen:voice@1.0-turbo": null, "alibaba:qwen@3-tts-1.7b-customvoice": null,
+  "inworld:tts@1.5-mini": null, "inworld:tts@2": null, "xai:tts@0": null };
+async function speakRunware(body, model, env) {
+  const task = { taskType: "audioInference", taskUUID: crypto.randomUUID(), model, outputType: "URL", outputFormat: "MP3", deliveryMethod: "sync", includeCost: true,
+    speech: { text: String(body.input).replace(/[<>]/g, " ").slice(0, 2000), voice: String(body.voice || "").slice(0, 64) } };
+  if (/^[a-z]{2}(-[A-Za-z]{2})?$/.test(String(body.language || ""))) task.speech.language = body.language;
+  if (model.startsWith("heygen:") && Number.isFinite(+body.expressiveness) && body.expressiveness !== undefined) task.settings = { expressiveness: Math.max(0, Math.min(1, Math.round(+body.expressiveness * 100) / 100)) };
+  if (!model.startsWith("heygen:") && body.speed !== undefined) task.speech.speed = Math.max(0.5, Math.min(1.5, +body.speed || 1));
+  if (model.startsWith("alibaba:") && typeof body.prompt === "string" && body.prompt.trim()) task.positivePrompt = body.prompt.trim().slice(0, 500);
+  const res = await fetch(RUNWARE, { method: "POST", headers: { Authorization: "Bearer " + env.RUNWARE_API_KEY, "Content-Type": "application/json" }, body: JSON.stringify([task]) });
+  const d = await res.json().catch(() => null);
+  const out = d && Array.isArray(d.data) ? d.data.find((x) => x.taskType === "audioInference") : null;
+  if (!res.ok || !out || !out.audioURL) {
+    const why = (d && d.errors && d.errors[0] && (d.errors[0].message || d.errors[0].code)) || ("runware " + res.status);
+    throw Object.assign(new Error(String(why).slice(0, 200)), { status: res.status === 429 ? 429 : 502 });
+  }
+  const audio = await fetch(out.audioURL);
+  if (!audio.ok) throw Object.assign(new Error("runware audio fetch " + audio.status), { status: 502 });
+  return { body: audio.body, type: audio.headers.get("content-type") || "audio/mpeg", cost: out.cost, renderer: model };
+}
+async function speech(body, model, env, h) {
+  let out, err, used = model;
+  try { out = await speakRunware(body, model, env); } catch (e) { err = e; }
+  if (!out && RW_TTS[model]) { used = RW_TTS[model]; try { out = await speakRunware(body, used, env); } catch (e) { return json({ error: err.message + "; then " + e.message }, e.status || 502, h); } }
+  if (!out) return json({ error: err.message }, err.status || 502, h);
+  const headers = { "content-type": out.type, "x-renderer": used, "access-control-expose-headers": "x-cost, x-renderer, x-fallback", ...h };
+  if (out.cost != null) headers["x-cost"] = String(out.cost);
+  if (err) headers["x-fallback"] = String(err.message).replace(/[^\x20-\x7e]/g, "?").slice(0, 160);
+  return new Response(out.body, { status: 200, headers });
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 async function renderVenice(body, env) {
   const q = { model: "ace-step-15", prompt: String(body.prompt).slice(0, 512), duration_seconds: Math.max(60, Math.min(num(body.duration, 120), num(env.AUDIO_SECONDS, 120), 210)) };
@@ -179,6 +211,14 @@ async function api(req, env, url, h) {
   }
   if (path === "/v1/speech") {
     const m = model || "tts-kokoro";
+    if (m in RW_TTS) {
+      if (!env.RUNWARE_API_KEY) return json({ error: "no Runware key on this worker" }, 503, h);
+      if (!body.input || String(body.input).length < 2) return json({ error: "input is empty" }, 400, h);
+      if (!body.voice) return json({ error: "voice is required for Runware voices" }, 400, h);
+      const no = await spend(env, app, "render", person, num(env.RENDER_DAILY, 20), num(env.RENDER_TOTAL, 400));
+      if (no) return json({ error: no }, 429, h);
+      return speech(body, m, env, h);
+    }
     if (!list(env.TTS_MODELS || "tts-kokoro,tts-orpheus,tts-qwen3-1-7b,tts-elevenlabs-turbo-v2-5,tts-chatterbox-hd").includes(m)) return json({ error: `model not allowed here: ${m.slice(0, 40)}` }, 403, h);
     if (!body.input || String(body.input).length < 2) return json({ error: "input is empty" }, 400, h);
     const q = { model: m, input: String(body.input).slice(0, 4096), voice: String(body.voice || "af_sky").slice(0, 64), response_format: /^(mp3|wav|flac|opus|aac)$/.test(body.response_format) ? body.response_format : "mp3",
