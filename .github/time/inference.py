@@ -77,7 +77,7 @@ def deploy() -> dict:
 
 
 def check() -> dict:
-    with urllib.request.urlopen(f"https://{hostname()}/health", timeout=20) as r:
+    with urllib.request.urlopen(urllib.request.Request(f"https://{hostname()}/health", headers={"User-Agent": "Mozilla/5.0 (time inference check)"}), timeout=20) as r:
         return json.loads(r.read())
 
 
