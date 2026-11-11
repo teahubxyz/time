@@ -56,3 +56,17 @@
 {"at":"2026-11-11T14:12:18Z","model":"claude-sonnet-5-5","pool":"anthropic","in":41228,"out":399,"usd":0.012866,"cached":40953,"written":271}
 {"at":"2026-11-11T14:12:21Z","model":"claude-sonnet-5-5","pool":"anthropic","in":41574,"out":313,"usd":0.012248,"cached":41224,"written":346}
 {"at":"2026-11-11T14:12:27Z","model":"claude-sonnet-5-5","pool":"anthropic","in":41846,"out":715,"usd":0.016152,"cached":41570,"written":272}
+{"at":"2026-11-11T15:07:23Z","model":"claude-haiku-5-5","pool":"anthropic","in":5491,"out":1473,"usd":0.001423,"cached":0,"written":5487}
+{"at":"2026-11-11T15:07:26Z","model":"claude-sonnet-5-5","pool":"anthropic","in":2234,"out":26,"usd":0.005843,"cached":0,"written":2230}
+{"at":"2026-11-11T15:07:29Z","model":"claude-sonnet-5-5","pool":"anthropic","in":4615,"out":187,"usd":0.008278,"cached":2230,"written":2383}
+{"at":"2026-11-11T15:07:32Z","model":"claude-sonnet-5-5","pool":"anthropic","in":6056,"out":186,"usd":0.006389,"cached":4613,"written":1441}
+{"at":"2026-11-11T15:07:37Z","model":"claude-sonnet-5-5","pool":"anthropic","in":8846,"out":504,"usd":0.01323,"cached":6054,"written":2790}
+{"at":"2026-11-11T15:07:43Z","model":"claude-sonnet-5-5","pool":"anthropic","in":14374,"out":453,"usd":0.020123,"cached":8844,"written":5528}
+{"at":"2026-11-11T15:07:48Z","model":"claude-sonnet-5-5","pool":"anthropic","in":17186,"out":404,"usd":0.013948,"cached":14372,"written":2812}
+{"at":"2026-11-11T15:07:52Z","model":"claude-sonnet-5-5","pool":"anthropic","in":20552,"out":327,"usd":0.015126,"cached":17184,"written":3366}
+{"at":"2026-11-11T15:07:57Z","model":"claude-sonnet-5-5","pool":"anthropic","in":21993,"out":384,"usd":0.011557,"cached":20550,"written":1441}
+{"at":"2026-11-11T15:08:00Z","model":"claude-sonnet-5-5","pool":"anthropic","in":23576,"out":217,"usd":0.01053,"cached":21991,"written":1583}
+{"at":"2026-11-11T15:08:05Z","model":"claude-sonnet-5-5","pool":"anthropic","in":26203,"out":321,"usd":0.014496,"cached":23574,"written":2627}
+{"at":"2026-11-11T15:08:17Z","model":"claude-sonnet-5-5","pool":"anthropic","in":28606,"out":1368,"usd":0.024932,"cached":26201,"written":2403}
+{"at":"2026-11-11T15:08:22Z","model":"claude-sonnet-5-5","pool":"anthropic","in":30224,"out":344,"usd":0.01321,"cached":28604,"written":1618}
+{"at":"2026-11-11T15:08:47Z","model":"claude-sonnet-5-5","pool":"anthropic","in":30665,"out":1148,"usd":0.018631,"cached":30222,"written":441}
