@@ -1,11 +1,16 @@
 /**
- * Colour themes. A theme names the colours it cares about; resolveTheme mixes
- * ink into paper for everything it leaves out, so a new theme needs only paper,
- * ink, accent and error. The first theme is typy's own look and matches the
- * :root defaults in style.css exactly (a test keeps the two in step).
+ * Colour themes, loaded as a classic script in <head> so it can paint the first
+ * theme before the page renders (a module would run too late and flash). It
+ * exposes everything on globalThis.typyThemes for app.js and the tests.
+ *
+ * A theme names the colours it cares about; resolveTheme mixes ink into paper
+ * for everything it leaves out, so a new theme needs only paper, ink, accent
+ * and error. The typy theme matches the :root defaults in style.css exactly.
  */
+(function (root) {
+'use strict';
 
-export const TOKENS = [
+const TOKENS = [
   'paper', 'ink', 'word', 'context', 'faint', 'muted', 'line',
   'accent', 'accent-line', 'glow', 'soft', 'error', 'error-soft',
   'field', 'field-alt', 'placeholder', 'selection', 'ring', 'ink-hover',
@@ -14,7 +19,7 @@ export const TOKENS = [
 
 // Palettes credited by name are ports of open-source colour schemes (MIT):
 // Solarized, Catppuccin, Dracula, Nord, Gruvbox, Tokyo Night and Rosé Pine.
-export const THEMES = [
+const THEMES = [
   {id: 'typy', name: 'typy', scheme: 'light', colors: {
     paper: '#f5f3ec', ink: '#263d33', word: '#7c8875', context: '#9da791', faint: '#b8beb2',
     muted: '#7b8177', line: '#dcded3', accent: '#e36c49', 'accent-line': '#e36c4933', glow: '#e36c4914',
@@ -51,11 +56,13 @@ export const THEMES = [
     paper: '#0a0f0b', ink: '#a6ffbc', word: '#52b46e', context: '#2f6e42', faint: '#1f452b', line: '#15261a', accent: '#ffb000', error: '#ff5f56'}}
 ];
 
-// "auto" follows the system setting with this pair; "random" picks a new theme each run.
-export const AUTO = {light: 'typy', dark: 'night'};
-export const MODES = [
+// Until someone picks a theme, every visit deals a random one.
+const DEFAULT = 'random';
+// "auto" follows the system setting with this pair; "random" deals a new theme each visit and run.
+const AUTO = {light: 'typy', dark: 'night'};
+const MODES = [
   {id: 'auto', name: 'auto', note: 'follows your system'},
-  {id: 'random', name: 'random', note: 'a new one each run'}
+  {id: 'random', name: 'random', note: 'new every visit & run'}
 ];
 
 const HEX = /^#(?:[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -63,17 +70,17 @@ const rgb = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
 const hex2 = n => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
 
 /** Blend `top` into `base` by weight t (0 keeps base, 1 is all top). */
-export function mix(top, base, t) {
+function mix(top, base, t) {
   const a = rgb(top), b = rgb(base);
   return '#' + b.map((value, i) => hex2(value + (a[i] - value) * t)).join('');
 }
 
-export function findTheme(id) {
+function findTheme(id) {
   return THEMES.find(theme => theme.id === id) || null;
 }
 
 /** Every token for a theme, with the gaps filled from its own colours. */
-export function resolveTheme(themeOrId) {
+function resolveTheme(themeOrId) {
   const theme = typeof themeOrId === 'string' ? findTheme(themeOrId) : themeOrId;
   if (!theme) return null;
   const c = theme.colors, dark = theme.scheme === 'dark';
@@ -116,7 +123,39 @@ function luminance(hex) {
 }
 
 /** WCAG contrast ratio between two opaque colours, 1 to 21. */
-export function contrast(a, b) {
+function contrast(a, b) {
   const x = luminance(a), y = luminance(b);
   return (Math.max(x, y) + .05) / (Math.min(x, y) + .05);
 }
+
+function paint(theme) {
+  const style = document.documentElement.style;
+  for (const key in theme.vars) style.setProperty('--' + key, theme.vars[key]);
+  style.colorScheme = theme.scheme;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', theme.vars.paper);
+}
+
+function deal(avoid) {
+  const pool = THEMES.filter(theme => theme.id !== avoid);
+  return pool[Math.floor(Math.random() * pool.length)].id;
+}
+
+// Storage holds only {id, pick}: the kept choice, if any, and the last random
+// deal, so the next visit never repeats it. Anything else falls back to the default.
+function start() {
+  if (typeof document === 'undefined') return null;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('typy.theme')); } catch (error) {}
+  if (!saved || typeof saved !== 'object') saved = {};
+  const explicit = Boolean(findTheme(saved.id)) || saved.id === 'auto' || saved.id === 'random';
+  const choice = explicit ? saved.id : DEFAULT;
+  let shown = choice;
+  if (choice === 'auto') shown = matchMedia('(prefers-color-scheme: dark)').matches ? AUTO.dark : AUTO.light;
+  else if (choice === 'random') shown = deal(findTheme(saved.pick) ? saved.pick : null);
+  try { paint(resolveTheme(shown)); } catch (error) {}
+  return {choice, explicit, shown};
+}
+
+root.typyThemes = {TOKENS, THEMES, DEFAULT, AUTO, MODES, mix, findTheme, resolveTheme, contrast, paint, start: start()};
+})(globalThis);

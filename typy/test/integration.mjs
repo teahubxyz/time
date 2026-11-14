@@ -61,6 +61,14 @@ try {
   await page.locator('#ghost-race').waitFor({state:'visible'});
   assert.ok(page.url().includes('/race/'));
   assert.equal(await page.locator('#word').getAttribute('data-word'),words[0]);
+  await page.locator('#ghost-lane').waitFor({state:'visible'});
+  assert.equal((await page.locator('#ghost-lane-word').innerText()).trim(),words[0],'the ghost waits on the first word until you start');
+  for (const word of words.slice(0,8)) await page.keyboard.type(word + ' ',{delay:110});
+  assert.match(await page.locator('#ghost-lane-pace').innerText(),/^done · \d+ wpm$/,'the faster ghost finished underneath');
+  await page.locator('#finish-run').click();
+  await page.locator('#race-outcome').waitFor({state:'visible'});
+  assert.match(await page.locator('#race-verdict').innerText(),/^lost by \d+ wpm$/);
+  assert.equal(await page.locator('#result-title').innerText(),'typy check got there first.');
   const health = await (await page.request.get(base + '/api/health')).json();
   assert.equal(health.ok,true);
   const daily1 = await (await page.request.get(base + '/api/daily')).json();

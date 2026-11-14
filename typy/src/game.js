@@ -393,3 +393,31 @@ export class TypingGame {
     return run;
   }
 }
+
+/** Where a recorded run stands `position` ms in: the word in play, the outcome of
+ *  each letter attempted on it so far, and whether the run is over. Replays and
+ *  the ghost lane in races both read runs through this. */
+export function replayFrame(run, position) {
+  let timing = run.wordTimings[0];
+  for (const candidate of run.wordTimings) {
+    if (candidate.start <= position) timing = candidate;
+    else break;
+  }
+  const index = timing?.index || 0;
+  const flags = [];
+  for (const event of run.events) {
+    if (event.t > position) break;
+    if (event.index !== index) continue;
+    if (event.type === 'hit') flags.push(true);
+    else if (event.type === 'miss') flags.push(false);
+    else if (event.type === 'backspace') flags.pop();
+  }
+  const at = offset => run.words[(index + offset) % run.words.length];
+  return {index, flags, word: at(0), next: at(1), afterNext: at(2), previous: index > 0 ? run.words[(index - 1) % run.words.length] : '', done: position >= run.durationMs};
+}
+
+/** A race is decided on whole words per minute, the numbers both cards show. */
+export function raceOutcome(mine, theirs) {
+  const a = Math.round(Number(mine) || 0), b = Math.round(Number(theirs) || 0);
+  return {verdict: a > b ? 'won' : a < b ? 'lost' : 'tied', margin: Math.abs(a - b), mine: a, theirs: b};
+}

@@ -2,9 +2,25 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFile } from 'node:fs/promises';
-import { THEMES, MODES, AUTO, TOKENS, resolveTheme, findTheme, contrast, mix } from '../public/themes.js';
 
-const pack = id => ({vars: resolveTheme(id).vars, scheme: resolveTheme(id).scheme});
+// themes.js is a classic <head> script, so the tests run it the way a page does.
+const code = await readFile(new URL('../public/themes.js', import.meta.url), 'utf8');
+const load = (sandbox = {}) => { vm.runInNewContext(code, sandbox); return sandbox.typyThemes; };
+const { THEMES, MODES, AUTO, TOKENS, DEFAULT, resolveTheme, findTheme, contrast, mix } = load();
+
+function boot(saved, dark = false) {
+  const props = {}, page = {meta: null};
+  const sandbox = {
+    localStorage: {getItem: () => saved},
+    matchMedia: () => ({matches: dark}),
+    document: {
+      documentElement: {style: {setProperty: (key, value) => { props[key] = value; }, colorScheme: ''}},
+      querySelector: () => ({setAttribute: (name, value) => { page.meta = value; }})
+    }
+  };
+  const {start} = load(sandbox);
+  return {start, props, meta: page.meta, scheme: sandbox.document.documentElement.style.colorScheme};
+}
 
 test('every theme resolves every token to a colour, under a unique id', () => {
   const ids = new Set();
@@ -50,36 +66,46 @@ test('mixing and contrast are the usual sums', () => {
   assert.equal(contrast('#777777', '#777777'), 1);
 });
 
-function boot(saved, dark = false) {
-  const props = {}, page = {meta: null};
-  const context = {
-    localStorage: {getItem: () => saved},
-    matchMedia: () => ({matches: dark}),
-    document: {
-      documentElement: {style: {setProperty: (key, value) => { props[key] = value; }, colorScheme: ''}},
-      querySelector: () => ({setAttribute: (name, value) => { page.meta = value; }})
-    }
-  };
-  return readFile(new URL('../public/boot.js', import.meta.url), 'utf8').then(code => {
-    vm.runInNewContext(code, context);
-    return {props, meta: page.meta, scheme: context.document.documentElement.style.colorScheme};
-  });
-}
-
-test('boot.js paints the kept theme before the app loads', async () => {
-  const nord = await boot(JSON.stringify({id: 'nord', ...pack('nord')}));
-  assert.equal(nord.props['--paper'], resolveTheme('nord').vars.paper);
-  assert.equal(nord.props['--accent'], resolveTheme('nord').vars.accent);
-  assert.equal(nord.scheme, 'dark');
-  assert.equal(nord.meta, resolveTheme('nord').vars.paper);
-  const auto = {id: 'auto', light: pack(AUTO.light), dark: pack(AUTO.dark)};
-  assert.equal((await boot(JSON.stringify(auto), true)).props['--paper'], resolveTheme(AUTO.dark).vars.paper);
-  assert.equal((await boot(JSON.stringify(auto), false)).props['--paper'], resolveTheme(AUTO.light).vars.paper);
+test('a first visit paints a random theme before the page renders', () => {
+  assert.equal(DEFAULT, 'random');
+  const seen = new Set();
+  for (let i = 0; i < 40; i++) {
+    const b = boot(null);
+    assert.equal(b.start.choice, 'random');
+    assert.equal(b.start.explicit, false);
+    const theme = resolveTheme(b.start.shown);
+    assert.ok(theme, 'a real theme');
+    assert.equal(b.props['--paper'], theme.vars.paper);
+    assert.equal(b.props['--accent'], theme.vars.accent);
+    assert.equal(b.scheme, theme.scheme);
+    assert.equal(b.meta, theme.vars.paper);
+    seen.add(b.start.shown);
+  }
+  assert.ok(seen.size > 3, 'the default really varies');
 });
 
-test('boot.js ignores missing, broken or hostile storage', async () => {
-  assert.deepEqual((await boot(null)).props, {});
-  assert.deepEqual((await boot('{not json')).props, {});
-  const hostile = await boot(JSON.stringify({id: 'x', scheme: 'dark', vars: {paper: 'url(https://example.com)', 'a;b': '#000000', ink: '#ffffff'}}));
-  assert.deepEqual(hostile.props, {'--ink': '#ffffff'});
+test('random never deals the same theme twice running', () => {
+  for (let i = 0; i < 40; i++) assert.notEqual(boot(JSON.stringify({pick: 'nord'})).start.shown, 'nord');
+  for (let i = 0; i < 20; i++) assert.notEqual(boot(JSON.stringify({id: 'random', pick: 'riso'})).start.shown, 'riso');
+});
+
+test('a kept theme, or auto, paints exactly that', () => {
+  const nord = boot(JSON.stringify({id: 'nord'}));
+  assert.deepEqual([nord.start.choice, nord.start.explicit, nord.start.shown], ['nord', true, 'nord']);
+  assert.equal(nord.props['--accent'], resolveTheme('nord').vars.accent);
+  assert.equal(nord.scheme, 'dark');
+  assert.equal(boot(JSON.stringify({id: 'auto'}), true).start.shown, AUTO.dark);
+  assert.equal(boot(JSON.stringify({id: 'auto'}), false).start.shown, AUTO.light);
+  // Older saves carried colours too; only the id counts now.
+  assert.equal(boot(JSON.stringify({id: 'oat', vars: {paper: '#000000'}})).props['--paper'], resolveTheme('oat').vars.paper);
+});
+
+test('broken or hostile storage falls back to the default', () => {
+  for (const saved of ['{not json', JSON.stringify({id: 'url(x)', pick: '<script>'}), JSON.stringify('nord'), 'null']) {
+    const b = boot(saved);
+    assert.equal(b.start.choice, 'random');
+    assert.equal(b.start.explicit, false);
+    assert.ok(findTheme(b.start.shown));
+    assert.ok(Object.keys(b.props).every(key => /^--[a-z-]+$/.test(key)));
+  }
 });

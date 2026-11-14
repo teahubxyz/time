@@ -1,6 +1,7 @@
-import { TypingGame, timedSeconds } from '/game.js';
+import { TypingGame, timedSeconds, replayFrame, raceOutcome } from '/game.js';
 import { generateWords, normalizePassage } from '/words.js';
-import { THEMES, MODES, AUTO, resolveTheme, findTheme } from '/themes.js';
+// themes.js is a classic <head> script (it paints before the first render), so it is read from window.
+const { THEMES, MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
 
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -41,6 +42,7 @@ let replay = {playing:false,position:0,anchor:0,anchorPosition:0};
 let toastTimer;
 let transitioning = false;
 let isComposing = false;
+let ghostLaneKey = '';
 
 function setText(id, value) {
   const node = $(id), text = String(value);
@@ -134,6 +136,9 @@ function beginRun({freshWords = false, focus = false} = {}) {
   $('typing-input').value = '';
   $('typing-input').disabled = false;
   $('ghost-race').hidden = !ghost;
+  $('ghost-lane').hidden = !ghost;
+  ghostLaneKey = '';
+  if (ghost) setText('ghost-lane-label', currentResult?.name || 'ghost');
   $('finish-run').hidden = selectedMode !== 'endless' && selectedMode !== 'tempo';
   $('tempo-track').hidden = selectedMode !== 'tempo';
   $('restart-tip').hidden = false;
@@ -284,6 +289,7 @@ function renderGame(state) {
     setText('race-them', completed);
     const difference = state.completedWords - completed;
     setText('race-delta', state.status === 'ready' ? '' : difference === 0 ? 'neck and neck' : Math.abs(difference) + (difference > 0 ? ' ahead' : ' behind'));
+    renderGhostLane(state.status === 'ready' ? 0 : state.elapsedMs);
   }
   if (state.errors > lastErrorCount && !reducedMotion) {
     errorAnimation?.cancel();
@@ -292,6 +298,25 @@ function renderGame(state) {
   lastErrorCount = state.errors;
   lastClockPaint = now();
   if (state.status === 'finished' && !transitioning) finishDisplay();
+}
+
+// The ghost's own run plays under the stage on the race clock, letter by letter.
+// It rebuilds only when the ghost's word or letters change.
+function renderGhostLane(position) {
+  const at = replayFrame(ghost, position);
+  const key = at.index + '|' + at.flags.join(',') + '|' + at.done;
+  if (key === ghostLaneKey) return;
+  ghostLaneKey = key;
+  $('ghost-lane-word').replaceChildren(...Array.from(at.word).map((letter, i) => {
+    const span = document.createElement('span');
+    span.textContent = letter;
+    if (i < at.flags.length) span.className = at.flags[i] ? 'correct' : 'incorrect';
+    else if (i === at.flags.length && !at.done) span.className = 'cursor';
+    return span;
+  }));
+  setText('ghost-lane-next', at.done ? '' : at.next);
+  setText('ghost-lane-pace', at.done ? 'done · ' + pretty(ghost.stats.wpm) + ' wpm' : '');
+  setClass($('ghost-lane'), 'done', at.done);
 }
 
 function press(key) {
@@ -308,7 +333,8 @@ function finishDisplay() {
   if (isBest) { bests[selectedMode] = run.stats.wpm; writeLocal('bests', bests); }
   if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
   const ghostStats = ghost?.stats;
-  currentResult = {run,source:{...source},name:'',local:true,isBest,ghostStats};
+  const ghostName = ghost ? currentResult?.name || '' : '';
+  currentResult = {run,source:{...source},name:'',local:true,isBest,ghostStats,ghostName};
   shareId = null;
   ghost = null;
   $('typing-input').blur();
@@ -326,7 +352,15 @@ function displayResult(result) {
   passage = [...run.words];
   $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false;
   $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
-  $('result-title').textContent = result.ghostStats ? (stats.wpm > result.ghostStats.wpm ? 'a little ahead of the ghost.' : 'a good race. another round?') : 'there’s your rhythm.';
+  const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm) : null;
+  const rival = result.ghostName || '';
+  $('result-title').textContent = !race ? 'there’s your rhythm.' : race.verdict === 'won' ? 'you beat ' + (rival || 'the ghost') + '.' : race.verdict === 'lost' ? (rival || 'the ghost') + ' got there first.' : 'a dead heat.';
+  $('race-outcome').hidden = !race;
+  if (race) {
+    $('race-outcome').dataset.verdict = race.verdict;
+    setText('race-verdict', race.verdict === 'tied' ? 'a tie' : race.verdict + ' by ' + race.margin + ' wpm');
+    setText('race-score', 'you ' + race.mine + ' · ' + (rival || 'ghost') + ' ' + race.theirs + ' wpm');
+  }
   $('result-wpm').textContent = pretty(stats.wpm);
   $('result-accuracy').textContent = round1(stats.accuracy) + '%';
   $('result-streak').textContent = stats.bestStreak + (stats.bestStreak === 1 ? ' word' : ' words');
@@ -341,7 +375,7 @@ function displayResult(result) {
   $('board-open').hidden = source.kind !== 'daily';
   if (run.replayTruncated) $('result-note').textContent = 'That was a long flow. Your score is complete; the replay holds the most recent portion, so this run cannot be shared.';
   else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional, and the replay link it makes is public.';
-  else if (result.ghostStats) $('result-note').textContent = 'Your ghost finished at ' + pretty(result.ghostStats.wpm) + ' wpm. Race links always use the same passage and mode.';
+  else if (result.ghostStats) $('result-note').textContent = 'Same words, same mode, their original timing. Send your run back with “challenge a friend”.';
   else $('result-note').textContent = result.local ? 'Your result is on this device. Sharing it makes a replay link that is public: anyone who has the link can watch the run, with no account needed.' : 'This replay is public to anyone with its link. Watch the original timing, or try the same words against this ghost.';
   const slowest = stats.slowest?.slice(0, 3) || [];
   $('slow-words').innerHTML = slowest.length ? slowest.map(row => '<span class="slow-word"><span>' + escapeHTML(row.word) + '</span><small>' + round1(row.ms / 1000) + 's</small></span>').join('') : '<span>your next run starts here</span>';
@@ -440,7 +474,7 @@ function startReplay() {
   lastWordKey = ''; lastWordIndex = -1;
   $('result-panel').hidden = true; $('play-panel').hidden = false;
   $('input-row').hidden = true; $('replay-controls').hidden = false;
-  $('ghost-race').hidden = true; $('tempo-track').hidden = true;
+  $('ghost-race').hidden = true; $('ghost-lane').hidden = true; $('tempo-track').hidden = true;
   $('run-status').textContent = 'a rhythm, replayed';
   $('status-dot').classList.add('active');
   $('replay-scrubber').max = Math.max(1, currentResult.run.durationMs);
@@ -459,25 +493,10 @@ function clock(ms) {
 
 function renderReplay(position) {
   const run = currentResult.run;
-  let timing = run.wordTimings[0];
-  for (const candidate of run.wordTimings) {
-    if (candidate.start <= position) timing = candidate;
-    else break;
-  }
-  const index = timing?.index || 0;
-  const word = run.words[index % run.words.length];
-  const flags = [];
-  for (const event of run.events) {
-    if (event.t > position) break;
-    if (event.index !== index) continue;
-    if (event.type === 'hit') flags.push(true);
-    else if (event.type === 'miss') flags.push(false);
-    else if (event.type === 'backspace') flags.pop();
-  }
-  const characters = Array.from(word);
-  const buffer = flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
-  const previous = index > 0 ? run.words[(index - 1) % run.words.length] : '';
-  drawWord(word, buffer, index, run.words[(index + 1) % run.words.length], flags, previous, run.words[(index + 2) % run.words.length]);
+  const at = replayFrame(run, position);
+  const characters = Array.from(at.word);
+  const buffer = at.flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
+  drawWord(at.word, buffer, at.index, at.next, at.flags, at.previous, at.afterNext);
   $('live-wpm').textContent = pretty(run.stats.wpm);
   $('live-accuracy').textContent = pretty(run.stats.accuracy);
   $('live-time').textContent = Math.floor(position / 1000);
@@ -699,13 +718,14 @@ window.addEventListener('resize', () => {
   else if (view === 'replay') renderReplay(replay.position);
 });
 
-// Themes paint CSS variables on <html>. boot.js repaints the kept one before the
-// first render; this block owns the list, the picker, and the auto and random modes.
+// Themes paint CSS variables on <html>. themes.js paints the first one in <head>,
+// before the page renders; this block owns the picker and the auto and random modes.
 const darkQuery = matchMedia('(prefers-color-scheme: dark)');
-const savedTheme = readLocal('theme', null);
-let themeChoice = savedTheme && (findTheme(savedTheme.id) || savedTheme.id === 'auto' || savedTheme.id === 'random') ? savedTheme.id : 'typy';
-let randomPick = themeChoice === 'random' && findTheme(savedTheme?.pick) ? savedTheme.pick : null;
-let paintedTheme = '';
+let themeChoice = themeStart?.choice || THEME_DEFAULT;
+// Until someone keeps a theme, the default applies and is not saved as their choice.
+let themeExplicit = Boolean(themeStart?.explicit);
+let randomPick = themeChoice === 'random' ? themeStart?.shown || null : null;
+let paintedTheme = themeStart?.shown || '';
 let themeKept = false;
 let themeShuffleReady = false;
 let themeTiles = [];
@@ -718,10 +738,7 @@ function themeFor(choice) {
 
 function paintTheme(theme) {
   if (theme.id === paintedTheme) return;
-  const style = document.documentElement.style;
-  for (const [key, value] of Object.entries(theme.vars)) style.setProperty('--' + key, value);
-  style.colorScheme = theme.scheme;
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.vars.paper);
+  paintThemeVars(theme);
   paintedTheme = theme.id;
 }
 
@@ -732,10 +749,10 @@ function showThemeName() {
   $('theme-footer').setAttribute('aria-label', 'Theme: ' + label + '. Change theme');
 }
 
+// Storage keeps the kept choice and the last random deal, never colours, so the
+// next visit deals something new and palette changes show up straight away.
 function saveTheme() {
-  const pack = theme => ({vars: theme.vars, scheme: theme.scheme});
-  if (themeChoice === 'auto') writeLocal('theme', {id: 'auto', light: pack(resolveTheme(AUTO.light)), dark: pack(resolveTheme(AUTO.dark))});
-  else writeLocal('theme', {id: themeChoice, pick: randomPick, ...pack(themeFor(themeChoice))});
+  writeLocal('theme', themeExplicit ? {id: themeChoice, pick: randomPick} : {pick: randomPick});
 }
 
 function otherTheme() {
@@ -745,6 +762,7 @@ function otherTheme() {
 
 function keepTheme(choice) {
   themeKept = true;
+  themeExplicit = true;
   themeChoice = choice;
   if (choice === 'random') randomPick = otherTheme();
   paintTheme(themeFor(choice));
@@ -753,8 +771,8 @@ function keepTheme(choice) {
   for (const tile of themeTiles) tile.setAttribute('aria-checked', String(tile.dataset.theme === themeChoice));
 }
 
-// Random deals a new theme as each run begins, except the first run after load,
-// which keeps the theme boot.js already painted.
+// Random deals a new theme on every visit (themes.js) and as each run begins,
+// except the first run after load, which keeps the visit's deal.
 function shuffleTheme() {
   if (themeChoice !== 'random') return;
   if (!themeShuffleReady) { themeShuffleReady = true; return; }
@@ -766,7 +784,7 @@ function shuffleTheme() {
 
 function initThemes() {
   paintTheme(themeFor(themeChoice));
-  if (savedTheme) saveTheme();
+  saveTheme();
   showThemeName();
   darkQuery.addEventListener('change', () => {
     if (themeChoice !== 'auto' || $('theme-dialog').open) return;
@@ -936,7 +954,7 @@ document.addEventListener('keydown', event => {
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
-  if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= 100)) renderGame(game.tick(time));
+  if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= (ghost ? 50 : 100))) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
     replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
     renderReplay(replay.position);

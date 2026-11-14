@@ -16,13 +16,13 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 - **/daily** uses one deterministic passage per UTC day and locks the run to 60 seconds. Sharing a completed daily run adds an optional name to the daily board.
 - Reduced motion is honoured live, not only at load: the stylesheet drops animation and transitions, the error nudge does not run, and the beat rail steps in tenths rather than sliding.
 - Finished runs show WPM, accuracy, clean-word streaks, slower words, and a speed sparkline. Replay follows original key timing and supports scrubbing.
-- Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost.
+- Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost: its run plays letter by letter in a lane under your stage, and the result card says who won (decided on whole wpm).
 
 ## Themes
 
-Eighteen themes, plus **auto** (typy by day, typy night after dark, following the system setting) and **random** (a new theme as each run begins). Open the picker with the palette button, the theme name in the footer, or **Alt+T** (Option+T on a Mac). Arrow keys preview themes live on the page, Enter keeps one, and Esc puts the kept one back. Typing filters by name, or by "dark" and "light".
+Eighteen themes, plus **auto** (typy by day, typy night after dark, following the system setting) and **random** (a new theme on every visit and as each run begins, never the same one twice running). Random is the default until you keep a theme. Open the picker with the palette button, the theme name in the footer, or **Alt+T** (Option+T on a Mac). Arrow keys preview themes live on the page, Enter keeps one, and Esc puts the kept one back. Typing filters by name, or by "dark" and "light".
 
-A theme is a few colours in **public/themes.js**: paper, ink, accent and error are enough, and `resolveTheme` mixes the rest. **test/themes.test.js** holds every theme to readable contrast (typed letters at least 7:1 on their paper, the word to type 3:1, the word after next fainter than the next) and keeps the default theme identical to the stylesheet's `:root`. The choice lives in local storage as `typy.theme`; **public/boot.js** repaints it before the first render, so a dark theme never flashes light.
+A theme is a few colours in **public/themes.js**: paper, ink, accent and error are enough, and `resolveTheme` mixes the rest. **test/themes.test.js** holds every theme to readable contrast (typed letters at least 7:1 on their paper, the word to type 3:1, the word after next fainter than the next) and keeps the default theme identical to the stylesheet's `:root`. **public/themes.js** is a classic script in `<head>`: it deals or restores the theme and paints it before the first render, so a dark theme never flashes light. Local storage (`typy.theme`) keeps only the kept choice and the last random deal, never colours.
 
 Ported palettes, all MIT licensed: Solarized (Ethan Schoonover), Catppuccin, Dracula, Nord (Arctic Ice Studio), Gruvbox (Pavel Pertsev), Tokyo Night (enkia) and Rosé Pine.
 
