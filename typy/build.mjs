@@ -20,6 +20,8 @@ for (const [url, path, type] of [
   ['/favicon.svg', 'public/favicon.svg', 'image/svg+xml'],
   ['/game.js', 'src/game.js', 'text/javascript; charset=utf-8'],
   ['/words.js', 'src/words.js', 'text/javascript; charset=utf-8'],
+  ['/themes.js', 'public/themes.js', 'text/javascript; charset=utf-8'],
+  ['/boot.js', 'public/boot.js', 'text/javascript; charset=utf-8'],
 ]) {
   assets[url] = {body: await readFile(join(here, path), 'utf8'), type};
 }

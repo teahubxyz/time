@@ -32,6 +32,8 @@ ASSETS = {
     "/favicon.svg": "public/favicon.svg",
     "/game.js": "src/game.js",
     "/words.js": "src/words.js",
+    "/themes.js": "public/themes.js",
+    "/boot.js": "public/boot.js",
 }
 
 

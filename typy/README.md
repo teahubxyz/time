@@ -18,6 +18,14 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 - Finished runs show WPM, accuracy, clean-word streaks, slower words, and a speed sparkline. Replay follows original key timing and supports scrubbing.
 - Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost.
 
+## Themes
+
+Eighteen themes, plus **auto** (typy by day, typy night after dark, following the system setting) and **random** (a new theme as each run begins). Open the picker with the palette button, the theme name in the footer, or **Alt+T** (Option+T on a Mac). Arrow keys preview themes live on the page, Enter keeps one, and Esc puts the kept one back. Typing filters by name, or by "dark" and "light".
+
+A theme is a few colours in **public/themes.js**: paper, ink, accent and error are enough, and `resolveTheme` mixes the rest. **test/themes.test.js** holds every theme to readable contrast (typed letters at least 7:1 on their paper, the word to type 3:1, the word after next fainter than the next) and keeps the default theme identical to the stylesheet's `:root`. The choice lives in local storage as `typy.theme`; **public/boot.js** repaints it before the first render, so a dark theme never flashes light.
+
+Ported palettes, all MIT licensed: Solarized (Ethan Schoonover), Catppuccin, Dracula, Nord (Arctic Ice Studio), Gruvbox (Pavel Pertsev), Tokyo Night (enkia) and Rosé Pine.
+
 ## Development
 
 Node 22 or newer. The app and Worker have no runtime package dependencies.

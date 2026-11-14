@@ -7,6 +7,7 @@
   <!--OG-->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
+  <script src="/boot.js"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -16,6 +17,9 @@
       <span class="brand-note">a little more in the moment.</span>
       <nav class="top-nav" aria-label="Main">
         <a href="/daily" id="daily-link"><span class="sun" aria-hidden="true">✳</span> the daily</a>
+        <button class="icon-button" id="theme-open" aria-label="Themes" title="Themes (alt+t)" aria-haspopup="dialog">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21a9 9 0 1 1 9-9c0 1.9-1.6 3-3.4 3H16a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 21z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16.5" cy="10.5" r="1.1" fill="currentColor"/></svg>
+        </button>
         <button class="icon-button" id="settings-open" aria-label="Typing settings" title="Typing settings">
           <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3" fill="var(--paper)"/><circle cx="15" cy="17" r="3" fill="var(--paper)"/></svg>
         </button>
@@ -104,8 +108,15 @@
       </section>
     </main>
 
-    <footer class="footer"><span>one word. then the next.</span><div><button class="text-button" id="footer-board" hidden>today’s board ↗</button><span id="restart-tip"><kbd>esc</kbd> restart</span><a href="https://teahub.xyz/teahubxyz/time/issues/254" target="_blank" rel="noopener" aria-label="About typy on Teahub">a small experiment ↗</a></div></footer>
+    <footer class="footer"><span>one word. then the next.</span><div><button class="text-button theme-current" id="theme-footer" title="Themes (alt+t)" aria-label="Theme: typy. Change theme"><span class="theme-dot" aria-hidden="true"></span><span id="theme-name">typy</span></button><button class="text-button" id="footer-board" hidden>today’s board ↗</button><span id="restart-tip"><kbd>esc</kbd> restart</span><a href="https://teahub.xyz/teahubxyz/time/issues/254" target="_blank" rel="noopener" aria-label="About typy on Teahub">a small experiment ↗</a></div></footer>
   </div>
+
+  <dialog id="theme-dialog" class="dialog theme-dialog" aria-label="Themes">
+    <form method="dialog"><button class="dialog-close" aria-label="Close themes">×</button></form>
+    <input id="theme-search" class="theme-search" type="text" role="searchbox" placeholder="pick a theme · search, or try “dark”" autocomplete="off" spellcheck="false" aria-label="Search themes" aria-controls="theme-grid">
+    <div id="theme-grid" class="theme-grid" role="radiogroup" aria-label="Themes"></div>
+    <p class="theme-keys" aria-hidden="true"><span><kbd>←</kbd><kbd>→</kbd><kbd>↑</kbd><kbd>↓</kbd> try one</span><span><kbd>enter</kbd> keep it</span><span><kbd>esc</kbd> put it back</span></p>
+  </dialog>
 
   <dialog id="settings-dialog" class="dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close settings">×</button></form>

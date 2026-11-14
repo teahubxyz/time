@@ -1,5 +1,6 @@
 import { TypingGame, timedSeconds } from '/game.js';
 import { generateWords, normalizePassage } from '/words.js';
+import { THEMES, MODES, AUTO, resolveTheme, findTheme } from '/themes.js';
 
 const $ = id => document.getElementById(id);
 const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
@@ -113,6 +114,7 @@ function newCommonPassage() {
 }
 
 function beginRun({freshWords = false, focus = false} = {}) {
+  shuffleTheme();
   transitioning = false;
   if (freshWords && source.kind === 'common' && !ghost) passage = newCommonPassage();
   if (!passage.length) passage = newCommonPassage();
@@ -348,8 +350,8 @@ function displayResult(result) {
     const max = Math.max(20, ...points);
     const coords = points.map((value, i) => [(i / Math.max(1, points.length - 1)) * 896 + 2, 83 - (Math.min(value, max) / max) * 70]);
     const path = coords.map((point, i) => (i ? 'L' : 'M') + point[0].toFixed(1) + ',' + point[1].toFixed(1)).join(' ');
-    $('speed-chart').innerHTML = '<path d="M0 84H900" stroke="#dcded3" fill="none"/><path d="' + path + ' L898 84 L2 84 Z" fill="#e7ebdd"/><path d="' + path + '" stroke="#6d8a67" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>' + coords.filter((_, i) => i === 0 || i === coords.length - 1).map(point => '<circle cx="' + point[0] + '" cy="' + point[1] + '" r="3" fill="#e36c49"/>').join('');
-  } else $('speed-chart').innerHTML = '<path d="M0 60H900" stroke="#dcded3" fill="none"/>';
+    $('speed-chart').innerHTML = '<path d="M0 84H900" class="chart-base"/><path d="' + path + ' L898 84 L2 84 Z" class="chart-area"/><path d="' + path + '" class="chart-line" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>' + coords.filter((_, i) => i === 0 || i === coords.length - 1).map(point => '<circle cx="' + point[0] + '" cy="' + point[1] + '" r="3" class="chart-dot"/>').join('');
+  } else $('speed-chart').innerHTML = '<path d="M0 60H900" class="chart-base"/>';
   updateOptions();
   $('mode-switch').querySelectorAll('button').forEach(button => { button.disabled = false; });
 }
@@ -697,6 +699,240 @@ window.addEventListener('resize', () => {
   else if (view === 'replay') renderReplay(replay.position);
 });
 
+// Themes paint CSS variables on <html>. boot.js repaints the kept one before the
+// first render; this block owns the list, the picker, and the auto and random modes.
+const darkQuery = matchMedia('(prefers-color-scheme: dark)');
+const savedTheme = readLocal('theme', null);
+let themeChoice = savedTheme && (findTheme(savedTheme.id) || savedTheme.id === 'auto' || savedTheme.id === 'random') ? savedTheme.id : 'typy';
+let randomPick = themeChoice === 'random' && findTheme(savedTheme?.pick) ? savedTheme.pick : null;
+let paintedTheme = '';
+let themeKept = false;
+let themeShuffleReady = false;
+let themeTiles = [];
+
+function themeFor(choice) {
+  if (choice === 'auto') return resolveTheme(darkQuery.matches ? AUTO.dark : AUTO.light);
+  if (choice === 'random') return resolveTheme(randomPick || 'typy');
+  return resolveTheme(choice) || resolveTheme('typy');
+}
+
+function paintTheme(theme) {
+  if (theme.id === paintedTheme) return;
+  const style = document.documentElement.style;
+  for (const [key, value] of Object.entries(theme.vars)) style.setProperty('--' + key, value);
+  style.colorScheme = theme.scheme;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.vars.paper);
+  paintedTheme = theme.id;
+}
+
+function showThemeName() {
+  const shown = themeFor(themeChoice);
+  const label = themeChoice === 'auto' || themeChoice === 'random' ? themeChoice + ' · ' + shown.name : shown.name;
+  setText('theme-name', label);
+  $('theme-footer').setAttribute('aria-label', 'Theme: ' + label + '. Change theme');
+}
+
+function saveTheme() {
+  const pack = theme => ({vars: theme.vars, scheme: theme.scheme});
+  if (themeChoice === 'auto') writeLocal('theme', {id: 'auto', light: pack(resolveTheme(AUTO.light)), dark: pack(resolveTheme(AUTO.dark))});
+  else writeLocal('theme', {id: themeChoice, pick: randomPick, ...pack(themeFor(themeChoice))});
+}
+
+function otherTheme() {
+  const pool = THEMES.filter(theme => theme.id !== paintedTheme);
+  return pool[Math.floor(Math.random() * pool.length)].id;
+}
+
+function keepTheme(choice) {
+  themeKept = true;
+  themeChoice = choice;
+  if (choice === 'random') randomPick = otherTheme();
+  paintTheme(themeFor(choice));
+  saveTheme();
+  showThemeName();
+  for (const tile of themeTiles) tile.setAttribute('aria-checked', String(tile.dataset.theme === themeChoice));
+}
+
+// Random deals a new theme as each run begins, except the first run after load,
+// which keeps the theme boot.js already painted.
+function shuffleTheme() {
+  if (themeChoice !== 'random') return;
+  if (!themeShuffleReady) { themeShuffleReady = true; return; }
+  randomPick = otherTheme();
+  paintTheme(themeFor('random'));
+  saveTheme();
+  showThemeName();
+}
+
+function initThemes() {
+  paintTheme(themeFor(themeChoice));
+  if (savedTheme) saveTheme();
+  showThemeName();
+  darkQuery.addEventListener('change', () => {
+    if (themeChoice !== 'auto' || $('theme-dialog').open) return;
+    paintTheme(themeFor('auto'));
+    showThemeName();
+  });
+}
+
+function buildThemeGrid() {
+  if (themeTiles.length) return;
+  const grid = $('theme-grid');
+  for (const entry of [...MODES, ...THEMES]) {
+    const theme = findTheme(entry.id) && resolveTheme(entry.id);
+    const tile = document.createElement('button');
+    tile.type = 'button';
+    tile.className = 'theme-tile';
+    tile.tabIndex = -1;
+    tile.dataset.theme = entry.id;
+    tile.dataset.search = [entry.name, entry.id, theme ? theme.scheme : 'mode', entry.note || ''].join(' ').toLowerCase();
+    tile.setAttribute('role', 'radio');
+    tile.setAttribute('aria-label', entry.name + ', ' + (entry.note || theme.scheme + ' theme'));
+    const sample = document.createElement('span');
+    sample.className = 'theme-sample';
+    sample.setAttribute('aria-hidden', 'true');
+    if (entry.id === 'random') {
+      sample.classList.add('confetti');
+      ['dracula', 'gruvbox', 'riso', 'matcha'].forEach((id, i) => {
+        const letter = document.createElement('b');
+        letter.textContent = 'typy'[i];
+        letter.style.setProperty('--c', resolveTheme(id).vars.accent);
+        sample.append(letter);
+      });
+    } else {
+      const typed = document.createElement('b'), next = document.createElement('u'), rest = document.createElement('i');
+      typed.textContent = 'ty'; next.textContent = 'p'; rest.textContent = 'y';
+      sample.append(typed, next, rest);
+    }
+    const label = document.createElement('span'), note = document.createElement('small');
+    label.className = 'theme-label';
+    label.textContent = entry.name;
+    note.textContent = entry.note || theme.scheme;
+    label.append(note);
+    tile.append(sample, label);
+    grid.append(tile);
+    themeTiles.push(tile);
+  }
+  const empty = document.createElement('p');
+  empty.className = 'theme-empty';
+  empty.id = 'theme-empty';
+  empty.hidden = true;
+  empty.textContent = 'no theme by that name yet.';
+  grid.append(empty);
+}
+
+function previewTheme(id) {
+  paintTheme(id === 'random' ? themeFor(themeChoice) : themeFor(id));
+}
+
+function visibleTiles() {
+  return themeTiles.filter(tile => !tile.hidden);
+}
+
+function focusTile(tile) {
+  for (const other of themeTiles) other.tabIndex = other === tile ? 0 : -1;
+  tile.focus({preventScroll: true});
+  tile.scrollIntoView({block: 'nearest'});
+}
+
+function filterThemes(query) {
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  for (const tile of themeTiles) tile.hidden = !words.every(word => tile.dataset.search.includes(word));
+  const shown = visibleTiles();
+  $('theme-empty').hidden = shown.length > 0;
+  if (shown[0]) for (const tile of themeTiles) tile.tabIndex = tile === shown[0] ? 0 : -1;
+  return shown;
+}
+
+function openThemes() {
+  if (document.querySelector('dialog[open]')) return;
+  buildThemeGrid();
+  // Mode tiles wear what they would show right now; theme tiles wear their own colours.
+  for (const tile of themeTiles) {
+    const theme = tile.dataset.theme === 'random' ? themeFor(themeChoice) : themeFor(tile.dataset.theme);
+    for (const key of ['paper', 'ink', 'word', 'faint', 'muted', 'accent']) tile.style.setProperty('--t-' + key, theme.vars[key]);
+    tile.setAttribute('aria-checked', String(tile.dataset.theme === themeChoice));
+  }
+  $('theme-search').value = '';
+  filterThemes('');
+  themeKept = false;
+  $('theme-dialog').showModal();
+  focusTile(themeTiles.find(tile => tile.dataset.theme === themeChoice) || themeTiles[0]);
+}
+
+// Esc puts the kept theme back at once; close covers the × button and navigation too.
+$('theme-dialog').addEventListener('cancel', () => { if (!themeKept) previewTheme(themeChoice); });
+$('theme-dialog').addEventListener('close', () => {
+  if (!themeKept) previewTheme(themeChoice);
+  showThemeName();
+  if (view === 'play' && innerWidth > 700) focusTyping();
+});
+$('theme-grid').addEventListener('focusin', event => {
+  const tile = event.target.closest('.theme-tile');
+  if (!tile) return;
+  for (const other of themeTiles) other.tabIndex = other === tile ? 0 : -1;
+  previewTheme(tile.dataset.theme);
+});
+$('theme-grid').addEventListener('mouseover', event => {
+  const tile = event.target.closest('.theme-tile');
+  if (tile && $('theme-dialog').open) previewTheme(tile.dataset.theme);
+});
+$('theme-grid').addEventListener('mouseleave', () => {
+  if (!$('theme-dialog').open) return;
+  const focused = document.activeElement?.closest?.('.theme-tile');
+  previewTheme(focused ? focused.dataset.theme : themeChoice);
+});
+$('theme-grid').addEventListener('click', event => {
+  const tile = event.target.closest('.theme-tile');
+  if (!tile) return;
+  keepTheme(tile.dataset.theme);
+  $('theme-dialog').close();
+});
+$('theme-grid').addEventListener('keydown', event => {
+  const tile = event.target.closest('.theme-tile');
+  if (!tile || event.ctrlKey || event.metaKey || event.altKey) return;
+  const tiles = visibleTiles(), i = tiles.indexOf(tile);
+  let next = null;
+  if (event.key === 'ArrowRight') next = tiles[(i + 1) % tiles.length];
+  else if (event.key === 'ArrowLeft') next = tiles[(i - 1 + tiles.length) % tiles.length];
+  else if (event.key === 'Home') next = tiles[0];
+  else if (event.key === 'End') next = tiles[tiles.length - 1];
+  else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    const columns = tiles.filter(other => other.offsetTop === tiles[0].offsetTop).length || 1;
+    // On a phone the tiles are one sideways row: up goes to the search, down stays put.
+    const j = columns >= tiles.length ? (event.key === 'ArrowDown' ? i : -1) : i + (event.key === 'ArrowDown' ? columns : -columns);
+    if (j < 0) { event.preventDefault(); $('theme-search').focus(); return; }
+    next = tiles[Math.min(j, tiles.length - 1)];
+  } else if (Array.from(event.key).length === 1 && event.key.trim()) {
+    // Typing anywhere in the grid searches.
+    event.preventDefault();
+    $('theme-search').focus();
+    $('theme-search').value += event.key;
+    $('theme-search').dispatchEvent(new Event('input'));
+    return;
+  }
+  if (next) { event.preventDefault(); focusTile(next); }
+});
+$('theme-search').addEventListener('input', () => {
+  const shown = filterThemes($('theme-search').value);
+  previewTheme(shown[0] ? shown[0].dataset.theme : themeChoice);
+});
+$('theme-search').addEventListener('keydown', event => {
+  const first = visibleTiles()[0];
+  if (event.key === 'ArrowDown' && first) { event.preventDefault(); focusTile(first); }
+  else if (event.key === 'Enter' && first) { event.preventDefault(); keepTheme(first.dataset.theme); $('theme-dialog').close(); }
+});
+$('theme-open').addEventListener('click', openThemes);
+$('theme-footer').addEventListener('click', openThemes);
+// Alt+T (Option+T on a Mac) opens and closes the picker. The game ignores keys
+// with modifiers, so this never types into a run.
+document.addEventListener('keydown', event => {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.code !== 'KeyT') return;
+  event.preventDefault();
+  if ($('theme-dialog').open) $('theme-dialog').close();
+  else openThemes();
+});
+
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
@@ -708,5 +944,6 @@ function frame(time) {
   }
   requestAnimationFrame(frame);
 }
+initThemes();
 route(location.pathname,false);
 requestAnimationFrame(frame);
