@@ -7,7 +7,7 @@
   <!--OG-->
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
-  <script src="/boot.js"></script>
+  <script src="/themes.js"></script>
   <script type="module" src="/app.js"></script>
 </head>
 <body>
@@ -70,6 +70,7 @@
             </div>
           </div>
         </div>
+        <div class="ghost-lane" id="ghost-lane" hidden aria-hidden="true"><span class="ghost-lane-label" id="ghost-lane-label">ghost</span><span class="ghost-lane-word" id="ghost-lane-word"></span><span class="ghost-lane-next" id="ghost-lane-next"></span><span class="ghost-lane-pace" id="ghost-lane-pace"></span></div>
         <div id="tempo-track" class="tempo-track" hidden><div class="tempo-rail"><div id="tempo-progress"></div></div><div class="tempo-caption"><span id="tempo-caption">find the beat</span><span id="tempo-lives" aria-label="Three beats remaining"><i></i><i></i><i></i></span></div></div>
         <div class="input-row" id="input-row">
           <input id="typing-input" class="typing-input" type="text" inputmode="text" enterkeyhint="next" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" maxlength="64" aria-label="Type the word shown above" placeholder="tap here to type">
@@ -87,6 +88,7 @@
       <section id="result-panel" class="result-panel" hidden aria-labelledby="result-title">
         <div class="result-heading"><p class="eyebrow" id="result-kicker">30 seconds, well spent</p><span class="new-best" id="new-best" hidden>personal best ↗</span></div>
         <h1 id="result-title">there’s your rhythm.</h1>
+        <p class="race-outcome" id="race-outcome" hidden><span class="race-verdict" id="race-verdict"></span><span class="race-score" id="race-score"></span></p>
         <div class="result-grid">
           <div class="result-main"><span id="result-wpm">0</span><span>words per minute</span></div>
           <dl class="result-detail">

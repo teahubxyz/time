@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds } from '../src/game.js';
+import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds, replayFrame, raceOutcome } from '../src/game.js';
 import { generateWords, normalizePassage } from '../src/words.js';
 
 function type(game, word, at, spacing = 100) {
@@ -472,4 +472,23 @@ test('passages are deterministic when seeded, capped, and normalized for a keybo
   assert.deepEqual(normalizePassage('  “hello”\nworld’s — here\u200B  '), ['"hello"', "world's", '-', 'here']);
   assert.equal(normalizePassage(Array(400).fill('word').join(' ')).length, 300);
   assert.equal(normalizePassage('a'.repeat(100))[0].length, 64);
+});
+
+test('a replay frame finds the word in play and each letter outcome at any moment', () => {
+  const run = {words: ['cat', 'dog', 'owl'], durationMs: 1000,
+    wordTimings: [{index: 0, start: 0}, {index: 1, start: 500}],
+    events: [{t: 100, index: 0, type: 'hit'}, {t: 200, index: 0, type: 'miss'}, {t: 300, index: 0, type: 'backspace'},
+      {t: 350, index: 0, type: 'hit'}, {t: 600, index: 1, type: 'hit'}]};
+  let at = replayFrame(run, 250);
+  assert.deepEqual([at.word, at.flags, at.next, at.afterNext, at.previous, at.done], ['cat', [true, false], 'dog', 'owl', '', false]);
+  assert.deepEqual(replayFrame(run, 400).flags, [true, true], 'a backspace takes the miss back');
+  at = replayFrame(run, 700);
+  assert.deepEqual([at.word, at.index, at.flags, at.previous, at.afterNext], ['dog', 1, [true], 'cat', 'cat']);
+  assert.equal(replayFrame(run, 1000).done, true);
+});
+
+test('a race is won, lost or tied at whole words per minute', () => {
+  assert.deepEqual(raceOutcome(72.4, 68.9), {verdict: 'won', margin: 3, mine: 72, theirs: 69});
+  assert.equal(raceOutcome(60.2, 60.4).verdict, 'tied');
+  assert.deepEqual(raceOutcome(51, 58), {verdict: 'lost', margin: 7, mine: 51, theirs: 58});
 });

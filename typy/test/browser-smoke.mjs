@@ -172,6 +172,7 @@ await check('pasted markup is rendered as inert text', async () => {
 });
 
 await check('themes: Alt+T opens the picker, arrows preview, Esc puts back, Enter keeps across a reload', async () => {
+  await page.evaluate(() => localStorage.setItem('typy.theme', JSON.stringify({ id: 'typy' })));
   await home();
   const paper = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--paper').trim());
   const start = await paper();
@@ -192,6 +193,9 @@ await check('themes: Alt+T opens the picker, arrows preview, Esc puts back, Ente
   await page.locator('#word[data-word]').waitFor();
   assert.equal(await paper(), '#2e3440', 'the kept theme survives a reload');
   await page.evaluate(() => localStorage.removeItem('typy.theme'));
+  await home();
+  assert.match(await page.locator('#theme-name').innerText(), /^random · /, 'with nothing kept, a random theme is dealt');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('typy.theme')).id), undefined, 'the default is not saved as a choice');
 });
 
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
