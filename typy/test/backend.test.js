@@ -275,3 +275,9 @@ test('www redirects to the apex and link previews name typy.lol', async () => {
   const html = await (await worker.fetch(req('/daily'), e)).text();
   assert.match(html, /og:url" content="https:\/\/typy\.lol\/daily"/);
 });
+
+test('a shared drill keeps its kind and a known label, and nothing else',()=>{
+ assert.deepEqual(validateResult({run:makeRun(),source:{kind:'drill',label:'filling the gaps'}}).source,{kind:'drill',label:'filling the gaps'});
+ assert.deepEqual(validateResult({run:makeRun(),source:{kind:'drill',label:'<b>made up</b>'}}).source,{kind:'drill'});
+ assert.deepEqual(validateResult({run:makeRun(),source:{kind:'mystery'}}).source,{kind:'common'});
+});
