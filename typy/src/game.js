@@ -342,6 +342,7 @@ export class TypingGame {
       status: this.status, mode: this.mode, advance: this.advance,
       wordIndex: this.wordIndex, word: this.word,
       nextWord: this.words[(this.wordIndex + 1) % this.words.length],
+      afterNextWord: this.words[(this.wordIndex + 2) % this.words.length],
       buffer: this.buffer.join(''), letters, correctPrefix, errorIndex,
       startedAt: this.startedAt, elapsedMs, remainingMs,
       wpm: speed(this.completedChars + correctPrefix, elapsedMs),
