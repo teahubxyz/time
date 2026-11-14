@@ -40,7 +40,9 @@ try {
   await page.goto(resultUrl);
   await page.locator('#result-panel').waitFor({state:'visible'});
   const og = await page.locator('meta[property="og:image"]').getAttribute('content');
-  const imageResponse = await page.request.get(og);
+  // Previews always name typy.lol; fetch the same image path from the server under test.
+  assert.match(og,/^https:\/\/typy\.lol\/api\/og\/[a-f0-9]{24}\.png$/);
+  const imageResponse = await page.request.get(base + new URL(og).pathname);
   const imageBytes = await imageResponse.body();
   assert.equal(imageResponse.status(),200);
   assert.equal(imageBytes.readUInt32BE(16),1200);

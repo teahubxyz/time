@@ -171,6 +171,29 @@ await check('pasted markup is rendered as inert text', async () => {
   assert.equal(await page.evaluate(() => globalThis.typyInjected), undefined);
 });
 
+await check('themes: Alt+T opens the picker, arrows preview, Esc puts back, Enter keeps across a reload', async () => {
+  await home();
+  const paper = () => page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--paper').trim());
+  const start = await paper();
+  await page.keyboard.press('Alt+KeyT');
+  await page.locator('#theme-dialog[open]').waitFor();
+  assert.equal(await page.evaluate(() => document.activeElement?.dataset.theme), 'typy');
+  await page.keyboard.press('ArrowRight');
+  assert.notEqual(await paper(), start, 'moving to another theme previews it');
+  await page.keyboard.press('Escape');
+  await page.locator('#theme-dialog').waitFor({ state: 'hidden' });
+  assert.equal(await paper(), start, 'Esc puts the kept theme back');
+  await page.locator('#theme-open').click();
+  await page.locator('#theme-search').fill('nord');
+  await page.keyboard.press('Enter');
+  assert.equal(await paper(), '#2e3440');
+  assert.equal(await page.locator('#theme-name').innerText(), 'nord');
+  await page.reload();
+  await page.locator('#word[data-word]').waitFor();
+  assert.equal(await paper(), '#2e3440', 'the kept theme survives a reload');
+  await page.evaluate(() => localStorage.removeItem('typy.theme'));
+});
+
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
 const phone = await mobile.newPage();
 phone.on('pageerror', error => errors.push(error.message));
