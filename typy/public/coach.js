@@ -254,3 +254,48 @@ export function practiceWords(focus, pairs, vocabulary, count = 60, random = Mat
   }
   return out;
 }
+
+const percent = value => Math.round(Number(value) || 0) + '%';
+const tenths = value => String(Math.round((Number(value) || 0) * 10) / 10);
+
+/** A few words after a run, the most useful first: how it went against your
+ *  usual, what to work on, and something to try next. `stats` is the coach's
+ *  data from before this run, so "usual" means the runs before it. Each note is
+ *  {kind, text} and may carry an action the result card offers: a drill, tempo,
+ *  or line by line. `next` is a goal for the next run. */
+export function reviewRun(stats, run, {mode = run?.mode || '', drill = false, isBest = false, view = 'word', tempoPeak = 0} = {}) {
+  const notes = [];
+  const add = (weight, kind, text, action = null) => notes.push({weight, kind, text, ...(action ? {action} : {})});
+  const s = run?.stats || {};
+  if (!s.keystrokes) return {notes: [], next: null};
+  const recent = (stats?.runs || []).filter(item => !item.drill).slice(-10);
+  const mean = list => list.length ? list.reduce((sum, value) => sum + value, 0) / list.length : 0;
+  const usual = Math.round(mean(recent.map(item => item.wpm)));
+  const usualAccuracy = mean(recent.map(item => item.accuracy));
+  const wpm = Math.round(s.wpm || 0);
+  const settled = recent.length >= 3;
+  if (isBest && recent.length) add(90, 'best', 'A new best: ' + wpm + ' wpm.');
+  if (settled && !drill && mode !== 'tempo') {
+    const gap = wpm - usual;
+    if (gap >= 3) add(70, 'up', gap + ' wpm above your usual ' + usual + '.');
+    else if (gap <= -5) add(60, 'down', s.accuracy > usualAccuracy + 1
+      ? 'Slower than your usual ' + usual + ', but cleaner: ' + percent(s.accuracy) + ' against ' + percent(usualAccuracy) + '. The speed comes back on its own.'
+      : 'A slower one: ' + wpm + ' against your usual ' + usual + '. Shake out your hands and go again.');
+  }
+  if (s.accuracy < 93) add(80, 'accuracy', percent(s.accuracy) + ' accurate. Ease off a little and aim for 96%: each mistake costs more time than rushing saves.');
+  else if (s.accuracy >= 98 && s.completedWords >= 10 && !(settled && wpm < usual - 2)) add(40, 'clean', percent(s.accuracy) + ' accurate, so there is room to push the pace.');
+  if (mode === 'tempo' && tempoPeak) add(75, 'tempo', 'You kept up with the beat until ' + tempoPeak + ' wpm.' + (settled && tempoPeak < usual ? ' That’s under your usual ' + usual + ', so the beat has room to climb.' : ''));
+  const rhythm = runRhythm(run);
+  if (rhythm.samples >= 10 && rhythm.within) {
+    const ratio = rhythm.start / rhythm.within;
+    if (ratio >= 2.2) add(65, 'starts', 'You pause before each word: starting one takes ' + tenths(ratio) + '× as long as a letter inside it. Look at the next word while you finish this one.', view === 'line' ? null : {kind: 'lines', label: 'try line by line'});
+    if (rhythm.evenness && rhythm.evenness < 0.6 && mode !== 'tempo') add(55, 'bursts', 'Your rhythm came in bursts. Tempo trains an even beat: finish each word before the beat, and the beat speeds up as you keep up.', {kind: 'tempo', label: 'try tempo'});
+  }
+  const weak = coachReport(stats).weakest.map(item => item.key);
+  if (weak.length && !drill) add(50, 'keys', 'Your slippiest keys right now: ' + weak.join(', ') + '. A short drill leans on them.', {kind: 'drill', label: 'drill my weak keys'});
+  if (!recent.length) add(30, 'first', 'Your first run here. The coach learns your hands as you type, so every run makes these notes sharper.');
+  const chosen = notes.sort((a, b) => b.weight - a.weight).slice(0, 3).map(({weight, ...note}) => note);
+  // A goal just past where you are: the better of this run and your usual, plus two, kept clean.
+  const next = drill || mode === 'tempo' ? null : {wpm: Math.max(wpm, usual) + 2, accuracy: 96};
+  return {notes: chosen, next};
+}

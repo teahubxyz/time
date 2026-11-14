@@ -31,6 +31,8 @@ Ported palettes, all MIT licensed: Solarized (Ethan Schoonover), Catppuccin, Dra
 
 The coach (in the footer, or **your coach** on a result) learns from every run you type on this device: how accurate and how quick each key is compared with your own usual key, which letter-to-letter moves are slow, which keys slip to which (a neighbouring key, or the same finger on the other hand), and your rhythm, which it turns into a style such as sprinter or metronome. Its report shades your keyboard where you hesitate and lists your slowest pairs and recent speeds. **Drill my weak keys** starts a run of common words that lean on those keys and pairs, **fill the gaps** covers keys it has not seen enough of, and before there is any data it offers a quick check of every key. Drills teach the coach your keys but stay out of your trend and style, since they are hard on purpose, and a shared drill keeps its name.
 
+After every run the result card carries the **coach’s notes**: up to three lines on how the run went against your usual (the runs before it), what to work on, and what to try, sometimes with a button for it (a drill, tempo, or line by line), plus a goal for the next run. `reviewRun` writes them, and they stay with the run in your history.
+
 **public/coach.js** keeps all of this pure: a recorder reads the same events replays store, plus the key a miss actually was, which never leaves the browser. Local storage (`typy.coach`) holds the counts, old counts fade so it follows how you type now, and **forget my coach data** clears it.
 
 ## Jam
@@ -41,11 +43,31 @@ Esc (or **done**) shows the words, your pace, your pace in flow (typing without 
 
 A jam is only its keys and when each landed (up to 4,000 keys, 2,000 characters and ten minutes). **src/jam.js** rebuilds the words and stats from those keys in the browser and on the server, and `createJamConductor` in **public/music.js** rebuilds the music, so playback always matches what the typist heard.
 
+## History
+
+**History** (in the footer, or on a result) keeps the last 60 runs and jams finished on this device, newest first. Open a run to see its result and notes again, replay it, share it or race it; open a jam to play it back. It lives in local storage (`typy.history`) and gives way, oldest first, before it can crowd anything else out. **Clear history** empties it.
+
 ## Music
 
 The note button in the header (or **Alt+M**, Option+M on a Mac) turns on a little jazz. The letters of each word play its melody, every new word brings the next chord of an eight-bar loop in F (I–VI–ii–V, then iii–vi–ii–V), and a wrong letter is a soft muted thump instead of a wrong note. Keys to the right of the last one step up the scale and keys to the left step down, so a word's shape on the keyboard is the shape of its tune, and a doubled letter repeats its note. Tempo mode changes chords on the beat, a race rings a soft ting each time the ghost finishes a word, and the run ends on the home chord: brighter for a win, the relative minor for a loss, left hanging for a dead heat.
 
 **public/music.js** keeps the mapping pure and deterministic: a conductor turns the same event log replays already store into notes and chords, so a replay plays back exactly the music its run made. The sound is synthesized with Web Audio (an FM electric piano, a bass, a generated room and a limiter): no samples, nothing fetched, and no audio context at all until music is turned on. Music is off by default; local storage (`typy.music`) keeps the choice. **test/music.test.js** holds every note to its bar's scale and checks that live play and its replay make identical music.
+
+## How it fits together
+
+**public/app.js** only brings the modules together and runs the frame loop. The rest is small modules:
+
+- **core/**: `dom.js` (helpers), `state.js` (settings, bests, the sound engines, the coach’s data, and `S`, the state shared between modules), `screens.js` (one screen is up at a time: it names its panel and can own the keyboard, typed input and the frame loop), `bus.js` (events between features), and `ui.js` (page-wide dialogs).
+- **play/**: the typing game. `modes.js` (each mode’s names and how it works), `options.js` (modes, settings, the words menu), `stage.js` (word and line views), `run.js`, `result.js`, `replay.js`, `share.js`, and `router.js` (what each address shows).
+- **features/**: `themes-ui.js`, `coach-ui.js` (the report, practice runs, and notes after every run), `music-ui.js` and `history-ui.js`.
+- **jam/**: free play.
+- Pure engines with unit tests and no DOM: `coach.js`, `music.js`, `themes.js` and `history.js`, plus `src/game.js`, `words.js` and `jam.js`, which the Worker shares.
+
+To grow it:
+
+- **A new screen or mode**: `screen('name', {panel, keydown, press, frame, leave})` registers it and `go('name')` puts it up. A run mode also gets an entry in `play/modes.js`, whose line explains it under the mode switch.
+- **Something that reacts to play**: listen on the bus. `run:done` carries a finished run’s result (the coach and history listen), `jam:done` a finished jam, and `result:show` a result card going up (the coach’s notes listen).
+- **A new file**: put it under `public/` and run the build. It is served at its own path, and deploy refuses anything stale or never built.
 
 ## Development
 

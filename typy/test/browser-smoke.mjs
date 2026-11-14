@@ -449,6 +449,44 @@ await check('jam: free typing plays, Esc shows the stats, playback types it agai
   await listening.close();
 });
 
+await check('after a run the coach leaves notes, history keeps runs and jams to reopen, and the mode line explains tempo', async () => {
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const p = await context.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await home(p);
+  assert.match(await p.locator('#mode-how').innerText(), /first letter starts the clock/);
+  await p.locator('[data-mode=tempo]').click();
+  assert.match(await p.locator('#mode-how').innerText(), /finish each word before its beat/);
+  await p.locator('[data-mode=endless]').click();
+  for (let i = 0; i < 12; i++) await p.keyboard.type(await p.locator('#word').getAttribute('data-word') + ' ', { delay: 30 });
+  await p.keyboard.press('Enter');
+  await p.locator('#result-panel').waitFor();
+  await p.locator('#coach-notes').waitFor();
+  assert.ok(await p.locator('.coach-note').count() >= 1, 'the coach says something after every run');
+  assert.match(await p.locator('#coach-next').innerText(), /^next run: [0-9]+ wpm at 96%\+$/);
+  const wpm = await p.locator('#result-wpm').innerText();
+  await p.locator('#jam-option').click();
+  await p.locator('#jam-panel').waitFor();
+  await p.keyboard.type('la di da', { delay: 30 });
+  await p.keyboard.press('Escape');
+  await p.locator('#jam-result').waitFor();
+  await p.locator('#footer-history').click();
+  await p.locator('#history-dialog[open]').waitFor();
+  assert.equal(await p.locator('.history-row').count(), 2);
+  assert.match(await p.locator('.history-row.jam .history-detail').innerText(), /la di da/);
+  await p.locator('.history-row.run').click();
+  await p.locator('#result-panel').waitFor();
+  assert.equal(await p.locator('#result-wpm').innerText(), wpm);
+  assert.equal(await p.locator('#coach-notes').isVisible(), true, 'a reopened run keeps its notes');
+  await p.reload();
+  await p.locator('#word[data-word]').waitFor();
+  await p.locator('#footer-history').click();
+  await p.locator('.history-row.jam').click();
+  await p.locator('#jam-result').waitFor();
+  assert.match(await p.locator('#jam-words').textContent(), /la di da/, 'history survives a reload');
+  await context.close();
+});
+
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
 const phone = await mobile.newPage();
 phone.on('pageerror', error => errors.push(error.message));
