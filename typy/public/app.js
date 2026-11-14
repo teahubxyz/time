@@ -1290,7 +1290,7 @@ function renderCoach() {
     setText('coach-progress-note', 'a couple more runs and your trend shows up here.');
   }
   const ready = report.weakest.length || report.pairs.length;
-  setText('coach-drill-label', ready ? 'drill my weak keys' : 'start with a quick check');
+  setText('coach-drill-label', ready ? 'drill my weak keys' : report.runs && report.missing.length ? 'fill the gaps' : report.runs ? 'take a quick check' : 'start with a quick check');
   $('coach-gaps').hidden = !ready || !report.missing.length;
   setText('coach-gaps-label', 'fill the gaps · ' + report.missing.slice(0, 6).join(' ') + (report.missing.length > 6 ? ' …' : ''));
   setText('coach-note', 'Learned from ' + report.runs + (report.runs === 1 ? ' run' : ' runs') + ' on this device. It never leaves it.');
@@ -1308,12 +1308,14 @@ function openCoach() {
 function startPractice(kind) {
   const report = coachReport(coachStats);
   const drill = kind === 'drill' && (report.weakest.length || report.pairs.length);
-  const gaps = report.missing.length ? report.missing : KEYBOARD.join('').split('');
+  // Until it knows your weak keys, the same button fills the gaps it hasn't met, or checks every key.
+  const filling = !drill && report.runs > 0 && report.missing.length > 0;
+  const gaps = filling ? report.missing : KEYBOARD.join('').split('');
   const focus = drill
     ? Object.fromEntries(Object.entries(report.keys).filter(([, info]) => info).map(([key, info]) => [key, info.weakness]))
     : Object.fromEntries(gaps.map(key => [key, 3]));
   passage = practiceWords(focus, drill ? report.pairs.map(item => item.pair) : [], VOCABULARY, 120);
-  source = {kind: 'drill', label: drill ? 'weak-key drill' : report.runs ? 'filling the gaps' : 'a quick check'};
+  source = {kind: 'drill', label: drill ? 'weak-key drill' : filling ? 'filling the gaps' : 'a quick check'};
   $('coach-dialog').close();
   currentResult = null; ghost = null; shareId = null;
   if (currentPath !== '/') { history.replaceState({}, '', '/'); currentPath = '/'; }
