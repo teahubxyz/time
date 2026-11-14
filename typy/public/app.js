@@ -46,6 +46,9 @@ let toastTimer;
 let transitioning = false;
 let isComposing = false;
 let ghostLaneKey = '';
+let duelChars = 30;
+let duelWidth = 0;
+let duelKeys = {you: '', them: ''};
 // Music mode (public/music.js). Off until someone turns it on; it then listens
 // to the game's own event log, so live play and replays share one conductor.
 const music = createMusic();
@@ -170,6 +173,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   $('typing-input').disabled = false;
   $('ghost-race').hidden = !ghost;
   $('ghost-lane').hidden = !ghost;
+  setClass($('stage'), 'duel', false); $('race-duel').hidden = true; $('race-timeline').hidden = true;
   ghostLaneKey = '';
   ghostHeard = 0;
   if (ghost) { setText('ghost-lane-label', currentResult?.name || 'ghost'); setText('race-you-label', 'you'); setText('race-them-label', 'ghost'); }
@@ -307,8 +311,8 @@ function drawLines(words, index, buffer, flags) {
 }
 
 // In line view the race lane shows the ghost's whole line, broken where yours is.
-function ghostLine(run, at) {
-  const starts = lineStarts(run.words, lineMetrics.chars || 40, at.index);
+function ghostLine(run, at, chars = lineMetrics.chars || 40) {
+  const starts = lineStarts(run.words, chars, at.index);
   let row = 0;
   while (starts[row + 1] <= at.index) row++;
   const nodes = [];
@@ -317,7 +321,11 @@ function ghostLine(run, at) {
     if (nodes.length) nodes.push(document.createTextNode(' '));
     if (i < at.index || (at.done && i === at.index)) nodes.push(spanOf(word, 'correct'));
     else if (i > at.index) nodes.push(spanOf(word));
-    else nodes.push(...Array.from(word).map((letter, k) => spanOf(letter, k < at.flags.length ? (at.flags[k] ? 'correct' : 'incorrect') : k === at.flags.length ? 'cursor' : '')));
+    else {
+      // A word typed to its end waits for its space, so the cursor sits just after it.
+      const letters = Array.from(word);
+      nodes.push(...letters.map((letter, k) => spanOf(letter, (k < at.flags.length ? (at.flags[k] ? 'correct' : 'incorrect') : k === at.flags.length ? 'cursor' : '') + (k === letters.length - 1 && at.flags.length >= letters.length ? ' cursor-end' : ''))));
+    }
   }
   return nodes;
 }
@@ -703,14 +711,20 @@ function startReplay() {
   lastWordKey = ''; lastWordIndex = -1;
   $('result-panel').hidden = true; $('play-panel').hidden = false;
   $('input-row').hidden = true; $('replay-controls').hidden = false;
-  // A race replays both runs on one clock: this run on the stage, the ghost's in the lane.
+  // A race replays both runs on one clock, in two lanes of the same size, over a timeline.
   const rival = currentResult.ghostRun || null;
-  $('ghost-race').hidden = !rival; $('ghost-lane').hidden = !rival; $('tempo-track').hidden = true;
+  $('ghost-race').hidden = !rival; $('ghost-lane').hidden = true; $('tempo-track').hidden = true;
   ghostLaneKey = '';
+  setClass($('stage'), 'duel', Boolean(rival));
+  $('race-duel').hidden = !rival; $('race-timeline').hidden = !rival;
+  duelKeys = {you: '', them: ''};
   if (rival) {
-    setText('ghost-lane-label', currentResult.ghostName || 'ghost');
-    setText('race-you-label', currentResult.local ? 'you' : currentResult.name || 'anonymous');
-    setText('race-them-label', currentResult.ghostName || 'ghost');
+    const racer = currentResult.local ? 'you' : currentResult.name || 'anonymous';
+    const rivalName = currentResult.ghostName || 'ghost';
+    setText('race-you-label', racer); setText('duel-you-name', racer);
+    setText('race-them-label', rivalName); setText('duel-them-name', rivalName);
+    duelWidth = 0; measureDuel();
+    drawRaceChart(currentResult.run, rival);
   }
   $('run-status').textContent = rival ? 'the race, replayed' : 'a rhythm, replayed';
   $('status-dot').classList.add('active');
@@ -750,18 +764,73 @@ function hearReplay(position) {
   }
 }
 
+// Watching a race back: both runs in lanes of the same size, each on the line of
+// the passage it has reached. Both lanes break lines the same way, so on the same
+// line the gap between the two cursors is the lead. Beneath them, the timeline
+// draws words finished over time for each run, and the playhead rides along it.
+function measureDuel() {
+  const width = $('duel-you-words').clientWidth;
+  if (!width || width === duelWidth) return;
+  duelWidth = width;
+  const char = $('duel-probe').getBoundingClientRect().width / 20 || 20;
+  duelChars = Math.max(8, Math.floor(width / char) - 1);
+  duelKeys = {you: '', them: ''};
+}
+
+function renderLane(side, run, position) {
+  const at = replayFrame(run, position);
+  const key = at.index + '|' + at.flags.join(',') + '|' + at.done + '|' + duelChars;
+  if (duelKeys[side] !== key) {
+    duelKeys[side] = key;
+    $('duel-' + side + '-words').replaceChildren(...ghostLine(run, at, duelChars));
+    const finished = finishedWords(run, position);
+    setText('duel-' + side + '-pace', at.done ? 'done · ' + pretty(run.stats.wpm) + ' wpm' : finished + (finished === 1 ? ' word' : ' words'));
+    setClass($('duel-' + side), 'done', at.done);
+  }
+  return at;
+}
+
+function drawRaceChart(run, rival) {
+  const length = Math.max(1, replayLength());
+  const finished = r => r.wordTimings.filter(timing => timing.completed).length;
+  const top = Math.max(1, finished(run), finished(rival));
+  const x = t => (Math.min(t, length) / length * 900).toFixed(1);
+  const y = n => (112 - (n / top) * 104).toFixed(1);
+  const steps = r => {
+    let d = 'M0 112', count = 0;
+    for (const timing of r.wordTimings) if (timing.completed) { count += 1; d += 'H' + x(timing.end) + 'V' + y(count); }
+    return d + 'H' + x(r.durationMs);
+  };
+  $('race-chart').innerHTML = '<path d="M0 112H900" class="race-base"/><path d="' + steps(rival) + '" class="race-line them"/><path d="' + steps(run) + '" class="race-line you"/><path id="race-playhead" d="M0 0V120" class="race-playhead"/>';
+  setText('race-axis-end', clock(length));
+}
+
+function seekRace(event) {
+  const box = $('race-chart').getBoundingClientRect();
+  if (!box.width) return;
+  replay.position = Math.round(Math.min(1, Math.max(0, (event.clientX - box.left) / box.width)) * replayLength());
+  replay.anchor = now(); replay.anchorPosition = replay.position;
+  seekReplayMusic(replay.position);
+  renderReplay(replay.position);
+}
+
 function renderReplay(position) {
   const run = currentResult.run;
-  const at = replayFrame(run, position);
-  const characters = Array.from(at.word);
-  const buffer = at.flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
-  drawWord(at.word, buffer, at.index, at.next, at.flags, at.previous, at.afterNext);
   const rival = currentResult.ghostRun;
   if (rival) {
+    renderLane('you', run, position);
+    const them = renderLane('them', rival, position);
+    // With music on, each word the ghost finishes rings a soft ting, as it did in the race.
+    if (them.index > ghostHeard) { if (musicOn && position > 0 && replay.playing) music.ghost(); ghostHeard = them.index; }
+    $('race-playhead')?.setAttribute('transform', 'translate(' + (Math.min(position, replayLength()) / Math.max(1, replayLength()) * 900).toFixed(1) + ' 0)');
     const mine = finishedWords(run, position), theirs = finishedWords(rival, position);
     setText('race-you', mine); setText('race-them', theirs);
     setText('race-delta', position <= 0 ? '' : mine === theirs ? 'neck and neck' : Math.abs(mine - theirs) + (mine > theirs ? ' ahead' : ' behind'));
-    renderGhostLane(rival, position);
+  } else {
+    const at = replayFrame(run, position);
+    const characters = Array.from(at.word);
+    const buffer = at.flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
+    drawWord(at.word, buffer, at.index, at.next, at.flags, at.previous, at.afterNext);
   }
   $('live-wpm').textContent = pretty(run.stats.wpm);
   $('live-accuracy').textContent = pretty(run.stats.accuracy);
@@ -971,6 +1040,8 @@ $('replay-scrubber').addEventListener('input', () => {
   seekReplayMusic(replay.position);
   renderReplay(replay.position);
 });
+$('race-timeline').addEventListener('pointerdown', event => { if (view !== 'replay') return; $('race-timeline').setPointerCapture?.(event.pointerId); seekRace(event); });
+$('race-timeline').addEventListener('pointermove', event => { if (view === 'replay' && $('race-timeline').hasPointerCapture?.(event.pointerId)) seekRace(event); });
 $('share-button').addEventListener('click', () => openShare('result'));
 $('race-button').addEventListener('click', () => {
   if (currentResult?.local) openShare('race');
@@ -1000,7 +1071,7 @@ window.addEventListener('popstate', () => route(location.pathname,false));
 window.addEventListener('resize', () => {
   wordLayoutDirty = true;
   if (view === 'play' && game) renderGame(game.snapshot(now()));
-  else if (view === 'replay') renderReplay(replay.position);
+  else if (view === 'replay') { if (currentResult?.ghostRun) measureDuel(); renderReplay(replay.position); }
 });
 
 // Themes paint CSS variables on <html>. themes.js paints the first one in <head>,
