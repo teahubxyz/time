@@ -198,6 +198,51 @@ await check('themes: Alt+T opens the picker, arrows preview, Esc puts back, Ente
   assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('typy.theme')).id), undefined, 'the default is not saved as a choice');
 });
 
+await check('music: silent until the note button, then letters, words and replays play; Alt+M and a reload keep the choice', async () => {
+  const listening = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await listening.addInitScript(() => {
+    window.__audio = { contexts: 0, oscillators: 0 };
+    const create = BaseAudioContext.prototype.createOscillator;
+    BaseAudioContext.prototype.createOscillator = function (...args) { window.__audio.oscillators++; return create.apply(this, args); };
+    const Native = window.AudioContext;
+    window.AudioContext = class extends Native { constructor(...args) { super(...args); window.__audio.contexts++; } };
+  });
+  const p = await listening.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  const heard = () => p.evaluate(() => ({ ...window.__audio }));
+  await home(p);
+  assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'false');
+  await p.keyboard.type('bre');
+  assert.deepEqual(await heard(), { contexts: 0, oscillators: 0 }, 'no audio at all while music is off');
+  await p.locator('#music-toggle').click();
+  assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'true');
+  assert.equal(await p.evaluate(() => localStorage.getItem('typy.music')), 'true');
+  const hello = (await heard()).oscillators;
+  assert.ok(hello > 0, 'turning music on plays a chord');
+  await p.keyboard.type('athe ');
+  const played = (await heard()).oscillators;
+  assert.ok(played > hello, 'letters and the next word play');
+  await p.keyboard.press('Alt+KeyM');
+  assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'false');
+  assert.equal(await p.evaluate(() => localStorage.getItem('typy.music')), 'false');
+  await p.keyboard.type('xyz');
+  assert.equal((await heard()).oscillators, played, 'nothing plays after Alt+M turns music off');
+  await p.keyboard.press('Alt+KeyM');
+  await p.locator('[data-mode=endless]').click();
+  for (let i = 0; i < 2; i++) await p.keyboard.type(await p.locator('#word').getAttribute('data-word') + ' ', { delay: 60 });
+  await p.keyboard.press('Enter');
+  await p.locator('#result-panel').waitFor();
+  const beforeReplay = (await heard()).oscillators;
+  await p.locator('#replay-button').click();
+  await p.waitForTimeout(900);
+  assert.ok((await heard()).oscillators > beforeReplay, 'a replay plays its run back as music');
+  await p.reload();
+  await p.locator('#word[data-word]').waitFor();
+  assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'true', 'the choice survives a reload');
+  assert.equal((await heard()).contexts, 0, 'audio waits for a gesture after a reload');
+  await listening.close();
+});
+
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
 const phone = await mobile.newPage();
 phone.on('pageerror', error => errors.push(error.message));

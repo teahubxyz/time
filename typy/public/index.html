@@ -17,6 +17,9 @@
       <span class="brand-note">a little more in the moment.</span>
       <nav class="top-nav" aria-label="Main">
         <a href="/daily" id="daily-link"><span class="sun" aria-hidden="true">✳</span> the daily</a>
+        <button class="icon-button music-toggle" id="music-toggle" aria-label="Music" aria-pressed="false" title="Music off (alt+m)">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M9 17.5v-12l10-2v12"/><circle class="note-head" cx="6.5" cy="17.5" r="2.5"/><circle class="note-head" cx="16.5" cy="15.5" r="2.5"/></svg>
+        </button>
         <button class="icon-button" id="theme-open" aria-label="Themes" title="Themes (alt+t)" aria-haspopup="dialog">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M12 21a9 9 0 1 1 9-9c0 1.9-1.6 3-3.4 3H16a2 2 0 0 0-1.5 3.3A1.6 1.6 0 0 1 12 21z"/><circle cx="7.5" cy="10.5" r="1.1" fill="currentColor"/><circle cx="12" cy="7.5" r="1.1" fill="currentColor"/><circle cx="16.5" cy="10.5" r="1.1" fill="currentColor"/></svg>
         </button>
@@ -163,7 +166,7 @@
   <dialog id="help-dialog" class="dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close help">×</button></form>
     <p class="eyebrow">less looking. more doing.</p><h2>one word at a time.</h2>
-    <div class="help-steps"><p><span>01</span>Type the word in the middle. Your first letter starts the clock.</p><p><span>02</span>Use Backspace to fix a mistake, then Space for the next word. Switch to “last letter” in settings for automatic advances.</p><p><span>03</span>Try tempo: finish each word before the beat. Keep up and it gets faster. Three missed beats end the run.</p></div>
+    <div class="help-steps"><p><span>01</span>Type the word in the middle. Your first letter starts the clock.</p><p><span>02</span>Use Backspace to fix a mistake, then Space for the next word. Switch to “last letter” in settings for automatic advances.</p><p><span>03</span>Try tempo: finish each word before the beat. Keep up and it gets faster. Three missed beats end the run.</p><p><span>04</span>Turn on music with the note button or Alt+M: your letters play the melody, each new word brings the next chord, and replays play it back.</p></div>
     <p class="dialog-note">WPM counts five correct output characters as one word. Accuracy measures correct key attempts. Your best scores and settings stay on this device.</p><button class="button primary full" id="help-done">let’s type ↗</button>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>
