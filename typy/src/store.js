@@ -160,13 +160,19 @@ export function validateResult(input) {
     if (run.mode !== '60' || Math.abs(run.durationMs - 60000) > 1 || run.finishedReason !== 'time' || JSON.stringify(run.words) !== JSON.stringify(expected)) throw new ApiError(400, 'Daily scores require the full 60-second daily passage.', 'invalid_daily');
     source.day = day;
   }
-  return { run, source, name: cleanName(input.name) };
+  const raceOf = typeof input.raceOf === 'string' && validId(input.raceOf) ? input.raceOf : null;
+  return { run, source, name: cleanName(input.name), ...(raceOf ? { raceOf } : {}) };
 }
 
 export async function saveResult(request, env, input) {
   const value = validateResult(input), kv = requireKV(env);
   await reserveQuota(request, env, 'save');
   const id = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+  // A race names the result it raced, but only one with the same passage and mode.
+  if (value.raceOf) {
+    const rival = await readJSON(kv, `result:${value.raceOf}`).catch(() => null);
+    if (!rival || rival.run?.mode !== value.run.mode || JSON.stringify(rival.run?.words) !== JSON.stringify(value.run.words)) delete value.raceOf;
+  }
   const record = { id, ...value, createdAt: new Date().toISOString() };
   await kv.put(`result:${id}`, JSON.stringify(record));
   let boardPublished = false;

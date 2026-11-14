@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { TypingGame } from '../src/game.js';
 const require = createRequire(import.meta.url);
 const { chromium, devices } = require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   ? process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES + '/playwright' : 'playwright');
@@ -241,6 +242,45 @@ await check('music: silent until the note button, then letters, words and replay
   assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'true', 'the choice survives a reload');
   assert.equal((await heard()).contexts, 0, 'audio waits for a gesture after a reload');
   await listening.close();
+});
+
+await check('a shared race shows its verdict and plays both runs back on one clock (mock API)', async () => {
+  const words = ['steady', 'hands', 'make', 'light', 'work', 'of', 'long', 'days'];
+  const record = gap => {
+    const game = new TypingGame({ words, mode: 'endless' });
+    let t = 1000;
+    for (const word of words.slice(0, 6)) { for (const char of word) { t += gap; game.press(char, t); } t += gap; game.press(' ', t); }
+    game.finish(t + 20);
+    return game.result(t + 20);
+  };
+  const ghostId = 'b'.repeat(24), raceId = 'a'.repeat(24);
+  const rival = { id: ghostId, run: record(120), source: { kind: 'common' }, name: 'juno' };
+  const racer = { id: raceId, run: record(90), source: { kind: 'common' }, name: 'mira', raceOf: ghostId };
+  const watching = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const p = await watching.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await p.route('**/api/results/*', route => {
+    const id = new URL(route.request().url()).pathname.split('/').pop();
+    const body = id === raceId ? racer : id === ghostId ? rival : null;
+    return route.fulfill({ status: body ? 200 : 404, contentType: 'application/json', body: JSON.stringify(body || { error: 'not found' }) });
+  });
+  await p.goto(base + '/r/' + raceId);
+  await p.locator('#race-outcome').waitFor();
+  assert.equal(await p.locator('#result-title').innerText(), 'mira beat juno.');
+  assert.match(await p.locator('#race-verdict').innerText(), /^won by [0-9]+ wpm$/);
+  assert.equal(await p.locator('#replay-label').innerText(), 'watch the race');
+  await p.locator('#replay-button').click();
+  await p.locator('#ghost-lane').waitFor();
+  assert.equal(await p.locator('#ghost-lane-label').innerText(), 'juno');
+  assert.equal(await p.locator('#race-you-label').innerText(), 'mira');
+  assert.equal(await p.locator('#run-status').innerText(), 'the race, replayed');
+  const length = Number(await p.locator('#replay-scrubber').getAttribute('max'));
+  assert.equal(length, Math.max(racer.run.durationMs, rival.run.durationMs), 'the replay runs until the slower run is over');
+  await p.locator('#replay-scrubber').fill(String(length));
+  await p.locator('#replay-scrubber').dispatchEvent('input');
+  assert.match(await p.locator('#ghost-lane-pace').innerText(), /^done · [0-9]+ wpm$/);
+  assert.equal(await p.locator('#race-them').innerText(), '6');
+  await watching.close();
 });
 
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });

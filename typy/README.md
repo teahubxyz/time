@@ -16,7 +16,7 @@ One word at a time. Type it, find the next one, settle into a rhythm.
 - **/daily** uses one deterministic passage per UTC day and locks the run to 60 seconds. Sharing a completed daily run adds an optional name to the daily board.
 - Reduced motion is honoured live, not only at load: the stylesheet drops animation and transitions, the error nudge does not run, and the beat rail steps in tenths rather than sliding.
 - Finished runs show WPM, accuracy, clean-word streaks, slower words, and a speed sparkline. Replay follows original key timing and supports scrubbing.
-- Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost: its run plays letter by letter in a lane under your stage, and the result card says who won (decided on whole wpm).
+- Choose Share to publish a replay at **/r/:id**. A result includes a real PNG social preview. **/race/:id** uses the original passage, mode, advancement setting, and timing as a ghost: its run plays letter by letter in a lane under your stage, and the result card says who won (decided on whole wpm). Watching a race back plays both runs on one clock, yours on the stage and the ghost's in the lane, and a race you share remembers the result it raced, so anyone with its link can see the verdict and watch the race.
 
 ## Themes
 
@@ -84,7 +84,7 @@ The Worker returns its code revision through **/api/health**. The deployment rec
 ## Storage, privacy, and limits
 
 - Unshared runs and pasted passages remain in the browser. Best scores, settings, and the optional display name use local storage.
-- A share contains the chosen passage, relative key timing and outcome metadata, computed score, mode, and optional name. Actual mistyped characters and input buffers are never serialized or accepted into stored results.
+- A share contains the chosen passage, relative key timing and outcome metadata, computed score, mode, and optional name, plus, for a race, the ID of the result it raced. Actual mistyped characters and input buffers are never serialized or accepted into stored results.
 - Scores are recomputed on the server from replay outcomes; daily submissions must match the current canonical passage and full 60-second run. This is an informal game leaderboard, not a proof of human typing.
 - KV stores one immutable result per ID, one topic per canonical slug, and separate daily-board entries. Concurrent scores do not overwrite a shared leaderboard object. A new link or board entry can take a short time to replicate between locations.
 - The quota object reserves new-generation and save limits atomically. Daily defaults are eight uncached topics per visitor, 80 total, 30 saves per visitor, and 2,000 total. It also spaces new topic requests by eight seconds and saves by one second.

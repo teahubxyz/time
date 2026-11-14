@@ -150,7 +150,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   $('ghost-lane').hidden = !ghost;
   ghostLaneKey = '';
   ghostHeard = 0;
-  if (ghost) setText('ghost-lane-label', currentResult?.name || 'ghost');
+  if (ghost) { setText('ghost-lane-label', currentResult?.name || 'ghost'); setText('race-you-label', 'you'); setText('race-them-label', 'ghost'); }
   $('finish-run').hidden = selectedMode !== 'endless' && selectedMode !== 'tempo';
   $('tempo-track').hidden = selectedMode !== 'tempo';
   $('restart-tip').hidden = false;
@@ -302,7 +302,7 @@ function renderGame(state) {
     setText('race-them', completed);
     const difference = state.completedWords - completed;
     setText('race-delta', state.status === 'ready' ? '' : difference === 0 ? 'neck and neck' : Math.abs(difference) + (difference > 0 ? ' ahead' : ' behind'));
-    renderGhostLane(state.status === 'ready' ? 0 : state.elapsedMs);
+    renderGhostLane(ghost, state.status === 'ready' ? 0 : state.elapsedMs);
   }
   if (state.errors > lastErrorCount && !reducedMotion) {
     errorAnimation?.cancel();
@@ -313,12 +313,13 @@ function renderGame(state) {
   if (state.status === 'finished' && !transitioning) finishDisplay();
 }
 
-// The ghost's own run plays under the stage on the race clock, letter by letter.
-// It rebuilds only when the ghost's word or letters change.
-function renderGhostLane(position) {
-  const at = replayFrame(ghost, position);
+// The ghost's own run plays under the stage on the race clock, letter by letter,
+// live in a race and again when the race is watched back. It rebuilds only when
+// the ghost's word or letters change.
+function renderGhostLane(run, position) {
+  const at = replayFrame(run, position);
   // With music on, each word the ghost finishes rings a soft ting: their pace, heard.
-  if (at.index > ghostHeard) { if (musicOn && position > 0) music.ghost(); ghostHeard = at.index; }
+  if (at.index > ghostHeard) { if (musicOn && position > 0 && (view === 'play' || replay.playing)) music.ghost(); ghostHeard = at.index; }
   const key = at.index + '|' + at.flags.join(',') + '|' + at.done;
   if (key === ghostLaneKey) return;
   ghostLaneKey = key;
@@ -330,7 +331,7 @@ function renderGhostLane(position) {
     return span;
   }));
   setText('ghost-lane-next', at.done ? '' : at.next);
-  setText('ghost-lane-pace', at.done ? 'done · ' + pretty(ghost.stats.wpm) + ' wpm' : '');
+  setText('ghost-lane-pace', at.done ? 'done · ' + pretty(run.stats.wpm) + ' wpm' : '');
   setClass($('ghost-lane'), 'done', at.done);
 }
 
@@ -371,8 +372,11 @@ function finishDisplay() {
   if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
   const ghostStats = ghost?.stats;
   const ghostName = ghost ? currentResult?.name || '' : '';
+  // A race keeps the ghost's run, so it can be watched back, and the result it raced.
+  const ghostRun = ghost || null;
+  const raceOf = ghost ? currentResult?.id || shareId || null : null;
   if (musicOn) music.finish(ghostStats ? raceOutcome(run.stats.wpm, ghostStats.wpm).verdict : 'solo');
-  currentResult = {run,source:{...source},name:'',local:true,isBest,ghostStats,ghostName};
+  currentResult = {run,source:{...source},name:'',local:true,isBest,ghostStats,ghostName,ghostRun,raceOf};
   shareId = null;
   ghost = null;
   $('typing-input').blur();
@@ -392,13 +396,17 @@ function displayResult(result) {
   $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
   const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm) : null;
   const rival = result.ghostName || '';
-  $('result-title').textContent = !race ? 'there’s your rhythm.' : race.verdict === 'won' ? 'you beat ' + (rival || 'the ghost') + '.' : race.verdict === 'lost' ? (rival || 'the ghost') + ' got there first.' : 'a dead heat.';
+  // Your own race says "you"; a shared race uses the racer's name.
+  const racer = result.local ? 'you' : result.name || 'anonymous';
+  $('result-title').textContent = !race ? 'there’s your rhythm.' : race.verdict === 'won' ? racer + ' beat ' + (rival || 'the ghost') + '.' : race.verdict === 'lost' ? (rival || 'the ghost') + ' got there first.' : 'a dead heat.';
   $('race-outcome').hidden = !race;
   if (race) {
     $('race-outcome').dataset.verdict = race.verdict;
     setText('race-verdict', race.verdict === 'tied' ? 'a tie' : race.verdict + ' by ' + race.margin + ' wpm');
-    setText('race-score', 'you ' + race.mine + ' · ' + (rival || 'ghost') + ' ' + race.theirs + ' wpm');
+    setText('race-score', racer + ' ' + race.mine + ' · ' + (rival || 'ghost') + ' ' + race.theirs + ' wpm');
   }
+  setText('replay-label', result.ghostRun ? 'watch the race' : 'replay');
+  if (!result.local && result.raceOf && !result.ghostRun) loadRace(result);
   $('result-wpm').textContent = pretty(stats.wpm);
   $('result-accuracy').textContent = round1(stats.accuracy) + '%';
   $('result-streak').textContent = stats.bestStreak + (stats.bestStreak === 1 ? ' word' : ' words');
@@ -413,7 +421,7 @@ function displayResult(result) {
   $('board-open').hidden = source.kind !== 'daily';
   if (run.replayTruncated) $('result-note').textContent = 'That was a long flow. Your score is complete; the replay holds the most recent portion, so this run cannot be shared.';
   else if (source.kind === 'daily' && result.local) $('result-note').textContent = 'Share your result to add it to today’s board. A name is optional, and the replay link it makes is public.';
-  else if (result.ghostStats) $('result-note').textContent = 'Same words, same mode, their original timing. Send your run back with “challenge a friend”.';
+  else if (result.ghostStats) $('result-note').textContent = result.local ? 'Same words, same mode, their original timing. Watch the race back, or send your run back with “challenge a friend”.' : 'This race is public to anyone with its link. Watch both runs back, or race this ghost yourself.';
   else $('result-note').textContent = result.local ? 'Your result is on this device. Sharing it makes a replay link that is public: anyone who has the link can watch the run, with no account needed.' : 'This replay is public to anyone with its link. Watch the original timing, or try the same words against this ghost.';
   const slowest = stats.slowest?.slice(0, 3) || [];
   $('slow-words').innerHTML = slowest.length ? slowest.map(row => '<span class="slow-word"><span>' + escapeHTML(row.word) + '</span><small>' + round1(row.ms / 1000) + 's</small></span>').join('') : '<span>your next run starts here</span>';
@@ -426,6 +434,17 @@ function displayResult(result) {
   } else $('speed-chart').innerHTML = '<path d="M0 60H900" class="chart-base"/>';
   updateOptions();
   $('mode-switch').querySelectorAll('button').forEach(button => { button.disabled = false; });
+}
+
+// A shared race names the result it raced. Fetching that run lets anyone with
+// the link see the verdict and watch both runs back.
+async function loadRace(result) {
+  try {
+    const rival = await api('/api/results/' + encodeURIComponent(result.raceOf));
+    if (!rival?.run?.wordTimings?.length || !rival.run.stats) return;
+    Object.assign(result, {ghostRun:rival.run, ghostStats:rival.run.stats, ghostName:rival.name || ''});
+    if (currentResult === result && view === 'result') displayResult(result);
+  } catch { /* the result still stands on its own */ }
 }
 
 function showLoading(title, description = '') {
@@ -505,6 +524,10 @@ async function route(path, push = true) {
   } catch (error) { if (serial === routeSerial) showRouteError(error); }
 }
 
+// A race replay runs until the slower of the two runs is over.
+const replayLength = () => Math.max(currentResult.run.durationMs, currentResult.ghostRun?.durationMs || 0);
+const finishedWords = (run, position) => run.wordTimings.filter(timing => timing.completed && timing.end <= position).length;
+
 function startReplay() {
   if (!currentResult?.run) return;
   view = 'replay';
@@ -512,10 +535,18 @@ function startReplay() {
   lastWordKey = ''; lastWordIndex = -1;
   $('result-panel').hidden = true; $('play-panel').hidden = false;
   $('input-row').hidden = true; $('replay-controls').hidden = false;
-  $('ghost-race').hidden = true; $('ghost-lane').hidden = true; $('tempo-track').hidden = true;
-  $('run-status').textContent = 'a rhythm, replayed';
+  // A race replays both runs on one clock: this run on the stage, the ghost's in the lane.
+  const rival = currentResult.ghostRun || null;
+  $('ghost-race').hidden = !rival; $('ghost-lane').hidden = !rival; $('tempo-track').hidden = true;
+  ghostLaneKey = '';
+  if (rival) {
+    setText('ghost-lane-label', currentResult.ghostName || 'ghost');
+    setText('race-you-label', currentResult.local ? 'you' : currentResult.name || 'anonymous');
+    setText('race-them-label', currentResult.ghostName || 'ghost');
+  }
+  $('run-status').textContent = rival ? 'the race, replayed' : 'a rhythm, replayed';
   $('status-dot').classList.add('active');
-  $('replay-scrubber').max = Math.max(1, currentResult.run.durationMs);
+  $('replay-scrubber').max = Math.max(1, replayLength());
   $('replay-scrubber').value = '0';
   $('time-label').textContent = 'replay'; $('time-unit').textContent = 's';
   replay = {playing:true,position:0,anchor:now(),anchorPosition:0};
@@ -538,6 +569,7 @@ function seekReplayMusic(position) {
   conductor.reset(currentResult?.run?.words || []);
   replayCursor = 0;
   while (replayCursor < events.length && events[replayCursor].t < position) conductor.event(events[replayCursor++]);
+  ghostHeard = currentResult?.ghostRun ? replayFrame(currentResult.ghostRun, position).index : 0;
 }
 
 function hearReplay(position) {
@@ -556,11 +588,18 @@ function renderReplay(position) {
   const characters = Array.from(at.word);
   const buffer = at.flags.map((flag, i) => flag ? characters[i] || '' : '·').join('');
   drawWord(at.word, buffer, at.index, at.next, at.flags, at.previous, at.afterNext);
+  const rival = currentResult.ghostRun;
+  if (rival) {
+    const mine = finishedWords(run, position), theirs = finishedWords(rival, position);
+    setText('race-you', mine); setText('race-them', theirs);
+    setText('race-delta', position <= 0 ? '' : mine === theirs ? 'neck and neck' : Math.abs(mine - theirs) + (mine > theirs ? ' ahead' : ' behind'));
+    renderGhostLane(rival, position);
+  }
   $('live-wpm').textContent = pretty(run.stats.wpm);
   $('live-accuracy').textContent = pretty(run.stats.accuracy);
   $('live-time').textContent = Math.floor(position / 1000);
   $('replay-scrubber').value = String(position);
-  $('replay-time').textContent = clock(position) + ' / ' + clock(run.durationMs);
+  $('replay-time').textContent = clock(position) + ' / ' + clock(replayLength());
 }
 
 function openShare(intent = 'result') {
@@ -590,7 +629,8 @@ async function saveResult() {
   $('share-error').hidden = true;
   try {
     const name = $('share-name').value.trim();
-    const response = await api('/api/results', {method:'POST',body:JSON.stringify({run:currentResult.run,source:currentResult.source,name})});
+    const raced = currentResult.raceOf ? {raceOf:currentResult.raceOf} : {};
+    const response = await api('/api/results', {method:'POST',body:JSON.stringify({run:currentResult.run,source:currentResult.source,name,...raced})});
     if (!response.id) throw new Error('The server did not return a share link. Please try again.');
     shareId = response.id;
     currentResult = {...currentResult,id:shareId,name,boardPublished:response.boardPublished};
@@ -737,7 +777,7 @@ $('again-button').addEventListener('click', () => restart({freshWords:source.kin
 $('replay-button').addEventListener('click', startReplay);
 $('replay-back').addEventListener('click', () => { music.hush(); displayResult(currentResult); });
 $('replay-play').addEventListener('click', () => {
-  if (replay.position >= currentResult.run.durationMs) replay.position = 0;
+  if (replay.position >= replayLength()) replay.position = 0;
   replay.playing = !replay.playing; replay.anchor = now(); replay.anchorPosition = replay.position;
   $('replay-play').textContent = replay.playing ? 'pause' : 'play';
   seekReplayMusic(replay.position);
@@ -1046,12 +1086,13 @@ function frame(time) {
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
   if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= (ghost ? 50 : 100))) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
-    replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
+    replay.position = Math.min(replayLength(), replay.anchorPosition + time - replay.anchor);
     hearReplay(replay.position);
     renderReplay(replay.position);
-    if (replay.position >= currentResult.run.durationMs) {
+    if (replay.position >= replayLength()) {
       replay.playing = false; $('replay-play').textContent = 'play again';
-      if (musicOn) music.finish('solo');
+      const ghostStats = currentResult.ghostStats;
+      if (musicOn) music.finish(ghostStats ? raceOutcome(currentResult.run.stats.wpm, ghostStats.wpm).verdict : 'solo');
     }
   }
   requestAnimationFrame(frame);

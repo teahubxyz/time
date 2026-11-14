@@ -55,6 +55,18 @@ test('result link round trip stores only explicit sharing data',async()=>{
  const read=await worker.fetch(req('/api/results/'+info.id),e);assert.equal(read.status,200);const value=await read.json();assert.equal(value.run.stats.wpm,2);assert.equal(value.name,'A friend');assert.equal(e.KV.data.size,1);
  const missing=await worker.fetch(req('/api/results/'+'a'.repeat(24)),e);assert.equal(missing.status,404);
 });
+test('a shared race remembers the result it raced, only one with the same passage and mode',async()=>{
+ const e=env(),read=async id=>(await worker.fetch(req('/api/results/'+id),e)).json(),save=async body=>(await worker.fetch(post(body),e)).json();
+ const ghost=await save(input());
+ const race=await save({...input(),name:'Racer',raceOf:ghost.id});
+ assert.equal((await read(race.id)).raceOf,ghost.id);
+ const other=await save({run:makeRun({words:['quiet','river']}),source:{kind:'common'},raceOf:ghost.id});
+ assert.equal((await read(other.id)).raceOf,undefined,'a different passage is not a race');
+ const missing=await save({...input(),raceOf:'b'.repeat(24)});
+ assert.equal((await read(missing.id)).raceOf,undefined,'a race needs a ghost that exists');
+ const bogus=await save({...input(),raceOf:'../result'});
+ assert.equal((await read(bogus.id)).raceOf,undefined);
+});
 test('a replay link holds the passage and its timings, nothing else, and opens logged out',async()=>{
  const e=env(),data=input();data.run.typedContent='ne-ver-store-this';data.run.events[0].key='ne-ver-store-this';
  const info=await(await worker.fetch(post(data),e)).json();
