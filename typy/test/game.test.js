@@ -121,6 +121,17 @@ test('the next word snaps in on advance, including around the end of the passage
   assert.equal(game.press(' ', 800).word, 'cat', 'a short passage wraps back to its first word');
 });
 
+test('the word after next looks two ahead and wraps with the passage', () => {
+  const game = new TypingGame({ words: ['cat', 'dog', 'owl'], mode: 'endless' });
+  assert.equal(game.snapshot(0).afterNextWord, 'owl');
+  type(game, 'cat', 0);
+  const second = game.press(' ', 400);
+  assert.equal(second.nextWord, 'owl');
+  assert.equal(second.afterNextWord, 'cat', 'two ahead wraps back to the first word');
+  const pair = new TypingGame({ words: ['up', 'go'], mode: 'endless' });
+  assert.equal(pair.snapshot(0).afterNextWord, 'up', 'a two-word passage looks back around to itself');
+});
+
 test('desktop navigation and modifier keys never type a letter or cost accuracy', () => {
   const game = new TypingGame({ words: ['cat', 'dog'], mode: 'endless' });
   type(game, 'ca', 0);
