@@ -1,5 +1,6 @@
 import { TypingGame, timedSeconds, replayFrame, raceOutcome } from '/game.js';
 import { generateWords, normalizePassage } from '/words.js';
+import { createMusic, createConductor } from '/music.js';
 // themes.js is a classic <head> script (it paints before the first render), so it is read from window.
 const { THEMES, MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
 
@@ -43,6 +44,14 @@ let toastTimer;
 let transitioning = false;
 let isComposing = false;
 let ghostLaneKey = '';
+// Music mode (public/music.js). Off until someone turns it on; it then listens
+// to the game's own event log, so live play and replays share one conductor.
+const music = createMusic();
+const conductor = createConductor();
+let musicOn = readLocal('music', false) === true;
+let lastHeard = null;
+let ghostHeard = 0;
+let replayCursor = 0;
 
 function setText(id, value) {
   const node = $(id), text = String(value);
@@ -121,6 +130,8 @@ function beginRun({freshWords = false, focus = false} = {}) {
   if (freshWords && source.kind === 'common' && !ghost) passage = newCommonPassage();
   if (!passage.length) passage = newCommonPassage();
   game = new TypingGame({words:passage, mode:selectedMode, advance:ghost ? currentResult.run.advance : settings.advance, paceWpm:readLocal('lastAverage', 40)});
+  conductor.reset(game.words);
+  lastHeard = null;
   view = 'play';
   replay.playing = false;
   lastWordKey = '';
@@ -138,6 +149,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   $('ghost-race').hidden = !ghost;
   $('ghost-lane').hidden = !ghost;
   ghostLaneKey = '';
+  ghostHeard = 0;
   if (ghost) setText('ghost-lane-label', currentResult?.name || 'ghost');
   $('finish-run').hidden = selectedMode !== 'endless' && selectedMode !== 'tempo';
   $('tempo-track').hidden = selectedMode !== 'tempo';
@@ -251,6 +263,7 @@ function drawWord(word, buffer, index, nextWord, flags = null, previousWord = ''
 }
 
 function renderGame(state) {
+  hearRun();
   const previous = state.wordIndex > 0 ? game.words[(state.wordIndex - 1) % game.words.length] : '';
   drawWord(state.word, state.buffer, state.wordIndex, state.nextWord, null, previous, state.afterNextWord);
   setText('live-wpm', pretty(state.wpm));
@@ -304,6 +317,8 @@ function renderGame(state) {
 // It rebuilds only when the ghost's word or letters change.
 function renderGhostLane(position) {
   const at = replayFrame(ghost, position);
+  // With music on, each word the ghost finishes rings a soft ting: their pace, heard.
+  if (at.index > ghostHeard) { if (musicOn && position > 0) music.ghost(); ghostHeard = at.index; }
   const key = at.index + '|' + at.flags.join(',') + '|' + at.done;
   if (key === ghostLaneKey) return;
   ghostLaneKey = key;
@@ -324,6 +339,28 @@ function press(key) {
   renderGame(game.press(key, now()));
 }
 
+// The game trims its oldest events on very long runs, so the new ones are found
+// by looking back from the end for the last event already heard.
+function freshEvents(events, last) {
+  for (let i = events.length - 1, back = 0; i >= 0 && back < 64; i--, back++) {
+    if (events[i] === last) return events.slice(i + 1);
+  }
+  return last ? events.slice(-1) : events.slice(-64);
+}
+
+function hearRun() {
+  if (!game) return;
+  const fresh = freshEvents(game.events, lastHeard);
+  if (!fresh.length) return;
+  lastHeard = fresh[fresh.length - 1];
+  const actions = fresh.flatMap(event => conductor.event(event));
+  if (!musicOn) return;
+  // A tab that slept through several tempo beats wakes to one chord, not a pile.
+  let lastChord = -1;
+  actions.forEach((action, i) => { if (action.type === 'chord') lastChord = i; });
+  actions.forEach((action, i) => { if (action.type !== 'chord' || i === lastChord) music.play(action); });
+}
+
 function finishDisplay() {
   transitioning = true;
   const run = game.result(now());
@@ -334,6 +371,7 @@ function finishDisplay() {
   if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
   const ghostStats = ghost?.stats;
   const ghostName = ghost ? currentResult?.name || '' : '';
+  if (musicOn) music.finish(ghostStats ? raceOutcome(run.stats.wpm, ghostStats.wpm).verdict : 'solo');
   currentResult = {run,source:{...source},name:'',local:true,isBest,ghostStats,ghostName};
   shareId = null;
   ghost = null;
@@ -481,6 +519,7 @@ function startReplay() {
   $('replay-scrubber').value = '0';
   $('time-label').textContent = 'replay'; $('time-unit').textContent = 's';
   replay = {playing:true,position:0,anchor:now(),anchorPosition:0};
+  seekReplayMusic(0);
   $('replay-play').textContent = 'pause';
   updateOptions();
   renderReplay(0);
@@ -489,6 +528,26 @@ function startReplay() {
 function clock(ms) {
   const seconds = Math.max(0, Math.floor(ms / 1000));
   return Math.floor(seconds / 60) + ':' + String(seconds % 60).padStart(2, '0');
+}
+
+// A replay plays its run's music on the replay clock, scheduled a few hundredths
+// of a second ahead so every note lands exactly where it was typed.
+function seekReplayMusic(position) {
+  music.hush();
+  const events = currentResult?.run?.events || [];
+  conductor.reset(currentResult?.run?.words || []);
+  replayCursor = 0;
+  while (replayCursor < events.length && events[replayCursor].t < position) conductor.event(events[replayCursor++]);
+}
+
+function hearReplay(position) {
+  const events = currentResult.run.events;
+  const clock = musicOn ? music.clock() : 0;
+  while (replayCursor < events.length && events[replayCursor].t <= position + 60) {
+    const event = events[replayCursor++];
+    const actions = conductor.event(event);
+    if (musicOn) for (const action of actions) music.play(action, clock + Math.max(0, event.t - position) / 1000);
+  }
 }
 
 function renderReplay(position) {
@@ -581,7 +640,7 @@ function restart({freshWords = false} = {}) {
   if (view === 'result' && !currentResult?.local) {
     source = {...currentResult.source}; passage = [...currentResult.run.words]; selectedMode = currentResult.run.mode;
   }
-  if (view === 'replay') replay.playing = false;
+  if (view === 'replay') { replay.playing = false; music.hush(); }
   // A local retry gets a clean address instead of replacing somebody else's result.
   if (view !== 'play') {
     const target = source.kind === 'daily' ? '/daily' : source.kind === 'topic' ? '/' + source.topic : '/';
@@ -676,14 +735,16 @@ $('help-open').addEventListener('click', () => $('help-dialog').showModal());
 $('help-done').addEventListener('click', () => { $('help-dialog').close(); focusTyping(); });
 $('again-button').addEventListener('click', () => restart({freshWords:source.kind === 'common'}));
 $('replay-button').addEventListener('click', startReplay);
-$('replay-back').addEventListener('click', () => displayResult(currentResult));
+$('replay-back').addEventListener('click', () => { music.hush(); displayResult(currentResult); });
 $('replay-play').addEventListener('click', () => {
   if (replay.position >= currentResult.run.durationMs) replay.position = 0;
   replay.playing = !replay.playing; replay.anchor = now(); replay.anchorPosition = replay.position;
   $('replay-play').textContent = replay.playing ? 'pause' : 'play';
+  seekReplayMusic(replay.position);
 });
 $('replay-scrubber').addEventListener('input', () => {
   replay.position = Number($('replay-scrubber').value); replay.anchor = now(); replay.anchorPosition = replay.position;
+  seekReplayMusic(replay.position);
   renderReplay(replay.position);
 });
 $('share-button').addEventListener('click', () => openShare('result'));
@@ -951,14 +1012,47 @@ document.addEventListener('keydown', event => {
   else openThemes();
 });
 
+// Music: the note button, Alt+M (Option+M on a Mac), and the choice kept on this device.
+function showMusic() {
+  const button = $('music-toggle');
+  button.setAttribute('aria-pressed', String(musicOn));
+  button.title = (musicOn ? 'Music on' : 'Music off') + ' (alt+m)';
+}
+
+function setMusic(on) {
+  musicOn = on;
+  writeLocal('music', on);
+  showMusic();
+  if (on) { music.unlock(); music.finish('hello'); }
+  else music.hush();
+  toast(on ? 'music on · your letters play the melody' : 'music off');
+}
+
+$('music-toggle').addEventListener('click', () => { setMusic(!musicOn); if (innerWidth > 700) focusTyping(); });
+document.addEventListener('keydown', event => {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.code !== 'KeyM') return;
+  event.preventDefault();
+  setMusic(!musicOn);
+});
+// Browsers only start audio from a gesture, so a returning player with music on
+// wakes it with their first tap or key.
+for (const type of ['pointerdown', 'keydown', 'touchend']) {
+  document.addEventListener(type, () => { if (musicOn) music.unlock(); }, {capture:true, passive:true});
+}
+showMusic();
+
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
   // idle stage does no DOM work, while tempo keeps its smooth beat indicator.
   if (view === 'play' && game?.status === 'running' && ((selectedMode === 'tempo' && !reducedMotion) || time - lastClockPaint >= (ghost ? 50 : 100))) renderGame(game.tick(time));
   else if (view === 'replay' && replay.playing) {
     replay.position = Math.min(currentResult.run.durationMs, replay.anchorPosition + time - replay.anchor);
+    hearReplay(replay.position);
     renderReplay(replay.position);
-    if (replay.position >= currentResult.run.durationMs) { replay.playing = false; $('replay-play').textContent = 'play again'; }
+    if (replay.position >= currentResult.run.durationMs) {
+      replay.playing = false; $('replay-play').textContent = 'play again';
+      if (musicOn) music.finish('solo');
+    }
   }
   requestAnimationFrame(frame);
 }

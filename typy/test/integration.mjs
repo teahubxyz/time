@@ -12,6 +12,12 @@ const errors = [];
 try {
   const page = await browser.newPage({viewport:{width:1440,height:1000}});
   page.on('pageerror',error=>errors.push(error.message));
+  // Counts the oscillators music mode creates, so the race can listen for the ghost.
+  await page.addInitScript(() => {
+    window.__audio = {oscillators:0};
+    const create = BaseAudioContext.prototype.createOscillator;
+    BaseAudioContext.prototype.createOscillator = function (...args) { window.__audio.oscillators++; return create.apply(this, args); };
+  });
   await page.goto(base + '/');
   await page.locator('#word[data-word]').waitFor();
   await page.locator('[data-mode=endless]').click();
@@ -63,7 +69,14 @@ try {
   assert.equal(await page.locator('#word').getAttribute('data-word'),words[0]);
   await page.locator('#ghost-lane').waitFor({state:'visible'});
   assert.equal((await page.locator('#ghost-lane-word').innerText()).trim(),words[0],'the ghost waits on the first word until you start');
-  for (const word of words.slice(0,8)) await page.keyboard.type(word + ' ',{delay:110});
+  // With music on, every word the ghost finishes rings a soft ting while you race.
+  await page.locator('#music-toggle').click();
+  await page.keyboard.type(words[0][0]);
+  const started = await page.evaluate(() => window.__audio.oscillators);
+  await page.waitForTimeout(1500);
+  assert.ok(await page.evaluate(() => window.__audio.oscillators) > started,'the ghost’s finished words ring while you race');
+  await page.keyboard.type(words[0].slice(1) + ' ',{delay:110});
+  for (const word of words.slice(1,8)) await page.keyboard.type(word + ' ',{delay:110});
   assert.match(await page.locator('#ghost-lane-pace').innerText(),/^done · \d+ wpm$/,'the faster ghost finished underneath');
   await page.locator('#finish-run').click();
   await page.locator('#race-outcome').waitFor({state:'visible'});

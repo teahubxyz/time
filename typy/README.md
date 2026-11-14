@@ -26,6 +26,12 @@ A theme is a few colours in **public/themes.js**: paper, ink, accent and error a
 
 Ported palettes, all MIT licensed: Solarized (Ethan Schoonover), Catppuccin, Dracula, Nord (Arctic Ice Studio), Gruvbox (Pavel Pertsev), Tokyo Night (enkia) and Rosé Pine.
 
+## Music
+
+The note button in the header (or **Alt+M**, Option+M on a Mac) turns on a little jazz. The letters of each word play its melody, every new word brings the next chord of an eight-bar loop in F (I–VI–ii–V, then iii–vi–ii–V), and a wrong letter is a soft muted thump instead of a wrong note. Keys to the right of the last one step up the scale and keys to the left step down, so a word's shape on the keyboard is the shape of its tune, and a doubled letter repeats its note. Tempo mode changes chords on the beat, a race rings a soft ting each time the ghost finishes a word, and the run ends on the home chord: brighter for a win, the relative minor for a loss, left hanging for a dead heat.
+
+**public/music.js** keeps the mapping pure and deterministic: a conductor turns the same event log replays already store into notes and chords, so a replay plays back exactly the music its run made. The sound is synthesized with Web Audio (an FM electric piano, a bass, a generated room and a limiter): no samples, nothing fetched, and no audio context at all until music is turned on. Music is off by default; local storage (`typy.music`) keeps the choice. **test/music.test.js** holds every note to its bar's scale and checks that live play and its replay make identical music.
+
 ## Development
 
 Node 22 or newer. The app and Worker have no runtime package dependencies.
