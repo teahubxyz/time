@@ -1,6 +1,7 @@
 import { summarizeRun, MODES, timedSeconds } from './game.js';
 import { dailyPassage, normalizeTopic } from './passages.js';
 import { MAX_WORD_LENGTH, normalizePassage } from './words.js';
+import { JAM, jamKey, jamText, jamStats } from './jam.js';
 
 export class ApiError extends Error {
   constructor(status, message, code = 'request_failed', retryAfter) {
@@ -194,6 +195,40 @@ export async function getResult(env, id) {
   if (!result) throw new ApiError(404, 'This run could not be found. A new link can take a moment to appear.', 'not_found');
   return result;
 }
+/** A shared jam is only its keys, checked one by one: each lands no earlier
+ *  than the last, the first at zero, and the page they make stays a page. */
+export function validateJam(input) {
+  const raw = input?.jam;
+  if (!raw || typeof raw !== 'object' || raw.version !== 1 || !Array.isArray(raw.keys)) throw new ApiError(400, 'A jam is required.', 'invalid_jam');
+  if (!raw.keys.length || raw.keys.length > JAM.keys) throw new ApiError(400, 'A jam holds 1 to ' + JAM.keys + ' keys.', 'invalid_jam');
+  let last = 0;
+  const keys = raw.keys.map((entry, index) => {
+    const [t, key] = Array.isArray(entry) && entry.length === 2 ? entry : [];
+    if (!integer(t, last, index ? JAM.ms : 0) || !jamKey(key)) throw new ApiError(400, 'This jam has a key it cannot play.', 'invalid_jam');
+    last = t;
+    return [t, key];
+  });
+  const text = jamText(keys);
+  if (Array.from(text).length > JAM.chars) throw new ApiError(400, 'A jam holds up to ' + JAM.chars + ' characters.', 'invalid_jam');
+  if (!text.trim()) throw new ApiError(400, 'Type something before you share a jam.', 'empty_jam');
+  return { jam: { version: 1, keys }, stats: jamStats(keys), name: cleanName(input.name) };
+}
+
+export async function saveJam(request, env, input) {
+  const value = validateJam(input), kv = requireKV(env);
+  await reserveQuota(request, env, 'save');
+  const id = crypto.randomUUID().replace(/-/g, '').slice(0, 24);
+  await kv.put(`jam:${id}`, JSON.stringify({ id, kind: 'jam', ...value, createdAt: new Date().toISOString() }));
+  return { id, url: `/j/${id}` };
+}
+
+export async function getJam(env, id) {
+  if (!validId(id)) throw new ApiError(404, 'This jam could not be found.', 'not_found');
+  const jam = await readJSON(requireKV(env), `jam:${id}`);
+  if (!jam) throw new ApiError(404, 'This jam could not be found. A new link can take a moment to appear.', 'not_found');
+  return jam;
+}
+
 export async function leaderboard(env, day = today()) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || !Number.isFinite(Date.parse(day)) || day > today()) throw new ApiError(400, 'Choose a valid daily date.', 'invalid_day');
   const kv = requireKV(env), entries = [];

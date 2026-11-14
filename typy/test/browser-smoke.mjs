@@ -361,6 +361,62 @@ await check('coach: runs teach it, the report finds the slippy key, a drill lean
   await coachContext.close();
 });
 
+await check('jam: free typing plays, Esc shows the stats, playback types it again, and a shared jam opens sealed (mock API)', async () => {
+  const listening = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
+  await listening.addInitScript(() => {
+    window.__audio = { oscillators: 0 };
+    const create = BaseAudioContext.prototype.createOscillator;
+    BaseAudioContext.prototype.createOscillator = function (...args) { window.__audio.oscillators++; return create.apply(this, args); };
+  });
+  const p = await listening.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  const text = 'hi there. ' + String.fromCharCode(10) + 'ok';
+  await home(p);
+  await p.locator('#jam-option').click();
+  await p.locator('#jam-panel').waitFor();
+  assert.equal(new URL(p.url()).pathname, '/jam');
+  assert.equal(await p.locator('#jam-option').getAttribute('aria-pressed'), 'true');
+  assert.equal(await p.locator('[data-mode][aria-pressed=true]').count(), 0);
+  assert.equal(await p.locator('#source-open').isHidden(), true);
+  assert.equal(await p.locator('#music-toggle').getAttribute('aria-pressed'), 'true', 'a jam plays even with music off');
+  await p.keyboard.type('hi there. ', { delay: 40 });
+  await p.keyboard.press('Enter');
+  await p.keyboard.type('ok', { delay: 40 });
+  assert.equal(await p.locator('#jam-text').textContent(), text);
+  assert.ok(await p.evaluate(() => window.__audio.oscillators) > 0, 'letters and spaces play');
+  assert.notEqual(await p.locator('#jam-chord').innerText(), '');
+  await p.keyboard.press('Escape');
+  await p.locator('#jam-result').waitFor();
+  assert.equal(await p.locator('#jam-notes').innerText(), '10');
+  assert.equal(await p.locator('#jam-chords').innerText(), '4');
+  assert.equal(await p.locator('#jam-words').textContent(), text);
+  assert.equal(await p.locator('#jam-roll rect.roll-note').count(), 10);
+  await p.locator('#jam-play').click();
+  await p.locator('#jam-panel.playing').waitFor();
+  await p.locator('#jam-result:not([hidden])').waitFor({ timeout: 10000 });
+  let posted = null;
+  const id = 'abcdefabcdefabcdefabcdef';
+  await p.route('**/api/jams', route => { posted = JSON.parse(route.request().postData()); return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id, url: '/j/' + id }) }); });
+  await p.locator('#jam-share').click();
+  await p.locator('#share-name').fill('bun');
+  await p.locator('#save-result').click();
+  await p.locator('#share-ready').waitFor();
+  assert.equal(await p.locator('#share-url').inputValue(), base + '/j/' + id);
+  assert.equal(posted.jam.version, 1);
+  assert.equal(posted.jam.keys.map(([, key]) => key).join('|'), 'h|i| |t|h|e|r|e|.| |Enter|o|k');
+  assert.equal(posted.name, 'bun');
+  await p.route('**/api/jams/' + id, route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ id, kind: 'jam', name: 'bun', jam: posted.jam, stats: {} }) }));
+  await p.goto(base + '/j/' + id);
+  await p.locator('#jam-result.sealed').waitFor();
+  assert.equal(await p.locator('#jam-title').innerText(), 'bun made you a tune.');
+  assert.equal(await p.locator('#jam-words').isHidden(), true, 'the words wait for play');
+  await p.locator('#jam-play').click();
+  await p.locator('#jam-result:not(.sealed):not([hidden])').waitFor({ timeout: 10000 });
+  assert.equal(await p.locator('#jam-title').innerText(), 'bun’s tune.');
+  assert.equal(await p.locator('#jam-again').textContent(), 'jam back ↗');
+  await listening.close();
+});
+
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
 const phone = await mobile.newPage();
 phone.on('pageerror', error => errors.push(error.message));
@@ -389,6 +445,20 @@ await check('every run mode stays reachable inside the phone toolbar', async () 
   await phone.locator('[data-mode="120"]').tap();
   assert.equal(await phone.locator('#live-time').innerText(), '120');
   await phone.locator('[data-mode="30"]').tap();
+});
+await check('jam fits a phone and takes native input', async () => {
+  await phone.goto(base + '/jam');
+  await phone.locator('#jam-panel').waitFor();
+  const option = await phone.locator('#jam-option').boundingBox();
+  assert.equal(option.x >= 0 && option.x + option.width <= 391, true, 'the jam option stays on screen');
+  await phone.locator('#jam-input').tap();
+  await phone.locator('#jam-input').fill('la la');
+  assert.equal(await phone.locator('#jam-text').textContent(), 'la la');
+  assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  await phone.locator('#jam-done').tap();
+  await phone.locator('#jam-result').waitFor();
+  assert.equal(await phone.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  await home(phone);
 });
 await check('reduced motion leaves the beat rail and the word still', async () => {
   await phone.locator('[data-mode=tempo]').tap();

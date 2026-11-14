@@ -40,6 +40,7 @@
           <button data-mode="endless" aria-pressed="false" aria-label="Endless">∞</button>
           <span class="mode-divider" aria-hidden="true"></span>
           <button data-mode="tempo" class="tempo-option" aria-pressed="false"><span class="tempo-icon" aria-hidden="true"><i></i><i></i><i></i></span>tempo</button>
+          <button id="jam-option" class="jam-option" aria-pressed="false" title="Free play: type anything and it plays (alt+j)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg>jam</button>
         </div>
         <button class="source-button" id="source-open"><span id="source-label">common words</span><span aria-hidden="true">↗</span></button>
       </section>
@@ -89,6 +90,19 @@
         </section>
       </section>
 
+      <section id="jam-panel" class="jam-panel" hidden aria-label="Jam">
+        <div class="run-strip"><div class="run-status"><span class="status-dot" id="jam-dot"></span><span id="jam-status">free play</span></div><div class="jam-chord" id="jam-chord" aria-hidden="true"></div></div>
+        <div class="jam-stage" id="jam-stage">
+          <p class="jam-empty" id="jam-empty">type anything. it plays.</p>
+          <div class="jam-text" id="jam-text" aria-live="off"></div>
+        </div>
+        <div class="input-row jam-row">
+          <input id="jam-input" class="typing-input" type="text" inputmode="text" enterkeyhint="enter" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type anything and it plays" placeholder="tap here to jam">
+          <p class="run-hint"><span><kbd>space</kbd> next chord</span><span class="hint-separator">·</span><span><kbd>.</kbd> <kbd>space</kbd> home</span><span class="hint-separator">·</span><span><kbd>esc</kbd> done</span></p>
+          <button id="jam-done" class="button small">done</button>
+        </div>
+      </section>
+
       <section id="result-panel" class="result-panel" hidden aria-labelledby="result-title">
         <div class="result-heading"><p class="eyebrow" id="result-kicker">30 seconds, well spent</p><span class="new-best" id="new-best" hidden>personal best ↗</span></div>
         <h1 id="result-title">there’s your rhythm.</h1>
@@ -111,6 +125,26 @@
         </div>
         <div class="result-note" id="result-note"></div>
         <button class="text-button daily-board-button" id="board-open" hidden>today’s board ↗</button>
+      </section>
+      <section id="jam-result" class="jam-result" hidden aria-labelledby="jam-title">
+        <p class="eyebrow" id="jam-kicker">your jam</p>
+        <h1 id="jam-title">that’s your tune.</h1>
+        <p class="jam-invite" id="jam-invite" hidden>Press play and it comes back exactly as it was typed, note by note.</p>
+        <div class="jam-words" id="jam-words"></div>
+        <dl class="jam-stats">
+          <div><dt>pace</dt><dd><b id="jam-wpm">0</b>wpm</dd></div>
+          <div><dt>in flow</dt><dd><b id="jam-flow">0</b>wpm</dd></div>
+          <div><dt>notes</dt><dd><b id="jam-notes">0</b></dd></div>
+          <div><dt>chords</dt><dd><b id="jam-chords">0</b></dd></div>
+          <div><dt>longest flow</dt><dd><b id="jam-longest">0</b>s</dd></div>
+        </dl>
+        <div class="rhythm-chart jam-melody"><div class="chart-label"><span>your melody</span><span>every note, in time</span></div><svg id="jam-roll" class="jam-roll" viewBox="0 0 900 118" role="img" aria-label="Every note of the jam, in time"></svg></div>
+        <div class="result-actions">
+          <button class="button primary" id="jam-again">jam again <span aria-hidden="true">↵</span></button>
+          <button class="button" id="jam-play">play it back <span aria-hidden="true">▷</span></button>
+          <button class="button" id="jam-share">share jam <span aria-hidden="true">↗</span></button>
+        </div>
+        <div class="result-note" id="jam-note"></div>
       </section>
     </main>
 
@@ -155,7 +189,7 @@
   <dialog id="share-dialog" class="dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close sharing">×</button></form>
     <p class="eyebrow" id="share-kicker">a good rhythm is worth sharing</p><h2 id="share-title">leave a little ghost.</h2>
-    <div id="share-create"><label for="share-name">Your name <span class="optional">(optional)</span></label><input id="share-name" type="text" maxlength="24" placeholder="anonymous" autocomplete="nickname"><p class="dialog-note">The link makes this passage, score, and replay public. Your mistyped characters are never saved.</p><button class="button primary full" id="save-result">create share link ↗</button></div>
+    <div id="share-create"><label for="share-name">Your name <span class="optional">(optional)</span></label><input id="share-name" type="text" maxlength="24" placeholder="anonymous" autocomplete="nickname"><p class="dialog-note" id="share-create-note">The link makes this passage, score, and replay public. Your mistyped characters are never saved.</p><button class="button primary full" id="save-result">create share link ↗</button></div>
     <div id="share-ready" hidden><label for="share-url" id="share-url-label">Your result link</label><div class="field-with-button"><input id="share-url" type="url" readonly><button class="button primary" id="copy-link">copy</button></div><p class="dialog-note" id="share-ready-note">Anyone with this link can watch your replay or race your ghost.</p></div>
     <p class="inline-error" id="share-error" role="alert" hidden></p>
   </dialog>
@@ -186,7 +220,7 @@
   <dialog id="help-dialog" class="dialog">
     <form method="dialog"><button class="dialog-close" aria-label="Close help">×</button></form>
     <p class="eyebrow">less looking. more doing.</p><h2>one word at a time.</h2>
-    <div class="help-steps"><p><span>01</span>Type the word in the middle. Your first letter starts the clock.</p><p><span>02</span>Use Backspace to fix a mistake, then Space for the next word. Switch to “last letter” in settings for automatic advances.</p><p><span>03</span>Try tempo: finish each word before the beat. Keep up and it gets faster. Three missed beats end the run.</p><p><span>04</span>Turn on music with the note button or Alt+M: your letters play the melody, each new word brings the next chord, and replays play it back.</p></div>
+    <div class="help-steps"><p><span>01</span>Type the word in the middle. Your first letter starts the clock.</p><p><span>02</span>Use Backspace to fix a mistake, then Space for the next word. Switch to “last letter” in settings for automatic advances.</p><p><span>03</span>Try tempo: finish each word before the beat. Keep up and it gets faster. Three missed beats end the run.</p><p><span>04</span>Turn on music with the note button or Alt+M: your letters play the melody, each new word brings the next chord, and replays play it back.</p><p><span>05</span>Pick jam, or press Alt+J, and type anything: letters sing, a space changes the chord, and a full stop goes home. Esc shows your stats and makes a link that plays it back.</p></div>
     <p class="dialog-note">WPM counts five correct output characters as one word. Accuracy measures correct key attempts. Your best scores and settings stay on this device.</p><button class="button primary full" id="help-done">let’s type ↗</button>
   </dialog>
   <div id="toast" class="toast" role="status" hidden></div>

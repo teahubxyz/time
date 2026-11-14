@@ -1,6 +1,6 @@
 import { renderPage } from './page.js';
 import { ASSETS } from './assets.js';
-import { ApiError, QuotaGate, saveResult, getResult, leaderboard } from './store.js';
+import { ApiError, QuotaGate, saveResult, getResult, leaderboard, saveJam, getJam } from './store.js';
 import { dailyPassage, topicPassage, normalizeTopic } from './passages.js';
 import { scorePNG } from './og.js';
 export { QuotaGate };
@@ -31,6 +31,7 @@ async function route(request,env){
  if(!['GET','HEAD','POST'].includes(request.method))return json({error:'Method not allowed.',code:'method_not_allowed'},405,{'Allow':'GET, HEAD, POST'});
  if(path==='/api/health')return json({ok:Boolean(env.KV&&env.QUOTA),rev:env.REV||'development',source_sha:env.SOURCE_SHA||'development',storage:env.KV?'ready':'unavailable',quotas:env.QUOTA?'ready':'unavailable',topics:Boolean(env.VENICE_API_KEY)},env.KV&&env.QUOTA?200:503);
  if(path==='/api/results'&&request.method==='POST'){checkOrigin(request,url);return json(await saveResult(request,env,await bodyJSON(request)),201);}
+ if(path==='/api/jams'&&request.method==='POST'){checkOrigin(request,url);return json(await saveJam(request,env,await bodyJSON(request)),201);}
  if(request.method==='POST')throw new ApiError(405,'Method not allowed.','method_not_allowed');
  if(path==='/api/daily')return json(dailyPassage(),200,{'Cache-Control':'no-cache'});
  if(path==='/api/board')return json(await leaderboard(env,url.searchParams.get('day')||undefined));
@@ -39,6 +40,8 @@ async function route(request,env){
  if(match)return json(await getResult(env,match[1]));
  match=path.match(/^\/api\/og\/(default|[a-f0-9]{24})\.png$/);
  if(match){const record=match[1]==='default'?null:await getResult(env,match[1]);return response(await scorePNG(record),200,{'Content-Type':'image/png','Cache-Control':'public, max-age=86400, immutable'});}
+ if(path.startsWith('/api/jams/'))return json(await getJam(env,path.slice(10)));
+ if(path.startsWith('/api/og/j/')&&path.endsWith('.png'))return response(await scorePNG(await getJam(env,path.slice(10,-4))),200,{'Content-Type':'image/png','Cache-Control':'public, max-age=86400, immutable'});
  if(path==='/robots.txt')return response('User-agent: *\nDisallow: /api/\n',200,{'Content-Type':'text/plain; charset=utf-8'});
  if(path==='/favicon.ico')return response(null,302,{'Location':'/favicon.svg'});
  if(ASSETS[path]){const asset=ASSETS[path];return response(asset.body,200,{'Content-Type':asset.type,'Cache-Control':'public, max-age=300'});}
@@ -53,6 +56,18 @@ async function route(request,env){
    throw error;
   }
   meta={...meta,title:`${Math.round(record.run.stats.wpm)} wpm · typy`,description:`${record.name?record.name+' found':'Find'} a rhythm: ${record.run.stats.accuracy}% accuracy and a ${record.run.stats.bestStreak}-word streak. Watch the replay or race the ghost.`,image:`${CANONICAL}/api/og/${record.id}.png`};
+ }else if(path==='/jam'){
+  meta={...meta,title:'jam · typy',description:'Type anything and it plays a little jazz. When you are done, see your stats and share the tune.'};
+ }else if(path.startsWith('/j/')){
+  // A shared jam's preview names its notes and length, never its words.
+  let record;
+  try{record=await getJam(env,path.slice(3));}
+  catch(error){
+   if(error instanceof ApiError&&error.status===404)return response(renderPage(meta),404,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});
+   throw error;
+  }
+  const seconds=Math.round((record.stats?.durationMs||0)/1000);
+  meta={...meta,title:(record.name?record.name+'’s jam':'a jam')+' · typy',description:`${record.stats?.notes||0} notes in ${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}. Press play to hear it typed out, then jam back.`,image:`${CANONICAL}/api/og/j/${record.id}.png`};
  }else if(path==='/'||path==='/daily'){
   if(path==='/daily')meta.title='The daily passage · typy';
  }else if(/^\/[a-z0-9][a-z0-9-]{0,63}$/.test(path)){

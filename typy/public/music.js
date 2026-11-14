@@ -144,6 +144,59 @@ export function createConductor(words = []) {
   return conductor.reset(words);
 }
 
+const NBSP = String.fromCharCode(160);
+const NEWLINE = String.fromCharCode(10);
+const spaceLike = char => char === ' ' || char === NEWLINE || char === NBSP;
+const SENTENCE_ENDS = new Set(['.', '!', '?', '…']);
+
+/**
+ * Jam: free typing, so there is no word to match. Each character sings the
+ * word you are making up as you go (the tune `melody` gives that word, one
+ * note at a time), a space after a word brings the next chord, and the end of
+ * a sentence or a new line goes home to the first one. Backspace is a soft
+ * tick: the music only ever moves forward. Playback feeds it the same keys,
+ * so a shared jam plays exactly the music its typist heard.
+ */
+export function createJamConductor() {
+  let chars = [];
+  let bar = -1;
+  let lastT = null;
+  const home = () => bar + PROGRESSION.length - wrap(bar, PROGRESSION.length);
+  const conductor = {
+    get bar() { return bar; },
+    get chord() { return bar < 0 ? null : chordFor(bar); },
+    reset() { chars = []; bar = -1; lastT = null; return conductor; },
+    key(key, t) {
+      const actions = [];
+      const gap = lastT === null || !Number.isFinite(t) ? null : t - lastT;
+      if (Number.isFinite(t)) lastT = t;
+      if (key === 'Backspace') {
+        if (chars.length) { chars.pop(); actions.push({type: 'tick'}); }
+        return actions;
+      }
+      const char = key === 'Enter' ? NEWLINE : String(key ?? '');
+      if (!char) return actions;
+      const previous = chars[chars.length - 1];
+      chars.push(char);
+      if (spaceLike(char)) {
+        if (bar < 0) return actions;
+        if (char === NEWLINE ? previous !== NEWLINE : previous !== undefined && !spaceLike(previous)) {
+          bar = char === NEWLINE || SENTENCE_ENDS.has(previous) ? home() : bar + 1;
+          actions.push({type: 'chord', bar, missed: false});
+        }
+        return actions;
+      }
+      if (bar < 0) { bar = 0; actions.push({type: 'chord', bar, missed: false}); }
+      let start = chars.length - 1;
+      while (start > 0 && !spaceLike(chars[start - 1])) start--;
+      const tune = melody(chars.slice(start).join(''), bar);
+      actions.push({type: 'note', midi: tune[tune.length - 1], velocity: velocityFor(gap, start === chars.length - 1)});
+      return actions;
+    }
+  };
+  return conductor;
+}
+
 // A seeded noise source keeps the room and the clicks identical between renders.
 function seeded(seed) {
   let state = seed;

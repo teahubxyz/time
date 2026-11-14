@@ -23,6 +23,7 @@ for (const [url, path, type] of [
   ['/themes.js', 'public/themes.js', 'text/javascript; charset=utf-8'],
   ['/music.js', 'public/music.js', 'text/javascript; charset=utf-8'],
   ['/coach.js', 'public/coach.js', 'text/javascript; charset=utf-8'],
+  ['/jam.js', 'src/jam.js', 'text/javascript; charset=utf-8'],
 ]) {
   assets[url] = {body: await readFile(join(here, path), 'utf8'), type};
 }
