@@ -62,7 +62,7 @@
           <div><span class="metric-label">accuracy</span><span class="metric-value" id="live-accuracy">100</span><span class="metric-unit">%</span></div>
           <div class="time-metric"><span class="metric-label" id="time-label">remaining</span><span class="metric-value" id="live-time">30</span><span class="metric-unit" id="time-unit">s</span></div>
         </div>
-        <div id="ghost-race" class="ghost-race" hidden aria-live="off"><span>you <b id="race-you">0</b></span><span class="race-separator">/</span><span class="ghost-label">ghost <b id="race-them">0</b></span><span id="race-delta"></span></div>
+        <div id="ghost-race" class="ghost-race" hidden aria-live="off"><span><span id="race-you-label">you</span> <b id="race-you">0</b></span><span class="race-separator">/</span><span class="ghost-label"><span id="race-them-label">ghost</span> <b id="race-them">0</b></span><span id="race-delta"></span></div>
         <div class="stage" id="stage">
           <span class="word-number" id="word-number" aria-hidden="true">001</span>
           <div class="word-wrap">
@@ -104,7 +104,7 @@
         <div class="slow-words"><span>room to grow</span><div id="slow-words"></div></div>
         <div class="result-actions">
           <button class="button primary" id="again-button">go again <span aria-hidden="true">↵</span></button>
-          <button class="button" id="replay-button">replay <span aria-hidden="true">▷</span></button>
+          <button class="button" id="replay-button"><span id="replay-label">replay</span> <span aria-hidden="true">▷</span></button>
           <button class="button" id="share-button">share result <span aria-hidden="true">↗</span></button>
           <button class="text-button" id="race-button">race this →</button>
         </div>
