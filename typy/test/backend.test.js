@@ -254,3 +254,12 @@ test('missing result and race pages retain the app retry UI while the data endpo
  for(const path of ['/r/'+id,'/race/'+id]){const page=await worker.fetch(req(path),e);assert.equal(page.status,404);assert.match(page.headers.get('Content-Type'),/text\/html/);const html=await page.text();assert.ok(html.includes('<html'));assert.ok(html.includes('/app.js'));}
  const api=await worker.fetch(req('/api/results/'+id),e);assert.equal(api.status,404);assert.match(api.headers.get('Content-Type'),/application\/json/);assert.equal((await api.json()).code,'not_found');
 });
+
+test('www redirects to the apex and link previews name typy.lol', async () => {
+  const e = env();
+  const moved = await worker.fetch(new Request('https://www.typy.lol/r/0123456789abcdef01234567?from=www'), e);
+  assert.equal(moved.status, 301);
+  assert.equal(moved.headers.get('Location'), 'https://typy.lol/r/0123456789abcdef01234567?from=www');
+  const html = await (await worker.fetch(req('/daily'), e)).text();
+  assert.match(html, /og:url" content="https:\/\/typy\.lol\/daily"/);
+});

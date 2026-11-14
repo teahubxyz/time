@@ -10,6 +10,8 @@ const SECURITY = {
  'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
  'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 };
+// Link previews always name the canonical host, whichever address served the page.
+const CANONICAL = 'https://typy.lol';
 const response = (body,status=200,headers={}) => new Response(body,{status,headers:{...SECURITY,...headers}});
 const json = (body,status=200,headers={}) => response(JSON.stringify(body),status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});
 async function bodyJSON(request){
@@ -41,7 +43,7 @@ async function route(request,env){
  if(path==='/favicon.ico')return response(null,302,{'Location':'/favicon.svg'});
  if(ASSETS[path]){const asset=ASSETS[path];return response(asset.body,200,{'Content-Type':asset.type,'Cache-Control':'public, max-age=300'});}
  if(path.startsWith('/api/'))throw new ApiError(404,'This endpoint does not exist.','not_found');
- let meta={url:url.origin+path};
+ let meta={url:CANONICAL+path};
  match=path.match(/^\/(r|race)\/([a-f0-9]{24})$/);
  if(match){
   let record;
@@ -50,7 +52,7 @@ async function route(request,env){
    if(error instanceof ApiError&&error.status===404)return response(renderPage(meta),404,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});
    throw error;
   }
-  meta={...meta,title:`${Math.round(record.run.stats.wpm)} wpm · typy`,description:`${record.name?record.name+' found':'Find'} a rhythm: ${record.run.stats.accuracy}% accuracy and a ${record.run.stats.bestStreak}-word streak. Watch the replay or race the ghost.`,image:`${url.origin}/api/og/${record.id}.png`};
+  meta={...meta,title:`${Math.round(record.run.stats.wpm)} wpm · typy`,description:`${record.name?record.name+' found':'Find'} a rhythm: ${record.run.stats.accuracy}% accuracy and a ${record.run.stats.bestStreak}-word streak. Watch the replay or race the ghost.`,image:`${CANONICAL}/api/og/${record.id}.png`};
  }else if(path==='/'||path==='/daily'){
   if(path==='/daily')meta.title='The daily passage · typy';
  }else if(/^\/[a-z0-9][a-z0-9-]{0,63}$/.test(path)){
@@ -68,6 +70,8 @@ async function route(request,env){
 }
 export default {
  async fetch(request,env,ctx){
+  const address=new URL(request.url);
+  if(address.hostname.startsWith('www.')){address.hostname=address.hostname.slice(4);return response(null,301,{'Location':address.href,'Cache-Control':'public, max-age=86400'});}
   try{const res=await route(request,env,ctx);return request.method==='HEAD'?new Response(null,{status:res.status,headers:res.headers}):res;}
   catch(error){
    const known=error instanceof ApiError;

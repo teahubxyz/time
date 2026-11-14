@@ -23,7 +23,9 @@ import cloudflare as cf  # noqa: E402
 
 WORKER = "time-typy"
 MIGRATION = "typy-v1"
-DOMAIN = "typy.yolopreneur.lol"
+# typy.lol is home. The Worker redirects www to it, and the venture subdomain keeps old links working.
+DOMAINS = ("typy.lol", "www.typy.lol", "typy.yolopreneur.lol")
+DOMAIN = DOMAINS[0]
 ASSETS = {
     "/app.js": "public/app.js",
     "/style.css": "public/style.css",
@@ -136,8 +138,22 @@ def deploy(*, dry_run: bool = False) -> dict:
         *((name, "application/javascript+module", data) for name, data in modules.items()),
     ])
     cf.cf("PUT", f"{cf.account()}/workers/scripts/{WORKER}", data=raw, ctype=content_type)
-    cf.attach(WORKER, DOMAIN)
-    return {**summary, "migration": MIGRATION}
+    for hostname in DOMAINS:
+        attach(hostname)
+    return {**summary, "domains": list(DOMAINS), "migration": MIGRATION}
+
+
+def attach(hostname: str) -> None:
+    """Point a hostname at the Worker as a custom domain; Cloudflare adds the DNS record and certificate.
+    The zone is found by suffix, so an apex such as typy.lol works (cf.attach assumes a subdomain)."""
+    labels = hostname.split(".")
+    for i in range(len(labels) - 1):
+        zones = cf.cf("GET", "/zones?name=" + ".".join(labels[i:])) or []
+        if zones:
+            cf.cf("PUT", f"{cf.account()}/workers/domains",
+                  {"hostname": hostname, "service": WORKER, "zone_id": zones[0]["id"], "environment": "production"})
+            return
+    raise RuntimeError(f"No Cloudflare zone visible to this token covers {hostname}")
 
 
 def health() -> dict:

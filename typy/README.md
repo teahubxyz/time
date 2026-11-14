@@ -2,7 +2,7 @@
 
 One word at a time. Type it, find the next one, settle into a rhythm.
 
-**Live:** https://typy.yolopreneur.lol/  
+**Live:** https://typy.lol/ (the original https://typy.yolopreneur.lol/ still works)  
 **Brief:** [time#254](https://teahub.xyz/teahubxyz/time/issues/254)
 
 ## Play
@@ -61,7 +61,7 @@ Deploy with the existing operator credentials: CLOUDFLARE_API_TOKEN, CLOUDFLARE_
     python3 typy/deploy.py
     python3 typy/deploy.py --health
 
-The deploy script reuses **.github/time/cloudflare.py**, uploads the committed ES modules, reuses a KV namespace named **time-typy**, and attaches **typy.yolopreneur.lol**. Its first upload creates the SQLite Durable Object class **QuotaGate** with migration **typy-v1**. Later uploads retain the same store and quota namespace. The operator machine needs Python and git; committed generated assets make Node unnecessary there.
+The deploy script reuses **.github/time/cloudflare.py**, uploads the committed ES modules, reuses a KV namespace named **time-typy**, and attaches **typy.lol**, **www.typy.lol** (the Worker redirects it to the apex) and the original **typy.yolopreneur.lol**. Link previews always name typy.lol. Its first upload creates the SQLite Durable Object class **QuotaGate** with migration **typy-v1**. Later uploads retain the same store and quota namespace. The operator machine needs Python and git; committed generated assets make Node unnecessary there.
 
 Deploys are manual: no workflow deploys main or runs `npm test --prefix typy` yet. Adding one means editing `.github/workflows`, which needs a human.
 
