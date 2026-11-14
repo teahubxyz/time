@@ -416,6 +416,25 @@ export function replayFrame(run, position) {
   return {index, flags, word: at(0), next: at(1), afterNext: at(2), previous: index > 0 ? run.words[(index - 1) % run.words.length] : '', done: position >= run.durationMs};
 }
 
+/** Line breaks for line view: the first word of each line, packing up to
+ *  maxChars characters a line (a longer word gets a line of its own). Lines run
+ *  on through the passage as it repeats, as far as the line holding word
+ *  `through` and the two lines after it. */
+export function lineStarts(words, maxChars, through = 0) {
+  const starts = [0];
+  if (!Array.isArray(words) || !words.length) return starts;
+  const size = i => Array.from(words[i % words.length]).length;
+  let start = 0;
+  for (let guard = 0; guard < 100000; guard++) {
+    let width = size(start), next = start + 1;
+    while (width + 1 + size(next) <= maxChars) { width += 1 + size(next); next++; }
+    starts.push(next);
+    if (starts.length >= 4 && starts[starts.length - 3] > through) break;
+    start = next;
+  }
+  return starts;
+}
+
 /** A race is decided on whole words per minute, the numbers both cards show. */
 export function raceOutcome(mine, theirs) {
   const a = Math.round(Number(mine) || 0), b = Math.round(Number(theirs) || 0);
