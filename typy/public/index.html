@@ -44,6 +44,7 @@
         </div>
         <button class="source-button" id="source-open"><span id="source-label">common words</span><span aria-hidden="true">↗</span></button>
       </section>
+      <p class="mode-how" id="mode-how" aria-live="polite"></p>
 
       <section id="load-panel" class="load-panel" hidden aria-live="polite">
         <div class="spinner" id="loading-spinner" aria-hidden="true"></div>
@@ -117,8 +118,9 @@
             <div><dt>words completed</dt><dd id="result-words">0</dd></div>
           </dl>
         </div>
+        <section class="coach-notes" id="coach-notes" hidden aria-label="Coach’s notes"><div class="chart-label"><span>coach’s notes</span><span id="coach-next"></span></div><ul class="coach-notes-list" id="coach-notes-list"></ul></section>
         <div class="rhythm-chart"><div class="chart-label"><span>your rhythm</span><span>each word, in wpm</span></div><svg id="speed-chart" viewBox="0 0 900 95" role="img" aria-label="Speed for each completed word"></svg></div>
-        <div class="slow-words"><span>room to grow</span><div id="slow-words"></div><button class="text-button coach-link" id="coach-from-result">your coach ↗</button></div>
+        <div class="slow-words"><span>room to grow</span><div id="slow-words"></div><button class="text-button coach-link" id="coach-from-result">your coach ↗</button><button class="text-button coach-link" id="history-from-result">history ↗</button></div>
         <div class="result-actions">
           <button class="button primary" id="again-button">go again <span aria-hidden="true">↵</span></button>
           <button class="button" id="replay-button"><span id="replay-label">replay</span> <span aria-hidden="true">▷</span></button>
@@ -150,7 +152,7 @@
       </section>
     </main>
 
-    <footer class="footer"><span>one word. then the next.</span><div><button class="text-button theme-current" id="theme-footer" title="Themes (alt+t)" aria-label="Theme: typy. Change theme"><span class="theme-dot" aria-hidden="true"></span><span id="theme-name">typy</span></button><button class="text-button" id="footer-coach">coach</button><button class="text-button" id="footer-board" hidden>today’s board ↗</button><span id="restart-tip"><kbd>esc</kbd> restart</span><a href="https://teahub.xyz/teahubxyz/time/issues/254" target="_blank" rel="noopener" aria-label="About typy on Teahub">a small experiment ↗</a></div></footer>
+    <footer class="footer"><span>one word. then the next.</span><div><button class="text-button theme-current" id="theme-footer" title="Themes (alt+t)" aria-label="Theme: typy. Change theme"><span class="theme-dot" aria-hidden="true"></span><span id="theme-name">typy</span></button><button class="text-button" id="footer-coach">coach</button><button class="text-button" id="footer-history">history</button><button class="text-button" id="footer-board" hidden>today’s board ↗</button><span id="restart-tip"><kbd>esc</kbd> restart</span><a href="https://teahub.xyz/teahubxyz/time/issues/254" target="_blank" rel="noopener" aria-label="About typy on Teahub">a small experiment ↗</a></div></footer>
   </div>
 
   <dialog id="theme-dialog" class="dialog theme-dialog" aria-label="Themes">
@@ -217,6 +219,14 @@
     </div>
     <div class="coach-actions"><button class="button primary" id="coach-drill"><span id="coach-drill-label">drill my weak keys</span> <span aria-hidden="true">↗</span></button><button class="button" id="coach-gaps"><span id="coach-gaps-label">fill the gaps</span> <span aria-hidden="true">↗</span></button><button class="text-button" id="coach-forget">forget my coach data</button></div>
     <p class="dialog-note" id="coach-note">Learned on this device from your own runs. It never leaves it.</p>
+  </dialog>
+
+  <dialog id="history-dialog" class="dialog wide history-dialog" aria-labelledby="history-title">
+    <form method="dialog"><button class="dialog-close" aria-label="Close history">×</button></form>
+    <p class="eyebrow">on this device</p><h2 id="history-title">your runs and jams.</h2>
+    <p class="dialog-note" id="history-empty">Nothing yet. Every run and jam you finish lands here, newest first, ready to open, replay or play back.</p>
+    <div class="history-list" id="history-list"></div>
+    <div class="history-actions"><p class="dialog-note">Kept on this device, never sent anywhere.</p><button class="text-button" id="history-clear">clear history</button></div>
   </dialog>
 
   <dialog id="help-dialog" class="dialog">

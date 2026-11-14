@@ -1,8 +1,12 @@
 // The coach’s report and its practice runs.
-import { S, coachStats } from '/core/state.js';
-import { coachReport, emptyStats, KEYBOARD, practiceWords } from '/coach.js';
+import { coachReport, emptyStats, finishRun, KEYBOARD, practiceWords, reviewRun } from '/coach.js';
+import { on } from '/core/bus.js';
 import { $, pretty, setText, spanOf, toast, writeLocal } from '/core/dom.js';
+import { S, coachStats, settings } from '/core/state.js';
+import { updateOptions } from '/play/options.js';
+import { restart } from '/play/router.js';
 import { beginRun, focusTyping } from '/play/run.js';
+import { applyView } from '/play/stage.js';
 import { VOCABULARY } from '/words.js';
 
 // The coach: a closer look at your hands, from every run typed on this device.
@@ -102,3 +106,50 @@ $('coach-forget').addEventListener('click', () => {
   toast('coach data forgotten');
 });
 $('coach-dialog').addEventListener('close', focusTyping);
+
+// After every run: notes for the result card, written before the run joins the
+// coach's data (so "usual" means the runs before it), then the coach learns from it.
+on('run:done', result => {
+  const drill = result.source?.kind === 'drill';
+  result.coach = reviewRun(coachStats, result.run, {mode: result.run.mode, drill, isBest: result.isBest, view: settings.view, tempoPeak: result.tempoPeak || 0});
+  finishRun(coachStats, result.run, new Date().toISOString().slice(0, 10), drill);
+  writeLocal('coach', coachStats);
+});
+
+// The notes ride along with the result, so a run reopened from history keeps them.
+// Somebody else's shared result has none, and the card stays away.
+export function renderNotes(review) {
+  const box = $('coach-notes');
+  box.hidden = !review?.notes?.length;
+  if (box.hidden) return;
+  $('coach-notes-list').replaceChildren(...review.notes.map(note => {
+    const item = document.createElement('li');
+    item.className = 'coach-note ' + note.kind;
+    const text = document.createElement('span');
+    text.textContent = note.text;
+    item.append(text);
+    if (note.action) {
+      const button = document.createElement('button');
+      button.className = 'text-button';
+      button.dataset.action = note.action.kind;
+      button.textContent = note.action.label + ' ↗';
+      item.append(button);
+    }
+    return item;
+  }));
+  setText('coach-next', review.next ? 'next run: ' + review.next.wpm + ' wpm at ' + review.next.accuracy + '%+' : '');
+}
+
+on('result:show', result => renderNotes(result?.coach));
+
+$('coach-notes').addEventListener('click', event => {
+  const action = event.target.closest('[data-action]')?.dataset.action;
+  if (action === 'drill') startPractice('drill');
+  else if (action === 'tempo') document.querySelector('[data-mode=tempo]').click();
+  else if (action === 'lines') {
+    settings.view = 'line'; writeLocal('settings', settings);
+    applyView(); updateOptions();
+    toast('line by line: the next run shows a line at a time');
+    restart({freshWords: S.source.kind === 'common'});
+  }
+});

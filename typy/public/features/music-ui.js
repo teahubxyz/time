@@ -1,6 +1,6 @@
 // Music: the note button, Alt+M, and waking audio with a gesture.
-import { S, jamming, music } from '/core/state.js';
 import { $, toast, writeLocal } from '/core/dom.js';
+import { S, jamming, music } from '/core/state.js';
 import { toggleJamSound } from '/jam/jam-ui.js';
 import { focusTyping } from '/play/run.js';
 

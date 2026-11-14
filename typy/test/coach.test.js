@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { emptyStats, readStats, createRecorder, runRhythm, finishRun, coachReport, practiceWords, ENOUGH } from '../public/coach.js';
+import { emptyStats, readStats, createRecorder, runRhythm, finishRun, coachReport, practiceWords, reviewRun, ENOUGH } from '../public/coach.js';
 import { TypingGame } from '../src/game.js';
 import { VOCABULARY, seededRandom } from '../src/words.js';
 
@@ -106,4 +106,40 @@ test('drills teach the coach your keys but stay out of your trend and style', ()
   assert.deepEqual(report.progress, [70, 72]);
   const again = readStats(JSON.parse(JSON.stringify(stats)));
   assert.deepEqual(again.runs.map(item => Boolean(item.drill)), [false, true, false]);
+});
+
+const fakeRun = ({wpm = 60, accuracy = 97, completedWords = 20, keystrokes = 100, events = []} = {}) => ({mode: '30', stats: {wpm, accuracy, completedWords, keystrokes}, events});
+const usual = list => ({...emptyStats(), runs: list.map(wpm => ({day: '2026-11-13', wpm, accuracy: 96, within: 120, start: 250, evenness: 0.8, samples: 40}))});
+
+test('after a run the coach compares it with your usual and sets the next goal', () => {
+  const up = reviewRun(usual([50, 52, 51]), fakeRun({wpm: 58}));
+  assert.equal(up.notes[0].kind, 'up');
+  assert.match(up.notes[0].text, /7 wpm above your usual 51/);
+  assert.deepEqual(up.next, {wpm: 60, accuracy: 96});
+  const down = reviewRun(usual([60, 62, 61]), fakeRun({wpm: 50, accuracy: 99}));
+  assert.ok(down.notes.some(note => note.kind === 'down' && /but cleaner/.test(note.text)));
+  assert.equal(reviewRun(usual([50, 50, 50]), fakeRun({wpm: 52, accuracy: 88})).notes[0].kind, 'accuracy');
+  const best = reviewRun(usual([50, 50, 50]), fakeRun({wpm: 70}), {isBest: true});
+  assert.equal(best.notes[0].kind, 'best');
+  assert.ok(best.notes.length <= 3);
+  assert.ok(reviewRun(emptyStats(), fakeRun()).notes.some(note => note.kind === 'first'));
+  assert.deepEqual(reviewRun(emptyStats(), {stats: {}}), {notes: [], next: null});
+});
+
+test('the coach sends slow word starts to line view, bursts to tempo, and names a tempo run’s beat', () => {
+  const events = [];
+  let t = 0;
+  for (let word = 0; word < 6; word++) { t += 600; for (let i = 0; i < 4; i++) { events.push({t, type: 'hit', index: word}); t += 100; } events.push({t, type: 'advance', index: word}); }
+  const starts = reviewRun(usual([60, 60, 60]), fakeRun({events}), {view: 'word'}).notes.find(note => note.kind === 'starts');
+  assert.ok(starts, 'slow starts get a note');
+  assert.equal(starts.action.kind, 'lines');
+  assert.equal(reviewRun(usual([60, 60, 60]), fakeRun({events}), {view: 'line'}).notes.find(note => note.kind === 'starts').action, undefined, 'no need to suggest the view already on');
+  const bursty = [];
+  t = 0;
+  for (let word = 0; word < 8; word++) { t += 200; for (let i = 0; i < 4; i++) { bursty.push({t, type: 'hit', index: word}); t += i % 2 ? 40 : 400; } bursty.push({t, type: 'advance', index: word}); }
+  const bursts = reviewRun(usual([60, 60, 60]), fakeRun({events: bursty})).notes.find(note => note.kind === 'bursts');
+  assert.equal(bursts?.action.kind, 'tempo');
+  const tempo = reviewRun(usual([60, 60, 60]), fakeRun({wpm: 50}), {mode: 'tempo', tempoPeak: 55});
+  assert.match(tempo.notes[0].text, /kept up with the beat until 55 wpm/);
+  assert.equal(tempo.next, null, 'tempo sets its own goal: the beat');
 });

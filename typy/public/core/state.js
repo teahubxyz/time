@@ -4,7 +4,6 @@ import { createRecorder, readStats } from '/coach.js';
 import { readLocal } from '/core/dom.js';
 import { createConductor, createJamConductor, createMusic } from '/music.js';
 
-export const modeNames = {'30':'30 seconds','60':'60 seconds','120':'120 seconds','50':'50 words','endless':'endless','tempo':'tempo'};
 export const settings = {...{advance:'space',preview:true,view:'word'}, ...readLocal('settings', {})};
 export const bests = readLocal('bests', {});
 // Followed live: a visitor can turn the setting on mid-run, and the beat rail

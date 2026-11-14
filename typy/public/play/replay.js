@@ -1,7 +1,8 @@
 // Replays: one run on the stage, or a race in two lanes over a timeline.
-import { S, conductor, music } from '/core/state.js';
 import { $, clock, now, pretty, setClass, setText } from '/core/dom.js';
-import { replayFrame } from '/game.js';
+import { go, screen } from '/core/screens.js';
+import { S, conductor, music } from '/core/state.js';
+import { raceOutcome, replayFrame } from '/game.js';
 import { updateOptions } from '/play/options.js';
 import { displayResult } from '/play/result.js';
 import { drawWord, ghostLine } from '/play/stage.js';
@@ -17,10 +18,9 @@ export const finishedWords = (run, position) => run.wordTimings.filter(timing =>
 
 export function startReplay() {
   if (!S.currentResult?.run) return;
-  S.view = 'replay';
+  go('replay');
   S.ghost = null;
   S.lastWordKey = ''; S.lastWordIndex = -1;
-  $('result-panel').hidden = true; $('play-panel').hidden = false;
   $('input-row').hidden = true; $('replay-controls').hidden = false;
   // A race replays both runs on one clock, in two lanes of the same size, over a timeline.
   const rival = S.currentResult.ghostRun || null;
@@ -159,3 +159,18 @@ $('replay-scrubber').addEventListener('input', () => {
 });
 $('race-timeline').addEventListener('pointerdown', event => { if (S.view !== 'replay') return; $('race-timeline').setPointerCapture?.(event.pointerId); seekRace(event); });
 $('race-timeline').addEventListener('pointermove', event => { if (S.view === 'replay' && $('race-timeline').hasPointerCapture?.(event.pointerId)) seekRace(event); });
+
+export function stepReplay(time) {
+  if (!S.replay.playing) return;
+  // A frame's timestamp can be a hair older than the anchor a seek just set; time never runs backwards.
+  S.replay.position = Math.min(replayLength(), S.replay.anchorPosition + Math.max(0, time - S.replay.anchor));
+  hearReplay(S.replay.position);
+  renderReplay(S.replay.position);
+  if (S.replay.position >= replayLength()) {
+    S.replay.playing = false; $('replay-play').textContent = 'play again';
+    const ghostStats = S.currentResult.ghostStats;
+    if (S.musicOn) music.finish(ghostStats ? raceOutcome(S.currentResult.run.stats.wpm, ghostStats.wpm).verdict : 'solo');
+  }
+}
+
+screen('replay', {panel: 'play-panel', frame: stepReplay});

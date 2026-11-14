@@ -1,18 +1,19 @@
 // Run options: modes, settings, and the words menu (topics, your own text, common words).
+import { $, pretty, setText, toast, writeLocal } from '/core/dom.js';
 import { S, bests, jamming, settings } from '/core/state.js';
-import { $, pretty, toast, writeLocal } from '/core/dom.js';
 import { showMusic } from '/features/music-ui.js';
+import { JAM_HOW, MODE_INFO } from '/play/modes.js';
 import { route, topicRoute } from '/play/router.js';
 import { beginRun, focusTyping, newCommonPassage } from '/play/run.js';
 import { applyView, redrawStage } from '/play/stage.js';
 import { normalizePassage } from '/words.js';
 
-export function sourceName() {
-  if (S.ghost) return 'racing ' + (S.currentResult?.name || 'a friendly ghost');
-  if (S.source.kind === 'topic') return (S.source.topic || '').replaceAll('-', ' ');
-  if (S.source.kind === 'daily') return 'the daily · ' + (S.source.day || 'today');
-  if (S.source.kind === 'drill') return S.source.label || 'weak-key drill';
-  if (S.source.kind === 'paste') return 'your own words';
+export function sourceName(source = S.source) {
+  if (S.ghost && source === S.source) return 'racing ' + (S.currentResult?.name || 'a friendly ghost');
+  if (source.kind === 'topic') return (source.topic || '').replaceAll('-', ' ');
+  if (source.kind === 'daily') return 'the daily · ' + (source.day || 'today');
+  if (source.kind === 'drill') return source.label || 'weak-key drill';
+  if (source.kind === 'paste') return 'your own words';
   return 'common words';
 }
 
@@ -39,6 +40,7 @@ export function updateOptions() {
   $('daily-link').setAttribute('aria-current', S.source.kind === 'daily' ? 'page' : 'false');
   $('best-score').textContent = bests[localBestKey()] ? 'device best  ' + pretty(bests[localBestKey()]) + ' wpm' : '';
   $('jam-option').setAttribute('aria-pressed', String(jamming()));
+  setText('mode-how', jamming() ? JAM_HOW : MODE_INFO[S.selectedMode]?.how || '');
   $('source-open').hidden = jamming();
   $('restart-tip').innerHTML = '<kbd>esc</kbd> ' + (S.view === 'jam' ? 'done' : S.view === 'jam-play' ? 'skip' : S.view === 'jam-result' ? 'new jam' : 'restart');
   showMusic();

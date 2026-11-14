@@ -1,10 +1,10 @@
 // A live run: starting it, typing it, finishing it.
-import { S, bests, coachRecorder, coachStats, conductor, jamming, music, settings } from '/core/state.js';
-import { finishRun } from '/coach.js';
+import { emit } from '/core/bus.js';
 import { $, now, pretty, readLocal, setClass, setText, toast, writeLocal } from '/core/dom.js';
+import { current, go, screen } from '/core/screens.js';
+import { S, bests, coachRecorder, conductor, music, settings } from '/core/state.js';
 import { shuffleTheme } from '/features/themes-ui.js';
 import { raceOutcome, replayFrame, timedSeconds, TypingGame } from '/game.js';
-import { hideJam, jamKeydown, jamPress } from '/jam/jam-ui.js';
 import { updateOptions } from '/play/options.js';
 import { displayResult } from '/play/result.js';
 import { restart } from '/play/router.js';
@@ -38,17 +38,13 @@ export function beginRun({freshWords = false, focus = false} = {}) {
   conductor.reset(S.game.words);
   coachRecorder.reset(S.game.words);
   lastHeard = null;
-  S.view = 'play';
+  go('play');
   S.replay.playing = false;
   S.lastWordKey = '';
   S.lastWordIndex = -1;
   S.renderedWord = '';
   S.wordLayoutDirty = true;
   lastErrorCount = 0;
-  $('load-panel').hidden = true;
-  $('play-panel').hidden = false;
-  $('result-panel').hidden = true;
-  hideJam();
   $('replay-controls').hidden = true;
   $('input-row').hidden = false;
   $('typing-input').value = '';
@@ -143,7 +139,8 @@ export function renderGhostLane(run, position) {
 }
 
 export function press(key) {
-  if (S.view === 'jam') { jamPress(key); return; }
+  const own = current()?.press;
+  if (own) { own(key); return; }
   if (S.view !== 'play' || !S.game || document.querySelector('dialog[open]')) return;
   // The coach hears which key a miss actually was; replays never store it.
   typedKey = key;
@@ -182,18 +179,20 @@ export function finishDisplay() {
   const isBest = qualifies && run.stats.completedWords > 0 && run.stats.wpm > previousBest;
   if (isBest) { bests[S.selectedMode] = run.stats.wpm; writeLocal('bests', bests); }
   if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
-  finishRun(coachStats, run, new Date().toISOString().slice(0, 10), S.source.kind === 'drill');
-  writeLocal('coach', coachStats);
   const ghostStats = S.ghost?.stats;
   const ghostName = S.ghost ? S.currentResult?.name || '' : '';
   // A race keeps the ghost's run, so it can be watched back, and the result it raced.
   const ghostRun = S.ghost || null;
   const raceOf = S.ghost ? S.currentResult?.id || S.shareId || null : null;
   if (S.musicOn) music.finish(ghostStats ? raceOutcome(run.stats.wpm, ghostStats.wpm).verdict : 'solo');
-  S.currentResult = {run,source:{...S.source},name:'',local:true,isBest,ghostStats,ghostName,ghostRun,raceOf};
+  // Tempo keeps the beat's pace at the end: the speed you couldn't hold, which the coach can name.
+  const tempoPeak = S.selectedMode === 'tempo' ? Math.round(S.game.paceWpm || 0) : 0;
+  S.currentResult = {run,source:{...S.source},name:'',local:true,isBest,ghostStats,ghostName,ghostRun,raceOf,...(tempoPeak ? {tempoPeak} : {})};
   S.shareId = null;
   S.ghost = null;
   $('typing-input').blur();
+  // The coach and the history hear about it before the card goes up, so the card can show what they made of it.
+  emit('run:done', S.currentResult);
   displayResult(S.currentResult);
 }
 
@@ -205,7 +204,8 @@ document.addEventListener('keydown', event => {
   // Enter/Space must activate a focused control before they can be game
   // shortcuts. This keeps every toolbar and result action keyboard-accessible.
   if (target.closest('button,a') && (event.key === 'Enter' || event.key === ' ')) return;
-  if (jamming()) { jamKeydown(event); return; }
+  const own = current()?.keydown;
+  if (own) { own(event); return; }
   if (event.key === 'Escape') { event.preventDefault(); restart(); return; }
   if (S.view === 'result' && event.key === 'Enter') { event.preventDefault(); restart({freshWords:S.source.kind === 'common'}); return; }
   if (S.view !== 'play') return;
@@ -240,3 +240,11 @@ for (const input of [$('typing-input'), $('jam-input')]) {
 }
 $('stage').addEventListener('click', focusTyping);
 $('finish-run').addEventListener('click', () => { if (S.game?.status === 'running') { S.game.finish(now()); finishDisplay(); } else toast('Type the first word to start your run.'); });
+
+// Input renders synchronously. Only the clock needs periodic paints; an idle
+// stage does no DOM work, while tempo keeps its smooth beat indicator.
+export function playFrame(time) {
+  if (S.game?.status === 'running' && ((S.selectedMode === 'tempo' && !S.reducedMotion) || time - S.lastClockPaint >= (S.ghost ? 50 : 100))) renderGame(S.game.tick(time));
+}
+
+screen('play', {panel: 'play-panel', frame: playFrame});

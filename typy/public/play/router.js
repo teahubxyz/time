@@ -1,24 +1,23 @@
 // Addresses: what each path shows, loading and errors, and restarting.
-import { S, music } from '/core/state.js';
 import { $, api, now, pretty, toast } from '/core/dom.js';
-import { hideJam, showJamResult, startJam } from '/jam/jam-ui.js';
+import { go, screen } from '/core/screens.js';
+import { S, music } from '/core/state.js';
+import { showJamResult, startJam } from '/jam/jam-ui.js';
 import { updateOptions } from '/play/options.js';
 import { measureDuel, renderReplay } from '/play/replay.js';
 import { displayResult } from '/play/result.js';
 import { beginRun, newCommonPassage, renderGame } from '/play/run.js';
 
 export function showLoading(title, description = '') {
-  S.view = 'loading';
+  go('loading');
   S.replay.playing = false;
-  $('play-panel').hidden = true; $('result-panel').hidden = true; $('load-panel').hidden = false; hideJam();
   $('load-kicker').textContent = 'one moment';
   $('load-title').textContent = title; $('load-description').textContent = description;
   $('load-actions').hidden = true; $('loading-spinner').hidden = false;
 }
 
 export function showRouteError(error) {
-  S.view = 'loading';
-  $('load-panel').hidden = false; $('play-panel').hidden = true; $('result-panel').hidden = true; hideJam();
+  go('loading');
   $('loading-spinner').hidden = true; $('load-actions').hidden = false;
   $('load-kicker').textContent = error.status === 429 ? 'a little breathing room' : 'a small interruption';
   $('load-title').textContent = error.status === 404 ? 'that rhythm is missing.' : 'the words couldn’t land.';
@@ -128,3 +127,5 @@ window.addEventListener('resize', () => {
   if (S.view === 'play' && S.game) renderGame(S.game.snapshot(now()));
   else if (S.view === 'replay') { if (S.currentResult?.ghostRun) measureDuel(); renderReplay(S.replay.position); }
 });
+
+screen('loading', {panel: 'load-panel'});

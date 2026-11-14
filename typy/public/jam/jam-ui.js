@@ -1,6 +1,8 @@
 // Jam: free play, its result, playback and sharing.
-import { S, conductor, jamConductor, music } from '/core/state.js';
+import { emit } from '/core/bus.js';
 import { $, api, clock, now, readLocal, round1, setText, toast, writeLocal } from '/core/dom.js';
+import { go, screen } from '/core/screens.js';
+import { S, jamConductor, music } from '/core/state.js';
 import { showMusic } from '/features/music-ui.js';
 import { shuffleTheme } from '/features/themes-ui.js';
 import { JAM, jamKey, jamStats, jamText, typeKey } from '/jam.js';
@@ -14,15 +16,9 @@ let jamWarned = false;
 
 // Jam: free play. Whatever you type is the tune. Its keys and their timing are
 // the whole record, so the stats, a playback and a shared link rebuild from them.
-export function hideJam() {
-  $('jam-panel').hidden = true;
-  $('jam-result').hidden = true;
+// Leaving a playback, however it ends, stops its music.
+function stopPlayback() {
   if (S.jamPlayback) { S.jamPlayback = null; music.hush(); }
-}
-
-export function showJamPanel(name) {
-  $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = true;
-  $('jam-panel').hidden = name !== 'jam'; $('jam-result').hidden = name !== 'result';
 }
 
 export function newJam() {
@@ -32,13 +28,12 @@ export function newJam() {
 
 export function startJam() {
   shuffleTheme();
-  S.view = 'jam';
+  go('jam');
   if (S.jamPlayback) { S.jamPlayback = null; music.hush(); }
   S.jam = {keys: [], chars: [], t0: null, id: null, name: '', local: true};
   jamWarned = false;
   jamConductor.reset();
   S.ghost = null; S.shareId = null; S.currentResult = null; S.replay.playing = false;
-  showJamPanel('jam');
   $('jam-panel').classList.remove('playing');
   $('jam-dot').classList.remove('active');
   $('jam-input').value = ''; $('jam-input').disabled = false;
@@ -108,6 +103,7 @@ export function jamKeydown(event) {
 export function finishJam() {
   if (!S.jam?.keys.length) { toast('Type a little first. Anything works.'); focusTyping(); return; }
   if (!S.jamMuted) music.finish('solo');
+  emit('jam:done', S.jam);
   showJamResult();
 }
 
@@ -136,9 +132,8 @@ export function drawRoll(song, duration) {
 }
 
 export function showJamResult({sealed = false} = {}) {
-  S.view = 'jam-result';
   S.jamPlayback = null;
-  showJamPanel('result');
+  go('jam-result');
   const stats = jamStats(S.jam.keys);
   const song = jamSong(S.jam.keys);
   const owner = S.jam.local ? 'your' : S.jam.name ? S.jam.name + '’s' : 'a';
@@ -167,8 +162,7 @@ export function playJam() {
   if (!S.jam?.keys?.length) return;
   if (!S.jamMuted) music.unlock();
   music.hush();
-  S.view = 'jam-play';
-  showJamPanel('jam');
+  go('jam-play');
   $('jam-panel').classList.add('playing');
   $('jam-dot').classList.add('active');
   $('jam-input').disabled = true;
@@ -269,3 +263,7 @@ document.addEventListener('keydown', event => {
   event.preventDefault();
   if (S.view !== 'jam') newJam();
 });
+
+screen('jam', {panel: 'jam-panel', keydown: jamKeydown, press: jamPress});
+screen('jam-play', {panel: 'jam-panel', keydown: jamKeydown, frame: time => { if (S.jamPlayback) stepJamPlayback(time); }, leave: stopPlayback});
+screen('jam-result', {panel: 'jam-result', keydown: jamKeydown});

@@ -1,6 +1,6 @@
 // Sharing a result, and the daily board.
-import { S } from '/core/state.js';
 import { $, api, escapeHTML, pretty, readLocal, round1, toast, writeLocal } from '/core/dom.js';
+import { S } from '/core/state.js';
 import { saveJam } from '/jam/jam-ui.js';
 import { route } from '/play/router.js';
 

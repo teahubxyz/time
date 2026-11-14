@@ -1,6 +1,6 @@
 // The stage: the word being typed, word by word or line by line.
-import { S, settings } from '/core/state.js';
 import { $, now, setClass, setText, spanOf, toast, writeLocal } from '/core/dom.js';
+import { S, settings } from '/core/state.js';
 import { lineStarts } from '/game.js';
 import { updateOptions } from '/play/options.js';
 import { renderReplay } from '/play/replay.js';

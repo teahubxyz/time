@@ -1,13 +1,15 @@
 // The result card after a run, and a shared result’s race.
-import { S, modeNames } from '/core/state.js';
+import { emit } from '/core/bus.js';
 import { $, api, escapeHTML, pretty, round1, setText } from '/core/dom.js';
+import { go, screen } from '/core/screens.js';
+import { S } from '/core/state.js';
 import { raceOutcome, timedSeconds } from '/game.js';
-import { hideJam } from '/jam/jam-ui.js';
+import { modeName } from '/play/modes.js';
 import { updateOptions } from '/play/options.js';
 import { restart } from '/play/router.js';
 
 export function displayResult(result) {
-  S.view = 'result';
+  go('result');
   S.replay.playing = false;
   S.currentResult = result;
   const run = result.run;
@@ -15,8 +17,7 @@ export function displayResult(result) {
   S.selectedMode = run.mode;
   S.source = result.source || {kind:'common'};
   S.passage = [...run.words];
-  $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false; hideJam();
-  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
+  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeName(run.mode) + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
   const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm) : null;
   const rival = result.ghostName || '';
   // Your own race says "you"; a shared race uses the racer's name.
@@ -57,6 +58,7 @@ export function displayResult(result) {
   } else $('speed-chart').innerHTML = '<path d="M0 60H900" class="chart-base"/>';
   updateOptions();
   $('mode-switch').querySelectorAll('button').forEach(button => { button.disabled = false; });
+  emit('result:show', result);
 }
 
 // A shared race names the result it raced. Fetching that run lets anyone with
@@ -70,3 +72,5 @@ export async function loadRace(result) {
   } catch { /* the result still stands on its own */ }
 }
 $('again-button').addEventListener('click', () => restart({freshWords:S.source.kind === 'common'}));
+
+screen('result', {panel: 'result-panel'});

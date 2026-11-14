@@ -1,10 +1,10 @@
 // Themes: the picker, auto and random.
-import { S } from '/core/state.js';
 import { $, setText, writeLocal } from '/core/dom.js';
+import { S } from '/core/state.js';
 import { focusTyping } from '/play/run.js';
 
 // themes.js is a classic <head> script (it paints before the first render), so it is read from window.
-export const { THEMES, MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
+export const { THEMES, MODES: THEME_MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
 
 // Themes paint CSS variables on <html>. themes.js paints the first one in <head>,
 // before the page renders; this block owns the picker and the auto and random modes.
@@ -84,7 +84,7 @@ export function initThemes() {
 export function buildThemeGrid() {
   if (themeTiles.length) return;
   const grid = $('theme-grid');
-  for (const entry of [...MODES, ...THEMES]) {
+  for (const entry of [...THEME_MODES, ...THEMES]) {
     const theme = findTheme(entry.id) && resolveTheme(entry.id);
     const tile = document.createElement('button');
     tile.type = 'button';
