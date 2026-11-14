@@ -1,6 +1,7 @@
 import { TypingGame, timedSeconds, replayFrame, raceOutcome, lineStarts } from '/game.js';
 import { generateWords, normalizePassage, VOCABULARY } from '/words.js';
-import { createMusic, createConductor } from '/music.js';
+import { createMusic, createConductor, createJamConductor, RANGE } from '/music.js';
+import { JAM, jamKey, typeKey, jamText, jamStats } from '/jam.js';
 import { createRecorder, readStats, emptyStats, finishRun, coachReport, practiceWords, KEYBOARD } from '/coach.js';
 // themes.js is a classic <head> script (it paints before the first render), so it is read from window.
 const { THEMES, MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
@@ -57,6 +58,13 @@ let replayCursor = 0;
 const coachStats = readStats(readLocal('coach', null));
 const coachRecorder = createRecorder(coachStats);
 let typedKey = '';
+// Jam: free play, where whatever you type is the tune.
+const jamConductor = createJamConductor();
+let jam = null;
+let jamMuted = false;
+let jamPlayback = null;
+let jamWarned = false;
+const jamming = () => view === 'jam' || view === 'jam-play' || view === 'jam-result';
 
 function setText(id, value) {
   const node = $(id), text = String(value);
@@ -102,7 +110,7 @@ function updateOptions() {
   const effectiveAdvance = ghost ? currentResult.run.advance : settings.advance;
   $('mode-switch').classList.toggle('locked', locked);
   document.querySelectorAll('[data-mode]').forEach(button => {
-    button.setAttribute('aria-pressed', String(button.dataset.mode === selectedMode));
+    button.setAttribute('aria-pressed', String(!jamming() && button.dataset.mode === selectedMode));
     button.disabled = locked || view === 'replay';
     button.title = locked ? (ghost ? 'A race uses the original run’s mode.' : 'The daily is a shared 60-second run.') : '';
   });
@@ -118,11 +126,16 @@ function updateOptions() {
   $('footer-board').hidden = source.kind !== 'daily';
   $('daily-link').setAttribute('aria-current', source.kind === 'daily' ? 'page' : 'false');
   $('best-score').textContent = bests[localBestKey()] ? 'device best  ' + pretty(bests[localBestKey()]) + ' wpm' : '';
+  $('jam-option').setAttribute('aria-pressed', String(jamming()));
+  $('source-open').hidden = jamming();
+  $('restart-tip').innerHTML = '<kbd>esc</kbd> ' + (view === 'jam' ? 'done' : view === 'jam-play' ? 'skip' : view === 'jam-result' ? 'new jam' : 'restart');
+  showMusic();
 }
 
 function focusTyping() {
-  if (view !== 'play' || document.querySelector('dialog[open]')) return;
-  $('typing-input').focus({preventScroll:true});
+  if (document.querySelector('dialog[open]')) return;
+  if (view === 'jam') $('jam-input').focus({preventScroll:true});
+  else if (view === 'play') $('typing-input').focus({preventScroll:true});
 }
 
 function newCommonPassage() {
@@ -150,6 +163,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   $('load-panel').hidden = true;
   $('play-panel').hidden = false;
   $('result-panel').hidden = true;
+  hideJam();
   $('replay-controls').hidden = true;
   $('input-row').hidden = false;
   $('typing-input').value = '';
@@ -473,6 +487,7 @@ function renderGhostLane(run, position) {
 }
 
 function press(key) {
+  if (view === 'jam') { jamPress(key); return; }
   if (view !== 'play' || !game || document.querySelector('dialog[open]')) return;
   // The coach hears which key a miss actually was; replays never store it.
   typedKey = key;
@@ -535,7 +550,7 @@ function displayResult(result) {
   selectedMode = run.mode;
   source = result.source || {kind:'common'};
   passage = [...run.words];
-  $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false;
+  $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = false; hideJam();
   $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeNames[run.mode] + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
   const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm) : null;
   const rival = result.ghostName || '';
@@ -593,7 +608,7 @@ async function loadRace(result) {
 function showLoading(title, description = '') {
   view = 'loading';
   replay.playing = false;
-  $('play-panel').hidden = true; $('result-panel').hidden = true; $('load-panel').hidden = false;
+  $('play-panel').hidden = true; $('result-panel').hidden = true; $('load-panel').hidden = false; hideJam();
   $('load-kicker').textContent = 'one moment';
   $('load-title').textContent = title; $('load-description').textContent = description;
   $('load-actions').hidden = true; $('loading-spinner').hidden = false;
@@ -601,7 +616,7 @@ function showLoading(title, description = '') {
 
 function showRouteError(error) {
   view = 'loading';
-  $('load-panel').hidden = false; $('play-panel').hidden = true; $('result-panel').hidden = true;
+  $('load-panel').hidden = false; $('play-panel').hidden = true; $('result-panel').hidden = true; hideJam();
   $('loading-spinner').hidden = true; $('load-actions').hidden = false;
   $('load-kicker').textContent = error.status === 429 ? 'a little breathing room' : 'a small interruption';
   $('load-title').textContent = error.status === 404 ? 'that rhythm is missing.' : 'the words couldn’t land.';
@@ -622,6 +637,7 @@ async function route(path, push = true) {
     document.title = 'typy — one word at a time';
     return;
   }
+  if (path === '/jam' || path === '/jam/') { startJam(); return; }
   try {
     if (path === '/daily' || path === '/daily/') {
       showLoading('today’s words, for everyone.');
@@ -650,6 +666,15 @@ async function route(path, push = true) {
         beginRun();
       } else displayResult(result);
       document.title = pretty(result.run.stats.wpm) + ' wpm — typy';
+    } else if (path.startsWith('/j/')) {
+      const id = path.split('/')[2] || '';
+      showLoading('tuning up.', 'Finding a jam somebody typed for you.');
+      const response = await api('/api/jams/' + encodeURIComponent(id));
+      if (serial !== routeSerial) return;
+      if (!Array.isArray(response?.jam?.keys) || !response.jam.keys.length) throw new Error('This jam is incomplete. Please try another link.');
+      jam = {keys: response.jam.keys, id: response.id || id, name: response.name || '', local: false};
+      showJamResult({sealed: true});
+      document.title = (jam.name ? jam.name + '’s jam' : 'a jam') + ' — typy';
     } else {
       const topic = decodeURIComponent(path).replace(/^\/|\/$/g, '');
       if (!/^[a-z0-9][a-z0-9-]{0,63}$/.test(topic)) throw Object.assign(new Error('Try a short topic with letters and hyphens, such as /react-hooks.'), {status:404});
@@ -748,6 +773,7 @@ function renderReplay(position) {
 function openShare(intent = 'result') {
   if (!currentResult) return;
   shareIntent = intent;
+  $('share-create-note').textContent = 'The link makes this passage, score, and replay public. Your mistyped characters are never saved.';
   $('share-kicker').textContent = source.kind === 'daily' ? 'put your rhythm on the board' : 'a good rhythm is worth sharing';
   $('share-title').textContent = intent === 'race' ? 'a friendly challenge.' : 'leave a little ghost.';
   $('share-error').hidden = true;
@@ -759,6 +785,13 @@ function openShare(intent = 'result') {
 }
 
 function fillShareLink() {
+  if (shareIntent === 'jam') {
+    $('share-url').value = location.origin + '/j/' + jam.id;
+    $('share-url-label').textContent = 'Your jam link';
+    $('share-ready-note').textContent = 'Anyone with this link can play your tune back, letter by letter.';
+    $('copy-link').textContent = 'copy';
+    return;
+  }
   $('share-url').value = location.origin + (shareIntent === 'race' ? '/race/' : '/r/') + shareId;
   $('share-url-label').textContent = shareIntent === 'race' ? 'Your challenge link' : 'Your result link';
   $('share-ready-note').textContent = shareIntent === 'race' ? 'Same words, same mode. Your friend races your original timing.' : 'Anyone with this link can watch your replay or race your ghost.';
@@ -766,6 +799,7 @@ function fillShareLink() {
 }
 
 async function saveResult() {
+  if (shareIntent === 'jam') return saveJam();
   if (!currentResult || shareId) return;
   const button = $('save-result');
   button.disabled = true; button.textContent = 'saving your rhythm…';
@@ -837,10 +871,11 @@ document.addEventListener('keydown', event => {
   if (event.isComposing || event.ctrlKey || event.metaKey || event.altKey) return;
   if (document.querySelector('dialog[open]')) return;
   const target = event.target;
-  if (target !== $('typing-input') && target.closest('input,textarea,select,[contenteditable=true]')) return;
+  if (target !== $('typing-input') && target !== $('jam-input') && target.closest('input,textarea,select,[contenteditable=true]')) return;
   // Enter/Space must activate a focused control before they can be game
   // shortcuts. This keeps every toolbar and result action keyboard-accessible.
   if (target.closest('button,a') && (event.key === 'Enter' || event.key === ' ')) return;
+  if (jamming()) { jamKeydown(event); return; }
   if (event.key === 'Escape') { event.preventDefault(); restart(); return; }
   if (view === 'result' && event.key === 'Enter') { event.preventDefault(); restart({freshWords:source.kind === 'common'}); return; }
   if (view !== 'play') return;
@@ -853,31 +888,32 @@ document.addEventListener('keydown', event => {
   }
 });
 
-const input = $('typing-input');
-input.addEventListener('compositionstart', () => { isComposing = true; });
-input.addEventListener('compositionend', event => {
-  isComposing = false;
-  const text = event.data || input.value;
-  input.value = '';
-  for (const char of text) press(char);
-});
-input.addEventListener('beforeinput', event => {
-  if (event.inputType === 'deleteContentBackward') { event.preventDefault(); press('Backspace'); }
-  if (event.inputType === 'insertFromPaste') { event.preventDefault(); toast('Paste a passage in the words menu, then type it here.'); }
-});
-input.addEventListener('input', event => {
-  if (isComposing || event.isComposing) return;
-  const value = input.value;
-  input.value = '';
-  for (const char of value) press(char);
-});
-input.addEventListener('paste', event => { event.preventDefault(); toast('Use the words menu to choose a pasted passage.'); });
+for (const input of [$('typing-input'), $('jam-input')]) {
+  input.addEventListener('compositionstart', () => { isComposing = true; });
+  input.addEventListener('compositionend', event => {
+    isComposing = false;
+    const text = event.data || input.value;
+    input.value = '';
+    for (const char of text) press(char);
+  });
+  input.addEventListener('beforeinput', event => {
+    if (event.inputType === 'deleteContentBackward') { event.preventDefault(); press('Backspace'); }
+    if (event.inputType === 'insertFromPaste') { event.preventDefault(); toast(view === 'jam' ? 'A jam is typed, not pasted.' : 'Paste a passage in the words menu, then type it here.'); }
+  });
+  input.addEventListener('input', event => {
+    if (isComposing || event.isComposing) return;
+    const value = input.value;
+    input.value = '';
+    for (const char of value) press(char);
+  });
+  input.addEventListener('paste', event => { event.preventDefault(); toast(view === 'jam' ? 'A jam is typed, not pasted.' : 'Use the words menu to choose a pasted passage.'); });
+}
 $('stage').addEventListener('click', focusTyping);
 $('finish-run').addEventListener('click', () => { if (game?.status === 'running') { game.finish(now()); finishDisplay(); } else toast('Type the first word to start your run.'); });
 
 document.querySelectorAll('[data-mode]').forEach(button => button.addEventListener('click', () => {
   selectedMode = button.dataset.mode;
-  if (source.kind === 'daily' || ghost || view === 'result') {
+  if (source.kind === 'daily' || ghost || view === 'result' || jamming()) {
     ghost = null; source = {kind:'common'}; passage = newCommonPassage(); currentResult = null;
     history.pushState({}, '', '/'); currentPath = '/';
   }
@@ -1323,8 +1359,9 @@ document.addEventListener('keydown', event => {
 // Music: the note button, Alt+M (Option+M on a Mac), and the choice kept on this device.
 function showMusic() {
   const button = $('music-toggle');
-  button.setAttribute('aria-pressed', String(musicOn));
-  button.title = (musicOn ? 'Music on' : 'Music off') + ' (alt+m)';
+  const on = jamming() ? !jamMuted : musicOn;
+  button.setAttribute('aria-pressed', String(on));
+  button.title = (jamming() ? (on ? 'Jam sound on' : 'Jam muted') : on ? 'Music on' : 'Music off') + ' (alt+m)';
 }
 
 function setMusic(on) {
@@ -1336,18 +1373,276 @@ function setMusic(on) {
   toast(on ? 'music on · your letters play the melody' : 'music off');
 }
 
-$('music-toggle').addEventListener('click', () => { setMusic(!musicOn); if (innerWidth > 700) focusTyping(); });
+$('music-toggle').addEventListener('click', () => { if (jamming()) toggleJamSound(); else setMusic(!musicOn); if (innerWidth > 700) focusTyping(); });
 document.addEventListener('keydown', event => {
   if (!event.altKey || event.ctrlKey || event.metaKey || event.code !== 'KeyM') return;
   event.preventDefault();
-  setMusic(!musicOn);
+  if (jamming()) toggleJamSound(); else setMusic(!musicOn);
 });
 // Browsers only start audio from a gesture, so a returning player with music on
 // wakes it with their first tap or key.
 for (const type of ['pointerdown', 'keydown', 'touchend']) {
-  document.addEventListener(type, () => { if (musicOn) music.unlock(); }, {capture:true, passive:true});
+  document.addEventListener(type, () => { if (musicOn || (jamming() && !jamMuted)) music.unlock(); }, {capture:true, passive:true});
 }
 showMusic();
+
+// Jam: free play. Whatever you type is the tune. Its keys and their timing are
+// the whole record, so the stats, a playback and a shared link rebuild from them.
+function hideJam() {
+  $('jam-panel').hidden = true;
+  $('jam-result').hidden = true;
+  if (jamPlayback) { jamPlayback = null; music.hush(); }
+}
+
+function showJamPanel(name) {
+  $('load-panel').hidden = true; $('play-panel').hidden = true; $('result-panel').hidden = true;
+  $('jam-panel').hidden = name !== 'jam'; $('jam-result').hidden = name !== 'result';
+}
+
+function newJam() {
+  if (currentPath === '/jam') startJam();
+  else route('/jam');
+}
+
+function startJam() {
+  shuffleTheme();
+  view = 'jam';
+  if (jamPlayback) { jamPlayback = null; music.hush(); }
+  jam = {keys: [], chars: [], t0: null, id: null, name: '', local: true};
+  jamWarned = false;
+  jamConductor.reset();
+  ghost = null; shareId = null; currentResult = null; replay.playing = false;
+  showJamPanel('jam');
+  $('jam-panel').classList.remove('playing');
+  $('jam-dot').classList.remove('active');
+  $('jam-input').value = ''; $('jam-input').disabled = false;
+  setText('jam-status', 'free play · letters sing, a space changes the chord');
+  setText('jam-done', 'done');
+  drawJam([]);
+  updateOptions();
+  document.title = 'jam — typy';
+  if (!jamMuted) music.unlock();
+  focusTyping();
+}
+
+function drawJam(chars, lit = false) {
+  const box = $('jam-text');
+  box.replaceChildren();
+  const settled = (lit ? chars.slice(0, -1) : chars).join('');
+  if (settled) box.append(settled);
+  if (lit && chars.length) {
+    const last = document.createElement('span');
+    last.className = 'jam-lit';
+    last.textContent = chars[chars.length - 1];
+    box.append(last);
+  }
+  const caret = document.createElement('span');
+  caret.className = 'jam-caret';
+  box.append(caret);
+  $('jam-empty').hidden = chars.length > 0;
+  const chord = (jamPlayback ? jamPlayback.conductor : jamConductor).chord;
+  setText('jam-chord', chord ? chord.name : '');
+}
+
+function jamPress(key) {
+  if (view !== 'jam' || !jam || !jamKey(key) || document.querySelector('dialog[open]')) return;
+  if (key === 'Backspace' && !jam.chars.length) return;
+  const time = now();
+  const t = jam.t0 === null ? 0 : Math.round(time - jam.t0);
+  if (jam.keys.length >= JAM.keys || t > JAM.ms || (key !== 'Backspace' && jam.chars.length >= JAM.chars)) {
+    if (!jamWarned) { jamWarned = true; toast('That’s a full page. Press done to hear it back.'); }
+    return;
+  }
+  if (jam.t0 === null) { jam.t0 = time; $('jam-dot').classList.add('active'); setText('jam-status', innerWidth > 700 ? 'jamming · esc when you’re done' : 'jamming · tap done to finish'); }
+  jam.keys.push([t, key]);
+  typeKey(jam.chars, key);
+  const actions = jamConductor.key(key, t);
+  if (!jamMuted) for (const action of actions) music.play(action);
+  drawJam(jam.chars, key !== 'Backspace');
+}
+
+function jamKeydown(event) {
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    if (view === 'jam') finishJam();
+    else if (view === 'jam-play') endJamPlayback();
+    else newJam();
+    return;
+  }
+  if (view === 'jam-result') {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    if ($('jam-result').classList.contains('sealed')) playJam(); else newJam();
+    return;
+  }
+  if (view !== 'jam') return;
+  if (event.key === 'Backspace' || event.key === 'Enter' || Array.from(event.key).length === 1) { event.preventDefault(); jamPress(event.key); }
+}
+
+function finishJam() {
+  if (!jam?.keys.length) { toast('Type a little first. Anything works.'); focusTyping(); return; }
+  if (!jamMuted) music.finish('solo');
+  showJamResult();
+}
+
+// The song a jam makes, worked out again from its keys: every note and chord change, in time.
+function jamSong(keys) {
+  const conductor = createJamConductor();
+  const song = {notes: [], bars: [], ticks: []};
+  for (const [t, key] of keys) {
+    for (const action of conductor.key(key, t)) {
+      if (action.type === 'note') song.notes.push([t, action.midi]);
+      else if (action.type === 'chord') song.bars.push(t);
+      else if (action.type === 'tick') song.ticks.push(t);
+    }
+  }
+  return song;
+}
+
+function drawRoll(song, duration) {
+  const span = Math.max(1, duration);
+  const x = t => (6 + (t / span) * 886).toFixed(1);
+  const y = midi => (6 + ((RANGE[1] - midi) / (RANGE[1] - RANGE[0])) * 90).toFixed(1);
+  $('jam-roll').innerHTML = '<path d="M0 110H900" class="chart-base"/>' +
+    song.bars.map(t => '<path d="M' + x(t) + ' 2V104" class="roll-bar"/>').join('') +
+    song.notes.map(([t, midi]) => '<rect x="' + x(t) + '" y="' + y(midi) + '" width="7" height="4" rx="2" class="roll-note"/>').join('') +
+    song.ticks.map(t => '<rect x="' + x(t) + '" y="107" width="2" height="7" class="roll-tick"/>').join('');
+}
+
+function showJamResult({sealed = false} = {}) {
+  view = 'jam-result';
+  jamPlayback = null;
+  showJamPanel('result');
+  const stats = jamStats(jam.keys);
+  const song = jamSong(jam.keys);
+  const owner = jam.local ? 'your' : jam.name ? jam.name + '’s' : 'a';
+  $('jam-result').classList.toggle('sealed', sealed);
+  setText('jam-kicker', owner + ' jam · ' + clock(stats.durationMs) + ' · ' + stats.notes + (stats.notes === 1 ? ' note' : ' notes'));
+  setText('jam-title', sealed ? (jam.name || 'someone') + ' made you a tune.' : jam.local ? 'that’s your tune.' : (jam.name || 'someone') + '’s tune.');
+  $('jam-invite').hidden = !sealed;
+  $('jam-words').textContent = jamText(jam.keys);
+  setText('jam-wpm', stats.wpm); setText('jam-flow', stats.flowWpm); setText('jam-notes', stats.notes);
+  setText('jam-chords', song.bars.length); setText('jam-longest', round1(stats.longestFlowMs / 1000));
+  drawRoll(song, stats.durationMs);
+  $('jam-again').hidden = sealed;
+  $('jam-again').innerHTML = jam.local ? 'jam again <span aria-hidden="true">↵</span>' : 'jam back <span aria-hidden="true">↗</span>';
+  $('jam-play').classList.toggle('primary', sealed);
+  $('jam-play').innerHTML = (sealed ? 'play it' : 'play it back') + ' <span aria-hidden="true">▷</span>';
+  $('jam-share').hidden = sealed;
+  $('jam-share').innerHTML = (jam.id ? 'copy link' : 'share jam') + ' <span aria-hidden="true">↗</span>';
+  setText('jam-note', sealed ? 'It plays back exactly as it was typed, so turn your sound on.' : !jam.local ? 'Anyone with this link can play it back. Jam back to make one of your own.' : jam.id ? 'Your tune is ready to share.' : 'This jam stays on this device unless you share it. A link plays your words back exactly as you typed them.');
+  updateOptions();
+  if (sealed) $('jam-play').focus({preventScroll:true});
+}
+
+// Playback runs on two clocks: notes are scheduled on the audio clock a little
+// ahead, so they land where they were typed, and the words appear on time.
+function playJam() {
+  if (!jam?.keys?.length) return;
+  if (!jamMuted) music.unlock();
+  music.hush();
+  view = 'jam-play';
+  showJamPanel('jam');
+  $('jam-panel').classList.add('playing');
+  $('jam-dot').classList.add('active');
+  $('jam-input').disabled = true;
+  jamPlayback = {keys: jam.keys, start: now() + 300, audio: 0, sound: 0, text: 0, chars: [], conductor: createJamConductor(), end: jam.keys[jam.keys.length - 1][0]};
+  syncJamAudio();
+  setText('jam-status', (jam.local ? 'your jam' : jam.name ? jam.name + '’s jam' : 'a jam') + ', played back');
+  setText('jam-done', 'skip');
+  drawJam([]);
+  updateOptions();
+}
+
+function syncJamAudio() {
+  if (jamPlayback && !jamMuted) jamPlayback.audio = music.clock() + (jamPlayback.start - now()) / 1000;
+}
+
+function stepJamPlayback(time) {
+  const p = jamPlayback;
+  const position = time - p.start;
+  const late = jamMuted ? 0 : music.clock() - 0.25;
+  while (p.sound < p.keys.length && p.keys[p.sound][0] <= position + 150) {
+    const [t, key] = p.keys[p.sound++];
+    const actions = p.conductor.key(key, t);
+    const when = p.audio + t / 1000;
+    // After a sleeping tab wakes, the notes it missed stay quiet rather than piling up.
+    if (!jamMuted && when >= late) for (const action of actions) music.play(action, when);
+  }
+  let lit = null;
+  while (p.text < p.keys.length && p.keys[p.text][0] <= position) {
+    const key = p.keys[p.text++][1];
+    typeKey(p.chars, key);
+    lit = key !== 'Backspace';
+  }
+  if (lit !== null) drawJam(p.chars, lit);
+  if (p.text >= p.keys.length && position >= p.end + 700) endJamPlayback(true);
+}
+
+function endJamPlayback(finished = false) {
+  if (!jamPlayback) return;
+  jamPlayback = null;
+  if (finished && !jamMuted) music.finish('solo'); else music.hush();
+  $('jam-panel').classList.remove('playing');
+  $('jam-input').disabled = false;
+  showJamResult();
+}
+
+function toggleJamSound() {
+  jamMuted = !jamMuted;
+  if (jamMuted) music.hush(); else { music.unlock(); syncJamAudio(); }
+  showMusic();
+  toast(jamMuted ? 'jam muted' : 'jam sound on');
+}
+
+function openJamShare() {
+  if (!jam?.keys?.length) return;
+  shareIntent = 'jam';
+  $('share-kicker').textContent = 'a tune is worth sharing';
+  $('share-title').textContent = 'send it to someone.';
+  $('share-create-note').textContent = 'The link makes your words, their timing and the tune public. Anyone who has it can play it back.';
+  $('share-error').hidden = true;
+  $('share-name').value = readLocal('name', '');
+  $('share-create').hidden = Boolean(jam.id);
+  $('share-ready').hidden = !jam.id;
+  if (jam.id) fillShareLink();
+  $('share-dialog').showModal();
+}
+
+async function saveJam() {
+  if (!jam?.keys?.length || jam.id) return;
+  const button = $('save-result');
+  button.disabled = true; button.textContent = 'saving your tune…';
+  $('share-error').hidden = true;
+  try {
+    const name = $('share-name').value.trim();
+    const response = await api('/api/jams', {method:'POST', body:JSON.stringify({jam:{version:1, keys:jam.keys}, name})});
+    if (!response.id) throw new Error('The server did not return a share link. Please try again.');
+    jam = {...jam, id:response.id, name};
+    writeLocal('name', name);
+    $('share-create').hidden = true; $('share-ready').hidden = false;
+    fillShareLink();
+    history.replaceState({}, '', '/j/' + jam.id);
+    currentPath = '/j/' + jam.id;
+    $('jam-share').innerHTML = 'copy link <span aria-hidden="true">↗</span>';
+    setText('jam-note', 'Your tune is ready to share.');
+  } catch (error) {
+    $('share-error').textContent = error.message;
+    $('share-error').hidden = false;
+  } finally { button.disabled = false; button.textContent = 'create share link ↗'; }
+}
+
+$('jam-option').addEventListener('click', newJam);
+$('jam-done').addEventListener('click', () => { if (view === 'jam-play') endJamPlayback(); else finishJam(); });
+$('jam-again').addEventListener('click', newJam);
+$('jam-play').addEventListener('click', playJam);
+$('jam-share').addEventListener('click', openJamShare);
+$('jam-stage').addEventListener('click', focusTyping);
+document.addEventListener('keydown', event => {
+  if (!event.altKey || event.ctrlKey || event.metaKey || event.code !== 'KeyJ') return;
+  event.preventDefault();
+  if (view !== 'jam') newJam();
+});
 
 function frame(time) {
   // Input renders synchronously. Only the clock needs periodic refreshes; an
@@ -1363,6 +1658,7 @@ function frame(time) {
       if (musicOn) music.finish(ghostStats ? raceOutcome(currentResult.run.stats.wpm, ghostStats.wpm).verdict : 'solo');
     }
   }
+  else if (view === 'jam-play' && jamPlayback) stepJamPlayback(time);
   requestAnimationFrame(frame);
 }
 applyView();

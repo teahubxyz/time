@@ -33,6 +33,14 @@ The coach (in the footer, or **your coach** on a result) learns from every run y
 
 **public/coach.js** keeps all of this pure: a recorder reads the same events replays store, plus the key a miss actually was, which never leaves the browser. Local storage (`typy.coach`) holds the counts, old counts fade so it follows how you type now, and **forget my coach data** clears it.
 
+## Jam
+
+**Jam** (in the run options, at **/jam**, or **Alt+J**) is free play: there is nothing to match, so whatever you type is the tune. Each letter sings the word you are making up as you go, a space after a word brings the next chord, and the end of a sentence or a new line goes home to the first chord. Backspace is a soft tick, because the music only moves forward. Jam always plays; the note button mutes it for the session without touching your music setting.
+
+Esc (or **done**) shows the words, your pace, your pace in flow (typing without a pause of a second and a half), notes, chords, your longest flow, and a piano roll of the melody. **Play it back** types it out again with the same music. **Share jam** saves it at **/j/:id**: a friend sees who made it and presses play, the words appear exactly as they were typed, and **jam back** starts their own.
+
+A jam is only its keys and when each landed (up to 4,000 keys, 2,000 characters and ten minutes). **src/jam.js** rebuilds the words and stats from those keys in the browser and on the server, and `createJamConductor` in **public/music.js** rebuilds the music, so playback always matches what the typist heard.
+
 ## Music
 
 The note button in the header (or **Alt+M**, Option+M on a Mac) turns on a little jazz. The letters of each word play its melody, every new word brings the next chord of an eight-bar loop in F (I–VI–ii–V, then iii–vi–ii–V), and a wrong letter is a soft muted thump instead of a wrong note. Keys to the right of the last one step up the scale and keys to the left step down, so a word's shape on the keyboard is the shape of its tune, and a doubled letter repeats its note. Tempo mode changes chords on the beat, a race rings a soft ting each time the ghost finishes a word, and the run ends on the home chord: brighter for a win, the relative minor for a loss, left hanging for a dead heat.
@@ -90,8 +98,9 @@ The Worker returns its code revision through **/api/health**. The deployment rec
 
 ## Storage, privacy, and limits
 
-- Unshared runs, pasted passages and the coach's data remain in the browser. Best scores, settings, and the optional display name use local storage.
+- Unshared runs, unshared jams, pasted passages and the coach's data remain in the browser. Best scores, settings, and the optional display name use local storage.
 - A share contains the chosen passage, relative key timing and outcome metadata, computed score, mode, and optional name, plus, for a race, the ID of the result it raced. Actual mistyped characters and input buffers are never serialized or accepted into stored results.
+- A shared jam holds its keys and their timing, the stats the server works out from them, and an optional name. Its words are public to anyone with the link, but its page and preview image show only its notes and length.
 - Scores are recomputed on the server from replay outcomes; daily submissions must match the current canonical passage and full 60-second run. This is an informal game leaderboard, not a proof of human typing.
 - KV stores one immutable result per ID, one topic per canonical slug, and separate daily-board entries. Concurrent scores do not overwrite a shared leaderboard object. A new link or board entry can take a short time to replicate between locations.
 - The quota object reserves new-generation and save limits atomically. Daily defaults are eight uncached topics per visitor, 80 total, 30 saves per visitor, and 2,000 total. It also spaces new topic requests by eight seconds and saves by one second.
@@ -116,6 +125,9 @@ Timed runs stop at exactly their deadline, including when a background tab resum
 | POST /api/results | Validate and publish a completed replay |
 | GET /api/results/:id | Read a saved replay |
 | GET /api/og/:id.png | 1200 × 630 PNG score preview |
+| POST /api/jams | Validate and publish a jam |
+| GET /api/jams/:id | Read a saved jam |
+| GET /api/og/j/:id.png | 1200 × 630 PNG jam preview: notes and length, never words |
 
 ## Acceptance evidence
 

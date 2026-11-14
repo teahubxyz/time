@@ -92,6 +92,31 @@ try {
   await page.locator('#replay-scrubber').dispatchEvent('input');
   assert.match(await page.locator('#ghost-lane-pace').innerText(),/^done · [0-9]+ wpm$/,'the ghost finishes in the replay too');
   await page.locator('#replay-back').click();
+  // A jam: free typing, shared, then opened and played back the way a friend would.
+  const jamText = 'hello from typy check. ' + String.fromCharCode(10) + 'la la';
+  await page.goto(base + '/jam');
+  await page.locator('#jam-panel').waitFor({state:'visible'});
+  await page.keyboard.type('hello from typy check. ',{delay:45});
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('la la',{delay:45});
+  await page.keyboard.press('Escape');
+  await page.locator('#jam-result').waitFor({state:'visible'});
+  await page.locator('#jam-share').click();
+  await page.locator('#share-name').fill('typy check');
+  await page.locator('#save-result').click();
+  await page.locator('#share-ready').waitFor({state:'visible'});
+  const jamUrl = await page.locator('#share-url').inputValue();
+  const jamSaved = await (await page.request.get(jamUrl.replace('/j/','/api/jams/'))).json();
+  assert.equal(jamSaved.kind,'jam');
+  assert.equal(jamSaved.stats.notes,23);
+  const jamHtml = await (await page.request.get(jamUrl)).text();
+  assert.ok(jamHtml.includes('/api/og/j/' + jamSaved.id + '.png'));
+  assert.ok(!jamHtml.includes('hello from typy check'),'a shared jam page never puts its words in the preview');
+  await page.goto(jamUrl);
+  await page.locator('#jam-result.sealed').waitFor({state:'visible'});
+  await page.locator('#jam-play').click();
+  await page.locator('#jam-result:not(.sealed)').waitFor({state:'visible',timeout:15000});
+  assert.equal(await page.locator('#jam-words').textContent(),jamText);
   const health = await (await page.request.get(base + '/api/health')).json();
   assert.equal(health.ok,true);
   const daily1 = await (await page.request.get(base + '/api/daily')).json();
@@ -102,7 +127,7 @@ try {
   const report = {
     checkedAt:new Date().toISOString(),base,health,score,resultUrl,
     storedWords:saved.run.words.length,storedEvents:saved.run.events.length,
-    replayWord,raceUrl:page.url(),ghostVisible:true,
+    replayWord,raceUrl:page.url(),ghostVisible:true,jamUrl,
     og:{status:imageResponse.status(),bytes:imageBytes.length,width:1200,height:630},
     dailySame:true,dailyWords:daily1.words.length,errors
   };

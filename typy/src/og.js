@@ -24,7 +24,15 @@ export async function scorePNG(record = null){
  function text(value,x,y,scale,color=1){for(const ch of String(value).toUpperCase()){const rows=FONT[ch]||FONT[' '];for(let yy=0;yy<7;yy++)for(let xx=0;xx<rows[yy].length;xx++)if(rows[yy][xx]==='1')rect(x+xx*scale,y+yy*scale,scale,scale,color);x+=(rows[0].length+1)*scale;}return x;}
  text('typy',76,66,7);rect(256,109,12,12,2);text('ONE WORD AT A TIME',78,144,3,3);rect(76,195,1048,2,4);
  const stats=record?.run?.stats;
- if(stats){
+ const jam=record?.kind==='jam'?record.stats:null;
+ if(jam){
+   const end=text(jam.notes,76,240,24,1);text('NOTES',end+30,333,7,2);
+   const seconds=Math.round((jam.durationMs||0)/1000);
+   text(`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')} LONG`,78,440,4,1);
+   text(`${jam.words} WORDS`,650,440,4,1);
+   rect(76,504,1048,2,4);
+   text('PRESS PLAY. THEN JAM BACK.',78,551,4,2);
+ }else if(stats){
    text(Math.round(stats.wpm),76,240,24,1);text('WPM',600,333,7,2);
    text(`${stats.accuracy}% ACCURACY`,78,440,4,1);
    text(`${stats.bestStreak} WORD STREAK`,650,440,4,1);

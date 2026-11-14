@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { inflateSync } from 'node:zlib';
 import worker from '../src/worker.js';
-import { QuotaGate, validateResult } from '../src/store.js';
+import { QuotaGate, validateResult, validateJam } from '../src/store.js';
 import { TypingGame } from '../src/game.js';
 import { MAX_WORD_LENGTH } from '../src/words.js';
 import { dailyPassage, normalizeTopic } from '../src/passages.js';
@@ -280,4 +280,48 @@ test('a shared drill keeps its kind and a known label, and nothing else',()=>{
  assert.deepEqual(validateResult({run:makeRun(),source:{kind:'drill',label:'filling the gaps'}}).source,{kind:'drill',label:'filling the gaps'});
  assert.deepEqual(validateResult({run:makeRun(),source:{kind:'drill',label:'<b>made up</b>'}}).source,{kind:'drill'});
  assert.deepEqual(validateResult({run:makeRun(),source:{kind:'mystery'}}).source,{kind:'common'});
+});
+
+test('a jam is checked key by key before it can be shared',()=>{
+ const keys=[[0,'h'],[90,'i'],[200,' '],[300,'Enter'],[400,'Backspace'],[2500,'!']];
+ const value=validateJam({jam:{version:1,keys},name:'  bun<ny>  '});
+ assert.deepEqual(value.jam,{version:1,keys});
+ assert.equal(value.name,'bunny');
+ assert.equal(value.stats.notes,3);
+ for(const bad of [[[5,'a']],[[0,'a'],[3,'ab']],[[0,'a'],[-1,'b']],[[0,'a'],[10,'b'],[5,'c']],[[0,'a'],[600001,'b']],[[0,String.fromCharCode(0x202e)]],[[0,' ']],[[0,'a',1]]]){
+  assert.throws(()=>validateJam({jam:{version:1,keys:bad}}),error=>error.status===400,JSON.stringify(bad));
+ }
+ assert.throws(()=>validateJam({jam:{version:2,keys}}),/A jam is required/);
+ assert.throws(()=>validateJam({jam:{version:1,keys:Array.from({length:4001},(_,i)=>[i,'a'])}}),/holds 1 to 4000 keys/);
+ assert.throws(()=>validateJam({jam:{version:1,keys:Array.from({length:2001},(_,i)=>[i,'a'])}}),/up to 2000 characters/);
+});
+
+test('a shared jam saves, reads back, and previews its notes but never its words',async()=>{
+ const e=env();
+ const keys=[[0,'s'],[100,'e'],[200,'c'],[300,'r'],[400,'e'],[500,'t']];
+ const saved=await worker.fetch(req('/api/jams',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://typy.example'},body:JSON.stringify({jam:{version:1,keys},name:'Bun'})}),e);
+ assert.equal(saved.status,201);
+ const {id,url}=await saved.json();
+ assert.equal(url,'/j/'+id);
+ const read=await (await worker.fetch(req('/api/jams/'+id),e)).json();
+ assert.deepEqual(read.jam.keys,keys);
+ assert.equal(read.kind,'jam');
+ assert.equal(read.stats.notes,6);
+ const page=await worker.fetch(req('/j/'+id),e);
+ assert.equal(page.status,200);
+ const html=await page.text();
+ assert.match(html,/Bun’s jam · typy/);
+ assert.match(html,/6 notes in 0:01/);
+ assert.ok(!html.includes('secret'),'a preview never shows what the jam says');
+ assert.ok(html.includes('/api/og/j/'+id+'.png'));
+ const image=await worker.fetch(req('/api/og/j/'+id+'.png'),e);
+ assert.equal(image.status,200);
+ assert.equal(image.headers.get('Content-Type'),'image/png');
+ assert.equal((await worker.fetch(req('/j/0123456789abcdef01234567'),e)).status,404);
+ assert.equal((await worker.fetch(req('/api/jams/nope'),e)).status,404);
+ const jamPage=await worker.fetch(req('/jam'),e);
+ assert.equal(jamPage.status,200);
+ assert.match(await jamPage.text(),/<title>jam · typy<\/title>/);
+ const foreign=await worker.fetch(req('/api/jams',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://elsewhere.example'},body:JSON.stringify({jam:{version:1,keys}})}),e);
+ assert.equal(foreign.status,403);
 });
