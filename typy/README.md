@@ -27,6 +27,12 @@ A theme is a few colours in **public/themes.js**: paper, ink, accent and error a
 
 Ported palettes, all MIT licensed: Solarized (Ethan Schoonover), Catppuccin, Dracula, Nord (Arctic Ice Studio), Gruvbox (Pavel Pertsev), Tokyo Night (enkia) and Rosé Pine.
 
+## Coach
+
+The coach (in the footer, or **your coach** on a result) learns from every run you type on this device: how accurate and how quick each key is compared with your own usual key, which letter-to-letter moves are slow, which keys slip to which (a neighbouring key, or the same finger on the other hand), and your rhythm, which it turns into a style such as sprinter or metronome. Its report shades your keyboard where you hesitate and lists your slowest pairs and recent speeds. **Drill my weak keys** starts a run of common words that lean on those keys and pairs, **fill the gaps** covers keys it has not seen enough of, and before there is any data it offers a quick check of every key. Drills teach the coach your keys but stay out of your trend and style, since they are hard on purpose, and a shared drill keeps its name.
+
+**public/coach.js** keeps all of this pure: a recorder reads the same events replays store, plus the key a miss actually was, which never leaves the browser. Local storage (`typy.coach`) holds the counts, old counts fade so it follows how you type now, and **forget my coach data** clears it.
+
 ## Music
 
 The note button in the header (or **Alt+M**, Option+M on a Mac) turns on a little jazz. The letters of each word play its melody, every new word brings the next chord of an eight-bar loop in F (I–VI–ii–V, then iii–vi–ii–V), and a wrong letter is a soft muted thump instead of a wrong note. Keys to the right of the last one step up the scale and keys to the left step down, so a word's shape on the keyboard is the shape of its tune, and a doubled letter repeats its note. Tempo mode changes chords on the beat, a race rings a soft ting each time the ghost finishes a word, and the run ends on the home chord: brighter for a win, the relative minor for a loss, left hanging for a dead heat.
@@ -84,7 +90,7 @@ The Worker returns its code revision through **/api/health**. The deployment rec
 
 ## Storage, privacy, and limits
 
-- Unshared runs and pasted passages remain in the browser. Best scores, settings, and the optional display name use local storage.
+- Unshared runs, pasted passages and the coach's data remain in the browser. Best scores, settings, and the optional display name use local storage.
 - A share contains the chosen passage, relative key timing and outcome metadata, computed score, mode, and optional name, plus, for a race, the ID of the result it raced. Actual mistyped characters and input buffers are never serialized or accepted into stored results.
 - Scores are recomputed on the server from replay outcomes; daily submissions must match the current canonical passage and full 60-second run. This is an informal game leaderboard, not a proof of human typing.
 - KV stores one immutable result per ID, one topic per canonical slug, and separate daily-board entries. Concurrent scores do not overwrite a shared leaderboard object. A new link or board entry can take a short time to replicate between locations.

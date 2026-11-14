@@ -34,6 +34,7 @@ ASSETS = {
     "/words.js": "src/words.js",
     "/themes.js": "public/themes.js",
     "/music.js": "public/music.js",
+    "/coach.js": "public/coach.js",
 }
 
 

@@ -1,6 +1,7 @@
 import { TypingGame, timedSeconds, replayFrame, raceOutcome, lineStarts } from '/game.js';
-import { generateWords, normalizePassage } from '/words.js';
+import { generateWords, normalizePassage, VOCABULARY } from '/words.js';
 import { createMusic, createConductor } from '/music.js';
+import { createRecorder, readStats, emptyStats, finishRun, coachReport, practiceWords, KEYBOARD } from '/coach.js';
 // themes.js is a classic <head> script (it paints before the first render), so it is read from window.
 const { THEMES, MODES, AUTO, DEFAULT: THEME_DEFAULT, resolveTheme, findTheme, paint: paintThemeVars, start: themeStart } = window.typyThemes;
 
@@ -52,6 +53,10 @@ let musicOn = readLocal('music', false) === true;
 let lastHeard = null;
 let ghostHeard = 0;
 let replayCursor = 0;
+// The coach (public/coach.js) learns from live runs on this device, and only here.
+const coachStats = readStats(readLocal('coach', null));
+const coachRecorder = createRecorder(coachStats);
+let typedKey = '';
 
 function setText(id, value) {
   const node = $(id), text = String(value);
@@ -86,6 +91,7 @@ function sourceName() {
   if (ghost) return 'racing ' + (currentResult?.name || 'a friendly ghost');
   if (source.kind === 'topic') return (source.topic || '').replaceAll('-', ' ');
   if (source.kind === 'daily') return 'the daily · ' + (source.day || 'today');
+  if (source.kind === 'drill') return source.label || 'weak-key drill';
   if (source.kind === 'paste') return 'your own words';
   return 'common words';
 }
@@ -132,6 +138,7 @@ function beginRun({freshWords = false, focus = false} = {}) {
   if (!passage.length) passage = newCommonPassage();
   game = new TypingGame({words:passage, mode:selectedMode, advance:ghost ? currentResult.run.advance : settings.advance, paceWpm:readLocal('lastAverage', 40)});
   conductor.reset(game.words);
+  coachRecorder.reset(game.words);
   lastHeard = null;
   view = 'play';
   replay.playing = false;
@@ -467,7 +474,10 @@ function renderGhostLane(run, position) {
 
 function press(key) {
   if (view !== 'play' || !game || document.querySelector('dialog[open]')) return;
+  // The coach hears which key a miss actually was; replays never store it.
+  typedKey = key;
   renderGame(game.press(key, now()));
+  typedKey = '';
 }
 
 // The game trims its oldest events on very long runs, so the new ones are found
@@ -484,6 +494,7 @@ function hearRun() {
   const fresh = freshEvents(game.events, lastHeard);
   if (!fresh.length) return;
   lastHeard = fresh[fresh.length - 1];
+  for (const event of fresh) coachRecorder.event(event, event.type === 'miss' ? typedKey : '');
   const actions = fresh.flatMap(event => conductor.event(event));
   if (!musicOn) return;
   // A tab that slept through several tempo beats wakes to one chord, not a pile.
@@ -500,6 +511,8 @@ function finishDisplay() {
   const isBest = qualifies && run.stats.completedWords > 0 && run.stats.wpm > previousBest;
   if (isBest) { bests[selectedMode] = run.stats.wpm; writeLocal('bests', bests); }
   if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
+  finishRun(coachStats, run, new Date().toISOString().slice(0, 10), source.kind === 'drill');
+  writeLocal('coach', coachStats);
   const ghostStats = ghost?.stats;
   const ghostName = ghost ? currentResult?.name || '' : '';
   // A race keeps the ghost's run, so it can be watched back, and the result it raced.
@@ -1186,6 +1199,102 @@ document.addEventListener('keydown', event => {
   if ($('theme-dialog').open) $('theme-dialog').close();
   else openThemes();
 });
+
+// The coach: a closer look at your hands, from every run typed on this device.
+function renderCoach() {
+  const report = coachReport(coachStats);
+  const empty = !report.runs && !Object.values(report.keys).some(Boolean);
+  $('coach-empty').hidden = !empty;
+  $('coach-report').hidden = empty;
+  setText('coach-title', empty ? 'your coach is listening.' : 'where your hands hesitate.');
+  $('coach-keys').replaceChildren(...KEYBOARD.map(row => {
+    const line = document.createElement('div');
+    line.className = 'coach-row';
+    for (const key of row) {
+      const info = report.keys[key];
+      const cell = spanOf(key, info ? 'coach-key' : 'coach-key unseen');
+      cell.style.setProperty('--heat', info ? String(Math.round((0.06 + info.weakness * 0.82) * 100) / 100) : '0');
+      cell.title = info ? key + ': ' + info.accuracy + '% accurate' + (info.ms ? ' · ' + info.ms + ' ms' : '') : key + ': not enough yet';
+      line.append(cell);
+    }
+    return line;
+  }));
+  const lineOf = (...parts) => { const p = document.createElement('p'); p.className = 'coach-line'; p.append(...parts); return p; };
+  $('coach-weak').replaceChildren(...(report.weakest.length
+    ? report.weakest.map(item => lineOf(spanOf(item.key, 'coach-mono'), spanOf(item.accuracy + '% accurate' + (item.ms ? ' · ' + item.ms + ' ms' : ''), 'coach-dim')))
+    : [lineOf(spanOf('nothing stands out yet.', 'coach-dim'))]));
+  const slowest = report.pairs[0]?.ms || 1;
+  $('coach-pairs').replaceChildren(...(report.pairs.length ? report.pairs.map(item => {
+    const row = document.createElement('div');
+    row.className = 'coach-pair';
+    const track = spanOf('', 'coach-track');
+    const bar = document.createElement('i');
+    bar.style.width = Math.round(item.ms / slowest * 100) + '%';
+    track.append(bar);
+    row.append(spanOf(item.pair, 'coach-mono'), track, spanOf(item.ms + ' ms', 'coach-dim'));
+    return row;
+  }) : [lineOf(spanOf('a few more runs and your slow pairs show up here.', 'coach-dim'))]));
+  const style = report.style;
+  setText('coach-style-name', style ? style.name : 'still listening');
+  setText('coach-style-line', style ? style.line : 'Type a couple of full runs and your style takes shape.');
+  const facts = [];
+  if (style) facts.push(['rhythm evenness', style.evenness + '%'], ['word starts vs inside', style.chunk + '×']);
+  if (report.hands && report.hands.by >= 3) facts.push([report.hands.slower + ' hand', report.hands.by + '% slower']);
+  const slip = report.slips[0];
+  if (slip) facts.push(['usual slip', slip.target + ' → ' + slip.typed + (slip.kind === 'other' ? '' : ' (' + slip.kind + ')')]);
+  $('coach-facts').replaceChildren(...facts.flatMap(([label, value]) => [spanOf(label, 'coach-dim'), spanOf(value)]));
+  const points = report.progress;
+  if (points.length >= 2) {
+    const high = Math.max(...points), low = Math.min(...points), range = Math.max(1, high - low);
+    const path = points.map((value, i) => (i ? 'L' : 'M') + (i / (points.length - 1) * 296 + 2).toFixed(1) + ',' + (52 - (value - low) / range * 46).toFixed(1)).join(' ');
+    $('coach-progress').innerHTML = '<path d="' + path + '" class="chart-line" fill="none" stroke-width="2"/>';
+    setText('coach-progress-note', points.length + ' runs · ' + pretty(low) + '–' + pretty(high) + ' wpm');
+  } else {
+    $('coach-progress').innerHTML = '';
+    setText('coach-progress-note', 'a couple more runs and your trend shows up here.');
+  }
+  const ready = report.weakest.length || report.pairs.length;
+  setText('coach-drill-label', ready ? 'drill my weak keys' : 'start with a quick check');
+  $('coach-gaps').hidden = !ready || !report.missing.length;
+  setText('coach-gaps-label', 'fill the gaps · ' + report.missing.slice(0, 6).join(' ') + (report.missing.length > 6 ? ' …' : ''));
+  setText('coach-note', 'Learned from ' + report.runs + (report.runs === 1 ? ' run' : ' runs') + ' on this device. It never leaves it.');
+}
+
+function openCoach() {
+  document.querySelectorAll('dialog[open]').forEach(dialog => dialog.close());
+  renderCoach();
+  $('coach-dialog').showModal();
+}
+
+// A drill leans on your weak keys and slow pairs; filling the gaps covers the
+// keys the coach has not seen enough of. Before there is any data, that is the
+// quick check: every key, evenly.
+function startPractice(kind) {
+  const report = coachReport(coachStats);
+  const drill = kind === 'drill' && (report.weakest.length || report.pairs.length);
+  const gaps = report.missing.length ? report.missing : KEYBOARD.join('').split('');
+  const focus = drill
+    ? Object.fromEntries(Object.entries(report.keys).filter(([, info]) => info).map(([key, info]) => [key, info.weakness]))
+    : Object.fromEntries(gaps.map(key => [key, 3]));
+  passage = practiceWords(focus, drill ? report.pairs.map(item => item.pair) : [], VOCABULARY, 120);
+  source = {kind: 'drill', label: drill ? 'weak-key drill' : report.runs ? 'filling the gaps' : 'a quick check'};
+  $('coach-dialog').close();
+  currentResult = null; ghost = null; shareId = null;
+  if (currentPath !== '/') { history.replaceState({}, '', '/'); currentPath = '/'; }
+  beginRun({focus:true});
+}
+
+$('footer-coach').addEventListener('click', openCoach);
+$('coach-from-result').addEventListener('click', openCoach);
+$('coach-drill').addEventListener('click', () => startPractice('drill'));
+$('coach-gaps').addEventListener('click', () => startPractice('gaps'));
+$('coach-forget').addEventListener('click', () => {
+  Object.assign(coachStats, emptyStats());
+  writeLocal('coach', coachStats);
+  renderCoach();
+  toast('coach data forgotten');
+});
+$('coach-dialog').addEventListener('close', focusTyping);
 
 // Views: word by word or line by line, from settings or Alt+L (Option+L on a Mac).
 function applyView() {

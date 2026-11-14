@@ -47,3 +47,6 @@ export function normalizePassage(text) {
     .trim().split(/\s+/u).filter(Boolean).slice(0, MAX_WORDS)
     .map(word => Array.from(word).slice(0, MAX_WORD_LENGTH).join(''));
 }
+
+/** The vocabulary, each word once, for drills that choose their words on purpose. */
+export const VOCABULARY = Object.freeze([...new Set(weightedWords)]);

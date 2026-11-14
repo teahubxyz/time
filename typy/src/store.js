@@ -114,6 +114,8 @@ export async function reserveQuota(request, env, kind) {
   }
 }
 
+const DRILL_LABELS = ['weak-key drill', 'filling the gaps', 'a quick check'];
+
 export function validateResult(input) {
   if (!input || typeof input !== 'object' || !input.run || typeof input.run !== 'object') throw new ApiError(400, 'A completed run is required.', 'invalid_run');
   const raw = input.run;
@@ -151,8 +153,9 @@ export function validateResult(input) {
   run.stats = summarizeRun(run);
   if (!run.stats.keystrokes || run.stats.wpm > 1000) throw new ApiError(400, 'This replay cannot be scored.', 'invalid_run');
   const sourceInput = input.source || {};
-  const source = { kind: ['common', 'paste', 'topic', 'daily'].includes(sourceInput.kind) ? sourceInput.kind : 'common' };
+  const source = { kind: ['common', 'paste', 'topic', 'daily', 'drill'].includes(sourceInput.kind) ? sourceInput.kind : 'common' };
   if (source.kind === 'topic') source.topic = normalizeTopic(sourceInput.topic);
+  if (source.kind === 'drill' && DRILL_LABELS.includes(sourceInput.label)) source.label = sourceInput.label;
   if (source.kind === 'daily') {
     const day = sourceInput.day;
     if (day !== today()) throw new ApiError(400, 'Only today’s daily run can join the daily board.', 'daily_expired');

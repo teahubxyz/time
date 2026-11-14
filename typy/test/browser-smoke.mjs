@@ -324,6 +324,43 @@ await check('line view keeps a long pasted word inside a phone', async () => {
   await narrow.close();
 });
 
+await check('coach: runs teach it, the report finds the slippy key, a drill leans on it, and forget clears it', async () => {
+  const coachContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const p = await coachContext.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await home(p);
+  await p.locator('#footer-coach').click();
+  await p.locator('#coach-empty').waitFor();
+  assert.equal(await p.locator('#coach-drill-label').innerText(), 'start with a quick check');
+  await p.keyboard.press('Escape');
+  await p.locator('[data-mode=endless]').click();
+  await paste('bob big band bring bread back about baby above table cabin habit', p);
+  for (let i = 0; i < 24; i++) {
+    const word = await p.locator('#word').getAttribute('data-word');
+    for (const char of word) {
+      if (char === 'b') { await p.keyboard.type('v'); await p.keyboard.press('Backspace'); }
+      await p.keyboard.type(char);
+    }
+    await p.keyboard.type(' ');
+  }
+  await p.keyboard.press('Enter');
+  await p.locator('#result-panel').waitFor();
+  await p.locator('#coach-from-result').click();
+  await p.locator('#coach-dialog[open]').waitFor();
+  assert.equal(await p.locator('#coach-empty').isHidden(), true);
+  assert.equal(await p.locator('.coach-key').count(), 26);
+  assert.match(await p.locator('#coach-weak').innerText(), /^b/);
+  assert.match(await p.locator('#coach-facts').innerText(), /b → v/);
+  await p.locator('#coach-drill').click();
+  assert.equal(await p.locator('#source-label').innerText(), 'weak-key drill');
+  const saved = await p.evaluate(() => JSON.parse(localStorage.getItem('typy.coach')));
+  assert.ok(saved.keys.b.miss >= 20, 'the slips were counted: ' + JSON.stringify(saved.keys.b));
+  await p.locator('#footer-coach').click();
+  await p.locator('#coach-forget').click();
+  await p.locator('#coach-empty').waitFor();
+  await coachContext.close();
+});
+
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
 const phone = await mobile.newPage();
 phone.on('pageerror', error => errors.push(error.message));
