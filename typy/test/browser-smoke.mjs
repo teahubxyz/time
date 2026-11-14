@@ -74,7 +74,7 @@ await check('Escape resets a run and settings switch to last-letter advancement'
   await page.keyboard.type('breathe');
   assert.equal(await page.locator('#word-number').innerText(), '002');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('typy.settings')));
-  assert.deepEqual(saved, { advance: 'letter', preview: false });
+  assert.deepEqual(saved, { advance: 'letter', preview: false, view: 'word' });
 });
 await check('custom passage completes 50-word mode with a result card', async () => {
   await page.locator('[data-mode="50"]').click();
@@ -281,6 +281,47 @@ await check('a shared race shows its verdict and plays both runs back on one clo
   assert.match(await p.locator('#ghost-lane-pace').innerText(), /^done · [0-9]+ wpm$/);
   assert.equal(await p.locator('#race-them').innerText(), '6');
   await watching.close();
+});
+
+await check('line view: lines wrap to the stage, the cursor rides the current line, and a finished line moves up', async () => {
+  const lineContext = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+  const p = await lineContext.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await home(p);
+  await p.locator('#settings-open').click();
+  await p.locator('#view-setting').selectOption('line');
+  await p.locator('#settings-done').click();
+  await p.locator('#line-view').waitFor();
+  const first = (await p.locator('#line-current').innerText()).trim();
+  assert.ok(first.startsWith('breathe '), 'the first line starts with the first word: ' + first);
+  assert.ok(first.split(' ').length >= 4, 'a desktop line holds several words');
+  assert.equal(await p.locator('#line-current .cursor').count(), 1);
+  for (let i = 0; i < 30 && (await p.locator('#line-prev').innerText()).trim() !== first; i++) {
+    await p.keyboard.type(await p.locator('#word').getAttribute('data-word') + ' ');
+  }
+  assert.equal((await p.locator('#line-prev').innerText()).trim(), first, 'the finished line moves up and fades');
+  await p.keyboard.press('Alt+KeyL');
+  assert.equal(await p.locator('#line-view').isHidden(), true, 'Alt+L switches back to word by word');
+  await p.keyboard.press('Alt+KeyL');
+  assert.equal(JSON.parse(await p.evaluate(() => localStorage.getItem('typy.settings'))).view, 'line');
+  await lineContext.close();
+});
+
+await check('line view keeps a long pasted word inside a phone', async () => {
+  const narrow = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });
+  const p = await narrow.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await p.addInitScript(() => localStorage.setItem('typy.settings', JSON.stringify({ view: 'line' })));
+  await p.goto(base + '/');
+  await p.locator('#line-view').waitFor();
+  await paste('pneumonoultramicroscopicsilicovolcanoconiosis' + 'x'.repeat(19) + ' and then a few more words', p);
+  await p.waitForFunction(() => document.getElementById('word').dataset.word.startsWith('pneumono'));
+  const fit = await p.evaluate(() => {
+    const row = document.getElementById('line-current');
+    return { doc: document.documentElement.scrollWidth, view: innerWidth, scroll: row.scrollWidth, client: row.clientWidth };
+  });
+  assert.ok(fit.doc <= fit.view + 1 && fit.scroll <= fit.client + 2, 'the long word fits: ' + JSON.stringify(fit));
+  await narrow.close();
 });
 
 const mobile = await browser.newContext({ ...devices['iPhone 13'], reducedMotion: 'reduce' });

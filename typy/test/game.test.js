@@ -1,7 +1,22 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds, replayFrame, raceOutcome } from '../src/game.js';
+import { TypingGame, letterStates, summarizeRun, MODES, TIMED_MODES, timedSeconds, replayFrame, raceOutcome, lineStarts } from '../src/game.js';
 import { generateWords, normalizePassage } from '../src/words.js';
+
+test('line view breaks a passage into lines that fit, running on as the passage repeats', () => {
+  const words = ['one', 'two', 'three', 'four', 'five'];
+  assert.deepEqual(lineStarts(words, 9, 0), [0, 2, 3, 5]);
+  const starts = lineStarts(words, 9, 12);
+  const row = starts.findIndex((start, i) => start <= 12 && starts[i + 1] > 12);
+  assert.ok(row >= 0 && starts.length >= row + 4, 'the line holding word 12 and the two after it are known');
+  for (let i = 0; i + 1 < starts.length; i++) {
+    const line = [];
+    for (let w = starts[i]; w < starts[i + 1]; w++) line.push(words[w % words.length]);
+    assert.ok(line.join(' ').length <= 9 || line.length === 1, 'line ' + i + ' fits: ' + line.join(' '));
+  }
+  assert.equal(lineStarts(['extraordinarily', 'a', 'b'], 8, 0)[1], 1, 'a word longer than a line gets one to itself');
+  assert.deepEqual(lineStarts([], 9, 0), [0]);
+});
 
 function type(game, word, at, spacing = 100) {
   for (const letter of word) game.press(letter, at += spacing);
