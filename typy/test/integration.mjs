@@ -85,12 +85,12 @@ try {
   // Watching the race back plays both runs on one clock, until the slower one is done.
   assert.equal(await page.locator('#replay-label').innerText(),'watch the race');
   await page.locator('#replay-button').click();
-  await page.locator('#ghost-lane').waitFor({state:'visible'});
+  await page.locator('#race-duel').waitFor({state:'visible'});
   assert.equal(await page.locator('#run-status').innerText(),'the race, replayed');
   const raceLength = Number(await page.locator('#replay-scrubber').getAttribute('max'));
   await page.locator('#replay-scrubber').fill(String(raceLength));
   await page.locator('#replay-scrubber').dispatchEvent('input');
-  assert.match(await page.locator('#ghost-lane-pace').innerText(),/^done · [0-9]+ wpm$/,'the ghost finishes in the replay too');
+  assert.match(await page.locator('#duel-them-pace').innerText(),/^done · [0-9]+ wpm$/,'the ghost finishes in the replay too');
   await page.locator('#replay-back').click();
   // A jam: free typing, shared, then opened and played back the way a friend would.
   const jamText = 'hello from typy check. ' + String.fromCharCode(10) + 'la la';

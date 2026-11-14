@@ -74,6 +74,7 @@
             </div>
           </div>
           <div class="line-view" id="line-view" hidden aria-hidden="true"><div class="line-row line-prev" id="line-prev"></div><div class="line-row line-current" id="line-current"></div><div class="line-after"><div class="line-row line-next" id="line-next"></div><div class="line-row line-later" id="line-later"></div></div><span class="line-row line-probe" id="line-probe">MMMMMMMMMMMMMMMMMMMM</span></div>
+          <div class="race-duel" id="race-duel" hidden aria-label="Both runs, replayed in lanes of the same size"><div class="duel-lane" id="duel-you"><div class="duel-head"><span class="duel-name" id="duel-you-name">you</span><span class="duel-pace" id="duel-you-pace"></span></div><div class="duel-words" id="duel-you-words"></div></div><div class="duel-lane" id="duel-them"><div class="duel-head"><span class="duel-name" id="duel-them-name">ghost</span><span class="duel-pace" id="duel-them-pace"></span></div><div class="duel-words" id="duel-them-words"></div></div><span class="duel-words duel-probe" id="duel-probe" aria-hidden="true">MMMMMMMMMMMMMMMMMMMM</span></div>
         </div>
         <div class="ghost-lane" id="ghost-lane" hidden aria-hidden="true"><span class="ghost-lane-label" id="ghost-lane-label">ghost</span><span class="ghost-lane-word" id="ghost-lane-word"></span><span class="ghost-lane-next" id="ghost-lane-next"></span><span class="ghost-lane-pace" id="ghost-lane-pace"></span></div>
         <div id="tempo-track" class="tempo-track" hidden><div class="tempo-rail"><div id="tempo-progress"></div></div><div class="tempo-caption"><span id="tempo-caption">find the beat</span><span id="tempo-lives" aria-label="Three beats remaining"><i></i><i></i><i></i></span></div></div>
@@ -82,6 +83,7 @@
           <p class="run-hint" id="run-hint"><span class="hint-start">type the word to begin</span><span class="hint-separator">·</span><span id="advance-hint"><kbd>space</kbd> next word</span></p>
           <button id="finish-run" class="text-button" hidden>finish run ↵</button>
         </div>
+        <div class="race-timeline" id="race-timeline" hidden><div class="chart-label"><span>the race, word by word</span><span id="race-axis-end">0:00</span></div><svg id="race-chart" class="race-chart" viewBox="0 0 900 120" preserveAspectRatio="none" role="img" aria-label="Words finished over time, for both runs. Click or drag to move through the race."></svg></div>
         <section id="replay-controls" class="replay-controls" hidden aria-label="Replay controls">
           <button class="button small" id="replay-play">pause</button>
           <input type="range" id="replay-scrubber" min="0" max="1000" step="10" value="0" aria-label="Replay position">
