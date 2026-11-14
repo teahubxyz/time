@@ -361,6 +361,26 @@ await check('coach: runs teach it, the report finds the slippy key, a drill lean
   await coachContext.close();
 });
 
+await check('coach: before it knows your weak keys, its button fills the gaps, then checks every key', async () => {
+  const keys = {};
+  for (const key of 'qwertyuiopasdfghjklzxcvbnm') keys[key] = { n: 30, miss: 1, ms: 3900, timed: 30 };
+  const seed = all => JSON.stringify({ version: 1, keys: all ? keys : Object.fromEntries(Object.entries(keys).slice(0, 20)), pairs: {}, slips: {}, runs: [{ day: '2026-11-13', wpm: 60, accuracy: 97, within: 130, start: 280, evenness: 0.8, samples: 60 }] });
+  for (const [all, button, label] of [[false, 'fill the gaps', 'filling the gaps'], [true, 'take a quick check', 'a quick check']]) {
+    const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
+    await context.addInitScript(value => localStorage.setItem('typy.coach', value), seed(all));
+    const p = await context.newPage();
+    p.on('pageerror', error => errors.push(error.message));
+    await home(p);
+    await p.locator('#footer-coach').click();
+    await p.locator('#coach-dialog[open]').waitFor();
+    assert.equal(await p.locator('#coach-drill-label').innerText(), button);
+    assert.equal(await p.locator('#coach-gaps').isHidden(), true);
+    await p.locator('#coach-drill').click();
+    assert.equal(await p.locator('#source-label').innerText(), label);
+    await context.close();
+  }
+});
+
 await check('jam: free typing plays, Esc shows the stats, playback types it again, and a shared jam opens sealed (mock API)', async () => {
   const listening = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   await listening.addInitScript(() => {
