@@ -8,8 +8,8 @@ const page = 'const TEMPLATE = ' + JSON.stringify(html) + ';\n' +
   'export function renderPage(meta = {}) {\n' +
   'const title = escape(meta.title || "typy — one word at a time");\n' +
   'const description = escape(meta.description || "Find your rhythm. One word at a time, a little faster with every beat. Type, replay, and race a friend.");\n' +
-  'const image = escape(meta.image || "https://typy.yolopreneur.lol/api/og/default.png");\n' +
-  'const url = escape(meta.url || "https://typy.yolopreneur.lol/");\n' +
+  'const image = escape(meta.image || "https://typy.lol/api/og/default.png");\n' +
+  'const url = escape(meta.url || "https://typy.lol/");\n' +
   'const tags = "<title>" + title + "</title><meta name=\\"description\\" content=\\"" + description + "\\"><meta property=\\"og:type\\" content=\\"website\\"><meta property=\\"og:title\\" content=\\"" + title + "\\"><meta property=\\"og:description\\" content=\\"" + description + "\\"><meta property=\\"og:url\\" content=\\"" + url + "\\"><meta property=\\"og:image\\" content=\\"" + image + "\\"><meta property=\\"og:image:width\\" content=\\"1200\\"><meta property=\\"og:image:height\\" content=\\"630\\"><meta name=\\"twitter:card\\" content=\\"summary_large_image\\">";\n' +
   'return TEMPLATE.replace("<!--OG-->", tags);\n}\n';
 await writeFile(join(here, 'src/page.js'), page);

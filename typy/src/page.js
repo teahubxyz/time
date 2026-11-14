@@ -3,8 +3,8 @@ const escape = (s) => String(s ?? "").replace(/[&<>"\x27]/g, c => ({"&":"&amp;",
 export function renderPage(meta = {}) {
 const title = escape(meta.title || "typy — one word at a time");
 const description = escape(meta.description || "Find your rhythm. One word at a time, a little faster with every beat. Type, replay, and race a friend.");
-const image = escape(meta.image || "https://typy.yolopreneur.lol/api/og/default.png");
-const url = escape(meta.url || "https://typy.yolopreneur.lol/");
+const image = escape(meta.image || "https://typy.lol/api/og/default.png");
+const url = escape(meta.url || "https://typy.lol/");
 const tags = "<title>" + title + "</title><meta name=\"description\" content=\"" + description + "\"><meta property=\"og:type\" content=\"website\"><meta property=\"og:title\" content=\"" + title + "\"><meta property=\"og:description\" content=\"" + description + "\"><meta property=\"og:url\" content=\"" + url + "\"><meta property=\"og:image\" content=\"" + image + "\"><meta property=\"og:image:width\" content=\"1200\"><meta property=\"og:image:height\" content=\"630\"><meta name=\"twitter:card\" content=\"summary_large_image\">";
 return TEMPLATE.replace("<!--OG-->", tags);
 }
