@@ -4,6 +4,7 @@
 // Deployed by .github/time/inference.py; the pages talk to it with the same bodies they would send Venice.
 //
 //   GET  /health                               -> { ok, rev, apps }
+//   GET  /v1/characters[?…] | /v1/characters/<slug>   Venice's public character catalog, read-only (free at Venice)
 //   POST /v1/chat/completions                  model in CHAT_MODELS, no streaming, max_tokens <= MAX_TOKENS
 //   POST /v1/audio/quote | queue | retrieve | complete    model in AUDIO_MODELS, duration_seconds <= AUDIO_SECONDS
 //   POST /v1/image/generate                    model in IMAGE_MODELS
@@ -173,6 +174,13 @@ async function render(body, env, h) {
 async function api(req, env, url, h) {
   const path = url.pathname.replace(/\/+$/, "");
   if (path === "/health") return json({ ok: true, rev: env.REV, apps: list(env.APPS), renderer: env.RUNWARE_API_KEY ? "runware" : "venice" }, 200, h);
+  const chars = path.match(/^\/v1(\/characters(?:\/[A-Za-z0-9_-]{1,120})?)$/);
+  if (chars && req.method === "GET") {                       // the catalog costs nothing; just keep it to known apps
+    const app = String(req.headers.get("x-app") || "").toLowerCase();
+    if (!list(env.APPS).includes(app)) return json({ error: "unknown app: send an x-app header this worker knows" }, 403, h);
+    const res = await fetch(VENICE + chars[1] + url.search, { headers: { Authorization: "Bearer " + env.VENICE_API_KEY, Accept: "application/json" } });
+    return new Response(res.body, { status: res.status, headers: { "content-type": "application/json; charset=utf-8", "cache-control": "public, max-age=300", ...h } });
+  }
   if (req.method !== "POST") return json({ error: "POST only" }, 405, h);
   if (!env.VENICE_API_KEY) return json({ error: "no key on this worker yet" }, 503, h);
   const app = String(req.headers.get("x-app") || "").toLowerCase();
