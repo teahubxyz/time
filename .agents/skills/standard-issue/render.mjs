@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Standard issue: render a page folder's raster assets with headless Chrome (see SKILL.md).
 //   node render.mjs <dir> [--css fonts/fonts.css]
-// <dir>/icon.svg                    -> favicon-32.png, icon-192.png, icon-512.png (corners stay transparent)
+// <dir>/icon.svg                    -> icon-192.png, icon-512.png (corners stay transparent)
+// <dir>/favicon.svg (or icon.svg)   -> favicon-32.png: a wordmark icon turns to mush at tab size, so give it a simpler mark
 // <dir>/icon-maskable.svg (or icon) -> icon-maskable-512.png, apple-touch-icon.png (full bleed: iOS and Android round it)
 // <dir>/og.html (or index.html)     -> og.png, the 1200x630 link-preview card
 // --css: a stylesheet inside <dir> (e.g. self-hosted fonts) for the SVG renders, so text in the icon uses the page's font.
@@ -47,7 +48,8 @@ async function shot(url, w, h, out, transparent) {
 }
 try {
   if (!existsSync(join(dir, 'icon.svg'))) throw new Error(`no icon.svg in ${dir}`);
-  for (const [size, out] of [[32, 'favicon-32.png'], [192, 'icon-192.png'], [512, 'icon-512.png']]) await shot(`${base}/__icon?f=icon.svg&s=${size}`, size, size, out, true);
+  await shot(`${base}/__icon?f=${existsSync(join(dir, 'favicon.svg')) ? 'favicon.svg' : 'icon.svg'}&s=32`, 32, 32, 'favicon-32.png', true);
+  for (const [size, out] of [[192, 'icon-192.png'], [512, 'icon-512.png']]) await shot(`${base}/__icon?f=icon.svg&s=${size}`, size, size, out, true);
   const mask = existsSync(join(dir, 'icon-maskable.svg')) ? 'icon-maskable.svg' : 'icon.svg';
   for (const [size, out] of [[512, 'icon-maskable-512.png'], [180, 'apple-touch-icon.png']]) await shot(`${base}/__icon?f=${mask}&s=${size}`, size, size, out, false);
   await shot(`${base}/${existsSync(join(dir, 'og.html')) ? 'og.html' : 'index.html'}`, 1200, 630, 'og.png', false);

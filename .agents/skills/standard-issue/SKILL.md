@@ -57,7 +57,8 @@ Whatever a person makes or achieves on the page (a score, a creation, a result, 
 
     node .agents/skills/standard-issue/render.mjs <folder> [--css fonts/fonts.css]
 
-- `icon.svg` → `favicon-32.png`, `icon-192.png`, `icon-512.png` (transparent corners)
+- `icon.svg` → `icon-192.png`, `icon-512.png` (transparent corners)
+- `favicon.svg` (else `icon.svg`) → `favicon-32.png`: if the icon carries words, give the tab a simpler mark
 - `icon-maskable.svg` (else `icon.svg`) → `icon-maskable-512.png` and `apple-touch-icon.png`: full bleed, the mark inside the middle 80%
 - `og.html` (else `index.html`) → `og.png`, 1200x630
 - `--css` loads a stylesheet from the folder (the page's own fonts) for the SVG renders
