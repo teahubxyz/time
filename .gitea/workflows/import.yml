@@ -1,0 +1,49 @@
+# Lands a verified bundle of files (a .tar.gz) on a branch: the factory's way to commit binary
+# files (images, icons) made elsewhere, such as on the hb-5 Mac. Dispatch it with a short-lived
+# download URL for the bundle (for example a Boring blob download ticket) and the bundle's sha256.
+name: import
+on:
+  workflow_dispatch:
+    inputs:
+      url:
+        description: download URL of the .tar.gz bundle
+        required: true
+      sha256:
+        description: sha256 of the bundle
+        required: true
+      branch:
+        description: branch to commit to
+        required: true
+      message:
+        description: commit message
+        required: true
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch }}
+      - name: download, verify, unpack and commit
+        env:
+          URL: ${{ inputs.url }}
+          SUM: ${{ inputs.sha256 }}
+          BRANCH: ${{ inputs.branch }}
+          MESSAGE: ${{ inputs.message }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -eu
+          curl -fsSL -o /tmp/bundle.tgz "$URL"
+          echo "$SUM  /tmp/bundle.tgz" | sha256sum -c -
+          if tar -tzf /tmp/bundle.tgz | grep -Eq '(^/|(^|/)[.][.](/|$)|(^|/)[.]git(ea)?(/|$))'; then
+            echo "the bundle has an unsafe path"; exit 1
+          fi
+          tar -xzf /tmp/bundle.tgz --no-same-owner -C .
+          git config user.name "$ACTOR"
+          git config user.email "$ACTOR@noreply.teahub.xyz"
+          git add -A
+          if git diff --cached --quiet; then echo "nothing changed"; exit 0; fi
+          git diff --cached --stat
+          git commit -q -m "$MESSAGE"
+          git push origin "HEAD:$BRANCH"
