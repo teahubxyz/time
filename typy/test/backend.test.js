@@ -325,3 +325,14 @@ test('a shared jam saves, reads back, and previews its notes but never its words
  const foreign=await worker.fetch(req('/api/jams',{method:'POST',headers:{'Content-Type':'application/json',Origin:'https://elsewhere.example'},body:JSON.stringify({jam:{version:1,keys}})}),e);
  assert.equal(foreign.status,403);
 });
+
+test('an accuracy run is shareable: its clean words and slips are recounted, and it may end on strikes',()=>{
+ const game=new TypingGame({words:['cat','dog'],mode:'accuracy'});let t=0;
+ const type=text=>{for(const key of text)game.press(key,t+=50);};
+ type('cat dog ');type('x');game.press('Backspace',t+=50);type('cat ');type('dz');game.press('Backspace',t+=50);type('og ');type('q');
+ const run=game.result(t+=50);assert.equal(run.finishedReason,'strikes');
+ run.stats.cleanWords=99;
+ const record=validateResult({run,source:{kind:'common'}});
+ assert.equal(record.run.mode,'accuracy');assert.equal(record.run.finishedReason,'strikes');
+ assert.equal(record.run.stats.cleanWords,2);assert.equal(record.run.stats.slips,3);
+});

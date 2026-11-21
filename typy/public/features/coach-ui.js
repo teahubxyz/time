@@ -112,7 +112,8 @@ $('coach-dialog').addEventListener('close', focusTyping);
 on('run:done', result => {
   const drill = result.source?.kind === 'drill';
   result.coach = reviewRun(coachStats, result.run, {mode: result.run.mode, drill, isBest: result.isBest, view: settings.view, tempoPeak: result.tempoPeak || 0});
-  finishRun(coachStats, result.run, new Date().toISOString().slice(0, 10), drill);
+  // An accuracy run is slow on purpose: like a drill, it teaches the coach your keys but stays out of your pace trend.
+  finishRun(coachStats, result.run, new Date().toISOString().slice(0, 10), drill || result.run.mode === 'accuracy');
   writeLocal('coach', coachStats);
 });
 
@@ -146,6 +147,7 @@ $('coach-notes').addEventListener('click', event => {
   const action = event.target.closest('[data-action]')?.dataset.action;
   if (action === 'drill') startPractice('drill');
   else if (action === 'tempo') document.querySelector('[data-mode=tempo]').click();
+  else if (action === 'accuracy') document.querySelector('[data-mode=accuracy]').click();
   else if (action === 'lines') {
     settings.view = 'line'; writeLocal('settings', settings);
     applyView(); updateOptions();

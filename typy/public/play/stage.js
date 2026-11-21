@@ -1,4 +1,4 @@
-// The stage: the word being typed, word by word or line by line.
+// The stage: the word being typed, word by word, line by line, or letter by letter.
 import { $, now, setClass, setText, spanOf, toast, writeLocal } from '/core/dom.js';
 import { S, settings } from '/core/state.js';
 import { lineStarts } from '/game.js';
@@ -147,6 +147,43 @@ export function ghostLine(run, at, chars = lineMetrics.chars || 40) {
   return nodes;
 }
 
+// Letter view: one key at a time. The big glyph is the key to press next: a letter, the space
+// after a word, or, after a mistake, the letter that belonged there, red until it is backspaced.
+// With a little context on, the next key waits faintly beside it and the word sits small below.
+const SPACE = '␣';
+let lastLetterKey = '';
+export function letterTarget(word, buffer, flags = null) {
+  const chars = Array.from(word || ''), typed = Array.from(buffer || '');
+  let wrong = -1;
+  for (let i = 0; i < typed.length; i++) if (i >= chars.length || !(flags ? flags[i] : typed[i] === chars[i])) { wrong = i; break; }
+  const at = wrong >= 0 ? wrong : typed.length;
+  return {glyph: at < chars.length ? chars[at] : ' ', wrong: wrong >= 0, at, done: wrong < 0 && typed.length >= chars.length};
+}
+function drawLetters(word, buffer, index, nextWord, flags) {
+  const waiting = S.view === 'play' && Boolean(S.game?.waitingForBeat);
+  const key = word + '|' + buffer + '|' + index + '|' + (flags?.join('') || '') + '|' + settings.preview + '|' + waiting;
+  if (key === lastLetterKey) return;
+  lastLetterKey = key;
+  const target = letterTarget(word, buffer, flags);
+  const chars = Array.from(word || '');
+  const current = $('letter-current');
+  current.textContent = waiting ? '✓' : target.glyph === ' ' ? SPACE : target.glyph;
+  current.className = 'letter-current' + (target.wrong ? ' incorrect' : '') + (target.glyph === ' ' && !waiting ? ' space' : '') + (waiting ? ' waiting' : '');
+  // After the last letter comes the space, unless words advance on their own (last letter, or tempo's beat).
+  const spaceNext = settings.advance !== 'letter' && S.game?.mode !== 'tempo';
+  const nextFirst = Array.from(nextWord || '')[0] || '';
+  const following = target.done ? nextFirst : target.at + 1 < chars.length ? chars[target.at + 1] : spaceNext ? SPACE : nextFirst;
+  setText('letter-next', settings.preview && !target.wrong && !waiting ? following : '');
+  $('letter-word').hidden = !settings.preview;
+  if (settings.preview) $('letter-word').replaceChildren(...activeLetters(word, buffer, flags));
+  if (S.lastWordIndex !== index || $('word').dataset.word !== word) {
+    $('word').dataset.word = word;
+    $('typing-input').setAttribute('aria-label', 'Type the word: ' + word);
+    setText('word-number', String(index + 1).padStart(3, '0'));
+    S.lastWordIndex = index;
+  }
+}
+
 export function drawWord(word, buffer, index, nextWord, flags = null, previousWord = '', afterNextWord = '') {
   if (settings.view === 'line') {
     const node = $('word');
@@ -160,6 +197,7 @@ export function drawWord(word, buffer, index, nextWord, flags = null, previousWo
     drawLines(S.view === 'replay' ? S.currentResult.run.words : S.game.words, index, buffer, flags);
     return;
   }
+  if (settings.view === 'letter') { drawLetters(word, buffer, index, nextWord, flags); return; }
   const key = word + '|' + buffer + '|' + index + '|' + (flags?.join('') || '');
   if (key === S.lastWordKey && !S.wordLayoutDirty) return;
   const node = $('word');
@@ -236,11 +274,16 @@ export function drawWord(word, buffer, index, nextWord, flags = null, previousWo
   S.renderedWord = word;
 }
 
-// Views: word by word or line by line, from settings or Alt+L (Option+L on a Mac).
+// Views: word by word, line by line or letter by letter, from settings or Alt+L (Option+L on a Mac).
+export const VIEWS = ['word', 'line', 'letter'];
+const VIEW_NAMES = {word: 'word by word', line: 'line by line', letter: 'letter by letter'};
 export function applyView() {
-  const lines = settings.view === 'line';
+  const lines = settings.view === 'line', letters = settings.view === 'letter';
   setClass($('stage'), 'lines', lines);
+  setClass($('stage'), 'letters', letters);
   $('line-view').hidden = !lines;
+  $('letter-view').hidden = !letters;
+  lastLetterKey = '';
   S.wordLayoutDirty = true; S.lastWordKey = ''; S.lastWordIndex = -1; S.renderedWord = '';
   lastLineKey = ''; lastLineRow = -1; S.ghostLaneKey = '';
   lineCache = {words: null, chars: 0, starts: [0]};
@@ -254,8 +297,8 @@ export function redrawStage() {
 document.addEventListener('keydown', event => {
   if (!event.altKey || event.ctrlKey || event.metaKey || event.code !== 'KeyL') return;
   event.preventDefault();
-  settings.view = settings.view === 'line' ? 'word' : 'line';
+  settings.view = VIEWS[(VIEWS.indexOf(settings.view) + 1) % VIEWS.length];
   writeLocal('settings', settings);
   applyView(); updateOptions(); redrawStage();
-  toast(settings.view === 'line' ? 'line by line' : 'word by word');
+  toast(VIEW_NAMES[settings.view]);
 });

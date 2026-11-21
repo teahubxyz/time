@@ -4,7 +4,8 @@ import { $, now, pretty, readLocal, setClass, setText, toast, writeLocal } from 
 import { current, go, screen } from '/core/screens.js';
 import { S, bests, coachRecorder, conductor, music, settings } from '/core/state.js';
 import { shuffleTheme } from '/features/themes-ui.js';
-import { raceOutcome, replayFrame, timedSeconds, TypingGame } from '/game.js';
+import { ACCURACY_STRIKES, raceOutcome, replayFrame, timedSeconds, TypingGame } from '/game.js';
+import { keepTime, resetMetronome } from '/play/metronome.js';
 import { updateOptions } from '/play/options.js';
 import { displayResult } from '/play/result.js';
 import { restart } from '/play/router.js';
@@ -16,6 +17,8 @@ let transitioning = false;
 let isComposing = false;
 let lastHeard = null;
 let typedKey = '';
+// Modes with no clock to end them: Enter or the finish button ends the run.
+const OPEN_ENDED = ['endless', 'tempo', 'accuracy'];
 
 export function focusTyping() {
   if (document.querySelector('dialog[open]')) return;
@@ -55,8 +58,10 @@ export function beginRun({freshWords = false, focus = false} = {}) {
   S.ghostLaneKey = '';
   S.ghostHeard = 0;
   if (S.ghost) { setText('ghost-lane-label', S.currentResult?.name || 'ghost'); setText('race-you-label', 'you'); setText('race-them-label', 'ghost'); }
-  $('finish-run').hidden = S.selectedMode !== 'endless' && S.selectedMode !== 'tempo';
+  $('finish-run').hidden = !OPEN_ENDED.includes(S.selectedMode);
   $('tempo-track').hidden = S.selectedMode !== 'tempo';
+  $('strike-track').hidden = S.selectedMode !== 'accuracy';
+  resetMetronome();
   $('restart-tip').hidden = false;
   updateOptions();
   renderGame(S.game.snapshot(now()));
@@ -81,6 +86,8 @@ export function renderGame(state) {
     setText('time-label', 'remaining'); setText('live-time', Math.ceil(state.remainingMs / 1000)); setText('time-unit', 's');
   } else if (S.selectedMode === '50') {
     setText('time-label', 'remaining'); setText('live-time', Math.max(0, 50 - state.completedWords)); setText('time-unit', 'words');
+  } else if (S.selectedMode === 'accuracy') {
+    setText('time-label', 'clean'); setText('live-time', state.cleanWords); setText('time-unit', 'words');
   } else if (S.selectedMode === 'tempo') {
     setText('time-label', 'beat pace'); setText('live-time', pretty(state.paceWpm)); setText('time-unit', 'wpm');
   } else {
@@ -98,6 +105,13 @@ export function renderGame(state) {
     const label = (3 - state.misses) + ' missed beats remaining';
     if ($('tempo-lives').getAttribute('aria-label') !== label) $('tempo-lives').setAttribute('aria-label', label);
   }
+  if (S.selectedMode === 'accuracy') {
+    Array.from($('strike-dots').children).forEach((dot, i) => setClass(dot, 'lost', i < state.strikes));
+    const left = ACCURACY_STRIKES - state.strikes;
+    const label = left + (left === 1 ? ' slip left' : ' slips left');
+    if ($('strike-dots').getAttribute('aria-label') !== label) $('strike-dots').setAttribute('aria-label', label);
+    setText('strike-caption', state.status === 'ready' ? 'no clock. take your time.' : state.errorIndex >= 0 ? 'a slip. fix it, then carry on.' : state.strikes ? state.strikeBackIn + ' clean ' + (state.strikeBackIn === 1 ? 'word wins' : 'words win') + ' a strike back' : state.cleanWords + ' clean so far');
+  }
   if (S.ghost) {
     const completed = S.ghost.wordTimings.filter(timing => timing.completed && timing.end <= state.elapsedMs).length;
     setText('race-you', state.completedWords);
@@ -108,7 +122,7 @@ export function renderGame(state) {
   }
   if (state.errors > lastErrorCount && !S.reducedMotion) {
     S.errorAnimation?.cancel();
-    S.errorAnimation = (settings.view === 'line' ? document.querySelector('#line-current .active') || $('word') : $('word')).animate([{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}], {duration:90});
+    S.errorAnimation = (settings.view === 'line' ? document.querySelector('#line-current .active') || $('word') : settings.view === 'letter' ? $('letter-current') : $('word')).animate([{transform:'translateX(0)'},{transform:'translateX(-3px)'},{transform:'translateX(3px)'},{transform:'translateX(0)'}], {duration:90});
   }
   lastErrorCount = state.errors;
   S.lastClockPaint = now();
@@ -144,6 +158,8 @@ export function press(key) {
   if (S.view !== 'play' || !S.game || document.querySelector('dialog[open]')) return;
   // The coach hears which key a miss actually was; replays never store it.
   typedKey = key;
+  // The first key of a tempo run is a gesture the browser lets sound start on.
+  if (S.selectedMode === 'tempo' && S.game.status === 'ready' && settings.metronome !== false) music.unlock();
   renderGame(S.game.press(key, now()));
   typedKey = '';
 }
@@ -174,11 +190,15 @@ export function hearRun() {
 export function finishDisplay() {
   transitioning = true;
   const run = S.game.result(now());
+  const accuracyRun = S.selectedMode === 'accuracy';
   const previousBest = Number(bests[S.selectedMode] || 0);
-  const qualifies = run.finishedReason !== 'manual' || S.selectedMode === 'endless' || S.selectedMode === 'tempo';
-  const isBest = qualifies && run.stats.completedWords > 0 && run.stats.wpm > previousBest;
-  if (isBest) { bests[S.selectedMode] = run.stats.wpm; writeLocal('bests', bests); }
-  if (run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
+  const qualifies = run.finishedReason !== 'manual' || OPEN_ENDED.includes(S.selectedMode);
+  // An accuracy run's best is its clean words; every other mode's is its pace.
+  const score = accuracyRun ? run.stats.cleanWords || 0 : run.stats.wpm;
+  const isBest = qualifies && run.stats.completedWords > 0 && score > previousBest;
+  if (isBest) { bests[S.selectedMode] = score; writeLocal('bests', bests); }
+  // An accuracy run is slow on purpose, so it doesn't set the pace tempo starts from.
+  if (!accuracyRun && run.durationMs >= 5000 && run.stats.wpm > 0) writeLocal('lastAverage', Math.max(10, Math.min(200, run.stats.wpm)));
   const ghostStats = S.ghost?.stats;
   const ghostName = S.ghost ? S.currentResult?.name || '' : '';
   // A race keeps the ghost's run, so it can be watched back, and the result it raced.
@@ -209,7 +229,7 @@ document.addEventListener('keydown', event => {
   if (event.key === 'Escape') { event.preventDefault(); restart(); return; }
   if (S.view === 'result' && event.key === 'Enter') { event.preventDefault(); restart({freshWords:S.source.kind === 'common'}); return; }
   if (S.view !== 'play') return;
-  if (event.key === 'Enter' && (S.selectedMode === 'endless' || S.selectedMode === 'tempo') && S.game.status === 'running') {
+  if (event.key === 'Enter' && OPEN_ENDED.includes(S.selectedMode) && S.game.status === 'running') {
     event.preventDefault(); S.game.finish(now()); finishDisplay(); return;
   }
   if (target !== $('typing-input') && target.closest('button,a')) return;
@@ -244,7 +264,15 @@ $('finish-run').addEventListener('click', () => { if (S.game?.status === 'runnin
 // Input renders synchronously. Only the clock needs periodic paints; an idle
 // stage does no DOM work, while tempo keeps its smooth beat indicator.
 export function playFrame(time) {
-  if (S.game?.status === 'running' && ((S.selectedMode === 'tempo' && !S.reducedMotion) || time - S.lastClockPaint >= (S.ghost ? 50 : 100))) renderGame(S.game.tick(time));
+  if (S.game?.status !== 'running') return;
+  if (S.selectedMode === 'tempo') {
+    // The metronome books its clicks every frame; the stage paints every frame unless motion is reduced.
+    const state = S.game.tick(time);
+    keepTime(state, time);
+    if (!S.reducedMotion || time - S.lastClockPaint >= 100) renderGame(state);
+    return;
+  }
+  if (time - S.lastClockPaint >= (S.ghost ? 50 : 100)) renderGame(S.game.tick(time));
 }
 
 screen('play', {panel: 'play-panel', frame: playFrame});

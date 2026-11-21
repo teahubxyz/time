@@ -1,6 +1,6 @@
 {
-  "timestamp": "2026-10-29T21:10:16.748Z",
-  "target": "http://127.0.0.1:8789",
+  "timestamp": "2026-11-21T17:12:39.801Z",
+  "target": "http://127.0.0.1:8788",
   "browser": "Chrome 156 / Playwright",
   "checks": [
     {
@@ -52,6 +52,42 @@
       "status": "PASS"
     },
     {
+      "name": "themes: Alt+T opens the picker, arrows preview, Esc puts back, Enter keeps across a reload",
+      "status": "PASS"
+    },
+    {
+      "name": "music: silent until the note button, then letters, words and replays play; Alt+M and a reload keep the choice",
+      "status": "PASS"
+    },
+    {
+      "name": "a shared race shows its verdict and plays both runs back on one clock (mock API)",
+      "status": "PASS"
+    },
+    {
+      "name": "line view: lines wrap to the stage, the cursor rides the current line, and a finished line moves up",
+      "status": "PASS"
+    },
+    {
+      "name": "line view keeps a long pasted word inside a phone",
+      "status": "PASS"
+    },
+    {
+      "name": "coach: runs teach it, the report finds the slippy key, a drill leans on it, and forget clears it",
+      "status": "PASS"
+    },
+    {
+      "name": "coach: before it knows your weak keys, its button fills the gaps, then checks every key",
+      "status": "PASS"
+    },
+    {
+      "name": "jam: free typing plays, Esc shows the stats, playback types it again, and a shared jam opens sealed (mock API)",
+      "status": "PASS"
+    },
+    {
+      "name": "after a run the coach leaves notes, history keeps runs and jams to reopen, and the mode line explains tempo",
+      "status": "PASS"
+    },
+    {
       "name": "phone layout fits, exposes a large input, and handles native input events",
       "status": "PASS",
       "detail": {
@@ -61,6 +97,10 @@
     },
     {
       "name": "every run mode stays reachable inside the phone toolbar",
+      "status": "PASS"
+    },
+    {
+      "name": "jam fits a phone and takes native input",
       "status": "PASS"
     },
     {
@@ -77,6 +117,18 @@
     },
     {
       "name": "outgoing long words do not enlarge the phone layout with normal motion",
+      "status": "PASS"
+    },
+    {
+      "name": "an accuracy run has no clock: three slips end it, and the score is clean words",
+      "status": "PASS"
+    },
+    {
+      "name": "letter by letter shows one key at a time, the space as ␣, and a slip in red; Alt+L cycles views",
+      "status": "PASS"
+    },
+    {
+      "name": "tempo keeps time with a metronome: even clicks on the tick grid, the beat brighter",
       "status": "PASS"
     },
     {

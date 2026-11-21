@@ -55,7 +55,8 @@ async function route(request,env){
    if(error instanceof ApiError&&error.status===404)return response(renderPage(meta),404,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});
    throw error;
   }
-  meta={...meta,title:`${Math.round(record.run.stats.wpm)} wpm · typy`,description:`${record.name?record.name+' found':'Find'} a rhythm: ${record.run.stats.accuracy}% accuracy and a ${record.run.stats.bestStreak}-word streak. Watch the replay or race the ghost.`,image:`${CANONICAL}/api/og/${record.id}.png`};
+  if(record.run.mode==='accuracy')meta={...meta,title:`${record.run.stats.cleanWords||0} clean words · typy`,description:`${record.name?record.name+' kept':'Keep'} it clean: ${record.run.stats.cleanWords||0} clean words at ${record.run.stats.accuracy}% accuracy, no clock. Watch the replay or race the ghost.`,image:`${CANONICAL}/api/og/${record.id}.png`};
+  else meta={...meta,title:`${Math.round(record.run.stats.wpm)} wpm · typy`,description:`${record.name?record.name+' found':'Find'} a rhythm: ${record.run.stats.accuracy}% accuracy and a ${record.run.stats.bestStreak}-word streak. Watch the replay or race the ghost.`,image:`${CANONICAL}/api/og/${record.id}.png`};
  }else if(path==='/jam'){
   meta={...meta,title:'jam · typy',description:'Type anything and it plays a little jazz. When you are done, see your stats and share the tune.'};
  }else if(path.startsWith('/j/')){

@@ -15,3 +15,31 @@
 .coach-notes{border-top:1px solid var(--line);padding:14px 0 18px}.coach-notes-list{list-style:none;margin:12px 0 0;padding:0;display:flex;flex-direction:column;gap:10px}.coach-note{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;font-size:15px;line-height:1.55;color:var(--ink)}.coach-note::before{content:"";flex:none;width:7px;height:7px;border-radius:50%;background:var(--accent);transform:translateY(-2px)}.coach-note.best::before,.coach-note.up::before,.coach-note.clean::before{background:var(--chart)}.coach-note span{flex:1;min-width:0}.coach-note .text-button{font-size:12px;white-space:nowrap}#coach-next{color:var(--accent)}
 @media(max-width:700px){.coach-note{font-size:14px}}
 .history-list{display:flex;flex-direction:column;max-height:min(58vh,520px);overflow:auto;margin:16px -10px 4px}.history-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:3px 16px;text-align:left;padding:11px 10px;border-radius:8px;border-top:1px solid var(--line);color:var(--ink)}.history-row:first-child{border-top-color:transparent}.history-row:hover,.history-row:focus-visible{background:var(--soft)}.history-title{font-family:var(--mono);font-size:14px;letter-spacing:-.3px}.history-when{grid-row:span 2;align-self:center;font-family:var(--mono);font-size:10px;color:var(--muted);white-space:nowrap}.history-detail{font-size:12px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.history-row.jam .history-title::before{content:"♪ ";color:var(--accent)}.history-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}
+/* Accuracy runs: strike dots read like tempo's missed beats */
+.strike-track{padding-top:10px}
+#strike-dots{display:flex;gap:6px;align-items:center}
+#strike-dots i{width:7px;height:7px;border-radius:50%;border:1px solid var(--error);background:var(--error)}
+#strike-dots i.lost{background:transparent;opacity:.35}
+.accuracy-option{display:flex;align-items:center;gap:6px}
+.accuracy-option svg{flex:none;margin-top:-1px}
+/* Tempo's metronome: a notch for each tick of this beat, a dot that pulses on every tick */
+.tempo-rail{position:relative}
+.tempo-ticks{position:absolute;inset:0;pointer-events:none}
+.tempo-ticks i{position:absolute;top:0;bottom:0;width:2px;margin-left:-1px;background:var(--paper)}
+.tempo-lead{display:flex;align-items:center;gap:7px}
+.tempo-pulse{width:6px;height:6px;border-radius:50%;background:var(--accent);opacity:.25;flex:none}
+.tempo-pulse.on{animation:tick-pulse .28s ease-out}
+.tempo-pulse.on.beat{animation:beat-pulse .4s ease-out}
+@keyframes tick-pulse{from{opacity:1;transform:scale(1.5)}to{opacity:.25;transform:scale(1)}}
+@keyframes beat-pulse{from{opacity:1;transform:scale(2.3)}to{opacity:.25;transform:scale(1)}}
+@media (prefers-reduced-motion:reduce){.tempo-pulse.on,.tempo-pulse.on.beat{animation:none;opacity:1}}
+/* Letter view: one key at a time */
+.stage.letters .word-wrap{display:none}
+.letter-view{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;pointer-events:none}
+.letter-main{display:flex;align-items:baseline;gap:.3em;font-family:var(--mono);font-variant-ligatures:none}
+.letter-current{font-size:clamp(84px,15vw,180px);font-weight:500;line-height:1;color:var(--ink);min-width:.62em;text-align:center}
+.letter-current.incorrect{color:var(--error)}
+.letter-current.space,.letter-current.waiting{color:var(--muted)}
+.letter-next{font-size:clamp(28px,4.6vw,54px);line-height:1;color:var(--faint);min-width:.62em}
+.letter-word{font-family:var(--mono);font-size:clamp(15px,2.1vw,20px);letter-spacing:.04em;color:var(--faint)}
+.letter-word .correct{color:var(--word)}

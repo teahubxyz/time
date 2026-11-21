@@ -7,7 +7,8 @@ export const MODE_INFO = {
   '120': {name: '120 seconds', how: 'two minutes: long enough to find a rhythm and keep it.'},
   '50': {name: '50 words', how: 'fifty words as fast as they come. the clock stops at the last one.'},
   'endless': {name: 'endless', how: 'no clock and no end. press enter when you’re done.'},
-  'tempo': {name: 'tempo', how: 'a beat sets the pace, starting from your usual speed. finish each word before its beat and the beat gets faster. miss three beats and the run ends.'}
+  'tempo': {name: 'tempo', how: 'a metronome sets the pace, starting from your usual speed. finish each word before its beat, the brighter tick, and the beat gets faster. miss three beats and the run ends.'},
+  'accuracy': {name: 'accuracy', how: 'no clock, so take your time. a slip costs a strike, three strikes end the run, and every 25 clean words wins one back. your score is the clean words.'}
 };
 
 export const JAM_HOW = 'type anything and it plays: letters sing, a space changes the chord, a full stop goes home. esc when you’re done.';

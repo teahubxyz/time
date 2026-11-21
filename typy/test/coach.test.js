@@ -143,3 +143,14 @@ test('the coach sends slow word starts to line view, bursts to tempo, and names 
   assert.match(tempo.notes[0].text, /kept up with the beat until 55 wpm/);
   assert.equal(tempo.next, null, 'tempo sets its own goal: the beat');
 });
+
+test('an accuracy run is scored in clean words, and a sloppy run points at one', () => {
+  const accuracyRun = {mode: 'accuracy', finishedReason: 'strikes', stats: {wpm: 31, accuracy: 96, completedWords: 40, keystrokes: 200, cleanWords: 37, slips: 3, bestStreak: 21}, events: []};
+  const review = reviewRun(usual([60, 62, 61]), accuracyRun, {mode: 'accuracy'});
+  assert.equal(review.notes[0].kind, 'clean-run');
+  assert.match(review.notes[0].text, /37 clean words before the third slip/);
+  assert.ok(!review.notes.some(note => note.kind === 'down'), 'a slow accuracy run is slow on purpose');
+  assert.equal(review.next, null);
+  const sloppy = reviewRun(usual([50, 50, 50]), fakeRun({wpm: 52, accuracy: 88}));
+  assert.equal(sloppy.notes[0].action?.kind, 'accuracy');
+});
