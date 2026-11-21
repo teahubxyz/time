@@ -56,13 +56,19 @@ The note button in the header (or **Alt+M**, Option+M on a Mac) turns on a littl
 
 **public/music.js** keeps the mapping pure and deterministic: a conductor turns the same event log replays already store into notes and chords, so a replay plays back exactly the music its run made. The sound is synthesized with Web Audio (an FM electric piano, a bass, a generated room and a limiter): no samples, nothing fetched, and no audio context at all until music is turned on. Music is off by default; local storage (`typy.music`) keeps the choice. **test/music.test.js** holds every note to its bar's scale and checks that live play and its replay make identical music.
 
+## Install and offline
+
+typy installs like an app (standard issue: `.agents/skills/standard-issue`). **public/manifest.webmanifest** names it, with icons drawn from **public/icon.svg** and **public/icon-maskable.svg** (render them again with the skill's `render.mjs`; the build carries the PNGs to the Worker as base64). An **install** button joins the footer when the browser offers to install; on iPhone and iPad it says how to add typy from the share sheet.
+
+The Worker writes the service worker (**src/sw.js**) for each revision and serves it uncached, so every deploy installs fresh files and clears the last deploy's. It fetches everything network-first, since the modules are not versioned, and keeps the cache for offline: the app opens and plays without a network, and anything that needs the server (the daily, races, jams, sharing) says so in a sentence. `check.mjs` from the skill proves it: `node .agents/skills/standard-issue/check.mjs https://typy.lol/`.
+
 ## How it fits together
 
 **public/app.js** only brings the modules together and runs the frame loop. The rest is small modules:
 
 - **core/**: `dom.js` (helpers), `state.js` (settings, bests, the sound engines, the coach’s data, and `S`, the state shared between modules), `screens.js` (one screen is up at a time: it names its panel and can own the keyboard, typed input and the frame loop), `bus.js` (events between features), and `ui.js` (page-wide dialogs).
 - **play/**: the typing game. `modes.js` (each mode’s names and how it works), `options.js` (modes, settings, the words menu), `stage.js` (word and line views), `run.js`, `result.js`, `replay.js`, `share.js`, and `router.js` (what each address shows).
-- **features/**: `themes-ui.js`, `coach-ui.js` (the report, practice runs, and notes after every run), `music-ui.js` and `history-ui.js`.
+- **features/**: `themes-ui.js`, `coach-ui.js` (the report, practice runs, and notes after every run), `music-ui.js`, `history-ui.js` and `install-ui.js` (the service worker and the install button).
 - **jam/**: free play.
 - Pure engines with unit tests and no DOM: `coach.js`, `music.js`, `themes.js` and `history.js`, plus `src/game.js`, `words.js` and `jam.js`, which the Worker shares.
 

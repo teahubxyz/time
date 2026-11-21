@@ -15,6 +15,10 @@ const findings = [];
 const checks = [];
 const errors = [];
 const browser = await chromium.launch({ headless: true, executablePath: process.env.TYPY_CHROME || chromium.executablePath(), args: ['--no-sandbox', '--disable-dev-shm-usage'] });
+// Playwright can't route what a service worker fetches, and the mock-API checks
+// route requests, so contexts run without one unless a check asks for it.
+const openContext = browser.newContext.bind(browser);
+browser.newContext = (options = {}) => openContext({ serviceWorkers: 'block', ...options });
 const desktop = await browser.newContext({ viewport: { width: 1440, height: 1000 }, reducedMotion: 'reduce' });
 const page = await desktop.newPage();
 page.on('pageerror', error => errors.push(error.message));
@@ -655,6 +659,24 @@ await check('tempo keeps time with a metronome: even clicks on the tick grid, th
   assert.ok(gaps.every(gap => gap > 0.5 && gap < 0.7), 'evenly spaced, 600 ms at 60 wpm: ' + gaps.map(gap => gap.toFixed(3)).join(', '));
   assert.deepEqual(clicks.slice(0, 3).map(click => click.value), [1320, 1320, 1760], 'two soft ticks, then the beat');
   assert.equal(await p.locator('#tempo-ticks i').count(), 2, 'the rail shows the beat as three ticks');
+  await context.close();
+});
+await check('typy installs: a service worker caches the app, it opens offline, and the API says it needs the network', async () => {
+  const context = await browser.newContext({ viewport: { width: 1200, height: 900 }, reducedMotion: 'reduce', serviceWorkers: 'allow' });
+  const p = await context.newPage();
+  p.on('pageerror', error => errors.push(error.message));
+  await p.goto(base + '/');
+  await p.locator('#word[data-word]').waitFor();
+  const manifest = await p.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
+  assert.equal(manifest.display, 'standalone');
+  await p.waitForFunction(() => navigator.serviceWorker.controller !== null, null, { timeout: 15000 });
+  await context.setOffline(true);
+  await p.reload();
+  await p.locator('#word[data-word]').waitFor();
+  const offline = await p.evaluate(async () => { const response = await fetch('/api/daily'); return { status: response.status, body: await response.json() }; });
+  assert.equal(offline.status, 503);
+  assert.match(offline.body.error, /offline/);
+  await context.setOffline(false);
   await context.close();
 });
 await check('no uncaught browser script errors', async () => assert.deepEqual(errors, []));

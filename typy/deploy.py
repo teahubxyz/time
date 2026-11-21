@@ -8,6 +8,7 @@ the deployment machine.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import json
 import os
@@ -32,6 +33,11 @@ def git(*args: str) -> str:
     return subprocess.check_output(["git", "-C", str(ROOT), *args], text=True).strip()
 
 
+def built_body(path: Path, asset: dict) -> str:
+    """What the build writes for a file: base64 for images, the text itself otherwise."""
+    return base64.b64encode(path.read_bytes()).decode() if asset.get("encoding") == "base64" else path.read_text()
+
+
 def checked_modules() -> dict[str, bytes]:
     """Never upload stale generated assets beside a newer source file."""
     assets_text = (HERE / "src" / "assets.js").read_text()
@@ -41,9 +47,9 @@ def checked_modules() -> dict[str, bytes]:
     assets = json.loads(assets_text[len(prefix):].rstrip(";\n"))
     for url, asset in assets.items():
         source = asset.get("source") or ""
-        if not source or not (HERE / source).is_file() or asset.get("body") != (HERE / source).read_text():
+        if not source or not (HERE / source).is_file() or asset.get("body") != built_body(HERE / source, asset):
             raise RuntimeError(f"Stale {url}: run the build and commit its output first")
-    served = {"/" + p.relative_to(HERE / "public").as_posix() for p in (HERE / "public").rglob("*") if p.suffix in {".js", ".css", ".svg"}}
+    served = {"/" + p.relative_to(HERE / "public").as_posix() for p in (HERE / "public").rglob("*") if p.suffix in {".js", ".css", ".svg", ".png", ".webmanifest"}}
     if served - set(assets):
         raise RuntimeError(f"Unbuilt {sorted(served - set(assets))}: run the build and commit its output first")
     page_first = (HERE / "src" / "page.js").read_text().splitlines()[0]
@@ -154,7 +160,8 @@ def attach(hostname: str) -> None:
 
 
 def health() -> dict:
-    request = urllib.request.Request("https://" + DOMAIN + "/api/health", headers={"Cache-Control": "no-cache"})
+    # Cloudflare turns away urllib's default user agent with a 403, so name ourselves.
+    request = urllib.request.Request("https://" + DOMAIN + "/api/health", headers={"Cache-Control": "no-cache", "User-Agent": "typy-deploy (+https://typy.lol)"})
     with urllib.request.urlopen(request, timeout=15) as response:
         result = json.load(response)
     if result.get("ok") is not True:

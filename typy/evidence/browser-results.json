@@ -1,5 +1,5 @@
 {
-  "timestamp": "2026-11-21T17:12:39.801Z",
+  "timestamp": "2026-11-21T17:45:17.863Z",
   "target": "http://127.0.0.1:8788",
   "browser": "Chrome 156 / Playwright",
   "checks": [
@@ -129,6 +129,10 @@
     },
     {
       "name": "tempo keeps time with a metronome: even clicks on the tick grid, the beat brighter",
+      "status": "PASS"
+    },
+    {
+      "name": "typy installs: a service worker caches the app, it opens offline, and the API says it needs the network",
       "status": "PASS"
     },
     {
