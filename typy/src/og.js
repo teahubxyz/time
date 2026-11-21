@@ -32,6 +32,12 @@ export async function scorePNG(record = null){
    text(`${jam.words} WORDS`,650,440,4,1);
    rect(76,504,1048,2,4);
    text('PRESS PLAY. THEN JAM BACK.',78,551,4,2);
+ }else if(stats&&record.run.mode==='accuracy'){
+   const end=text(stats.cleanWords||0,76,240,24,1);text('CLEAN',end+30,333,7,2);
+   text(`${stats.accuracy}% ACCURACY`,78,440,4,1);
+   text(`${stats.slips||0} SLIPS`,650,440,4,1);
+   rect(76,504,1048,2,4);
+   text('NO CLOCK. THREE SLIPS. RACE MY GHOST.',78,551,4,2);
  }else if(stats){
    text(Math.round(stats.wpm),76,240,24,1);text('WPM',600,333,7,2);
    text(`${stats.accuracy}% ACCURACY`,78,440,4,1);

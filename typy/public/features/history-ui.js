@@ -44,7 +44,7 @@ function row(entry) {
   } else {
     const result = entry.result, stats = result.run.stats;
     const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm).verdict : '';
-    title.textContent = pretty(stats.wpm) + ' wpm · ' + round1(stats.accuracy) + '%';
+    title.textContent = (result.run.mode === 'accuracy' ? (stats.cleanWords ?? 0) + ' clean' : pretty(stats.wpm) + ' wpm') + ' · ' + round1(stats.accuracy) + '%';
     detail.textContent = [modeName(result.run.mode), sourceName(result.source || {kind: 'common'}), race && (race === 'tied' ? 'tied race' : race + ' race'), result.isBest && 'best'].filter(Boolean).join(' · ');
   }
   button.append(title, when, detail);

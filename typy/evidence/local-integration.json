@@ -1,6 +1,6 @@
 {
-  "checkedAt": "2026-10-29T21:10:41.842Z",
-  "base": "http://127.0.0.1:8787",
+  "checkedAt": "2026-11-21T17:18:41.071Z",
+  "base": "http://127.0.0.1:8811",
   "health": {
     "ok": true,
     "rev": "local",
@@ -9,16 +9,17 @@
     "quotas": "ready",
     "topics": false
   },
-  "score": "314",
-  "resultUrl": "http://127.0.0.1:8787/r/70971e25ae384edc822becdf",
+  "score": "300",
+  "resultUrl": "http://127.0.0.1:8811/r/7cbc6f222d7e4007ad8a0059",
   "storedWords": 13,
   "storedEvents": 46,
   "replayWord": "river",
-  "raceUrl": "http://127.0.0.1:8787/race/70971e25ae384edc822becdf",
+  "raceUrl": "http://127.0.0.1:8811/j/103c9fb90cbf425b8c0254bf",
   "ghostVisible": true,
+  "jamUrl": "http://127.0.0.1:8811/j/103c9fb90cbf425b8c0254bf",
   "og": {
     "status": 200,
-    "bytes": 4303,
+    "bytes": 4152,
     "width": 1200,
     "height": 630
   },

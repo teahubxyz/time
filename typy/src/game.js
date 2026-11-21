@@ -1,9 +1,16 @@
 import { generateWords, normalizePassage } from './words.js';
 
-export const MODES = ['30', '60', '120', '50', 'endless', 'tempo'];
+export const MODES = ['30', '60', '120', '50', 'endless', 'tempo', 'accuracy'];
 /** Modes that end on a clock. Their name is the number of seconds they run. */
 export const TIMED_MODES = ['30', '60', '120'];
 export const timedSeconds = mode => TIMED_MODES.includes(String(mode)) ? Number(mode) : null;
+/** Accuracy runs have no clock. A slip (the first wrong key after clean typing) costs a strike,
+ *  three strikes end the run, and every STRIKE_BACK clean words wins one back. */
+export const ACCURACY_STRIKES = 3;
+export const STRIKE_BACK = 25;
+/** Tempo's beat sits on a grid of ticks about this long at the starting pace: a tick is a whole
+ *  number of characters, chosen once per run, so the metronome stays even. */
+const TICK_TARGET_MS = 550;
 export const MAX_REPLAY_EVENTS = 30000;
 export const MAX_REPLAY_WORDS = 6000;
 
@@ -51,6 +58,7 @@ export function summarizeRun(run) {
   const states = new Map();
   let hits = 0;
   let errors = 0;
+  let slips = 0;
   for (const event of events) {
     if (!states.has(event.index)) states.set(event.index, { flags: [], errors: 0 });
     const state = states.get(event.index);
@@ -58,6 +66,8 @@ export function summarizeRun(run) {
       state.flags.push(true);
       hits++;
     } else if (event.type === 'miss') {
+      // A slip is the first wrong key after clean typing; keys after it, until it is fixed, are the same slip.
+      if (prefixLength(state.flags) === state.flags.length) slips++;
       state.flags.push(false);
       state.errors++;
       errors++;
@@ -67,6 +77,7 @@ export function summarizeRun(run) {
   }
   let correctChars = 0;
   let completedWords = 0;
+  let cleanWords = 0;
   let streak = 0;
   let bestStreak = 0;
   const wordSpeeds = [];
@@ -81,6 +92,7 @@ export function summarizeRun(run) {
     if (complete) {
       correctChars += lengthOf(word) + 1;
       completedWords++;
+      if (state.errors === 0) cleanWords++;
       streak = state.errors === 0 ? streak + 1 : 0;
       bestStreak = Math.max(bestStreak, streak);
       const stop = Number.isFinite(timing.typedEnd) ? timing.typedEnd : timing.end;
@@ -107,7 +119,7 @@ export function summarizeRun(run) {
     wpm: speed(correctChars, durationMs),
     accuracy: hits + errors ? rounded(hits * 100 / (hits + errors)) : 100,
     bestStreak, correctChars, keystrokes: hits + errors, errors,
-    completedWords, slowest, sparkline
+    completedWords, cleanWords, slips, slowest, sparkline
   };
 }
 
@@ -118,6 +130,9 @@ export class TypingGame {
     this.mode = MODES.includes(String(mode)) ? String(mode) : '30';
     this.advance = advance === 'letter' ? 'letter' : 'space';
     this.paceWpm = clamp(Number(paceWpm) || 40, 10, 200);
+    this.tickChars = clamp(Math.round(TICK_TARGET_MS * this.paceWpm / 12000), 1, 8);
+    this.tickMs = null;
+    this.beatTicks = null;
     this.status = 'ready';
     this.wordIndex = 0;
     this.buffer = [];
@@ -134,6 +149,8 @@ export class TypingGame {
     this.streak = 0;
     this.bestStreak = 0;
     this.misses = 0;
+    this.strikes = 0;
+    this.cleanWords = 0;
     this.waitingForBeat = false;
     this.allowOptionalSeparator = false;
     this.beatDeadline = null;
@@ -181,7 +198,11 @@ export class TypingGame {
   }
 
   _setBeat(now) {
-    this.beatDurationMs = clamp((lengthOf(this.word) + 1) * 12000 / this.paceWpm, 350, 15000);
+    // A tick is tickChars characters at the pace, and a word gets the whole ticks its letters and
+    // space need, so the metronome stays even and every deadline lands on a tick.
+    this.tickMs = this.tickChars * 12000 / this.paceWpm;
+    this.beatTicks = clamp(Math.ceil((lengthOf(this.word) + 1) / this.tickChars), Math.ceil(350 / this.tickMs), Math.max(1, Math.floor(15000 / this.tickMs)));
+    this.beatDurationMs = this.beatTicks * this.tickMs;
     this.beatDeadline = now + this.beatDurationMs;
   }
 
@@ -217,6 +238,10 @@ export class TypingGame {
       this.completedChars += lengthOf(this.word) + 1;
       this.streak = this.wordErrors === 0 ? this.streak + 1 : 0;
       this.bestStreak = Math.max(this.bestStreak, this.streak);
+      if (this.wordErrors === 0) {
+        this.cleanWords++;
+        if (this.mode === 'accuracy' && this.strikes > 0 && this.cleanWords % STRIKE_BACK === 0) this.strikes--;
+      }
       if (isBeat) this.paceWpm = Math.min(240, this.paceWpm * 1.035);
     } else {
       this.streak = 0;
@@ -303,14 +328,21 @@ export class TypingGame {
     if (this.buffer.length >= 4096) return this._snapshot(now);
     const target = Array.from(this.word);
     const correct = key === target[this.buffer.length];
+    // A slip is the first wrong key after clean typing. In an accuracy run it costs a strike.
+    const slip = !correct && prefixLength(this._flags()) === this.buffer.length;
     this.buffer.push(key);
     if (correct) this.hits++;
     else {
       this.errors++;
       this.wordErrors++;
       this.streak = 0;
+      if (slip && this.mode === 'accuracy') this.strikes++;
     }
     this._event(correct ? 'hit' : 'miss', now);
+    if (this.mode === 'accuracy' && this.strikes >= ACCURACY_STRIKES) {
+      this._finish(now, 'strikes');
+      return this._snapshot(now);
+    }
     if (this.buffer.join('') === this.word) {
       this.typedEnd = now;
       if (this.mode === 'tempo') this.waitingForBeat = true;
@@ -348,6 +380,9 @@ export class TypingGame {
       wpm: speed(this.completedChars + correctPrefix, elapsedMs),
       accuracy: this.hits + this.errors ? rounded(this.hits * 100 / (this.hits + this.errors)) : 100,
       bestStreak: this.bestStreak, streak: this.streak, misses: this.misses,
+      strikes: this.strikes, cleanWords: this.cleanWords,
+      strikeBackIn: this.mode === 'accuracy' ? STRIKE_BACK - (this.cleanWords % STRIKE_BACK) : null,
+      tickMs: this.tickMs, beatTicks: this.beatTicks, beatDeadlineAt: this.beatDeadline,
       paceWpm: rounded(this.paceWpm),
       beatRemainingMs: this.beatDeadline === null ? null : Math.max(0, this.beatDeadline - now),
       beatDurationMs: this.beatDurationMs,
@@ -387,7 +422,7 @@ export class TypingGame {
       Object.assign(run.stats, {
         wpm: state.wpm, accuracy: state.accuracy, bestStreak: state.bestStreak,
         correctChars: state.correctChars, keystrokes: state.keystrokes,
-        errors: state.errors, completedWords: state.completedWords
+        errors: state.errors, completedWords: state.completedWords, cleanWords: state.cleanWords
       });
     }
     return run;

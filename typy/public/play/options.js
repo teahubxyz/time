@@ -5,7 +5,7 @@ import { showMusic } from '/features/music-ui.js';
 import { JAM_HOW, MODE_INFO } from '/play/modes.js';
 import { route, topicRoute } from '/play/router.js';
 import { beginRun, focusTyping, newCommonPassage } from '/play/run.js';
-import { applyView, redrawStage } from '/play/stage.js';
+import { applyView, redrawStage, VIEWS } from '/play/stage.js';
 import { normalizePassage } from '/words.js';
 
 export function sourceName(source = S.source) {
@@ -35,10 +35,11 @@ export function updateOptions() {
   $('advance-setting').value = effectiveAdvance;
   $('advance-setting').disabled = Boolean(S.ghost);
   $('preview-setting').checked = settings.preview;
-  $('view-setting').value = settings.view === 'line' ? 'line' : 'word';
+  $('metronome-setting').checked = settings.metronome !== false;
+  $('view-setting').value = VIEWS.includes(settings.view) ? settings.view : 'word';
   $('footer-board').hidden = S.source.kind !== 'daily';
   $('daily-link').setAttribute('aria-current', S.source.kind === 'daily' ? 'page' : 'false');
-  $('best-score').textContent = bests[localBestKey()] ? 'device best  ' + pretty(bests[localBestKey()]) + ' wpm' : '';
+  $('best-score').textContent = bests[localBestKey()] ? 'device best  ' + pretty(bests[localBestKey()]) + (S.selectedMode === 'accuracy' ? ' clean words' : ' wpm') : '';
   $('jam-option').setAttribute('aria-pressed', String(jamming()));
   setText('mode-how', jamming() ? JAM_HOW : MODE_INFO[S.selectedMode]?.how || '');
   $('source-open').hidden = jamming();
@@ -57,10 +58,10 @@ document.querySelectorAll('[data-mode]').forEach(button => button.addEventListen
 $('settings-open').addEventListener('click', () => { updateOptions(); $('settings-dialog').showModal(); });
 $('settings-done').addEventListener('click', () => {
   const changed = settings.advance !== $('advance-setting').value || settings.preview !== $('preview-setting').checked;
-  const nextView = $('view-setting').value === 'line' ? 'line' : 'word';
+  const nextView = VIEWS.includes($('view-setting').value) ? $('view-setting').value : 'word';
   const viewChanged = settings.view !== nextView;
   if (!S.ghost) settings.advance = $('advance-setting').value;
-  settings.preview = $('preview-setting').checked; settings.view = nextView; writeLocal('settings',settings);
+  settings.preview = $('preview-setting').checked; settings.view = nextView; settings.metronome = $('metronome-setting').checked; writeLocal('settings',settings);
   $('settings-dialog').close();
   if (viewChanged) applyView();
   if (changed && S.view === 'play') beginRun({focus:true});

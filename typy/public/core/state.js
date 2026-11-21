@@ -4,7 +4,7 @@ import { createRecorder, readStats } from '/coach.js';
 import { readLocal } from '/core/dom.js';
 import { createConductor, createJamConductor, createMusic } from '/music.js';
 
-export const settings = {...{advance:'space',preview:true,view:'word'}, ...readLocal('settings', {})};
+export const settings = {...{advance:'space',preview:true,view:'word',metronome:true}, ...readLocal('settings', {})};
 export const bests = readLocal('bests', {});
 // Followed live: a visitor can turn the setting on mid-run, and the beat rail
 // and the error nudge are drawn by script, out of reach of the stylesheet rule.

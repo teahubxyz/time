@@ -17,12 +17,14 @@ export function displayResult(result) {
   S.selectedMode = run.mode;
   S.source = result.source || {kind:'common'};
   S.passage = [...run.words];
-  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + modeName(run.mode) + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent');
+  const accuracyRun = run.mode === 'accuracy';
+  const clean = stats.cleanWords ?? 0;
+  $('result-kicker').textContent = (result.name ? result.name + ' · ' : '') + (accuracyRun ? 'accuracy · ' + pretty(stats.wpm) + ' wpm, no clock' : modeName(run.mode) + (run.finishedReason === 'manual' && (timedSeconds(run.mode) !== null || run.mode === '50') ? ' · finished early' : ', well spent'));
   const race = result.ghostStats ? raceOutcome(stats.wpm, result.ghostStats.wpm) : null;
   const rival = result.ghostName || '';
   // Your own race says "you"; a shared race uses the racer's name.
   const racer = result.local ? 'you' : result.name || 'anonymous';
-  $('result-title').textContent = !race ? 'there’s your rhythm.' : race.verdict === 'won' ? racer + ' beat ' + (rival || 'the ghost') + '.' : race.verdict === 'lost' ? (rival || 'the ghost') + ' got there first.' : 'a dead heat.';
+  $('result-title').textContent = !race ? (accuracyRun ? clean + ' clean ' + (clean === 1 ? 'word.' : 'words.') : 'there’s your rhythm.') : race.verdict === 'won' ? racer + ' beat ' + (rival || 'the ghost') + '.' : race.verdict === 'lost' ? (rival || 'the ghost') + ' got there first.' : 'a dead heat.';
   $('race-outcome').hidden = !race;
   if (race) {
     $('race-outcome').dataset.verdict = race.verdict;
@@ -31,7 +33,9 @@ export function displayResult(result) {
   }
   setText('replay-label', result.ghostRun ? 'watch the race' : 'replay');
   if (!result.local && result.raceOf && !result.ghostRun) loadRace(result);
-  $('result-wpm').textContent = pretty(stats.wpm);
+  // An accuracy run's score is its clean words; its pace moves up into the kicker.
+  $('result-wpm').textContent = accuracyRun ? clean : pretty(stats.wpm);
+  setText('result-unit', accuracyRun ? (clean === 1 ? 'clean word' : 'clean words') : 'words per minute');
   $('result-accuracy').textContent = round1(stats.accuracy) + '%';
   $('result-streak').textContent = stats.bestStreak + (stats.bestStreak === 1 ? ' word' : ' words');
   $('result-words').textContent = stats.completedWords;

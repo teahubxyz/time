@@ -247,6 +247,7 @@ export function createMusic({context = null, volume = 0.85} = {}) {
   let input = null;
   let bar = null;
   let noise = null;
+  let dry = null;
   let unlocked = false;
   const offline = () => typeof ctx?.startRendering === 'function';
 
@@ -268,6 +269,7 @@ export function createMusic({context = null, volume = 0.85} = {}) {
     const out = ctx.createGain();
     out.gain.value = volume;
     limiter.connect(out); out.connect(ctx.destination);
+    dry = limiter;
     const tone = ctx.createBiquadFilter();
     tone.type = 'lowpass'; tone.frequency.value = 7200; tone.Q.value = 0.3;
     tone.connect(limiter);
@@ -412,6 +414,20 @@ export function createMusic({context = null, volume = 0.85} = {}) {
     get context() { return ctx; },
     /** The audio clock in seconds, starting the engine if it isn't yet. */
     clock() { return ready() ? ctx.currentTime : 0; },
+    // The metronome's click: a short, dry blip, brighter on the beat a word must be done by.
+    tick(when = null, beat = false) {
+      if (!ready()) return;
+      const t = when ?? ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const amp = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(beat ? 1760 : 1320, t);
+      amp.gain.setValueAtTime(0, t);
+      amp.gain.linearRampToValueAtTime(beat ? 0.34 : 0.16, t + 0.002);
+      amp.gain.exponentialRampToValueAtTime(0.0001, t + (beat ? 0.07 : 0.045));
+      osc.connect(amp); amp.connect(dry);
+      osc.start(t); osc.stop(t + 0.09);
+    },
     /** Call from a user gesture: browsers only start audio after one. */
     unlock() {
       if (!ready() || unlocked || offline()) return;

@@ -74,7 +74,7 @@ await check('Escape resets a run and settings switch to last-letter advancement'
   await page.keyboard.type('breathe');
   assert.equal(await page.locator('#word-number').innerText(), '002');
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('typy.settings')));
-  assert.deepEqual(saved, { advance: 'letter', preview: false, view: 'word' });
+  assert.deepEqual(saved, { advance: 'letter', preview: false, view: 'word', metronome: true });
 });
 await check('custom passage completes 50-word mode with a result card', async () => {
   await page.locator('[data-mode="50"]').click();
@@ -313,7 +313,10 @@ await check('line view: lines wrap to the stage, the cursor rides the current li
   }
   assert.equal((await p.locator('#line-prev').innerText()).trim(), first, 'the finished line moves up and fades');
   await p.keyboard.press('Alt+KeyL');
-  assert.equal(await p.locator('#line-view').isHidden(), true, 'Alt+L switches back to word by word');
+  assert.equal(await p.locator('#line-view').isHidden(), true, 'Alt+L moves on to letter by letter');
+  assert.equal(await p.locator('#letter-view').isVisible(), true);
+  await p.keyboard.press('Alt+KeyL');
+  assert.equal(await p.locator('#letter-view').isHidden(), true, 'then back to word by word');
   await p.keyboard.press('Alt+KeyL');
   assert.equal(JSON.parse(await p.evaluate(() => localStorage.getItem('typy.settings'))).view, 'line');
   await lineContext.close();
@@ -504,10 +507,10 @@ await check('phone layout fits, exposes a large input, and handles native input 
 });
 await check('every run mode stays reachable inside the phone toolbar', async () => {
   const modes = phone.locator('[data-mode]');
-  assert.equal(await modes.count(), 6);
+  assert.equal(await modes.count(), 7);
   const bounds = await phone.locator('#mode-switch').boundingBox();
   assert.equal(bounds.x >= 0 && bounds.x + bounds.width <= 391, true, 'the mode switch must not run off the phone: ' + JSON.stringify(bounds));
-  for (let index = 0; index < 6; index++) {
+  for (let index = 0; index < 7; index++) {
     const button = await modes.nth(index).boundingBox();
     assert.equal(button.x >= 0 && button.x + button.width <= 391, true, 'mode ' + index + ' is off-screen');
     assert.equal(button.height >= 28, true, 'mode ' + index + ' is too short to tap');
@@ -587,6 +590,72 @@ await check('outgoing long words do not enlarge the phone layout with normal mot
     assert.equal(dimensions.document, 390);
   }
   await animatedContext.close();
+});
+await check('an accuracy run has no clock: three slips end it, and the score is clean words', async () => {
+  await home();
+  await page.locator('[data-mode=accuracy]').click();
+  await paste('cat dog sun');
+  assert.equal(await page.locator('#strike-track').isVisible(), true);
+  assert.equal(await page.locator('#time-label').innerText(), 'clean');
+  await page.keyboard.type('cat dog ');
+  assert.equal(await page.locator('#live-time').innerText(), '2');
+  for (const slip of ['x', 'z']) { await page.keyboard.type(slip); await page.keyboard.press('Backspace'); }
+  assert.equal(await page.locator('#strike-dots i.lost').count(), 2);
+  await page.keyboard.type('q');
+  await page.locator('#result-unit').waitFor();
+  assert.equal(await page.locator('#result-unit').innerText(), 'clean words');
+  assert.equal(await page.locator('#result-wpm').innerText(), '2');
+  assert.match(await page.locator('#result-title').innerText(), /2 clean words/);
+});
+await check('letter by letter shows one key at a time, the space as ␣, and a slip in red; Alt+L cycles views', async () => {
+  await home();
+  await page.locator('[data-mode="30"]').click();
+  await page.locator('#settings-open').click();
+  await page.locator('#advance-setting').selectOption('space');
+  await page.locator('#preview-setting').setChecked(true);
+  await page.locator('#view-setting').selectOption('letter');
+  await page.locator('#settings-done').click();
+  await paste('hi yo');
+  assert.equal(await page.locator('#letter-view').isVisible(), true);
+  assert.equal(await page.locator('#letter-current').innerText(), 'h');
+  assert.equal(await page.locator('#letter-next').innerText(), 'i');
+  await page.keyboard.type('hi');
+  assert.equal(await page.locator('#letter-current').innerText(), '␣');
+  await page.keyboard.type(' x');
+  assert.equal(await page.locator('#letter-current').innerText(), 'y');
+  assert.equal(await page.locator('#letter-current.incorrect').count(), 1);
+  await page.keyboard.press('Backspace');
+  assert.equal(await page.locator('#letter-current.incorrect').count(), 0);
+  await page.keyboard.press('Alt+KeyL');
+  assert.equal(await page.locator('#letter-view').isVisible(), false);
+  assert.equal(await page.locator('#word').isVisible(), true);
+});
+await check('tempo keeps time with a metronome: even clicks on the tick grid, the beat brighter', async () => {
+  const context = await browser.newContext({ viewport: { width: 1200, height: 900 } });
+  const p = await context.newPage();
+  await p.addInitScript(() => {
+    window.__clicks = [];
+    const proto = window.AudioContext.prototype, make = proto.createOscillator;
+    proto.createOscillator = function () {
+      const osc = make.call(this), set = osc.frequency.setValueAtTime.bind(osc.frequency);
+      osc.frequency.setValueAtTime = (value, when) => { window.__clicks.push({value, when}); return set(value, when); };
+      return osc;
+    };
+  });
+  await home(p);
+  await p.evaluate(() => localStorage.setItem('typy.lastAverage', '60'));
+  await home(p);
+  await p.locator('[data-mode=tempo]').click();
+  await paste('elephant giraffe', p);
+  await p.keyboard.type('e');
+  await p.waitForTimeout(2700);
+  const clicks = await p.evaluate(() => window.__clicks.filter(click => click.value === 1320 || click.value === 1760));
+  assert.ok(clicks.length >= 4, 'clicks were booked: ' + clicks.length);
+  const gaps = clicks.slice(1).map((click, i) => click.when - clicks[i].when);
+  assert.ok(gaps.every(gap => gap > 0.5 && gap < 0.7), 'evenly spaced, 600 ms at 60 wpm: ' + gaps.map(gap => gap.toFixed(3)).join(', '));
+  assert.deepEqual(clicks.slice(0, 3).map(click => click.value), [1320, 1320, 1760], 'two soft ticks, then the beat');
+  assert.equal(await p.locator('#tempo-ticks i').count(), 2, 'the rail shows the beat as three ticks');
+  await context.close();
 });
 await check('no uncaught browser script errors', async () => assert.deepEqual(errors, []));
 await browser.close();

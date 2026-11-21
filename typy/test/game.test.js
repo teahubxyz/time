@@ -507,3 +507,61 @@ test('a race is won, lost or tied at whole words per minute', () => {
   assert.equal(raceOutcome(60.2, 60.4).verdict, 'tied');
   assert.deepEqual(raceOutcome(51, 58), {verdict: 'lost', margin: 7, mine: 51, theirs: 58});
 });
+
+test('accuracy runs have no clock: a slip costs a strike, keys after it are the same slip, three strikes end it', () => {
+  const game = new TypingGame({ words: ['cat', 'dog', 'sun'], mode: 'accuracy' });
+  const type = (text, at) => { for (const key of text) { game.press(key, at); at += 40; } return at; };
+  let t = type('c', 0);
+  assert.equal(game.snapshot(t).remainingMs, null);
+  t = type('xy', t);                       // one slip: y comes after x, before any fix
+  assert.equal(game.snapshot(t).strikes, 1);
+  game.press('Backspace', t += 40); game.press('Backspace', t += 40);
+  t = type('at ', t);
+  assert.equal(game.snapshot(t).cleanWords, 0, 'a word with a slip is not clean, even once fixed');
+  t = type('x', t); game.press('Backspace', t += 40); t = type('dog ', t);
+  assert.equal(game.snapshot(t).strikes, 2);
+  t = type('sun ', t);
+  assert.equal(game.snapshot(t).cleanWords, 1);
+  const end = game.press('q', t += 40);
+  assert.equal(end.status, 'finished');
+  assert.equal(end.finishedReason, 'strikes');
+  const run = game.result(t + 100);
+  assert.equal(run.mode, 'accuracy');
+  assert.equal(run.stats.slips, 3);
+  assert.equal(run.stats.cleanWords, 1);
+  assert.equal(summarizeRun(run).slips, 3, 'a shared run recounts the same slips from its replay');
+});
+
+test('accuracy runs win a strike back every 25 clean words', () => {
+  const game = new TypingGame({ words: ['a'], mode: 'accuracy' });
+  let t = 0;
+  game.press('x', t += 10); game.press('Backspace', t += 10);
+  game.press('a', t += 10); game.press(' ', t += 10);
+  assert.equal(game.snapshot(t).strikes, 1);
+  for (let i = 0; i < 24; i++) { game.press('a', t += 10); game.press(' ', t += 10); }
+  let state = game.snapshot(t);
+  assert.equal(state.cleanWords, 24);
+  assert.equal(state.strikes, 1);
+  assert.equal(state.strikeBackIn, 1);
+  game.press('a', t += 10); game.press(' ', t += 10);
+  state = game.snapshot(t);
+  assert.equal(state.cleanWords, 25);
+  assert.equal(state.strikes, 0);
+  assert.equal(state.status, 'running');
+});
+
+test('tempo beats sit on a steady tick grid, so a metronome stays even', () => {
+  const game = new TypingGame({ words: ['a', 'elephants'], mode: 'tempo', paceWpm: 60 });
+  let state = game.press('a', 0);
+  // At 60 wpm a tick is 3 characters, 600 ms; "a" and its space fit in one tick.
+  assert.equal(state.tickMs, 600);
+  assert.equal(state.beatTicks, 1);
+  assert.equal(state.beatDurationMs, 600);
+  assert.equal(state.beatDeadlineAt, 600);
+  state = game.tick(600);
+  // The beat was kept, so the pace climbs; "elephants" and its space take 4 of the new, shorter ticks.
+  assert.ok(state.tickMs < 600);
+  assert.equal(state.beatTicks, 4);
+  assert.ok(Math.abs(state.beatDurationMs - 4 * state.tickMs) < 1e-9);
+  assert.equal(state.beatDeadlineAt, 600 + state.beatDurationMs);
+});
