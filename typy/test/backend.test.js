@@ -336,3 +336,37 @@ test('an accuracy run is shareable: its clean words and slips are recounted, and
  assert.equal(record.run.mode,'accuracy');assert.equal(record.run.finishedReason,'strikes');
  assert.equal(record.run.stats.cleanWords,2);assert.equal(record.run.stats.slips,3);
 });
+test('the service worker is written for the revision, never cached, and precaches the whole app',async()=>{
+ const res=await worker.fetch(req('/sw.js'),env());
+ assert.equal(res.status,200);
+ assert.match(res.headers.get('Content-Type'),/javascript/);
+ assert.equal(res.headers.get('Cache-Control'),'no-cache');
+ const text=await res.text();
+ assert.match(text,/const CACHE = "typy-test";/);
+ const shell=JSON.parse(text.match(/const SHELL = (\[.*\]);/)[1]);
+ for(const path of ['/','/app.js','/style.css','/themes.js','/game.js','/words.js','/play/metronome.js','/features/install-ui.js','/manifest.webmanifest','/icon-192.png'])assert.ok(shell.includes(path),path);
+ assert.ok(!shell.some(path=>path.startsWith('/api/')));
+ assert.doesNotThrow(()=>new Function(text));
+});
+test('typy installs: the manifest is standalone and every icon is a real PNG of its stated size',async()=>{
+ const e=env();
+ const res=await worker.fetch(req('/manifest.webmanifest'),e);
+ assert.match(res.headers.get('Content-Type'),/^application\/manifest\+json/);
+ const manifest=await res.json();
+ assert.equal(manifest.display,'standalone');
+ assert.equal(manifest.start_url,'./');
+ assert.ok(manifest.icons.some(icon=>icon.purpose==='maskable'&&icon.sizes==='512x512'));
+ for(const icon of [...manifest.icons,{src:'apple-touch-icon.png',sizes:'180x180'},{src:'favicon-32.png',sizes:'32x32'}]){
+  const png=await worker.fetch(req('/'+icon.src),e);
+  assert.equal(png.status,200,icon.src);
+  assert.equal(png.headers.get('Content-Type'),'image/png');
+  const bytes=new Uint8Array(await png.arrayBuffer());
+  assert.deepEqual([...bytes.slice(0,8)],[137,80,78,71,13,10,26,10],icon.src);
+  const view=new DataView(bytes.buffer,bytes.byteOffset);
+  assert.equal(view.getUint32(16)+'x'+view.getUint32(20),icon.sizes,icon.src);
+ }
+});
+test('every page links the manifest and icons and carries the full set of link-preview tags',async()=>{
+ const html=await (await worker.fetch(req('/'),env())).text();
+ for(const tag of ['<link rel="manifest" href="/manifest.webmanifest">','<link rel="apple-touch-icon" href="/apple-touch-icon.png">','<link rel="canonical" href="https://typy.lol/">','<meta property="og:site_name" content="typy">','<meta property="og:image:alt"','<meta name="twitter:title"','<meta name="twitter:description"','<meta name="twitter:image" content="https://typy.lol/api/og/default.png">'])assert.ok(html.includes(tag),tag);
+});

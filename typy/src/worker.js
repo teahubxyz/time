@@ -3,6 +3,7 @@ import { ASSETS } from './assets.js';
 import { ApiError, QuotaGate, saveResult, getResult, leaderboard, saveJam, getJam } from './store.js';
 import { dailyPassage, topicPassage, normalizeTopic } from './passages.js';
 import { scorePNG } from './og.js';
+import { serviceWorker } from './sw.js';
 export { QuotaGate };
 
 const SECURITY = {
@@ -14,6 +15,13 @@ const SECURITY = {
 const CANONICAL = 'https://typy.lol';
 const response = (body,status=200,headers={}) => new Response(body,{status,headers:{...SECURITY,...headers}});
 const json = (body,status=200,headers={}) => response(JSON.stringify(body),status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers});
+// Images travel through the build as base64; each is decoded once per isolate.
+const BYTES=new Map();
+function assetBody(path,asset){
+ if(asset.encoding!=='base64')return asset.body;
+ if(!BYTES.has(path))BYTES.set(path,Uint8Array.from(atob(asset.body),c=>c.charCodeAt(0)));
+ return BYTES.get(path);
+}
 async function bodyJSON(request){
  if(!/^application\/json(?:;|$)/i.test(request.headers.get('Content-Type')||''))throw new ApiError(415,'Send this run as JSON.','invalid_content_type');
  const declared=Number(request.headers.get('Content-Length'));
@@ -44,7 +52,9 @@ async function route(request,env){
  if(path.startsWith('/api/og/j/')&&path.endsWith('.png'))return response(await scorePNG(await getJam(env,path.slice(10,-4))),200,{'Content-Type':'image/png','Cache-Control':'public, max-age=86400, immutable'});
  if(path==='/robots.txt')return response('User-agent: *\nDisallow: /api/\n',200,{'Content-Type':'text/plain; charset=utf-8'});
  if(path==='/favicon.ico')return response(null,302,{'Location':'/favicon.svg'});
- if(ASSETS[path]){const asset=ASSETS[path];return response(asset.body,200,{'Content-Type':asset.type,'Cache-Control':'public, max-age=300'});}
+ // The service worker is written for this revision and never cached, so a deploy reaches installed apps.
+ if(path==='/sw.js')return response(serviceWorker(env.REV||'development',['/',...Object.keys(ASSETS)]),200,{'Content-Type':'text/javascript; charset=utf-8','Cache-Control':'no-cache'});
+ if(ASSETS[path]){const asset=ASSETS[path];return response(assetBody(path,asset),200,{'Content-Type':asset.type,'Cache-Control':'public, max-age=300'});}
  if(path.startsWith('/api/'))throw new ApiError(404,'This endpoint does not exist.','not_found');
  let meta={url:CANONICAL+path};
  match=path.match(/^\/(r|race)\/([a-f0-9]{24})$/);

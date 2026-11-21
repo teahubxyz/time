@@ -10,6 +10,7 @@ import '/play/share.js';
 import '/features/coach-ui.js';
 import '/features/music-ui.js';
 import '/features/history-ui.js';
+import '/features/install-ui.js';
 
 // Each frame goes to whichever screen is up: the play clock, a replay, a jam playback.
 export function frame(time) {
